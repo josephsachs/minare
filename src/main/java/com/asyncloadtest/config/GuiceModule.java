@@ -1,8 +1,14 @@
 // config/GuiceModule.java
 package com.asyncloadtest.config;
 
+import com.amazonaws.auth.AWSStaticCredentialsProvider;
+import com.amazonaws.auth.BasicAWSCredentials;
+import com.amazonaws.client.builder.AwsClientBuilder;
 import com.amazonaws.services.dynamodbv2.AmazonDynamoDB;
+import com.amazonaws.services.dynamodbv2.AmazonDynamoDBClientBuilder;
 import com.asyncloadtest.core.websocket.ConnectionManager;
+import com.asyncloadtest.example.ExampleTestServer;
+import com.asyncloadtest.persistence.DynamoDBManager;
 import com.google.inject.AbstractModule;
 import com.google.inject.Provides;
 import com.google.inject.Singleton;
@@ -21,6 +27,7 @@ public class GuiceModule extends AbstractModule {
     protected void configure() {
         // Bind our example implementation
         bind(AbstractEntityController.class).to(ExampleEntityController.class);
+        bind(ExampleTestServer.class).in(Singleton.class);
     }
 
     @Provides
@@ -55,5 +62,32 @@ public class GuiceModule extends AbstractModule {
     @Singleton
     ConnectionManager provideConnectionManager(AmazonDynamoDB dynamoDB, HazelcastInstance hazelcast) {
         return new ConnectionManager(dynamoDB, hazelcast);
+    }
+
+    @Provides
+    @Singleton
+    DynamoDBManager provideDynamoDBManager(AmazonDynamoDB dynamoDB, Vertx vertx) {
+        boolean isLocal = "true".equalsIgnoreCase(System.getenv("DYNAMO_LOCAL"));
+        return new DynamoDBManager(isLocal, dynamoDB, vertx);
+    }
+
+    @Provides
+    @Singleton
+    AmazonDynamoDB provideDynamoDB() {
+        boolean isLocal = "true".equalsIgnoreCase(System.getenv("DYNAMO_LOCAL"));
+        String endpoint = System.getenv().getOrDefault("DYNAMO_ENDPOINT", "http://localhost:8000");
+        String region = System.getenv().getOrDefault("AWS_REGION", "us-west-2");
+
+        if (isLocal) {
+            return AmazonDynamoDBClientBuilder.standard()
+                    .withEndpointConfiguration(
+                            new AwsClientBuilder.EndpointConfiguration(endpoint, region)
+                    )
+                    .withCredentials(new AWSStaticCredentialsProvider(
+                            new BasicAWSCredentials("dummy", "dummy")))
+                    .build();
+        } else {
+            return AmazonDynamoDBClientBuilder.defaultClient();
+        }
     }
 }

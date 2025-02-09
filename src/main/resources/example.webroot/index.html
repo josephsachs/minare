@@ -15,7 +15,7 @@
     let nextClientId = 1;
 
     function startNewClient() {
-        const client = new TestClient(nextClientId++);
+        const client = new TestClient();
         client.connect();
         client.startSending(5); // 5 messages per second
         clients.push(client);
@@ -24,7 +24,7 @@
 
     function stopAllClients() {
         clients.forEach(client => {
-            if (client.ws) client.ws.close();
+            client.stop();
         });
         clients.length = 0;
         updateStatus();

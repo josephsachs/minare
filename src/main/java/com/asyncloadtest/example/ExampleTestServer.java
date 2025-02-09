@@ -1,22 +1,25 @@
 // example/ExampleTestServer.java
 package com.asyncloadtest.example;
 
-import com.google.inject.Guice;
-import com.google.inject.Injector;
-import com.asyncloadtest.config.GuiceModule;
-import com.asyncloadtest.core.websocket.WebSocketManager;
-import io.vertx.core.Vertx;
+import com.google.inject.Singleton;
 import io.vertx.ext.web.Router;
 import io.vertx.ext.web.handler.StaticHandler;
 import lombok.extern.slf4j.Slf4j;
 
+import javax.inject.Inject;
+import java.net.URL;
+
 @Slf4j
+@Singleton
 public class ExampleTestServer {
+    @Inject
+    public ExampleTestServer() {}
+
     public void configureRoutes(Router router) {
         StaticHandler staticHandler = StaticHandler.create()
-                .setWebRoot("example/webroot")
-                .setCachingEnabled(false)
-                .setDirectoryListing(true);
+                .setWebRoot("src/main/resources/example.webroot");
         router.route("/*").handler(staticHandler);
+
+        log.debug("Static routes configured for example server");
     }
 }

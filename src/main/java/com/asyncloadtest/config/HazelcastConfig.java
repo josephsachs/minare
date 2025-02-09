@@ -15,7 +15,14 @@ public class HazelcastConfig {
         Config config = new Config();
         config.setClusterName("asyncloadtest");
 
-        // Configure map for checksums with 12-second TTL
+        // Disable unnecessary features
+        config.getJetConfig().setEnabled(false);
+        config.getCPSubsystemConfig().setCPMemberCount(0);
+        config.getNetworkConfig().getJoin().getMulticastConfig().setEnabled(false);
+        config.getNetworkConfig().getJoin().getTcpIpConfig().setEnabled(true)
+                .addMember("127.0.0.1");
+
+        // Configure maps we actually need
         MapConfig checksumsConfig = new MapConfig("checksums")
                 .setTimeToLiveSeconds(12)
                 .setEvictionConfig(
@@ -24,6 +31,8 @@ public class HazelcastConfig {
                                 .setMaxSizePolicy(MaxSizePolicy.PER_NODE)
                                 .setSize(10000)
                 );
+
+        config.addMapConfig(checksumsConfig);
 
         // Configure map for entity state
         MapConfig stateConfig = new MapConfig("entityState")

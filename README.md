@@ -67,5 +67,38 @@ The framework is designed to support load testing scenarios:
 - Hazelcast
 
 ### Building
-```bash
+bash
 mvn clean install
+
+
+### Structure
+```com.asyncloadtest
+├── config
+│   ├── GuiceModule.java         // DI configuration
+│   └── HazelcastConfig.java     // Distributed cache setup
+│
+├── core
+│   ├── state
+│   │   ├── EntityStateManager.java     
+│   │   ├── StateCache.java            
+│   │   └── ChecksumManager.java       
+│   │
+│   ├── websocket
+│   │   ├── WebSocketManager.java      
+│   │   └── ConnectionManager.java     
+│   │
+│   └── models
+│       ├── StateUpdate.java           
+│       └── Subscription.java          
+│
+├── controllers
+│   ├── AbstractEntityController.java  
+│   └── EntityController.java          
+│
+├── persistence
+│   └── DynamoDBManager.java          
+│
+├── example
+│   └── ExampleEntityController.java   // Stub implementation
+│
+└── Main.java```

@@ -37,14 +37,19 @@ public class WebSocketManager implements Handler<ServerWebSocket> {
     @Override
     public void handle(ServerWebSocket websocket) {
         log.info("New WebSocket connection from {}", websocket.remoteAddress());
-        websocket.accept();
 
-        websocket.handler(buffer -> {
-            JsonObject message = new JsonObject(buffer.toString());
-            handleMessage(websocket, message);
+        // Set up the message handler before doing anything else
+        websocket.textMessageHandler(message -> {
+            try {
+                JsonObject msg = new JsonObject(message);
+                handleMessage(websocket, msg);
+            } catch (Exception e) {
+                handleError(websocket, e);
+            }
         });
 
         websocket.closeHandler(v -> handleClose(websocket));
+        websocket.accept();
     }
 
     private void handleMessage(ServerWebSocket websocket, JsonObject message) {
@@ -57,30 +62,19 @@ public class WebSocketManager implements Handler<ServerWebSocket> {
     }
 
     private void handleHandshake(ServerWebSocket websocket, JsonObject message) {
-        String userId = message.getString("userId");
-        String channelId = message.getString("channelId");
-
         try {
-            // Register connection
-            connectionManager.registerConnection(userId, channelId, websocket);
+            // Register connection and get server-generated ID
+            String connectionId = connectionManager.registerConnection(websocket);
 
-            // Subscribe to state updates
-            Disposable subscription = stateManager.subscribeToChannel(channelId)
-                    .subscribe(
-                            update -> sendUpdate(websocket, update),
-                            error -> handleError(websocket, error)
-                    );
-
-            subscriptions.put(websocket.textHandlerID(), subscription);
-
-            // Send confirmation
+            // Send confirmation with connection ID
             JsonObject confirmation = new JsonObject()
                     .put("type", "handshake_confirm")
-                    .put("userId", userId)
-                    .put("channelId", channelId);
-            websocket.writeTextMessage(confirmation.encode());
+                    .put("connectionId", connectionId)
+                    .put("timestamp", System.currentTimeMillis());
 
-            log.info("Handshake completed for user {} in channel {}", userId, channelId);
+            websocket.writeTextMessage(confirmation.encode());
+            log.info("Handshake completed for connection {}", connectionId);
+
         } catch (Exception e) {
             log.error("Handshake failed", e);
             handleError(websocket, e);
@@ -89,23 +83,23 @@ public class WebSocketManager implements Handler<ServerWebSocket> {
 
     private void handleUpdate(ServerWebSocket websocket, JsonObject message) {
         try {
-            String connectionId = websocket.textHandlerID();
-            Map<String, String> connectionDetails = connectionManager.getConnectionDetails(connectionId);
-
-            if (connectionDetails == null) {
-                throw new IllegalStateException("No active connection found");
+            String connectionId = message.getString("connectionId");
+            if (connectionId == null) {
+                throw new IllegalStateException("No connection ID provided");
             }
 
-            String channelId = message.getString("channelId");
-            if (!channelId.equals(connectionDetails.get("channelId"))) {
-                throw new IllegalStateException("Channel mismatch");
+            ServerWebSocket registeredSocket = connectionManager.getWebSocket(connectionId);
+            if (registeredSocket != websocket) {
+                throw new IllegalStateException("Invalid connection ID");
             }
 
+            // Process the update...
             JsonObject update = message.getJsonObject("state");
             String checksum = message.getString("checksum");
             long timestamp = message.getLong("timestamp");
 
-            entityController.handleUpdate(channelId, update, checksum, timestamp);
+            // Continue with update handling...
+
         } catch (Exception e) {
             handleError(websocket, e);
         }

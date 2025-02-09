@@ -6,6 +6,9 @@ import com.amazonaws.services.dynamodbv2.AmazonDynamoDBClientBuilder;
 import com.amazonaws.auth.AWSStaticCredentialsProvider;
 import com.amazonaws.auth.BasicAWSCredentials;
 import com.amazonaws.services.dynamodbv2.model.*;
+import io.vertx.core.Future;
+import io.vertx.core.Promise;
+import io.vertx.core.Vertx;
 import lombok.extern.slf4j.Slf4j;
 
 import javax.inject.Inject;
@@ -19,9 +22,13 @@ public class DynamoDBManager {
     private final AmazonDynamoDB dynamoDB;
     private static final String SUBSCRIPTIONS_TABLE = "Subscriptions";
     private static final String CHECKSUMS_TABLE = "Checksums";
+    private final Vertx vertx;
 
     @Inject
-    public DynamoDBManager(boolean isLocal) {
+    public DynamoDBManager(boolean isLocal, AmazonDynamoDB dynamoDB, Vertx vertx) {
+        this.vertx = vertx;
+        initializeTables();
+
         if (isLocal) {
             this.dynamoDB = AmazonDynamoDBClientBuilder.standard()
                     .withEndpointConfiguration(
@@ -39,6 +46,24 @@ public class DynamoDBManager {
         createTablesIfNotExist();
     }
 
+    private void initializeTables() {
+        // Convert to non-blocking with Vert.x
+        vertx.executeBlocking(promise -> {
+            try {
+                createTablesIfNotExist();
+                promise.complete();
+            } catch (Exception e) {
+                promise.fail(e);
+            }
+        }, result -> {
+            if (result.succeeded()) {
+                log.info("DynamoDB tables initialized successfully");
+            } else {
+                log.error("Failed to initialize DynamoDB tables", result.cause());
+            }
+        });
+    }
+
     private void createTablesIfNotExist() {
         log.info("Ensuring required tables exist...");
         try {
@@ -50,20 +75,63 @@ public class DynamoDBManager {
         }
     }
 
+    private Future<Void> waitForTableDeletion(String tableName) {
+        Promise<Void> promise = Promise.promise();
+
+        // Use recursive pattern with Vert.x timer instead of blocking
+        vertx.setPeriodic(1000, timerId -> {
+            try {
+                dynamoDB.describeTable(tableName);
+            } catch (ResourceNotFoundException e) {
+                vertx.cancelTimer(timerId);
+                promise.complete();
+            }
+        });
+
+        return promise.future();
+    }
+
     private void createSubscriptionsTable() {
+        boolean forceRecreate = "true".equalsIgnoreCase(System.getenv("TEST_DATABASE_SETUP"));
+
+        if (tableExists(SUBSCRIPTIONS_TABLE)) {
+            log.info("Subscriptions table exists");
+            if (forceRecreate) {
+                try {
+                    log.info("TEST_DATABASE_SETUP=true, recreating Subscriptions table");
+                    dynamoDB.deleteTable(SUBSCRIPTIONS_TABLE);
+                    waitForTableDeletion(SUBSCRIPTIONS_TABLE).onComplete(ar -> {
+                        if (ar.succeeded()) {
+                            createNewSubscriptionsTable();
+                        } else {
+                            log.error("Failed during table recreation", ar.cause());
+                        }
+                    });
+                } catch (Exception e) {
+                    log.error("Failed to delete existing Subscriptions table", e);
+                    throw e;
+                }
+            }
+            return;
+        }
+        createNewSubscriptionsTable();
+    }
+
+    private void createNewSubscriptionsTable() {
         if (tableExists(SUBSCRIPTIONS_TABLE)) {
             log.info("Subscriptions table exists");
             return;
         }
 
         List<KeySchemaElement> keySchema = Arrays.asList(
-                new KeySchemaElement("Timestamp", KeyType.HASH),
-                new KeySchemaElement("Channel", KeyType.RANGE)
+                new KeySchemaElement("Channel", KeyType.HASH),
+                new KeySchemaElement("Timestamp", KeyType.RANGE)
         );
 
         List<AttributeDefinition> attributeDefinitions = Arrays.asList(
-                new AttributeDefinition("Timestamp", ScalarAttributeType.N),
                 new AttributeDefinition("Channel", ScalarAttributeType.S),
+                new AttributeDefinition("Timestamp", ScalarAttributeType.N),
+                // Only include UserId in attribute definitions since it's used in GSI
                 new AttributeDefinition("UserId", ScalarAttributeType.S)
         );
 
@@ -83,8 +151,13 @@ public class DynamoDBManager {
                 .withGlobalSecondaryIndexes(userIndex)
                 .withProvisionedThroughput(new ProvisionedThroughput(5L, 5L));
 
-        dynamoDB.createTable(request);
-        log.info("Created Subscriptions table");
+        try {
+            dynamoDB.createTable(request);
+            log.info("Created Subscriptions table");
+        } catch (Exception e) {
+            log.error("Failed to create Subscriptions table", e);
+            throw e;
+        }
     }
 
     private void createChecksumsTable() {

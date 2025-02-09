@@ -1,6 +1,7 @@
 // Main.java
 package com.asyncloadtest;
 
+import com.asyncloadtest.persistence.DynamoDBManager;
 import com.google.inject.Guice;
 import com.google.inject.Injector;
 import com.asyncloadtest.config.GuiceModule;
@@ -9,14 +10,15 @@ import com.asyncloadtest.core.websocket.WebSocketRoutes;
 import io.vertx.core.Vertx;
 import io.vertx.ext.web.Router;
 import lombok.extern.slf4j.Slf4j;
-
-// Import the module
 import com.asyncloadtest.example.ExampleTestServer;
 
 @Slf4j
 public class Main {
     public static void main(String[] args) {
         Injector injector = Guice.createInjector(new GuiceModule());
+
+        // Initialize DynamoDB tables
+        DynamoDBManager dbManager = injector.getInstance(DynamoDBManager.class);
 
         Vertx vertx = injector.getInstance(Vertx.class);
         WebSocketManager webSocketManager = injector.getInstance(WebSocketManager.class);
