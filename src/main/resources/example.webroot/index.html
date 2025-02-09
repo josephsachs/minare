@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>WebSocket Test</title>
+</head>
+<body>
+<div>
+    <button onclick="startNewClient()">Start New Client</button>
+    <button onclick="stopAllClients()">Stop All Clients</button>
+    <div id="status"></div>
+</div>
+<script src="test-client.js"></script>
+<script>
+    const clients = [];
+    let nextClientId = 1;
+
+    function startNewClient() {
+        const client = new TestClient(nextClientId++);
+        client.connect();
+        client.startSending(5); // 5 messages per second
+        clients.push(client);
+        updateStatus();
+    }
+
+    function stopAllClients() {
+        clients.forEach(client => {
+            if (client.ws) client.ws.close();
+        });
+        clients.length = 0;
+        updateStatus();
+    }
+
+    function updateStatus() {
+        document.getElementById('status').textContent =
+            `Active clients: ${clients.length}`;
+    }
+</script>
+</body>
+</html>
