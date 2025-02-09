@@ -57,4 +57,12 @@ public class ConnectionManager {
             }
         });
     }
+
+    public String getConnectionIdForWebSocket(ServerWebSocket websocket) {
+        return websockets.entrySet().stream()
+                .filter(entry -> entry.getValue() == websocket)
+                .map(Map.Entry::getKey)
+                .findFirst()
+                .orElse(null);
+    }
 }

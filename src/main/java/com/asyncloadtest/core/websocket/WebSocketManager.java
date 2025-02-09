@@ -106,7 +106,14 @@ public class WebSocketManager implements Handler<ServerWebSocket> {
     }
 
     private void handleClose(ServerWebSocket websocket) {
-        String connectionId = websocket.textHandlerID();
+        String connectionId = connectionManager.getConnectionIdForWebSocket(websocket);
+
+        if (connectionId != null) {
+            connectionManager.removeConnection(connectionId);
+            log.info("WebSocket connection closed: {}", connectionId);
+        } else {
+            log.warn("Closed websocket had no associated connectionId");
+        }
 
         // Clean up subscription
         Disposable subscription = subscriptions.remove(connectionId);
