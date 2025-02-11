@@ -2,10 +2,7 @@
 package com.asyncloadtest.core.websocket;
 
 import com.asyncloadtest.controller.AbstractEntityController;
-import com.asyncloadtest.core.models.StateUpdate;
-import com.asyncloadtest.core.websocket.ConnectionManager;
-import com.asyncloadtest.core.state.EntityStateManager;
-import io.reactivex.rxjava3.disposables.Disposable;
+import com.asyncloadtest.persistence.ContextStore;
 import io.vertx.core.Handler;
 import io.vertx.core.http.ServerWebSocket;
 import io.vertx.core.json.JsonObject;
@@ -13,25 +10,22 @@ import lombok.extern.slf4j.Slf4j;
 
 import javax.inject.Inject;
 import javax.inject.Singleton;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 @Slf4j
 @Singleton
 public class WebSocketManager implements Handler<ServerWebSocket> {
     private final AbstractEntityController entityController;
-    private final EntityStateManager stateManager;
     private final ConnectionManager connectionManager;
-    private final Map<String, Disposable> subscriptions = new ConcurrentHashMap<>();
+    private final ContextStore contextStore;
 
     @Inject
     public WebSocketManager(
             AbstractEntityController entityController,
-            EntityStateManager stateManager,
-            ConnectionManager connectionManager) {
+            ConnectionManager connectionManager,
+            ContextStore contextStore) {
         this.entityController = entityController;
-        this.stateManager = stateManager;
         this.connectionManager = connectionManager;
+        this.contextStore = contextStore;
     }
 
     @Override
@@ -93,12 +87,12 @@ public class WebSocketManager implements Handler<ServerWebSocket> {
                 throw new IllegalStateException("Invalid connection ID");
             }
 
-            // Process the update...
+            // Process the update
             JsonObject update = message.getJsonObject("state");
-            String checksum = message.getString("checksum");
-            long timestamp = message.getLong("timestamp");
+            String entityId = message.getString("entityId");
+            long version = message.getLong("version");
 
-            // Continue with update handling...
+            entityController.handleUpdate(entityId, update, version);
 
         } catch (Exception e) {
             handleError(websocket, e);
@@ -114,33 +108,17 @@ public class WebSocketManager implements Handler<ServerWebSocket> {
         } else {
             log.warn("Closed websocket had no associated connectionId");
         }
-
-        // Clean up subscription
-        Disposable subscription = subscriptions.remove(connectionId);
-        if (subscription != null) {
-            subscription.dispose();
-        }
-
-        // Remove connection
-        connectionManager.removeConnection(connectionId);
-
-        log.info("WebSocket connection closed: {}", connectionId);
     }
 
-    private void sendUpdate(ServerWebSocket websocket, StateUpdate update) {
-        try {
-            JsonObject message = new JsonObject()
-                    .put("type", "update")
-                    .put("channelId", update.getChannelId())
-                    .put("state", update.getState())
-                    .put("checksum", update.getChecksum())
-                    .put("timestamp", update.getTimestamp());
-
-            websocket.writeTextMessage(message.encode());
-        } catch (Exception e) {
-            log.error("Failed to send update", e);
-            handleError(websocket, e);
-        }
+    public void broadcastToChannel(String channelId, JsonObject message) {
+        contextStore.getEntitiesInChannel(channelId)
+                .forEach(entity -> {
+                    String connectionId = entity.getString("connectionId");
+                    ServerWebSocket websocket = connectionManager.getWebSocket(connectionId);
+                    if (websocket != null) {
+                        websocket.writeTextMessage(message.encode());
+                    }
+                });
     }
 
     private void handleError(ServerWebSocket websocket, Throwable error) {

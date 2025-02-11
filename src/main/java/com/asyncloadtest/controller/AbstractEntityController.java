@@ -1,36 +1,34 @@
 // controllers/AbstractEntityController.java
 package com.asyncloadtest.controller;
 
-import com.asyncloadtest.core.state.EntityStateManager;
-import com.asyncloadtest.core.state.StateCache;
+import com.asyncloadtest.persistence.EntityStore;
 import io.vertx.core.json.JsonObject;
-
 import javax.inject.Inject;
 
 public abstract class AbstractEntityController {
-    private final EntityStateManager stateManager;
-    private final StateCache stateCache;
+    private final EntityStore entityStore;
+    protected abstract boolean hasAccess(String connectionId, String entityId);
+    protected abstract boolean validateUpdate(JsonObject currentState, JsonObject proposedUpdate);
 
     @Inject
-    public AbstractEntityController(EntityStateManager stateManager, StateCache stateCache) {
-        this.stateManager = stateManager;
-        this.stateCache = stateCache;
+    public AbstractEntityController(EntityStore entityStore) {
+        this.entityStore = entityStore;
     }
 
-    protected abstract boolean hasAccess(String userId, String channelId);
-    protected abstract JsonObject filterStateForUser(String userId, JsonObject state);
-
-    public void handleUpdate(String channelId, JsonObject update, String checksum, long timestamp) {
-        if (!stateCache.validateChecksum(channelId, timestamp, checksum)) {
-            throw new IllegalStateException("Checksum validation failed");
+    public void handleUpdate(String entityId, JsonObject update, long version) {
+        JsonObject current = entityStore.getEntity(entityId);
+        if (current == null) {
+            throw new IllegalStateException("Entity not found");
         }
 
-        if (isSignificantChange(channelId, update)) {
-            stateManager.updateState(channelId, update);
+        if (!validateUpdate(current, update)) {
+            throw new IllegalStateException("Invalid update");
         }
-    }
 
-    protected boolean isSignificantChange(String channelId, JsonObject newState) {
-        return true; // Default implementation treats all changes as significant
+        try {
+            entityStore.updateEntity(entityId, version, update);
+        } catch (IllegalStateException e) {
+            throw new IllegalStateException("Entity was modified by another request");
+        }
     }
 }

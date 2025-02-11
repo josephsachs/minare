@@ -1,7 +1,6 @@
 // websocket/WebSocketRoutes.java
 package com.asyncloadtest.core.websocket;
 
-import io.vertx.core.http.ServerWebSocket;
 import io.vertx.ext.web.Router;
 import javax.inject.Inject;
 

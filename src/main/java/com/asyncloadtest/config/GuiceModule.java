@@ -1,33 +1,43 @@
 // config/GuiceModule.java
 package com.asyncloadtest.config;
 
-import com.amazonaws.auth.AWSStaticCredentialsProvider;
-import com.amazonaws.auth.BasicAWSCredentials;
-import com.amazonaws.client.builder.AwsClientBuilder;
-import com.amazonaws.services.dynamodbv2.AmazonDynamoDB;
-import com.amazonaws.services.dynamodbv2.AmazonDynamoDBClientBuilder;
 import com.asyncloadtest.core.websocket.ConnectionManager;
 import com.asyncloadtest.example.ExampleTestServer;
-import com.asyncloadtest.persistence.DynamoDBManager;
+import com.asyncloadtest.persistence.*;
 import com.google.inject.AbstractModule;
 import com.google.inject.Provides;
 import com.google.inject.Singleton;
-import com.hazelcast.core.HazelcastInstance;
-import com.hazelcast.config.Config;
-import com.hazelcast.core.Hazelcast;
 import com.asyncloadtest.controller.AbstractEntityController;
 import com.asyncloadtest.example.ExampleEntityController;
 import com.asyncloadtest.core.websocket.WebSocketManager;
-import com.asyncloadtest.core.state.EntityStateManager;
+import com.mongodb.client.MongoClient;
+import com.mongodb.client.MongoClients;
 import io.vertx.core.Vertx;
 
 public class GuiceModule extends AbstractModule {
-
     @Override
     protected void configure() {
-        // Bind our example implementation
+        // Store bindings
+        bind(ConnectionStore.class).to(MongoConnectionStore.class);
+        bind(EntityStore.class).to(MongoEntityStore.class);
+        bind(ContextStore.class).to(MongoContextStore.class);
+
+        // Existing bindings
         bind(AbstractEntityController.class).to(ExampleEntityController.class);
         bind(ExampleTestServer.class).in(Singleton.class);
+    }
+
+    @Provides
+    @Singleton
+    MongoClient provideMongoClient() {
+        String uri = System.getenv().getOrDefault("MONGO_URI",
+                "mongodb://root:example@localhost:27017/asyncloadtest?authSource=admin");
+        try {
+            return MongoClients.create(uri);
+        } catch (Exception e) {
+            //log.error("Failed to create MongoDB client", e);
+            throw e;
+        }
     }
 
     @Provides
@@ -38,56 +48,16 @@ public class GuiceModule extends AbstractModule {
 
     @Provides
     @Singleton
-    HazelcastInstance provideHazelcast() {
-        Config config = new Config();
-        config.setClusterName("asyncloadtest");
-        // Configure maps with TTL
-        config.getMapConfig("checksums")
-                .setTimeToLiveSeconds(12);
-        return Hazelcast.newHazelcastInstance(config);
-    }
-
-    @Provides
-    @Singleton
     WebSocketManager provideWebSocketManager(
             AbstractEntityController controller,
-            EntityStateManager stateManager,
-            ConnectionManager connectionManager
-    ) {
-        return new WebSocketManager(controller, stateManager, connectionManager);
-    }
-
-    // config/GuiceModule.java
-    @Provides
-    @Singleton
-    ConnectionManager provideConnectionManager(AmazonDynamoDB dynamoDB, HazelcastInstance hazelcast) {
-        return new ConnectionManager(dynamoDB, hazelcast);
+            ConnectionManager connectionManager,
+            ContextStore contextStore) {  // Removed DynamoDB dependency
+        return new WebSocketManager(controller, connectionManager, contextStore);
     }
 
     @Provides
     @Singleton
-    DynamoDBManager provideDynamoDBManager(AmazonDynamoDB dynamoDB, Vertx vertx) {
-        boolean isLocal = "true".equalsIgnoreCase(System.getenv("DYNAMO_LOCAL"));
-        return new DynamoDBManager(isLocal, dynamoDB, vertx);
-    }
-
-    @Provides
-    @Singleton
-    AmazonDynamoDB provideDynamoDB() {
-        boolean isLocal = "true".equalsIgnoreCase(System.getenv("DYNAMO_LOCAL"));
-        String endpoint = System.getenv().getOrDefault("DYNAMO_ENDPOINT", "http://localhost:8000");
-        String region = System.getenv().getOrDefault("AWS_REGION", "us-west-2");
-
-        if (isLocal) {
-            return AmazonDynamoDBClientBuilder.standard()
-                    .withEndpointConfiguration(
-                            new AwsClientBuilder.EndpointConfiguration(endpoint, region)
-                    )
-                    .withCredentials(new AWSStaticCredentialsProvider(
-                            new BasicAWSCredentials("dummy", "dummy")))
-                    .build();
-        } else {
-            return AmazonDynamoDBClientBuilder.defaultClient();
-        }
+    ConnectionManager provideConnectionManager(ConnectionStore connectionStore) {
+        return new ConnectionManager(connectionStore);
     }
 }

@@ -5,16 +5,16 @@ import lombok.Value;
 
 @Value
 public class StateUpdate {
-    String channelId;
-    long timestamp;
+    String entityId;
+    long version;
     JsonObject state;
-    String checksum;
+    long timestamp;
 
     // Without this, Lombok only generates a no-args constructor
-    public StateUpdate(String channelId, long timestamp, JsonObject state, String checksum) {
-        this.channelId = channelId;
+    public StateUpdate(String entityId, long timestamp, JsonObject state, long version) {
+        this.entityId = entityId;
         this.timestamp = timestamp;
         this.state = state;
-        this.checksum = checksum;
+        this.version = version;
     }
 }
