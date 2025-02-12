@@ -10,6 +10,7 @@ import lombok.extern.slf4j.Slf4j;
 
 import javax.inject.Inject;
 import javax.inject.Singleton;
+import java.util.UUID;
 
 @Slf4j
 @Singleton
@@ -89,7 +90,20 @@ public class WebSocketManager implements Handler<ServerWebSocket> {
 
             // Process the update
             JsonObject update = message.getJsonObject("state");
-            String entityId = message.getString("entityId");
+            String entityId = (message.getString("entityId"));
+
+            if (entityId == null) {
+                // Create one and give it to the Connection
+                entityId = String.valueOf(UUID.randomUUID());
+                // Grant it to the Connection that created it
+            } else {
+                // Get the Connection by connectionId
+                // if (connection.user.userCanUpdate(entityId))
+                // Get the Entity by entityId
+                // Delegate to the implementation to operate on the Entity
+                entityId = "the entity id goes here";
+            }
+
             long version = message.getLong("version");
 
             entityController.handleUpdate(entityId, update, version);

@@ -1,47 +1,51 @@
 package com.asyncloadtest.persistence;
 
-import com.mongodb.client.MongoClient;
-import com.mongodb.client.MongoCollection;
-import com.mongodb.client.model.IndexOptions;
-import com.mongodb.client.model.Indexes;
-import org.bson.Document;
+import io.vertx.ext.mongo.MongoClient;
+import io.vertx.core.Future;
+import io.vertx.core.json.JsonObject;
 import lombok.extern.slf4j.Slf4j;
 
 import javax.inject.Inject;
 import javax.inject.Singleton;
-import java.util.Date;
-import java.util.concurrent.TimeUnit;
 
 @Slf4j
 @Singleton
 public class MongoConnectionStore implements ConnectionStore {
-    private final MongoCollection<Document> collection;
+    private final MongoClient mongoClient;
+    private static final String COLLECTION_NAME = "connections";
 
     @Inject
     public MongoConnectionStore(MongoClient mongoClient) {
-        this.collection = mongoClient.getDatabase("asyncloadtest")
-                .getCollection("connections");
+        this.mongoClient = mongoClient;
     }
 
     @Override
-    public void storeConnection(String connectionId, long timestamp) {
-        Document connection = new Document()
-                .append("_id", connectionId)
-                .append("timestamp", new Date(timestamp));
+    public Future<Void> storeConnection(String connectionId, long timestamp) {
+        JsonObject connection = new JsonObject()
+                .put("_id", connectionId)
+                .put("timestamp", timestamp);
 
-        collection.insertOne(connection);
-        log.info("Stored connection {}", connectionId);
+        return mongoClient.insert(COLLECTION_NAME, connection)
+                .onSuccess(result -> log.info("Stored connection {}", connectionId))
+                .mapEmpty();
     }
 
     @Override
-    public void removeConnection(String connectionId) {
-        collection.deleteOne(new Document("_id", connectionId));
-        log.info("Removed connection {}", connectionId);
+    public Future<Void> removeConnection(String connectionId) {
+        JsonObject query = new JsonObject()
+                .put("_id", connectionId);
+
+        return mongoClient.removeDocument(COLLECTION_NAME, query)
+                .onSuccess(result -> log.info("Removed connection {}", connectionId))
+                .mapEmpty();
     }
 
     @Override
-    public boolean isConnectionActive(String connectionId) {
-        return collection.find(new Document("_id", connectionId))
-                .first() != null;
+    public Future<Boolean> isConnectionActive(String connectionId) {
+        JsonObject query = new JsonObject()
+                .put("_id", connectionId);
+
+        return mongoClient.findOne(COLLECTION_NAME, query, null)
+                .map(result -> result != null);
     }
 }

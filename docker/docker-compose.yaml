@@ -4,17 +4,26 @@ services:
   mongodb:
     image: mongo:latest
     container_name: mongodb
+    hostname: mongodb-rs
     command: ["--replSet", "rs0", "--bind_ip_all"]
     ports:
       - "27017:27017"
     volumes:
       - ./data/db:/data/db
+      - ./scripts:/scripts
     networks:
-      mongodb_net:
+      mongo_net:
         aliases:
           - mongodb-rs
+    healthcheck:
+      test: mongosh --eval "db.adminCommand('ping')"
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    entrypoint: ["/scripts/init.sh"]
 
 networks:
-  mongodb_net:
-    name: mongodb_net
+  mongo_net:
+    name: mongo_net
     driver: bridge

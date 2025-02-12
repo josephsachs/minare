@@ -1,7 +1,9 @@
 package com.asyncloadtest.persistence;
 
+import io.vertx.core.Future;
+
 public interface ConnectionStore extends Store {
-    void storeConnection(String connectionId, long timestamp);
-    void removeConnection(String connectionId);
-    boolean isConnectionActive(String connectionId);
+    Future<Void> storeConnection(String connectionId, long timestamp);
+    Future<Void> removeConnection(String connectionId);
+    Future<Boolean> isConnectionActive(String connectionId);
 }

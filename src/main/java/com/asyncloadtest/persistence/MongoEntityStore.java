@@ -1,71 +1,69 @@
 package com.asyncloadtest.persistence;
 
-import com.mongodb.client.MongoClient;
-import com.mongodb.client.MongoCollection;
-import com.mongodb.client.model.Indexes;
-import com.mongodb.client.result.UpdateResult;
+import io.vertx.ext.mongo.MongoClient;
+import io.vertx.core.Future;
 import io.vertx.core.json.JsonObject;
 import lombok.extern.slf4j.Slf4j;
-import org.bson.Document;
 
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import java.util.stream.Stream;
-import java.util.stream.StreamSupport;
 
 @Slf4j
 @Singleton
 public class MongoEntityStore implements EntityStore {
-    private final MongoCollection<Document> collection;
+    private final MongoClient mongoClient;
+    private static final String COLLECTION_NAME = "entities";
 
     @Inject
     public MongoEntityStore(MongoClient mongoClient) {
-        this.collection = mongoClient.getDatabase("asyncloadtest")
-                .getCollection("entities");
+        this.mongoClient = mongoClient;
     }
 
     @Override
-    public void createEntity(String entityId, String type, JsonObject state) {
-        Document entity = new Document()
-                .append("_id", entityId)
-                .append("type", type)
-                .append("version", 0L)
-                .append("state", Document.parse(state.encode()));
+    public Future<Void> createEntity(String entityId, String type, JsonObject state) {
+        JsonObject entity = new JsonObject()
+                .put("_id", entityId)
+                .put("type", type)
+                .put("version", 0L)
+                .put("state", state);
 
-        collection.insertOne(entity);
+        return mongoClient.insert(COLLECTION_NAME, entity)
+                .mapEmpty();
     }
 
     @Override
-    public void updateEntity(String entityId, long version, JsonObject state) {
-        Document update = new Document("$set", new Document()
-                .append("state", Document.parse(state.encode()))
-                .append("version", version + 1));
+    public Future<Long> updateEntity(String entityId, long version, JsonObject state) {
+        JsonObject query = new JsonObject()
+                .put("_id", entityId)
+                .put("version", version);
 
-        Document filter = new Document()
-                .append("_id", entityId)
-                .append("version", version);
+        JsonObject update = new JsonObject()
+                .put("$set", new JsonObject()
+                        .put("state", state)
+                        .put("version", version + 1));
 
-        UpdateResult result = collection.updateOne(filter, update);
-
-        if (result.getModifiedCount() == 0) {
-            throw new IllegalStateException("Entity was modified by another request");
-        }
+        return mongoClient.updateCollection(COLLECTION_NAME, query, update)
+                .map(result -> {
+                    if (result.getDocMatched() == 0) {
+                        throw new IllegalStateException("Entity was modified by another request");
+                    }
+                    return version + 1;
+                });
     }
 
     @Override
-    public JsonObject getEntity(String entityId) {
-        Document doc = collection.find(new Document("_id", entityId)).first();
-        if (doc == null) {
-            return null;
-        }
-        return new JsonObject(doc.toJson());
+    public Future<JsonObject> getEntity(String entityId) {
+        JsonObject query = new JsonObject().put("_id", entityId);
+
+        return mongoClient.findOne(COLLECTION_NAME, query, null);
     }
 
     @Override
-    public Stream<JsonObject> getEntitiesByType(String type) {
-        return StreamSupport.stream(
-                collection.find(new Document("type", type)).spliterator(),
-                false
-        ).map(doc -> new JsonObject(doc.toJson()));
+    public Future<Stream<JsonObject>> getEntitiesByType(String type) {
+        JsonObject query = new JsonObject().put("type", type);
+
+        return mongoClient.find(COLLECTION_NAME, query)
+                .map(list -> list.stream());
     }
 }

@@ -5,6 +5,8 @@ class TestClient {
         this.ws = null;
         this.connected = false;
         this.messageInterval = null;  // Track the interval
+        this.entityId = null;
+        this.version = null;
     }
 
     connect() {
@@ -29,10 +31,6 @@ class TestClient {
                 console.log(`Connection established with ID: ${this.connectionId}`);
             } else if (data.type === 'error') {
                 console.error(`Error from server: ${data.message}`);
-                if (data.code === 'SYNC_ERROR' || data.code === 'CHECKSUM_MISMATCH') {
-                    console.log('Reconnecting due to sync error...');
-                    this.reconnect();
-                }
             }
         };
 
@@ -55,9 +53,14 @@ class TestClient {
 
         const message = {
             type: 'update',
+            entityType: 'counter',
+            entityId: this.entityId,
+            state: {
+                increment: 1
+            },
             connectionId: this.connectionId,
-            message: Math.random().toString(36).substring(7),
-            timestamp: Date.now()
+            timestamp: Date.now(),
+            version: this.version
         };
 
         this.ws.send(JSON.stringify(message));
