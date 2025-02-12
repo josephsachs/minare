@@ -1,5 +1,6 @@
 package com.asyncloadtest;
 
+import com.asyncloadtest.persistence.DatabaseInitializer;
 import com.google.inject.Guice;
 import com.google.inject.Injector;
 import com.asyncloadtest.config.GuiceModule;
@@ -20,14 +21,17 @@ public class Main {
         Vertx vertx = injector.getInstance(Vertx.class);
         WebSocketManager webSocketManager = injector.getInstance(WebSocketManager.class);
         WebSocketRoutes wsRoutes = injector.getInstance(WebSocketRoutes.class);
-        ExampleTestServer exampleServer = injector.getInstance(ExampleTestServer.class);
 
-        // Start change stream consumer
+        DatabaseInitializer dbInitializer = injector.getInstance(DatabaseInitializer.class);
+        dbInitializer.initialize();
         MongoChangeStreamConsumer changeStreamConsumer = injector.getInstance(MongoChangeStreamConsumer.class);
         changeStreamConsumer.startConsuming();
 
         Router router = Router.router(vertx);
         wsRoutes.register(router);
+
+        // Register project modules
+        ExampleTestServer exampleServer = injector.getInstance(ExampleTestServer.class);
         exampleServer.configureRoutes(router);
 
         vertx.createHttpServer()

@@ -16,24 +16,12 @@ import java.util.stream.StreamSupport;
 @Slf4j
 @Singleton
 public class MongoEntityStore implements EntityStore {
-    private final MongoCollection<Document> entities;
+    private final MongoCollection<Document> collection;
 
     @Inject
     public MongoEntityStore(MongoClient mongoClient) {
-        this.entities = mongoClient
-                .getDatabase("asyncloadtest")
+        this.collection = mongoClient.getDatabase("asyncloadtest")
                 .getCollection("entities");
-    }
-
-    @Override
-    public void initialize() {
-        entities.createIndex(Indexes.ascending("type"));
-    }
-
-    @Override
-    public void reset() {
-        entities.drop();
-        initialize();
     }
 
     @Override
@@ -44,7 +32,7 @@ public class MongoEntityStore implements EntityStore {
                 .append("version", 0L)
                 .append("state", Document.parse(state.encode()));
 
-        entities.insertOne(entity);
+        collection.insertOne(entity);
     }
 
     @Override
@@ -57,7 +45,7 @@ public class MongoEntityStore implements EntityStore {
                 .append("_id", entityId)
                 .append("version", version);
 
-        UpdateResult result = entities.updateOne(filter, update);
+        UpdateResult result = collection.updateOne(filter, update);
 
         if (result.getModifiedCount() == 0) {
             throw new IllegalStateException("Entity was modified by another request");
@@ -66,7 +54,7 @@ public class MongoEntityStore implements EntityStore {
 
     @Override
     public JsonObject getEntity(String entityId) {
-        Document doc = entities.find(new Document("_id", entityId)).first();
+        Document doc = collection.find(new Document("_id", entityId)).first();
         if (doc == null) {
             return null;
         }
@@ -76,7 +64,7 @@ public class MongoEntityStore implements EntityStore {
     @Override
     public Stream<JsonObject> getEntitiesByType(String type) {
         return StreamSupport.stream(
-                entities.find(new Document("type", type)).spliterator(),
+                collection.find(new Document("type", type)).spliterator(),
                 false
         ).map(doc -> new JsonObject(doc.toJson()));
     }

@@ -31,7 +31,7 @@ public class GuiceModule extends AbstractModule {
     @Singleton
     MongoClient provideMongoClient() {
         String uri = System.getenv().getOrDefault("MONGO_URI",
-                "mongodb://root:example@localhost:27017/asyncloadtest?authSource=admin");
+                "mongodb://mongodb-rs:27017/?replicaSet=rs0");
         try {
             return MongoClients.create(uri);
         } catch (Exception e) {

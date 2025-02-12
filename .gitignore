@@ -1,4 +1,6 @@
 .DS_Store
 .idea/
+docker/config/mongodb.key
+docker/data
 logs/
 target/

@@ -15,29 +15,12 @@ import java.util.concurrent.TimeUnit;
 @Slf4j
 @Singleton
 public class MongoConnectionStore implements ConnectionStore {
-    private final MongoCollection<Document> connections;
+    private final MongoCollection<Document> collection;
 
     @Inject
     public MongoConnectionStore(MongoClient mongoClient) {
-        this.connections = mongoClient
-                .getDatabase("asyncloadtest")
+        this.collection = mongoClient.getDatabase("asyncloadtest")
                 .getCollection("connections");
-    }
-
-    @Override
-    public void initialize() {
-        // Create TTL index
-        connections.createIndex(
-                Indexes.ascending("timestamp"),
-                new IndexOptions()
-                        .expireAfter(60L, TimeUnit.SECONDS)  // 1 minute TTL
-        );
-    }
-
-    @Override
-    public void reset() {
-        connections.drop();
-        initialize();
     }
 
     @Override
@@ -46,19 +29,19 @@ public class MongoConnectionStore implements ConnectionStore {
                 .append("_id", connectionId)
                 .append("timestamp", new Date(timestamp));
 
-        connections.insertOne(connection);
+        collection.insertOne(connection);
         log.info("Stored connection {}", connectionId);
     }
 
     @Override
     public void removeConnection(String connectionId) {
-        connections.deleteOne(new Document("_id", connectionId));
+        collection.deleteOne(new Document("_id", connectionId));
         log.info("Removed connection {}", connectionId);
     }
 
     @Override
     public boolean isConnectionActive(String connectionId) {
-        return connections.find(new Document("_id", connectionId))
+        return collection.find(new Document("_id", connectionId))
                 .first() != null;
     }
 }

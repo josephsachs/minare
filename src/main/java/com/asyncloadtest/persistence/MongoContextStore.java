@@ -13,26 +13,15 @@ import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 
 @Slf4j
+
 @Singleton
 public class MongoContextStore implements ContextStore {
-    private final MongoCollection<Document> contexts;
+    private final MongoCollection<Document> collection;
 
     @Inject
     public MongoContextStore(MongoClient mongoClient) {
-        this.contexts = mongoClient
-                .getDatabase("asyncloadtest")
+        this.collection = mongoClient.getDatabase("asyncloadtest")
                 .getCollection("contexts");
-    }
-
-    @Override
-    public void initialize() {
-        contexts.createIndex(Indexes.ascending("channelId"));
-    }
-
-    @Override
-    public void reset() {
-        contexts.drop();
-        initialize();
     }
 
     @Override
@@ -41,7 +30,7 @@ public class MongoContextStore implements ContextStore {
                 .append("entityId", entityId)
                 .append("channelId", channelId);
 
-        contexts.insertOne(context);
+        collection.insertOne(context);
     }
 
     @Override
@@ -50,13 +39,13 @@ public class MongoContextStore implements ContextStore {
                 .append("entityId", entityId)
                 .append("channelId", channelId);
 
-        contexts.deleteOne(filter);
+        collection.deleteOne(filter);
     }
 
     @Override
     public Stream<JsonObject> getChannelsForEntity(String entityId) {
         return StreamSupport.stream(
-                contexts.find(new Document("entityId", entityId)).spliterator(),
+                collection.find(new Document("entityId", entityId)).spliterator(),
                 false
         ).map(doc -> new JsonObject(doc.toJson()));
     }
@@ -64,7 +53,7 @@ public class MongoContextStore implements ContextStore {
     @Override
     public Stream<JsonObject> getEntitiesInChannel(String channelId) {
         return StreamSupport.stream(
-                contexts.find(new Document("channelId", channelId)).spliterator(),
+                collection.find(new Document("channelId", channelId)).spliterator(),
                 false
         ).map(doc -> new JsonObject(doc.toJson()));
     }
