@@ -1,9 +1,9 @@
-package com.asyncloadtest.example;
+package com.minare.example;
 
-import com.asyncloadtest.controller.AbstractEntityController;
-import com.asyncloadtest.core.annotations.Entity;
-import com.asyncloadtest.core.annotations.Field;
-import com.asyncloadtest.persistence.EntityStore;
+import com.minare.controller.AbstractEntityController;
+import com.minare.core.annotations.Entity;
+import com.minare.core.annotations.Field;
+import com.minare.persistence.EntityStore;
 import io.vertx.core.json.JsonObject;
 
 import javax.inject.Inject;

@@ -1,5 +1,5 @@
 // websocket/WebSocketRoutes.java
-package com.asyncloadtest.core.websocket;
+package com.minare.core.websocket;
 
 import io.vertx.ext.web.Router;
 import javax.inject.Inject;

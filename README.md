@@ -72,7 +72,7 @@ mvn clean install
 
 
 ### Structure
-```com.asyncloadtest
+```com.minare
 ├── config
 │   ├── GuiceModule.java         // DI configuration
 │   └── HazelcastConfig.java     // Distributed cache setup

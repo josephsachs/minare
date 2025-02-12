@@ -1,6 +1,6 @@
-package com.asyncloadtest.core.websocket;
+package com.minare.core.websocket;
 
-import com.asyncloadtest.persistence.ConnectionStore;
+import com.minare.persistence.ConnectionStore;
 import io.vertx.core.http.ServerWebSocket;
 import lombok.extern.slf4j.Slf4j;
 import javax.inject.Inject;

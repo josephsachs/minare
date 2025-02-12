@@ -1,18 +1,17 @@
-// config/GuiceModule.java
-package com.asyncloadtest.config;
+package com.minare.config;
 
-import com.asyncloadtest.core.websocket.ConnectionManager;
-import com.asyncloadtest.example.ExampleTestServer;
-import com.asyncloadtest.persistence.*;
+import com.minare.core.websocket.ConnectionManager;
+import com.minare.example.ExampleTestServer;
+import com.minare.persistence.*;
 import com.google.inject.AbstractModule;
 import com.google.inject.Provides;
 import com.google.inject.Singleton;
-import com.asyncloadtest.controller.AbstractEntityController;
-import com.asyncloadtest.example.ExampleEntityController;
-import com.asyncloadtest.core.websocket.WebSocketManager;
-import com.mongodb.client.MongoClient;
-import com.mongodb.client.MongoClients;
+import com.minare.controller.AbstractEntityController;
+import com.minare.example.ExampleEntityController;
+import com.minare.core.websocket.WebSocketManager;
 import io.vertx.core.Vertx;
+import io.vertx.core.json.JsonObject;
+import io.vertx.ext.mongo.MongoClient;
 
 public class GuiceModule extends AbstractModule {
     @Override
@@ -29,21 +28,20 @@ public class GuiceModule extends AbstractModule {
 
     @Provides
     @Singleton
-    MongoClient provideMongoClient() {
-        String uri = System.getenv().getOrDefault("MONGO_URI",
-                "mongodb://mongodb-rs:27017/?replicaSet=rs0");
-        try {
-            return MongoClients.create(uri);
-        } catch (Exception e) {
-            //log.error("Failed to create MongoDB client", e);
-            throw e;
-        }
+    Vertx provideVertx() {
+        return Vertx.vertx();
     }
 
     @Provides
     @Singleton
-    Vertx provideVertx() {
-        return Vertx.vertx();
+    MongoClient provideMongoClient(Vertx vertx) {
+        String uri = System.getenv().getOrDefault("MONGO_URI", "mongodb://mongodb-rs:27017/?replicaSet=rs0");
+
+        JsonObject config = new JsonObject()
+                .put("connection_string", uri)
+                .put("db_name", "your_database_name");  // Change this to your actual DB name
+
+        return MongoClient.createShared(vertx, config);
     }
 
     @Provides
@@ -51,7 +49,7 @@ public class GuiceModule extends AbstractModule {
     WebSocketManager provideWebSocketManager(
             AbstractEntityController controller,
             ConnectionManager connectionManager,
-            ContextStore contextStore) {  // Removed DynamoDB dependency
+            ContextStore contextStore) {
         return new WebSocketManager(controller, connectionManager, contextStore);
     }
 

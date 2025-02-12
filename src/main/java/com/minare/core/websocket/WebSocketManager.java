@@ -1,8 +1,8 @@
 // websocket/WebSocketManager.java
-package com.asyncloadtest.core.websocket;
+package com.minare.core.websocket;
 
-import com.asyncloadtest.controller.AbstractEntityController;
-import com.asyncloadtest.persistence.ContextStore;
+import com.minare.controller.AbstractEntityController;
+import com.minare.persistence.ContextStore;
 import io.vertx.core.Handler;
 import io.vertx.core.http.ServerWebSocket;
 import io.vertx.core.json.JsonObject;
@@ -125,14 +125,13 @@ public class WebSocketManager implements Handler<ServerWebSocket> {
     }
 
     public void broadcastToChannel(String channelId, JsonObject message) {
-        contextStore.getEntitiesInChannel(channelId)
-                .forEach(entity -> {
-                    String connectionId = entity.getString("connectionId");
-                    ServerWebSocket websocket = connectionManager.getWebSocket(connectionId);
-                    if (websocket != null) {
-                        websocket.writeTextMessage(message.encode());
-                    }
-                });
+        contextStore.getEntitiesInChannel(channelId);
+
+        String connectionId = message.getString("connectionId");
+        ServerWebSocket websocket = connectionManager.getWebSocket(connectionId);
+        if (websocket != null) {
+            websocket.writeTextMessage(message.encode());
+        }
     }
 
     private void handleError(ServerWebSocket websocket, Throwable error) {

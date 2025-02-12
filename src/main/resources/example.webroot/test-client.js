@@ -63,7 +63,9 @@ class TestClient {
             version: this.version
         };
 
-        this.ws.send(JSON.stringify(message));
+        let result = await this.ws.send(JSON.stringify(message));
+
+        console.log(result);
     }
 
     startSending(messagesPerSecond = 1) {

@@ -1,17 +1,17 @@
-package com.asyncloadtest;
+package com.minare;
 
-import com.asyncloadtest.persistence.DatabaseInitializer;
+import com.minare.persistence.DatabaseInitializer;
 import com.google.inject.Guice;
 import com.google.inject.Injector;
-import com.asyncloadtest.config.GuiceModule;
-import com.asyncloadtest.core.state.MongoChangeStreamConsumer;
-import com.asyncloadtest.core.websocket.WebSocketManager;
-import com.asyncloadtest.core.websocket.WebSocketRoutes;
+import com.minare.config.GuiceModule;
+import com.minare.core.state.MongoChangeStreamConsumer;
+import com.minare.core.websocket.WebSocketManager;
+import com.minare.core.websocket.WebSocketRoutes;
 import io.vertx.core.Vertx;
 import io.vertx.ext.web.Router;
 import lombok.extern.slf4j.Slf4j;
 
-import com.asyncloadtest.example.ExampleTestServer;
+import com.minare.example.ExampleTestServer;
 
 @Slf4j
 public class Main {

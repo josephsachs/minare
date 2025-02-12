@@ -1,4 +1,4 @@
-package com.asyncloadtest.persistence;
+package com.minare.persistence;
 
 import io.vertx.core.Future;
 

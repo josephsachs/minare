@@ -1,5 +1,5 @@
 // example/ExampleTestServer.java
-package com.asyncloadtest.example;
+package com.minare.example;
 
 import com.google.inject.Singleton;
 import io.vertx.ext.web.Router;
@@ -7,7 +7,6 @@ import io.vertx.ext.web.handler.StaticHandler;
 import lombok.extern.slf4j.Slf4j;
 
 import javax.inject.Inject;
-import java.net.URL;
 
 @Slf4j
 @Singleton

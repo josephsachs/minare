@@ -1,4 +1,4 @@
-package com.asyncloadtest.core.models;
+package com.minare.core.models;
 
 import io.vertx.core.json.JsonObject;
 import lombok.Value;

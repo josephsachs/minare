@@ -1,4 +1,4 @@
-package com.asyncloadtest.persistence;
+package com.minare.persistence;
 
 import io.vertx.ext.mongo.MongoClient;
 import io.vertx.core.Future;
@@ -7,7 +7,7 @@ import lombok.extern.slf4j.Slf4j;
 
 import javax.inject.Inject;
 import javax.inject.Singleton;
-import java.util.stream.Stream;
+import java.util.List;
 
 @Slf4j
 @Singleton
@@ -41,20 +41,18 @@ public class MongoContextStore implements ContextStore {
     }
 
     @Override
-    public Future<Stream<JsonObject>> getChannelsForEntity(String entityId) {
+    public Future<List<JsonObject>> getChannelsForEntity(String entityId) {
         JsonObject query = new JsonObject()
                 .put("entityId", entityId);
 
-        return mongoClient.find(COLLECTION_NAME, query)
-                .map(list -> list.stream());
+        return mongoClient.find(COLLECTION_NAME, query);
     }
 
     @Override
-    public Future<Stream<JsonObject>> getEntitiesInChannel(String channelId) {
+    public Future<List<JsonObject>> getEntitiesInChannel(String channelId) {
         JsonObject query = new JsonObject()
                 .put("channelId", channelId);
 
-        return mongoClient.find(COLLECTION_NAME, query)
-                .map(list -> list.stream());
+        return mongoClient.find(COLLECTION_NAME, query);
     }
 }
