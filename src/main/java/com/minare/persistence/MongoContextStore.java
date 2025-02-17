@@ -1,5 +1,10 @@
 package com.minare.persistence;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.minare.core.models.AbstractEntity;
+import com.minare.core.models.Channel;
+import com.minare.core.models.User;
 import io.vertx.ext.mongo.MongoClient;
 import io.vertx.core.Future;
 import io.vertx.core.json.JsonObject;
@@ -8,15 +13,21 @@ import lombok.extern.slf4j.Slf4j;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Singleton
 public class MongoContextStore implements ContextStore {
     private final MongoClient mongoClient;
+    private final EntityStore entityStore;
     private static final String COLLECTION_NAME = "contexts";
 
+    private static final ObjectMapper objectMapper = new ObjectMapper()
+            .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+
     @Inject
-    public MongoContextStore(MongoClient mongoClient) {
+    public MongoContextStore(MongoClient mongoClient, EntityStore entityStore) {
+        this.entityStore = entityStore;
         this.mongoClient = mongoClient;
     }
 
@@ -41,18 +52,32 @@ public class MongoContextStore implements ContextStore {
     }
 
     @Override
-    public Future<List<JsonObject>> getChannelsForEntity(String entityId) {
+    public Future<List<Channel>> getChannelsForEntity(String entityId) {
         JsonObject query = new JsonObject()
                 .put("entityId", entityId);
 
-        return mongoClient.find(COLLECTION_NAME, query);
+        return mongoClient.find(COLLECTION_NAME, query)
+                .map(results -> results.stream()
+                        .map(this::hydrateChannel)
+                        .collect(Collectors.toList()));
     }
 
     @Override
-    public Future<List<JsonObject>> getEntitiesInChannel(String channelId) {
+    public Future<List<AbstractEntity>> getEntitiesInChannel(String channelId) {
         JsonObject query = new JsonObject()
                 .put("channelId", channelId);
 
-        return mongoClient.find(COLLECTION_NAME, query);
+        return mongoClient.find("entities", query)
+                .map(results -> results.stream()
+                        .map(entityStore::hydrateEntity)
+                        .collect(Collectors.toList()));
+    }
+
+    private Channel hydrateChannel(JsonObject doc) {
+        try {
+            return objectMapper.readValue(doc.encode(), Channel.class);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to deserialize User", e);
+        }
     }
 }

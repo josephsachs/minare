@@ -17,6 +17,7 @@ class TestClient {
             // Send handshake immediately on connection
             const handshake = {
                 type: 'handshake',
+                userId: '1',
                 timestamp: Date.now()
             };
             this.ws.send(JSON.stringify(handshake));
@@ -45,7 +46,7 @@ class TestClient {
         };
     }
 
-    sendMessage() {
+    async sendMessage() {
         if (!this.ws || this.ws.readyState !== WebSocket.OPEN || !this.connectionId) {
             console.error('WebSocket not ready or connection ID not received');
             return;
@@ -56,7 +57,7 @@ class TestClient {
             entityType: 'counter',
             entityId: this.entityId,
             state: {
-                increment: 1
+                count: 1
             },
             connectionId: this.connectionId,
             timestamp: Date.now(),

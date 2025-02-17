@@ -71,16 +71,15 @@ public class MongoChangeStreamConsumer {
 
             String entityId = fullDocument.getString("_id");
             JsonObject updateMessage = new JsonObject()
-                    .put("type", "entityUpdate")
-                    .put("entityId", entityId)
                     .put("version", fullDocument.getLong("version"))
                     .put("state", fullDocument.getJsonObject("state"));
 
             contextStore.getChannelsForEntity(entityId)
                     .onSuccess(channels -> {
                         channels.forEach(channel -> {
-                            String channelId = channel.getString("channelId");
-                            webSocketManager.broadcastToChannel(channelId, updateMessage);
+                            String channelId = channel.id;
+                            log.info("Broadcast to {} {} {}", channelId, entityId, updateMessage);
+                            //webSocketManager.broadcastToChannel(channelId, updateMessage);
                         });
                     })
                     .onFailure(error -> {

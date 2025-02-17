@@ -1,8 +1,8 @@
 package com.minare.example;
 
 import com.minare.controller.AbstractEntityController;
-import com.minare.core.annotations.Entity;
-import com.minare.core.annotations.Field;
+import com.minare.core.models.annotations.Entity;
+import com.minare.core.models.annotations.Field;
 import com.minare.persistence.EntityStore;
 import io.vertx.core.json.JsonObject;
 
@@ -12,13 +12,9 @@ import javax.inject.Singleton;
 @Singleton
 public class ExampleEntityController extends AbstractEntityController {
     // Define the structure of entities this controller manages
-    @Entity(name = "example")
+    //@Entity(name = "example")
     public static class ExampleEntity {
-        @Field
-        private String id;
-        @Field
-        private long version;
-        @Field(name = "count")
+        //@Field(name = "count")
         private int value = 0;
     }
 

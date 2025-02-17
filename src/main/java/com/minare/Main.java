@@ -22,27 +22,37 @@ public class Main {
         WebSocketManager webSocketManager = injector.getInstance(WebSocketManager.class);
         WebSocketRoutes wsRoutes = injector.getInstance(WebSocketRoutes.class);
 
-        DatabaseInitializer dbInitializer = injector.getInstance(DatabaseInitializer.class);
-        dbInitializer.initialize();
-        MongoChangeStreamConsumer changeStreamConsumer = injector.getInstance(MongoChangeStreamConsumer.class);
-        changeStreamConsumer.startConsuming();
-
         Router router = Router.router(vertx);
-        wsRoutes.register(router);
 
         // Register project modules
         ExampleTestServer exampleServer = injector.getInstance(ExampleTestServer.class);
         exampleServer.configureRoutes(router);
 
-        vertx.createHttpServer()
-                .requestHandler(router)
-                .listen(8080, http -> {
-                    if (http.succeeded()) {
-                        log.info("Server started on port 8080");
-                    } else {
-                        log.error("Failed to start server", http.cause());
-                        System.exit(1);
-                    }
-                });
+        DatabaseInitializer dbInitializer = injector.getInstance(DatabaseInitializer.class);
+        MongoChangeStreamConsumer changeStreamConsumer = injector.getInstance(MongoChangeStreamConsumer.class);
+        dbInitializer.initialize()
+                .compose(v -> exampleServer.initializeTestUser())
+                .compose(v -> {
+                    changeStreamConsumer.startConsuming();
+                    wsRoutes.register(router);
+                    exampleServer.configureRoutes(router);
+                    // Start the HTTP server
+                    return vertx.createHttpServer()
+                            .requestHandler(router)
+                            .listen(8080)
+                            .onSuccess(http -> log.info("Server started on port 8080"))
+                            .onFailure(err -> {
+                                log.error("Failed to start server", err);
+                                System.exit(1);
+                            })
+                            .mapEmpty();
+                })
+                .onFailure(err -> {
+                    log.error("Failed during initialization", err);
+                    System.exit(1);
+                })
+                .toCompletionStage()
+                .toCompletableFuture()
+                .join();
     }
 }

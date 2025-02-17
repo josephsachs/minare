@@ -1,5 +1,5 @@
 // annotations/Field.java
-package com.minare.core.annotations;
+package com.minare.core.models.annotations;
 
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;

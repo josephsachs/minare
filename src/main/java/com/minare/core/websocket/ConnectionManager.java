@@ -1,51 +1,55 @@
 package com.minare.core.websocket;
 
-import com.minare.persistence.ConnectionStore;
+import io.vertx.codegen.annotations.Nullable;
+import io.vertx.core.AsyncResult;
+import io.vertx.core.Vertx;
 import io.vertx.core.http.ServerWebSocket;
+import io.vertx.core.shareddata.AsyncMap;
+import io.vertx.core.shareddata.SharedData;
 import lombok.extern.slf4j.Slf4j;
 import javax.inject.Inject;
 import javax.inject.Singleton;
-import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+
+import io.vertx.core.Future;
 
 @Slf4j
 @Singleton
 public class ConnectionManager {
-    private final ConnectionStore connectionStore;
-    private final Map<String, ServerWebSocket> websockets = new ConcurrentHashMap<>();
+    private final Vertx vertx;
+    private final Map<String, ServerWebSocket> localConnections;
+    private static final String MAP_NAME = "websocket.connections";
 
     @Inject
-    public ConnectionManager(ConnectionStore connectionStore) {
-        this.connectionStore = connectionStore;
+    public ConnectionManager(Vertx vertx) {
+        this.vertx = vertx;
+        this.localConnections = new ConcurrentHashMap<>();
     }
 
-    public String registerConnection(ServerWebSocket websocket) {
-        String connectionId = UUID.randomUUID().toString();
-        long timestamp = System.currentTimeMillis();
-
-        connectionStore.storeConnection(connectionId, timestamp);
-        websockets.put(connectionId, websocket);
-
-        log.info("Registered connection {}", connectionId);
-        return connectionId;
+    public Future<Void> registerWebSocket(String connectionId, ServerWebSocket websocket) {
+        localConnections.put(connectionId, websocket);
+        log.info("Registered websocket for connection {} on local instance", connectionId);
+        return Future.succeededFuture();
     }
 
-    public void removeConnection(String connectionId) {
-        connectionStore.removeConnection(connectionId);
-        websockets.remove(connectionId);
-        log.info("Removed connection {}", connectionId);
+    public Future<@Nullable ServerWebSocket> removeWebSocket(String connectionId) {
+        ServerWebSocket removed = localConnections.remove(connectionId);
+        log.info("Removed websocket for connection {} from local instance", connectionId);
+        return Future.succeededFuture(removed);
     }
 
-    public ServerWebSocket getWebSocket(String connectionId) {
-        return websockets.get(connectionId);
+    public Future<ServerWebSocket> getWebSocket(String connectionId) {
+        return Future.succeededFuture(localConnections.get(connectionId));
     }
 
-    public String getConnectionIdForWebSocket(ServerWebSocket websocket) {
-        return websockets.entrySet().stream()
-                .filter(entry -> entry.getValue() == websocket)
-                .map(Map.Entry::getKey)
-                .findFirst()
-                .orElse(null);
+    public Future<String> getConnectionIdForWebSocket(ServerWebSocket websocket) {
+        return Future.succeededFuture(
+                localConnections.entrySet().stream()
+                        .filter(entry -> entry.getValue() == websocket)
+                        .map(Map.Entry::getKey)
+                        .findFirst()
+                        .orElse(null)
+        );
     }
 }

@@ -17,9 +17,11 @@ public class GuiceModule extends AbstractModule {
     @Override
     protected void configure() {
         // Store bindings
-        bind(ConnectionStore.class).to(MongoConnectionStore.class);
+        //bind(MongoConnectionStore.class).to(MongoConnectionStore.class);
         bind(EntityStore.class).to(MongoEntityStore.class);
         bind(ContextStore.class).to(MongoContextStore.class);
+        bind(UserStore.class).to(MongoUserStore.class);
+        bind(ConnectionStore.class).to(MongoConnectionStore.class);
 
         // Existing bindings
         bind(AbstractEntityController.class).to(ExampleEntityController.class);
@@ -47,15 +49,15 @@ public class GuiceModule extends AbstractModule {
     @Provides
     @Singleton
     WebSocketManager provideWebSocketManager(
-            AbstractEntityController controller,
+            ConnectionStore connectionStore,
             ConnectionManager connectionManager,
-            ContextStore contextStore) {
-        return new WebSocketManager(controller, connectionManager, contextStore);
+            UserStore userStore) {
+        return new WebSocketManager(connectionStore, userStore, connectionManager);
     }
 
     @Provides
     @Singleton
-    ConnectionManager provideConnectionManager(ConnectionStore connectionStore) {
-        return new ConnectionManager(connectionStore);
+    ConnectionManager provideConnectionManager(MongoConnectionStore connectionStore) {
+        return new ConnectionManager(Vertx.vertx());
     }
 }

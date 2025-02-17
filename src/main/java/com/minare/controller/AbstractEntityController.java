@@ -18,17 +18,17 @@ public abstract class AbstractEntityController {
     }
 
     public void handleUpdate(String entityId, JsonObject update, long version) {
-        entityStore.getEntity(entityId)
+        entityStore.find(entityId)
                 .compose(current -> {
                     if (current == null) {
                         return Future.failedFuture(new IllegalStateException("Entity not found"));
                     }
 
-                    if (!validateUpdate(current, update)) {
+                    if (!validateUpdate(JsonObject.mapFrom(current), update)) {
                         return Future.failedFuture(new IllegalStateException("Invalid update"));
                     }
 
-                    return entityStore.updateEntity(entityId, version, update)
+                    return entityStore.update(entityId, update)
                             .recover(e -> Future.failedFuture(new IllegalStateException("Entity was modified by another request")));
                 })
                 .onSuccess(v -> System.out.println("Update successful"))

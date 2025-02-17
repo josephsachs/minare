@@ -1,69 +1,109 @@
 package com.minare.persistence;
 
-import io.vertx.ext.mongo.MongoClient;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.minare.core.models.AbstractEntity;
 import io.vertx.core.Future;
+import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
+import io.vertx.ext.mongo.MongoClient;
 import lombok.extern.slf4j.Slf4j;
+import org.joda.time.DateTime;
 
 import javax.inject.Inject;
 import javax.inject.Singleton;
-import java.util.stream.Stream;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Singleton
 public class MongoEntityStore implements EntityStore {
     private final MongoClient mongoClient;
+    private final ObjectMapper objectMapper;
     private static final String COLLECTION_NAME = "entities";
 
     @Inject
     public MongoEntityStore(MongoClient mongoClient) {
         this.mongoClient = mongoClient;
+        this.objectMapper = new ObjectMapper()
+                .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
     }
 
     @Override
-    public Future<Void> createEntity(String entityId, String type, JsonObject state) {
-        JsonObject entity = new JsonObject()
-                .put("_id", entityId)
-                .put("type", type)
-                .put("version", 0L)
-                .put("state", state);
+    public Future<AbstractEntity> find(String entityId) {
+        JsonObject query = new JsonObject().put("_id", entityId);
 
-        return mongoClient.insert(COLLECTION_NAME, entity)
-                .mapEmpty();
+        return mongoClient.findOne(COLLECTION_NAME, query, null)
+                .map(this::hydrateEntity);
     }
 
     @Override
-    public Future<Long> updateEntity(String entityId, long version, JsonObject state) {
+    public Future<Set<AbstractEntity>> findByType(String type) {
+        JsonObject query = new JsonObject().put("type", type);
+
+        return mongoClient.find(COLLECTION_NAME, query)
+                .map(docs -> docs.stream()
+                        .map(this::hydrateEntity)
+                        .collect(Collectors.toSet()));
+    }
+
+    @Override
+    public Future<Set<AbstractEntity>> findAll(Set<String> entityIds) {
         JsonObject query = new JsonObject()
-                .put("_id", entityId)
-                .put("version", version);
+                .put("_id", new JsonObject().put("$in", new JsonArray(new ArrayList<>(entityIds))));
+
+        return mongoClient.find(COLLECTION_NAME, query)
+                .map(docs -> docs.stream()
+                        .map(this::hydrateEntity)
+                        .collect(Collectors.toSet()));
+    }
+
+    public Future<AbstractEntity> update(String entityId, JsonObject state) {
+        var timestamp = System.currentTimeMillis();
+
+        JsonObject query = new JsonObject()
+                .put("_id", entityId);
 
         JsonObject update = new JsonObject()
                 .put("$set", new JsonObject()
                         .put("state", state)
-                        .put("version", version + 1));
+                        .put("timestamp", timestamp))
+                .put("$inc", new JsonObject()
+                        .put("version", 1));
 
-        return mongoClient.updateCollection(COLLECTION_NAME, query, update)
-                .map(result -> {
-                    if (result.getDocMatched() == 0) {
-                        throw new IllegalStateException("Entity was modified by another request");
+        return mongoClient.findOneAndUpdate(COLLECTION_NAME, query, update)
+                .map(updated -> {
+                    if (updated == null) {
+                        log.warn("No entity found to update for id {}", entityId);
+                        return null;
                     }
-                    return version + 1;
+                    log.info("Updated entity {}", entityId);
+                    return hydrateEntity(updated);
                 });
     }
 
-    @Override
-    public Future<JsonObject> getEntity(String entityId) {
-        JsonObject query = new JsonObject().put("_id", entityId);
+    public AbstractEntity hydrateEntity(JsonObject doc) {
+        if (doc == null) {
+            return null;
+        }
 
-        return mongoClient.findOne(COLLECTION_NAME, query, null);
+        try {
+            String type = doc.getString("type");
+            Class<? extends AbstractEntity> entityClass = resolveEntityType(type);
+
+            AbstractEntity entity = objectMapper.readValue(doc.encode(), entityClass);
+            entity.state = doc.getJsonObject("state"); // Preserve raw state
+            return entity;
+        } catch (Exception e) {
+            log.error("Failed to deserialize entity", e);
+            throw new RuntimeException("Entity deserialization failed", e);
+        }
     }
 
-    @Override
-    public Future<Stream<JsonObject>> getEntitiesByType(String type) {
-        JsonObject query = new JsonObject().put("type", type);
-
-        return mongoClient.find(COLLECTION_NAME, query)
-                .map(list -> list.stream());
+    private Class<? extends AbstractEntity> resolveEntityType(String type) {
+        // Implement this to return the correct class dynamically
+        throw new UnsupportedOperationException("resolveEntityType not implemented");
     }
 }
