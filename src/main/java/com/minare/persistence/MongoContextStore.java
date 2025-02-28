@@ -2,9 +2,8 @@ package com.minare.persistence;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.DeserializationFeature;
-import com.minare.core.models.AbstractEntity;
+import com.minare.core.models.Entity;
 import com.minare.core.models.Channel;
-import com.minare.core.models.User;
 import io.vertx.ext.mongo.MongoClient;
 import io.vertx.core.Future;
 import io.vertx.core.json.JsonObject;
@@ -63,14 +62,16 @@ public class MongoContextStore implements ContextStore {
     }
 
     @Override
-    public Future<List<AbstractEntity>> getEntitiesInChannel(String channelId) {
+    public Future<List<Entity>> getEntitiesInChannel(String channelId) {
         JsonObject query = new JsonObject()
                 .put("channelId", channelId);
 
-        return mongoClient.find("entities", query)
-                .map(results -> results.stream()
-                        .map(entityStore::hydrateEntity)
-                        .collect(Collectors.toList()));
+        //return mongoClient.find("entities", query)
+        //        .map(results -> results.stream()
+        //                .map(entityStore::hydrateEntity)
+        //                .collect(Collectors.toList()));
+
+        throw new RuntimeException("Nope");
     }
 
     private Channel hydrateChannel(JsonObject doc) {

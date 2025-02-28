@@ -8,7 +8,6 @@ import io.vertx.ext.mongo.MongoClient;
 import io.vertx.core.Future;
 import io.vertx.core.json.JsonObject;
 import lombok.extern.slf4j.Slf4j;
-import org.joda.time.DateTime;
 
 import javax.inject.Inject;
 import javax.inject.Singleton;

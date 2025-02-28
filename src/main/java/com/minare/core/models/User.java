@@ -1,22 +1,17 @@
 package com.minare.core.models;
 
-import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Set;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.minare.core.entity.EntityOwner;
 import com.minare.persistence.EntityStore;
-import io.vertx.core.Future;
-import io.vertx.core.json.JsonArray;
-import io.vertx.core.json.JsonObject;
 import lombok.Getter;
 
 import javax.inject.Inject;
 
-public class User implements IEntityOwner {
+public class User implements EntityOwner {
     @Getter
     @JsonProperty("_id")
     public final String id;

@@ -1,5 +1,5 @@
 // annotations/Field.java
-package com.minare.core.models.annotations;
+package com.minare.core.models.annotations.entity;
 
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
@@ -8,7 +8,6 @@ import java.lang.annotation.Target;
 
 @Retention(RetentionPolicy.RUNTIME)
 @Target(ElementType.FIELD)
-public @interface Field {
-    boolean persist() default true;  // Should this be stored in DynamoDB
-    String name() default "";        // Optional field name override
+public @interface State {
+    Class<?> className() default void.class;
 }

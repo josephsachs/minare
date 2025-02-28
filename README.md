@@ -1,4 +1,4 @@
-# Async Load Test Framework
+# Minare Framework
 
 A framework for testing WebSocket-based real-time state synchronization at scale, with emphasis on state validation and connection management.
 

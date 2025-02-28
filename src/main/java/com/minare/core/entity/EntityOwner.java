@@ -1,8 +1,8 @@
-package com.minare.core.models;
+package com.minare.core.entity;
 
 import java.util.Set;
 
-public interface IEntityOwner {
+public interface EntityOwner {
     public Set<String> getEntitiesOwned();
     public String getId();
 }
