@@ -1,0 +1,770 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Infrastructure for Minare state synchronization testing'
+
+Parameters:
+  EnvironmentName:
+    Description: Environment name for resource tagging
+    Type: String
+    Default: minare-test
+
+  AppInstanceType:
+    Description: EC2 instance type for application servers
+    Type: String
+    Default: t3.medium
+    AllowedValues:
+      - t3.micro
+      - t3.small
+      - t3.medium
+      - t3.large
+
+  MongoInstanceType:
+    Description: EC2 instance type for MongoDB servers
+    Type: String
+    Default: t3.medium
+    AllowedValues:
+      - t3.micro
+      - t3.small
+      - t3.medium
+      - t3.large
+
+  ArtifactBucketName:
+    Description: S3 bucket name for application artifacts
+    Type: String
+    Default: minare-artifacts
+
+  AmiId:
+    Description: Amazon Machine Image ID for EC2 instances
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2
+
+Resources:
+  # Key Pair for EC2 Instances
+  EC2KeyPair:
+    Type: AWS::EC2::KeyPair
+    Properties:
+      KeyName: !Sub ${EnvironmentName}-key
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-key
+
+  # KMS Key for encryption
+  EncryptionKey:
+    Type: AWS::KMS::Key
+    Properties:
+      Description: KMS key for encrypting sensitive data
+      EnableKeyRotation: true
+      KeyPolicy:
+        Version: '2012-10-17'
+        Id: key-policy
+        Statement:
+          - Sid: Enable IAM User Permissions
+            Effect: Allow
+            Principal:
+              AWS: !Sub arn:aws:iam::${AWS::AccountId}:root
+            Action: kms:*
+            Resource: '*'
+          - Sid: Allow use of the key
+            Effect: Allow
+            Principal:
+              AWS: !Sub arn:aws:iam::${AWS::AccountId}:root
+            Action:
+              - kms:Encrypt
+              - kms:Decrypt
+              - kms:ReEncrypt*
+              - kms:GenerateDataKey*
+              - kms:DescribeKey
+            Resource: '*'
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-kms-key
+
+  # VPC and Network Configuration
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-vpc
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-igw
+
+  InternetGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: !Ref InternetGateway
+      VpcId: !Ref VPC
+
+  PublicSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [ 0, !GetAZs '' ]
+      CidrBlock: 10.0.1.0/24
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-public-subnet-1
+
+  PublicSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [ 1, !GetAZs '' ]
+      CidrBlock: 10.0.2.0/24
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-public-subnet-2
+
+  PrivateSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [ 0, !GetAZs '' ]
+      CidrBlock: 10.0.3.0/24
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-private-subnet-1
+
+  PrivateSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [ 1, !GetAZs '' ]
+      CidrBlock: 10.0.4.0/24
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-private-subnet-2
+
+  # NAT Gateway for private subnets
+  NatGatewayEIP:
+    Type: AWS::EC2::EIP
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      Domain: vpc
+
+  NatGateway:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt NatGatewayEIP.AllocationId
+      SubnetId: !Ref PublicSubnet1
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-nat
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-public-routes
+
+  DefaultPublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  PublicSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet1
+
+  PublicSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet2
+
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-private-routes
+
+  DefaultPrivateRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGateway
+
+  PrivateSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      SubnetId: !Ref PrivateSubnet1
+
+  PrivateSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      SubnetId: !Ref PrivateSubnet2
+
+  # Security Groups
+  LoadBalancerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow web traffic to load balancer
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-lb-sg
+
+  ApplicationSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow web and websocket traffic to application servers
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-app-sg
+
+  ApplicationSecurityGroupIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref ApplicationSecurityGroup
+      IpProtocol: tcp
+      FromPort: 8080
+      ToPort: 8080
+      SourceSecurityGroupId: !Ref LoadBalancerSecurityGroup
+
+  ApplicationSecurityGroupSSH:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref ApplicationSecurityGroup
+      IpProtocol: tcp
+      FromPort: 22
+      ToPort: 22
+      CidrIp: 0.0.0.0/0
+
+  MongoDBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow MongoDB traffic from application servers
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-mongodb-sg
+
+  MongoDBSecurityGroupIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref MongoDBSecurityGroup
+      IpProtocol: tcp
+      FromPort: 27017
+      ToPort: 27017
+      SourceSecurityGroupId: !Ref ApplicationSecurityGroup
+
+  MongoDBSecurityGroupSSH:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref MongoDBSecurityGroup
+      IpProtocol: tcp
+      FromPort: 22
+      ToPort: 22
+      CidrIp: 0.0.0.0/0
+
+  # Reference existing S3 Bucket for Application Artifacts
+  # Note: We don't create this bucket, we just reference it
+
+  # IAM Role for EC2 with SSM Access
+  EC2Role:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+        - arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy
+
+  S3AccessPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: S3ArtifactAccess
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - s3:GetObject
+              - s3:ListBucket
+            Resource:
+              - !Sub 'arn:aws:s3:::${ArtifactBucketName}'
+              - !Sub 'arn:aws:s3:::${ArtifactBucketName}/*'
+      Roles:
+        - !Ref EC2Role
+
+  EC2InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref EC2Role
+
+  # Load Balancer
+  ApplicationLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Subnets:
+        - !Ref PublicSubnet1
+        - !Ref PublicSubnet2
+      SecurityGroups:
+        - !Ref LoadBalancerSecurityGroup
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-lb
+
+  ALBListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref ALBTargetGroup
+      LoadBalancerArn: !Ref ApplicationLoadBalancer
+      Port: 80
+      Protocol: HTTP
+
+  ALBTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckPath: /health
+      HealthCheckProtocol: HTTP
+      Port: 8080
+      Protocol: HTTP
+      VpcId: !Ref VPC
+      TargetType: instance
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-tg
+
+  # Application Server Configuration
+  AppLaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateName: !Sub ${EnvironmentName}-app-launch-template
+      VersionDescription: Initial version
+      LaunchTemplateData:
+        ImageId: !Ref AmiId  # Using dynamic AMI lookup
+        InstanceType: !Ref AppInstanceType
+        KeyName: !Ref EC2KeyPair
+        SecurityGroupIds:
+          - !Ref ApplicationSecurityGroup
+        IamInstanceProfile:
+          Name: !Ref EC2InstanceProfile
+        UserData:
+          Fn::Base64: !Sub |
+            #!/bin/bash -xe
+            # Install Docker
+            amazon-linux-extras install -y docker
+            systemctl start docker
+            systemctl enable docker
+            usermod -a -G docker ec2-user
+            
+            # Install Docker Compose
+            curl -L "https://github.com/docker/compose/releases/download/1.29.2/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+            chmod +x /usr/local/bin/docker-compose
+            
+            # Install SSM Agent (required for Session Manager)
+            yum install -y amazon-ssm-agent
+            systemctl enable amazon-ssm-agent
+            systemctl start amazon-ssm-agent
+            
+            # Install CloudWatch agent
+            yum install -y amazon-cloudwatch-agent
+            
+            # Create application directory
+            mkdir -p /home/ec2-user/app
+            
+            # Download application JAR from S3
+            aws s3 cp s3://${ArtifactBucketName}/latest/application.jar /home/ec2-user/app/ || echo "No pre-built JAR found"
+            
+            # Create environment file with MongoDB connection string
+            cat > /home/ec2-user/app/.env << EOL
+            MONGODB_URI=mongodb://${MongoInstance1.PrivateIp}:27017,${MongoInstance2.PrivateIp}:27017/minare?replicaSet=rs0
+            EOL
+            
+            # Create docker-compose.yml file for the application
+            cat > /home/ec2-user/app/docker-compose.yml << 'EOL'
+            version: '3'
+            services:
+              minare-app:
+                container_name: minare-app
+                image: adoptopenjdk/openjdk11:alpine-jre
+                volumes:
+                  - ./application.jar:/app/application.jar
+                working_dir: /app
+                command: java -jar application.jar
+                ports:
+                  - "8080:8080"
+                env_file:
+                  - .env
+                restart: unless-stopped
+                environment:
+                  - JAVA_OPTS=-Xms256m -Xmx512m
+            EOL
+            
+            # Start the application using docker-compose
+            cd /home/ec2-user/app
+            docker-compose up -d
+            
+            # Set up CloudWatch config
+            cat > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json << 'EOL'
+            {
+              "agent": {
+                "metrics_collection_interval": 60,
+                "run_as_user": "root"
+              },
+              "logs": {
+                "logs_collected": {
+                  "files": {
+                    "collect_list": [
+                      {
+                        "file_path": "/var/log/messages",
+                        "log_group_name": "${EnvironmentName}-system-logs",
+                        "log_stream_name": "{instance_id}-system"
+                      },
+                      {
+                        "file_path": "/home/ec2-user/app/application.log",
+                        "log_group_name": "${EnvironmentName}-application-logs",
+                        "log_stream_name": "{instance_id}-application"
+                      }
+                    ]
+                  }
+                }
+              },
+              "metrics": {
+                "metrics_collected": {
+                  "mem": {
+                    "measurement": ["mem_used_percent"]
+                  },
+                  "swap": {
+                    "measurement": ["swap_used_percent"]
+                  },
+                  "disk": {
+                    "resources": ["/"],
+                    "measurement": ["disk_used_percent"]
+                  }
+                },
+                "append_dimensions": {
+                  "InstanceId": "${!aws:InstanceId}"
+                }
+              }
+            }
+            EOL
+            
+            /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -s -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json
+
+  AppAutoScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      AutoScalingGroupName: !Sub ${EnvironmentName}-app-asg
+      MinSize: 1
+      MaxSize: 4
+      DesiredCapacity: 1
+      LaunchTemplate:
+        LaunchTemplateId: !Ref AppLaunchTemplate
+        Version: !GetAtt AppLaunchTemplate.LatestVersionNumber
+      TargetGroupARNs:
+        - !Ref ALBTargetGroup
+      VPCZoneIdentifier:
+        - !Ref PublicSubnet1
+        - !Ref PublicSubnet2
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-app-instance
+          PropagateAtLaunch: true
+
+  # MongoDB Server Configuration
+  MongoLaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateName: !Sub ${EnvironmentName}-mongo-launch-template
+      VersionDescription: Initial version
+      LaunchTemplateData:
+        ImageId: !Ref AmiId  # Using dynamic AMI lookup
+        InstanceType: !Ref MongoInstanceType
+        KeyName: !Ref EC2KeyPair
+        SecurityGroupIds:
+          - !Ref MongoDBSecurityGroup
+        IamInstanceProfile:
+          Name: !Ref EC2InstanceProfile
+        UserData:
+          Fn::Base64: !Sub |
+            #!/bin/bash -xe
+            # Install Docker
+            amazon-linux-extras install -y docker
+            systemctl start docker
+            systemctl enable docker
+            usermod -a -G docker ec2-user
+            
+            # Install Docker Compose
+            curl -L "https://github.com/docker/compose/releases/download/1.29.2/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+            chmod +x /usr/local/bin/docker-compose
+            
+            # Install SSM Agent (required for Session Manager)
+            yum install -y amazon-ssm-agent
+            systemctl enable amazon-ssm-agent
+            systemctl start amazon-ssm-agent
+            
+            # Install CloudWatch agent
+            yum install -y amazon-cloudwatch-agent
+            
+            # Download MongoDB configuration
+            mkdir -p /home/ec2-user/mongodb
+            aws s3 cp s3://${ArtifactBucketName}/latest/mongo-docker-compose.yml /home/ec2-user/mongodb/docker-compose.yml || echo "Using default MongoDB config"
+            
+            # Create default MongoDB docker-compose if not provided
+            if [ ! -f "/home/ec2-user/mongodb/docker-compose.yml" ]; then
+              cat > /home/ec2-user/mongodb/docker-compose.yml << 'EOL'
+            version: '3'
+            services:
+              mongodb:
+                image: mongo:4.4
+                container_name: mongodb
+                command: --replSet rs0 --bind_ip_all
+                ports:
+                  - "27017:27017"
+                volumes:
+                  - mongodb_data:/data/db
+            
+            volumes:
+              mongodb_data:
+            EOL
+            fi
+            
+            # Start MongoDB
+            cd /home/ec2-user/mongodb
+            docker-compose up -d
+            
+            # Initialize replica set if this is the first instance
+            INSTANCE_ID=$(curl -s http://169.254.169.254/latest/meta-data/instance-id)
+            FIRST_INSTANCE_ID=$(aws ec2 describe-instances --filters "Name=tag:aws:autoscaling:groupName,Values=${EnvironmentName}-mongo-asg" --query "Reservations[].Instances[?State.Name=='running'] | sort_by(@, &LaunchTime)[0].InstanceId" --output text)
+            
+            if [ "$INSTANCE_ID" = "$FIRST_INSTANCE_ID" ]; then
+              # Wait for MongoDB to start
+              sleep 30
+            
+              # Get IP addresses of MongoDB instances
+              MONGO_IP_1=$(aws ec2 describe-instances --instance-ids $INSTANCE_ID --query "Reservations[0].Instances[0].PrivateIpAddress" --output text)
+              MONGO_INSTANCE_2=$(aws ec2 describe-instances --filters "Name=tag:aws:autoscaling:groupName,Values=${EnvironmentName}-mongo-asg" "Name=instance-id,Values!=\$INSTANCE_ID" --query "Reservations[].Instances[?State.Name=='running'] | [0].InstanceId" --output text)
+              MONGO_IP_2=$(aws ec2 describe-instances --instance-ids $MONGO_INSTANCE_2 --query "Reservations[0].Instances[0].PrivateIpAddress" --output text)
+            
+              # Initialize replica set
+              docker exec mongodb mongosh --eval "rs.initiate({
+                _id: 'rs0',
+                members: [
+                  { _id: 0, host: '$MONGO_IP_1:27017', priority: 2 },
+                  { _id: 1, host: '$MONGO_IP_2:27017', priority: 1 }
+                ]
+              })"
+            fi
+            
+            # Set up CloudWatch config
+            cat > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json << 'EOL'
+            {
+              "agent": {
+                "metrics_collection_interval": 60,
+                "run_as_user": "root"
+              },
+              "logs": {
+                "logs_collected": {
+                  "files": {
+                    "collect_list": [
+                      {
+                        "file_path": "/var/log/messages",
+                        "log_group_name": "${EnvironmentName}-system-logs",
+                        "log_stream_name": "{instance_id}-system"
+                      }
+                    ]
+                  }
+                }
+              },
+              "metrics": {
+                "metrics_collected": {
+                  "mem": {
+                    "measurement": ["mem_used_percent"]
+                  },
+                  "swap": {
+                    "measurement": ["swap_used_percent"]
+                  },
+                  "disk": {
+                    "resources": ["/"],
+                    "measurement": ["disk_used_percent"]
+                  }
+                },
+                "append_dimensions": {
+                  "InstanceId": "${!aws:InstanceId}"
+                }
+              }
+            }
+            EOL
+            
+            /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -s -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json
+
+  MongoAutoScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      AutoScalingGroupName: !Sub ${EnvironmentName}-mongo-asg
+      MinSize: 2
+      MaxSize: 2
+      DesiredCapacity: 2
+      LaunchTemplate:
+        LaunchTemplateId: !Ref MongoLaunchTemplate
+        Version: !GetAtt MongoLaunchTemplate.LatestVersionNumber
+      VPCZoneIdentifier:
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-mongo-instance
+          PropagateAtLaunch: true
+
+  # MongoDB Instances (for referencing in application config)
+  MongoInstance1:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Ref AmiId
+      InstanceType: !Ref MongoInstanceType
+      SubnetId: !Ref PrivateSubnet1
+      SecurityGroupIds:
+        - !Ref MongoDBSecurityGroup
+      KeyName: !Ref EC2KeyPair
+      IamInstanceProfile: !Ref EC2InstanceProfile
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-mongo-1
+
+  MongoInstance2:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Ref AmiId
+      InstanceType: !Ref MongoInstanceType
+      SubnetId: !Ref PrivateSubnet2
+      SecurityGroupIds:
+        - !Ref MongoDBSecurityGroup
+      KeyName: !Ref EC2KeyPair
+      IamInstanceProfile: !Ref EC2InstanceProfile
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-mongo-2
+
+  # CloudWatch Alarms
+  AppCPUAlarmHigh:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: Scale up if CPU > 75% for 5 minutes
+      MetricName: CPUUtilization
+      Namespace: AWS/EC2
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 75
+      AlarmActions:
+        - !Ref SNSTopic
+      Dimensions:
+        - Name: AutoScalingGroupName
+          Value: !Ref AppAutoScalingGroup
+      ComparisonOperator: GreaterThanThreshold
+
+  AppMemoryAlarmHigh:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: Alarm if memory usage > 80% for 5 minutes
+      MetricName: mem_used_percent
+      Namespace: CWAgent
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 80
+      AlarmActions:
+        - !Ref SNSTopic
+      Dimensions:
+        - Name: AutoScalingGroupName
+          Value: !Ref AppAutoScalingGroup
+      ComparisonOperator: GreaterThanThreshold
+
+  MongoCPUAlarmHigh:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: Alarm if MongoDB CPU > 75% for 5 minutes
+      MetricName: CPUUtilization
+      Namespace: AWS/EC2
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 75
+      AlarmActions:
+        - !Ref SNSTopic
+      Dimensions:
+        - Name: AutoScalingGroupName
+          Value: !Ref MongoAutoScalingGroup
+      ComparisonOperator: GreaterThanThreshold
+
+  # SNS Topic for Alarms
+  SNSTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      DisplayName: !Sub ${EnvironmentName}-alerts
+
+Outputs:
+  VPC:
+    Description: VPC ID
+    Value: !Ref VPC
+
+  PublicSubnets:
+    Description: List of public subnet IDs
+    Value: !Join [ ',', [ !Ref PublicSubnet1, !Ref PublicSubnet2 ] ]
+
+  PrivateSubnets:
+    Description: List of private subnet IDs
+    Value: !Join [ ',', [ !Ref PrivateSubnet1, !Ref PrivateSubnet2 ] ]
+
+  ApplicationSecurityGroup:
+    Description: Security group ID for application instances
+    Value: !Ref ApplicationSecurityGroup
+
+  MongoDBSecurityGroup:
+    Description: Security group ID for MongoDB instances
+    Value: !Ref MongoDBSecurityGroup
+
+  ALBDNSName:
+    Description: DNS name of the load balancer
+    Value: !GetAtt ApplicationLoadBalancer.DNSName
+
+  ArtifactBucketName:
+    Description: S3 bucket for application artifacts
+    Value: !Ref ArtifactBucketName
+
+  MongoDBConnectionString:
+    Description: MongoDB connection string for the application
+    Value: !Sub "mongodb://${MongoInstance1.PrivateIp}:27017,${MongoInstance2.PrivateIp}:27017/minare?replicaSet=rs0"
