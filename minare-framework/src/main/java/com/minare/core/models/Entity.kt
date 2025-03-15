@@ -24,16 +24,13 @@ import javax.inject.Inject
 @JsonIgnoreProperties(ignoreUnknown = true)
 open class Entity {
         @JsonProperty("version")
-        var version: Int = 0
+        var version: Int = 1
 
         @JsonProperty("_id")
         var _id: String? = null
 
         @JsonProperty("type")
         var type: String? = null
-
-        @Inject
-        lateinit var entityFactory: EntityFactory
 
         @Inject
         lateinit var entityStore: EntityStore

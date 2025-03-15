@@ -4,6 +4,7 @@ import com.minare.core.websocket.CommandSocketManager
 import com.minare.core.websocket.UpdateSocketManager
 import com.minare.persistence.MongoConnectionStore
 import io.vertx.core.AbstractVerticle
+import io.vertx.core.Future
 import io.vertx.core.Promise
 import io.vertx.ext.web.Router;
 import io.vertx.ext.web.handler.BodyHandler
@@ -33,12 +34,25 @@ abstract class MinareApplication : AbstractVerticle() {
             .listen(getServerPort()) { result ->
                 if (result.succeeded()) {
                     log.info("Application started on port {}", getServerPort())
-                    startPromise.complete()
+
+                    // Call onStart hook for application-specific initialization
+                    onStart()
+                        .onSuccess { startPromise.complete() }
+                        .onFailure { err ->
+                            log.error("Failed during application initialization", err)
+                            startPromise.fail(err)
+                        }
                 } else {
                     log.error("Failed to start application", result.cause())
                     startPromise.fail(result.cause())
                 }
             }
+    }
+
+    // Hook for application-specific initialization
+    protected open fun onStart(): Future<Void> {
+        // Default implementation does nothing
+        return Future.succeededFuture()
     }
 
     private fun setupCoreRoutes(router: Router) {
