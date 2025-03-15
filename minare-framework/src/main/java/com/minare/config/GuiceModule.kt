@@ -9,8 +9,6 @@ import com.minare.core.websocket.CommandMessageHandler
 import com.minare.core.websocket.CommandSocketManager
 import com.minare.core.websocket.ConnectionManager
 import com.minare.core.websocket.UpdateSocketManager
-import com.minare.example.ExampleEntityController
-import com.minare.example.ExampleTestServer
 import com.minare.persistence.*
 import io.vertx.core.Vertx
 import io.vertx.core.json.JsonObject
@@ -22,12 +20,6 @@ class GuiceModule : AbstractModule() {
         // Store bindings
         bind(EntityStore::class.java).to(MongoEntityStore::class.java)
         bind(ConnectionStore::class.java) to MongoConnectionStore::class.java
-
-        // Controller bindings
-        bind(EntityController::class.java).to(com.minare.example.ExampleEntityController::class.java)
-
-        // Server binding
-        bind(com.minare.example.ExampleTestServer::class.java).`in`(Singleton::class.java)
     }
 
     @Provides

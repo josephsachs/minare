@@ -4,7 +4,6 @@ import com.google.inject.Guice
 import com.minare.config.GuiceModule
 import com.minare.core.state.MongoChangeStreamConsumer
 import com.minare.core.websocket.WebSocketRoutes
-import com.minare.example.ExampleTestServer
 import com.minare.persistence.DatabaseInitializer
 import io.vertx.core.Vertx
 import io.vertx.ext.web.Router
@@ -26,15 +25,10 @@ class Main {
             val wsRoutes = injector.getInstance(WebSocketRoutes::class.java)
             val router = Router.router(vertx)
 
-            // Register project modules
-            val exampleServer = injector.getInstance(com.minare.example.ExampleTestServer::class.java)
-            exampleServer.configureRoutes(router)
-
             val dbInitializer = injector.getInstance(DatabaseInitializer::class.java)
             val changeStreamConsumer = injector.getInstance(MongoChangeStreamConsumer::class.java)
 
             dbInitializer.initialize()
-                .compose<Nothing?> { exampleServer.initializeTestUser() }
                 .compose<Nothing?> {
                     changeStreamConsumer.startConsuming()
                     wsRoutes.register(router)
