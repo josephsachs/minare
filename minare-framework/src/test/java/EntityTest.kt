@@ -1,28 +1,28 @@
+package test.java.java
+
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.fasterxml.jackson.annotation.JsonTypeName
 import com.minare.core.models.annotations.entity.*
 import com.minare.core.models.Entity
 import com.minare.core.entity.EntityFactory
 import com.minare.core.entity.EntityReflector
-import com.minare.core.entity.ReflectionCache
 import com.minare.persistence.MongoEntityStore
 import io.vertx.core.Vertx
 import io.vertx.core.json.JsonArray
-import io.vertx.junit5.VertxExtension
-import io.vertx.junit5.VertxTestContext
 import io.vertx.core.json.JsonObject
-import kotlinx.coroutines.runBlocking
-import org.junit.jupiter.api.BeforeEach
-import org.junit.jupiter.api.Test
-import org.junit.jupiter.api.extension.ExtendWith
 import org.mockito.Mock
 import org.mockito.MockitoAnnotations
 import io.vertx.ext.mongo.MongoClient
+import io.vertx.junit5.VertxExtension
+import io.vertx.junit5.VertxTestContext
 import java.security.MessageDigest
 import org.assertj.core.api.Assertions.assertThat
 import org.jgrapht.graph.DefaultDirectedGraph
 import org.jgrapht.graph.DefaultEdge
 import org.junit.jupiter.api.Assertions.*
+import org.junit.jupiter.api.BeforeEach
+import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.extension.ExtendWith
 import org.mockito.Mockito
 
 @ExtendWith(VertxExtension::class)
@@ -33,7 +33,7 @@ class EntityTest {
     private lateinit var mongoClient: MongoClient
 
     @Mock
-    private lateinit var entityFactory: EntityFactory
+    private lateinit var entityFactory: _root_ide_package_.com.minare.core.entity.EntityFactory
 
     private lateinit var entityReflector: EntityReflector
     private lateinit var mongoEntityStore: MongoEntityStore
@@ -664,107 +664,107 @@ class EntityTest {
 }
 
 @JsonTypeName("Region")
-@EntityType("Region")
+@_root_ide_package_.com.minare.core.models.annotations.entity.EntityType("Region")
 class Region : Entity() {
-    @State
+    @_root_ide_package_.com.minare.core.models.annotations.entity.State
     @JsonProperty("zones")
     var zones: ArrayList<Zone> = ArrayList()
 
-    @State
+    @_root_ide_package_.com.minare.core.models.annotations.entity.State
     @JsonProperty("name")
     var name: String = ""
 }
 
 @JsonTypeName("Zone")
-@EntityType("Zone")
+@_root_ide_package_.com.minare.core.models.annotations.entity.EntityType("Zone")
 class Zone : Entity() {
     @JsonProperty("name")
-    @State
+    @_root_ide_package_.com.minare.core.models.annotations.entity.State
     var name: String = ""
 
-    @State
+    @_root_ide_package_.com.minare.core.models.annotations.entity.State
     @JsonProperty("region")
-    @ParentReference
+    @_root_ide_package_.com.minare.core.models.annotations.entity.ParentReference
     lateinit var region: Region  // back-reference
 
     @JsonProperty("units")
-    @State
-    @MutateStrict
-    @ChildReference
+    @_root_ide_package_.com.minare.core.models.annotations.entity.State
+    @_root_ide_package_.com.minare.core.models.annotations.entity.MutateStrict
+    @_root_ide_package_.com.minare.core.models.annotations.entity.ChildReference
     var units: ArrayList<MapUnit> = ArrayList()
 
     @JsonProperty("buildings")
-    @State
-    @ChildReference
+    @_root_ide_package_.com.minare.core.models.annotations.entity.State
+    @_root_ide_package_.com.minare.core.models.annotations.entity.ChildReference
     var buildings: ArrayList<Building> = ArrayList()
 }
 
 @JsonTypeName("Building")
-@EntityType("Building")
+@_root_ide_package_.com.minare.core.models.annotations.entity.EntityType("Building")
 class Building : Entity() {
     @JsonProperty("name")
-    @State
+    @_root_ide_package_.com.minare.core.models.annotations.entity.State
     var name: String = ""
 
     @JsonProperty("zone")
-    @State
-    @ParentReference
+    @_root_ide_package_.com.minare.core.models.annotations.entity.State
+    @_root_ide_package_.com.minare.core.models.annotations.entity.ParentReference
     lateinit var zone: Zone  // back-reference
 
     @JsonProperty("position")
-    @State
-    @ChildReference
+    @_root_ide_package_.com.minare.core.models.annotations.entity.State
+    @_root_ide_package_.com.minare.core.models.annotations.entity.ChildReference
     var position: MapVector2? = null
 
     @JsonProperty("statuses")
-    @State
+    @_root_ide_package_.com.minare.core.models.annotations.entity.State
     var statuses: HashSet<String> = HashSet()
 }
 
 @JsonTypeName("MapUnit")
-@EntityType("MapUnit")
+@_root_ide_package_.com.minare.core.models.annotations.entity.EntityType("MapUnit")
 class MapUnit : Entity() {
     @JsonProperty("name")
-    @State
+    @_root_ide_package_.com.minare.core.models.annotations.entity.State
     var name: String = ""
 
     @JsonProperty("zone")
-    @State
-    @ParentReference
+    @_root_ide_package_.com.minare.core.models.annotations.entity.State
+    @_root_ide_package_.com.minare.core.models.annotations.entity.ParentReference
     lateinit var zone: Zone  // back-reference
 
     @JsonProperty("position")
-    @State
-    @ChildReference
+    @_root_ide_package_.com.minare.core.models.annotations.entity.State
+    @_root_ide_package_.com.minare.core.models.annotations.entity.ChildReference
     lateinit var position: MapVector2
 
     @JsonProperty("statuses")
-    @State
+    @_root_ide_package_.com.minare.core.models.annotations.entity.State
     var statuses: HashSet<String> = HashSet()
 
     @JsonProperty("offense")
-    @State
+    @_root_ide_package_.com.minare.core.models.annotations.entity.State
     lateinit var offense: JsonObject  // contains burn, AP, melee booleans and int array
 }
 
 @JsonTypeName("MapVector2")
-@EntityType("MapVector2")
+@_root_ide_package_.com.minare.core.models.annotations.entity.EntityType("MapVector2")
 class MapVector2 : Entity() {
     @JsonProperty("x")
-    @State
+    @_root_ide_package_.com.minare.core.models.annotations.entity.State
     var x: Double = 0.0
 
     @JsonProperty("y")
-    @State
+    @_root_ide_package_.com.minare.core.models.annotations.entity.State
     var y: Double = 0.0
 
     @JsonProperty("parentEntity")
-    @State
-    @ParentReference
+    @_root_ide_package_.com.minare.core.models.annotations.entity.State
+    @_root_ide_package_.com.minare.core.models.annotations.entity.ParentReference
     lateinit var parentEntity: MapUnit  // back-reference to either Building or MapUnit
 }
 
-class TestEntityFactory : EntityFactory {
+class TestEntityFactory : _root_ide_package_.com.minare.core.entity.EntityFactory {
     private val classes: HashMap<String, Class<*>> = HashMap()
 
     init {

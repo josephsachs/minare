@@ -6,14 +6,14 @@
 
     <parent>
         <groupId>com.minare</groupId>
-        <artifactId>minare-parent</artifactId>
+        <artifactId>minare</artifactId>
         <version>1.0-SNAPSHOT</version>
     </parent>
 
     <artifactId>minare-framework</artifactId>
 
     <properties>
-        <main.class>com.minare.MinareApplication</main.class>
+        <main.class>com.minare.example.ExampleApplication</main.class>
     </properties>
 
     <dependencies>
@@ -28,23 +28,12 @@
         </dependency>
         <dependency>
             <groupId>io.vertx</groupId>
-            <artifactId>vertx-rx-java3</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>io.vertx</groupId>
-            <artifactId>vertx-hazelcast</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>io.vertx</groupId>
             <artifactId>vertx-lang-kotlin</artifactId>
         </dependency>
         <dependency>
             <groupId>io.vertx</groupId>
-            <artifactId>vertx-lang-kotlin-coroutines</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>io.vertx</groupId>
             <artifactId>vertx-mongo-client</artifactId>
+            <version>${vertx.version}</version>
         </dependency>
 
         <!-- Kotlin -->
@@ -52,17 +41,9 @@
             <groupId>org.jetbrains.kotlin</groupId>
             <artifactId>kotlin-stdlib</artifactId>
         </dependency>
-
-        <!-- RxJava -->
         <dependency>
-            <groupId>io.reactivex.rxjava3</groupId>
-            <artifactId>rxjava</artifactId>
-        </dependency>
-
-        <!-- Injection -->
-        <dependency>
-            <groupId>javax.inject</groupId>
-            <artifactId>javax.inject</artifactId>
+            <groupId>org.jetbrains.kotlin</groupId>
+            <artifactId>kotlin-stdlib-jdk8</artifactId>
         </dependency>
 
         <!-- Guice -->
@@ -75,7 +56,6 @@
         <dependency>
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
-            <scope>provided</scope>
         </dependency>
 
         <!-- Logging -->
@@ -84,51 +64,10 @@
             <artifactId>logback-classic</artifactId>
         </dependency>
 
-        <!-- Utilities -->
-        <dependency>
-            <groupId>commons-codec</groupId>
-            <artifactId>commons-codec</artifactId>
-        </dependency>
-
-        <!-- MongoDB -->
-        <dependency>
-            <groupId>org.mongodb</groupId>
-            <artifactId>mongodb-driver-sync</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.mongodb</groupId>
-            <artifactId>mongodb-driver-reactivestreams</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.mongodb</groupId>
-            <artifactId>mongodb-driver-core</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.mongodb</groupId>
-            <artifactId>bson</artifactId>
-        </dependency>
-
-        <!-- Jackson -->
-        <dependency>
-            <groupId>com.fasterxml.jackson.core</groupId>
-            <artifactId>jackson-databind</artifactId>
-        </dependency>
-
-        <!-- JGraphT -->
-        <dependency>
-            <groupId>org.jgrapht</groupId>
-            <artifactId>jgrapht-core</artifactId>
-        </dependency>
-
-        <!-- Testing -->
+        <!-- Test Dependencies -->
         <dependency>
             <groupId>io.vertx</groupId>
             <artifactId>vertx-junit5</artifactId>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>io.vertx</groupId>
-            <artifactId>vertx-unit</artifactId>
             <scope>test</scope>
         </dependency>
         <dependency>
@@ -142,11 +81,6 @@
             <scope>test</scope>
         </dependency>
         <dependency>
-            <groupId>org.mockito</groupId>
-            <artifactId>mockito-junit-jupiter</artifactId>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
             <groupId>org.assertj</groupId>
             <artifactId>assertj-core</artifactId>
             <scope>test</scope>
@@ -154,19 +88,49 @@
     </dependencies>
 
     <build>
+        <sourceDirectory>src/main</sourceDirectory>
+        <testSourceDirectory>${project.basedir}/src/test</testSourceDirectory>
+
         <plugins>
             <plugin>
                 <groupId>org.jetbrains.kotlin</groupId>
                 <artifactId>kotlin-maven-plugin</artifactId>
             </plugin>
+
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>default-compile</id>
+                        <phase>none</phase>
+                    </execution>
+                    <execution>
+                        <id>default-testCompile</id>
+                        <phase>none</phase>
+                    </execution>
+                    <execution>
+                        <id>java-compile</id>
+                        <phase>compile</phase>
+                        <goals>
+                            <goal>compile</goal>
+                        </goals>
+                    </execution>
+                    <execution>
+                        <id>java-test-compile</id>
+                        <phase>test-compile</phase>
+                        <goals>
+                            <goal>testCompile</goal>
+                        </goals>
+                    </execution>
+                </executions>
             </plugin>
+
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
             </plugin>
+
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-shade-plugin</artifactId>
