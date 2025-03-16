@@ -1,9 +1,9 @@
-package com.minare.example
+package com.minare.example.core.models
 
 import com.minare.core.models.Entity
-import com.minare.core.entity.annotations.ChildReference
+import com.minare.core.entity.annotations.Child
 import com.minare.core.entity.annotations.EntityType
-import com.minare.core.entity.annotations.ParentReference
+import com.minare.core.entity.annotations.Parent
 import com.minare.core.entity.annotations.State
 
 @EntityType("node")
@@ -12,11 +12,11 @@ class Node() : Entity() {
     var label: String = ""
 
     @State
-    @ParentReference
+    @Parent
     var parentId: String? = null
 
     @State
-    @ChildReference
+    @Child
     var childIds: MutableList<String> = mutableListOf()
 
     @State

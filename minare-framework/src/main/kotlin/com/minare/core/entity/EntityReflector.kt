@@ -4,7 +4,7 @@ import com.google.inject.Singleton
 import com.google.inject.Inject
 import com.minare.core.models.Entity
 import com.minare.core.entity.annotations.EntityType
-import com.minare.core.entity.annotations.ParentReference
+import com.minare.core.entity.annotations.Parent
 import com.minare.core.entity.annotations.State
 import kotlin.reflect.KClass
 import java.util.concurrent.ConcurrentHashMap
@@ -69,9 +69,9 @@ class EntityReflector @Inject constructor() {
         // Kotlin-style stream processing
         val classFields = clazz.declaredFields
                 .filter { it.isAnnotationPresent(State::class.java) &&
-            it.isAnnotationPresent(ParentReference::class.java) }
+            it.isAnnotationPresent(Parent::class.java) }
             .map { field ->
-                val parentRef = field.getAnnotation(ParentReference::class.java)
+                val parentRef = field.getAnnotation(Parent::class.java)
             val bubbleVersion = parentRef.bubble_version
             ReflectionCache.ParentReferenceField(field.name, bubbleVersion)
         }

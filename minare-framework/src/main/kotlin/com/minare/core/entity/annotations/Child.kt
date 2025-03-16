@@ -1,8 +1,8 @@
 package com.minare.core.entity.annotations
 
 /**
- * Annotation to indicate fields that require strict mutation rules
+ * Annotation to mark fields that reference child entities
  */
 @Retention(AnnotationRetention.RUNTIME)
 @Target(AnnotationTarget.FIELD)
-annotation class MutateStrict(val name: String = "")
+annotation class Child

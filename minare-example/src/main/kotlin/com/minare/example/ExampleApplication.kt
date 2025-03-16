@@ -1,10 +1,10 @@
 package com.minare.example
 
 import com.minare.MinareApplication
+import com.minare.example.core.models.Node
 import com.minare.persistence.EntityStore
 import io.vertx.core.Future
 import io.vertx.core.Promise
-import io.vertx.core.Vertx
 import io.vertx.kotlin.coroutines.await
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -14,8 +14,7 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 class ExampleApplication @Inject constructor(
-    private val entityStore: EntityStore,
-    private val vertx: Vertx
+    private val entityStore: EntityStore
 ) : MinareApplication() {
 
     suspend fun initializeNodeGraph() {

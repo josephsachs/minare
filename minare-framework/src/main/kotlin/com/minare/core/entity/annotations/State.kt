@@ -7,4 +7,4 @@ import kotlin.reflect.KClass
  */
 @Retention(AnnotationRetention.RUNTIME)
 @Target(AnnotationTarget.FIELD)
-annotation class State(val className: KClass<*> = Nothing::class)
+annotation class State(val fieldName: String = "")

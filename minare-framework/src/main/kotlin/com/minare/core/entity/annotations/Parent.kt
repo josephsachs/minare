@@ -6,4 +6,4 @@ package com.minare.core.entity.annotations
  */
 @Retention(AnnotationRetention.RUNTIME)
 @Target(AnnotationTarget.FIELD)
-annotation class ParentReference(val bubble_version: Boolean = true)
+annotation class Parent(val bubble_version: Boolean = true)

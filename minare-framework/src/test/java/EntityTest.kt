@@ -685,18 +685,18 @@ class Zone : Entity() {
 
     @State
     @JsonProperty("region")
-    @ParentReference
+    @Parent
     lateinit var region: Region  // back-reference
 
     @JsonProperty("units")
     @State
-    @MutateStrict
-    @ChildReference
+    @Mutable
+    @Child
     var units: ArrayList<MapUnit> = ArrayList()
 
     @JsonProperty("buildings")
     @State
-    @ChildReference
+    @Child
     var buildings: ArrayList<Building> = ArrayList()
 }
 
@@ -709,12 +709,12 @@ class Building : Entity() {
 
     @JsonProperty("zone")
     @State
-    @ParentReference
+    @Parent
     lateinit var zone: Zone  // back-reference
 
     @JsonProperty("position")
     @State
-    @ChildReference
+    @Child
     var position: MapVector2? = null
 
     @JsonProperty("statuses")
@@ -731,16 +731,17 @@ class MapUnit : Entity() {
 
     @JsonProperty("zone")
     @State
-    @ParentReference
+    @Parent
     lateinit var zone: Zone  // back-reference
 
     @JsonProperty("position")
     @State
-    @ChildReference
+    @Child
     lateinit var position: MapVector2
 
     @JsonProperty("statuses")
     @State
+    @Mutable
     var statuses: HashSet<String> = HashSet()
 
     @JsonProperty("offense")
@@ -753,15 +754,17 @@ class MapUnit : Entity() {
 class MapVector2 : Entity() {
     @JsonProperty("x")
     @State
+    @Mutable
     var x: Double = 0.0
 
     @JsonProperty("y")
     @State
+    @Mutable
     var y: Double = 0.0
 
     @JsonProperty("parentEntity")
     @State
-    @ParentReference
+    @Parent
     lateinit var parentEntity: MapUnit  // back-reference to either Building or MapUnit
 }
 
