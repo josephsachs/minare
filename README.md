@@ -2,7 +2,7 @@
 
 Minare is a scalable, real-time state synchronization framework for applications requiring consistent object graphs across multiple clients. Built with Vert.x, Kotlin, and MongoDB.
 
-The extension application defines an object graph. The application server is stateless; Mongo is the source of truth. The data flow is unidirectional. 
+The extension application defines an object graph. Minare handles persistence, consistency, events and eventually frames. The application server is stateless; Mongo is the source of truth. The data flow is unidirectional. 
 
 The implementer hooks into the framework by extending MinareApplication. They may also use their own Guice module to override framework services as needed.
 
