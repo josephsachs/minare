@@ -98,30 +98,30 @@ MongoDB change streams notify the server of database changes:
 
 - Reflection caching for efficient entity metadata access
 - Field-level mutation control for fine-grained consistency
-- Ancestor graph calculation with minimal database queries
-- Version bubbling control to reduce unnecessary updates
+- Sparse searches in entity hierarchies
+- Customizable version bubbling
 
 ### Planned Features
 
-- Command batching for reduced MongoDB write operations
-- State transition rules to validate mutations at the framework level
+- Command batching
 - Frame loop for server-initiated updates and command queues
-- Distributed synchronization for horizontal scaling
+- State transitions for rate control
+- Distributed synchronization
 
 ## Scaling Strategy
 
 - Stateless server design for horizontal scaling
 - MongoDB as the centralized state store
-- Possible key-sharded architecture for large-scale deployments
-- Future Kafka integration for cross-shard communication
+- Future DB shard architecture for large-scale deployments
+- Future Kafka integration
 
 ## Example Application
 
 The framework includes an example application demonstrating a simple graph of nodes:
 
-- **Node**: Entity with parent/child relationships and an integer value
-- **ExampleApplication**: Initializes a sample node graph
-- **ExampleEntityFactory**: Creates entities for the test application
+- **Node**: Custom entity in the example application with parent/child relationships and an integer value
+- **ExampleApplication**: Extends MinareApplication and initializes a sample node graph
+- **ExampleEntityFactory**: Extends EntityFactory and creates the entities for the test application
 
 This example serves as both a demonstration and a performance testing ground for the framework.
 
@@ -143,4 +143,11 @@ The framework uses JUnit 5 with Vert.x extensions and Mockito for testing:
 
 ## Getting Started
 
-[Instructions for building, deploying, and using the framework will be added as development progresses]
+**Local Development**
+
+Use `docker-compose` to raise the container in the `docker/` path.
+Setup the IntelliJ project/module. The module source root should be `main`.
+
+**Deployment**
+
+Create the artifact bucket in your AWS account. Place your application `jar`. Use `minare-infrastructure.yaml` to create a CloudFormation stack.
