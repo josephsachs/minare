@@ -3,7 +3,7 @@ package com.minare.example
 import com.minare.core.entity.EntityFactory
 import com.minare.core.models.Entity
 
-class TestEntityFactory : _root_ide_package_.com.minare.core.entity.EntityFactory {
+class TestEntityFactory : EntityFactory {
     private val classes: HashMap<String, Class<*>> = HashMap()
 
     init {

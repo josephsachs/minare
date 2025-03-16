@@ -5,7 +5,7 @@ import org.jgrapht.graph.SimpleDirectedGraph
 import org.jgrapht.traverse.DepthFirstIterator
 import org.jgrapht.traverse.TopologicalOrderIterator
 import com.minare.core.models.Entity
-import com.minare.core.models.annotations.entity.State
+import com.minare.core.entity.annotations.State
 
 /**
  * Utility for building and traversing a directed graph of entity relationships.
@@ -55,7 +55,7 @@ class EntityGraph(root: Entity) {
 
         // Get all @State annotated fields
         for (field in root.javaClass.declaredFields) {
-            if (field.isAnnotationPresent(_root_ide_package_.com.minare.core.models.annotations.entity.State::class.java)) {
+            if (field.isAnnotationPresent(State::class.java)) {
                 field.isAccessible = true
                 try {
                     val value = field.get(root)

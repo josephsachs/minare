@@ -12,9 +12,8 @@ import org.slf4j.LoggerFactory
 import javax.inject.Inject
 
 abstract class MinareApplication : AbstractVerticle() {
-
-    // Core socket managers injected via Guice
     val log = LoggerFactory.getLogger(MongoConnectionStore::class.java)
+
     @Inject lateinit var commandSocketManager: CommandSocketManager
     @Inject lateinit var updateSocketManager: UpdateSocketManager
 

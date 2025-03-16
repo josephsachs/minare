@@ -4,25 +4,17 @@ import com.google.inject.Singleton
 import com.minare.core.models.Entity
 import com.minare.core.entity.EntityFactory
 import com.minare.core.entity.EntityReflector
-import com.minare.core.entity.ReflectionCache
+import io.vertx.core.Future
 import io.vertx.core.json.JsonArray
 import io.vertx.core.json.JsonObject
 import io.vertx.ext.mongo.BulkOperation
 import io.vertx.ext.mongo.MongoClient
 import io.vertx.kotlin.coroutines.await
-import io.vertx.kotlin.coroutines.toReceiveChannel
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.channels.ReceiveChannel
 import org.jgrapht.Graph
 import org.jgrapht.graph.DefaultDirectedGraph
 import org.jgrapht.graph.DefaultEdge
+import org.slf4j.LoggerFactory
 import javax.inject.Inject
-// For the Future import if needed for compatibility:
-// import kotlinx.coroutines.future.await
-// import java.util.concurrent.CompletableFuture
 
 /**
  * MongoDB implementation of the EntityStore interface.
@@ -32,9 +24,11 @@ import javax.inject.Inject
 class MongoEntityStore @Inject constructor(
     private val mongoClient: MongoClient,
     private val collection: String,
-    private val entityFactory: _root_ide_package_.com.minare.core.entity.EntityFactory,
+    private val entityFactory: EntityFactory,
     private val entityReflector: EntityReflector
 ) : EntityStore {
+
+    private val log = LoggerFactory.getLogger(MongoEntityStore::class.java)
 
     /**
      * Builds a MongoDB aggregation pipeline to retrieve an entity and all its potential ancestors.
@@ -42,7 +36,7 @@ class MongoEntityStore @Inject constructor(
      * @param entityId The ID of the entity to start with
      * @return A JsonObject containing the aggregation pipeline
      */
-    fun buildAncestorTraversalQuery(entityId: String): JsonObject {
+    suspend fun buildAncestorTraversalQuery(entityId: String): JsonObject {
         // Get all parent reference field paths from the reflection cache
         val parentRefPaths = entityReflector.getAllParentReferenceFieldPaths()
 
@@ -78,7 +72,7 @@ class MongoEntityStore @Inject constructor(
      * @param entityId The ID of the entity to start with
      * @return The aggregation results as a JsonArray
      */
-    private suspend fun getAncestorsRawAsync(entityId: String): JsonArray {
+    suspend fun getAncestorsRawAsync(entityId: String): JsonArray {
         val query = buildAncestorTraversalQuery(entityId)
         val results = JsonArray()
 
@@ -223,5 +217,45 @@ class MongoEntityStore @Inject constructor(
         }
     }
 
-    // Additional methods for findById, save, delete, etc. would be here
+    override suspend fun save(entity: Entity): Future<Entity> {
+        val document = JsonObject()
+            .put("_id", entity._id)
+            .put("type", entity.type)
+            .put("version", entity.version)
+        val stateJson = JsonObject()
+
+        document.put("state", stateJson)
+
+        // Check if this is an update or new entity (based on id presence)
+        return if (entity._id.isNullOrEmpty()) {
+            // New entity - let MongoDB generate an ID and set initial version
+            document.put("version", 1)
+
+            mongoClient.insert(collection, document)
+                .map { generatedId ->
+                    // Update entity with the generated ID
+                    entity._id = generatedId
+                    entity
+                }
+                .onSuccess { log.debug("Created new entity with ID: {}", entity._id) }
+        } else {
+            // Existing entity - just update it, version handling will be done elsewhere
+            val query = JsonObject()
+                .put("_id", entity._id)
+
+            val update = JsonObject().put("\$set", document)
+
+            mongoClient.updateCollection(collection, query, update)
+                .compose { result ->
+                    if (result.docModified == 0L) {
+                        // No document was updated - entity might not exist
+                        Future.failedFuture("Entity not found: ${entity._id}")
+                    } else {
+                        Future.succeededFuture(entity)
+                    }
+                }
+                .onSuccess { log.debug("Updated entity: {}", entity._id) }
+        }
+            .onFailure { err -> log.error("Failed to save entity: {}", entity._id, err) }
+    }
 }

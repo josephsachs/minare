@@ -3,66 +3,79 @@ package com.minare.example
 import com.minare.MinareApplication
 import com.minare.persistence.EntityStore
 import io.vertx.core.Future
-import io.vertx.ext.web.Router
-import org.slf4j.LoggerFactory
+import io.vertx.core.Promise
+import io.vertx.core.Vertx
+import io.vertx.kotlin.coroutines.await
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import io.vertx.kotlin.coroutines.dispatcher
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 class ExampleApplication @Inject constructor(
-    private val entityStore: EntityStore
+    private val entityStore: EntityStore,
+    private val vertx: Vertx
 ) : MinareApplication() {
-    fun initializeNodeGraph(): Future<Void> {
-        // Create nodes with only label and value
-        val nodeA = Node(label = "A", value = 1)
-        val nodeB = Node(label = "B", value = 2)
-        val nodeC = Node(label = "C", value = 3)
-        val nodeD = Node(label = "D", value = 4)
-        val nodeE = Node(label = "E", value = 5)
-        val nodeF = Node(label = "F", value = 6)
-        val nodeG = Node(label = "G", value = 7)
-        val nodeH = Node(label = "H", value = 8)
-        val nodeI = Node(label = "I", value = 9)
-        val nodeJ = Node(label = "J", value = 10)
 
-        // First save all nodes to generate IDs
-        return entityStore.save(nodeA)
-            .compose { entityStore.save(nodeB) }
-            .compose { entityStore.save(nodeC) }
-            .compose { entityStore.save(nodeD) }
-            .compose { entityStore.save(nodeE) }
-            .compose { entityStore.save(nodeF) }
-            .compose { entityStore.save(nodeG) }
-            .compose { entityStore.save(nodeH) }
-            .compose { entityStore.save(nodeI) }
-            .compose { entityStore.save(nodeJ) }
-            .compose {
-                // Now build the relationships and update
+    suspend fun initializeNodeGraph() {
+        withContext(Dispatchers.IO) {
+            try {
+                // Create nodes
+                val nodeA = Node().apply { label = "A"; value = 1 }
+                val nodeB = Node().apply { label = "B"; value = 2 }
+                val nodeC = Node().apply { label = "C"; value = 3 }
+                val nodeD = Node().apply { label = "D"; value = 4 }
+                val nodeE = Node().apply { label = "E"; value = 5 }
+                val nodeF = Node().apply { label = "F"; value = 6 }
+                val nodeG = Node().apply { label = "G"; value = 7 }
+                val nodeH = Node().apply { label = "H"; value = 8 }
+                val nodeI = Node().apply { label = "I"; value = 9 }
+                val nodeJ = Node().apply { label = "J"; value = 10 }
+
+                // First batch: Save all nodes to generate IDs
+                saveAllNodes(listOf(nodeA, nodeB, nodeC, nodeD, nodeE, nodeF, nodeG, nodeH, nodeI, nodeJ))
+
+                // Build the relationships
                 nodeA.addChild(nodeB)
                 nodeA.addChild(nodeC)
-
                 nodeB.addChild(nodeD)
                 nodeB.addChild(nodeE)
-
                 nodeC.addChild(nodeF)
-
                 nodeE.addChild(nodeG)
                 nodeE.addChild(nodeH)
-
                 nodeF.addChild(nodeI)
                 nodeF.addChild(nodeJ)
 
-                // Save the updated nodes
-                entityStore.save(nodeA)
-                    .compose { entityStore.save(nodeB) }
-                    .compose { entityStore.save(nodeC) }
-                    .compose { entityStore.save(nodeE) }
-                    .compose { entityStore.save(nodeF) }
-                    .mapEmpty()
+                // Save nodes with relationships
+                saveAllNodes(listOf(nodeA, nodeB, nodeC, nodeE, nodeF))
+            } catch (e: Exception) {
+                log.error("Error initializing node graph", e)
+                throw e
             }
+        }
+    }
+
+    private suspend fun saveAllNodes(nodes: List<Node>) {
+        for (node in nodes) {
+            entityStore.save(node).await()
+        }
     }
 
     override fun onStart(): Future<Void> {
-        return initializeNodeGraph()
-            .onSuccess { log.info("Node graph successfully initialized") }
-            .onFailure { err -> log.error("Failed to initialize node graph", err) }
+        val promise = Promise.promise<Void>()
+
+        CoroutineScope(vertx.dispatcher()).launch {
+            try {
+                initializeNodeGraph()
+                log.info("Node graph successfully initialized")
+                promise.complete()
+            } catch (e: Exception) {
+                log.error("Failed to initialize node graph", e)
+                promise.fail(e)
+            }
+        }
+
+        return promise.future()
     }
 }

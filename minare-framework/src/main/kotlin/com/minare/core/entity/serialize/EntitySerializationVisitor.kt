@@ -1,8 +1,8 @@
 package com.minare.core.entity.serialize
 
 import com.minare.core.models.Entity
-import com.minare.core.models.annotations.entity.EntityType
-import com.minare.core.models.annotations.entity.State
+import com.minare.core.entity.annotations.EntityType
+import com.minare.core.entity.annotations.State
 import io.vertx.core.json.JsonArray
 import io.vertx.core.json.JsonObject
 import java.lang.reflect.Field
@@ -13,7 +13,7 @@ class EntitySerializationVisitor {
     fun visit(entity: Entity) {
         val document = JsonObject()
                 .put("_id", entity._id)
-                .put("type", entity.javaClass.getAnnotation(_root_ide_package_.com.minare.core.models.annotations.entity.EntityType::class.java).value)
+                .put("type", entity.javaClass.getAnnotation(EntityType::class.java).value)
             .put("version", 1)  // For now hardcoded since we haven't implemented versioning
                 .put("state", serializeState(entity))
 
@@ -26,7 +26,7 @@ class EntitySerializationVisitor {
 
         // Collect all state fields first
         entity.javaClass.declaredFields.forEach { field ->
-            if (field.isAnnotationPresent(_root_ide_package_.com.minare.core.models.annotations.entity.State::class.java)) {
+            if (field.isAnnotationPresent(State::class.java)) {
                 stateFields.add(field)
             }
         }

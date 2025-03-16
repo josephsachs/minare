@@ -17,7 +17,7 @@ class GuiceModule : AbstractModule() {
 
     override fun configure() {
         // Store bindings
-        bind(EntityStore::class.java).to(MongoEntityStore::class.java)
+        bind(EntityStore::class.java) to MongoEntityStore::class.java
         bind(ConnectionStore::class.java) to MongoConnectionStore::class.java
     }
 

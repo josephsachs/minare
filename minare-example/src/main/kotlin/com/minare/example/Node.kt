@@ -1,46 +1,29 @@
 package com.minare.example
 
 import com.minare.core.models.Entity
-import com.minare.core.models.annotations.entity.ChildReference
-import com.minare.core.models.annotations.entity.EntityType
-import com.minare.core.models.annotations.entity.ParentReference
-import com.minare.core.models.annotations.entity.State
-import io.vertx.core.json.JsonObject
+import com.minare.core.entity.annotations.ChildReference
+import com.minare.core.entity.annotations.EntityType
+import com.minare.core.entity.annotations.ParentReference
+import com.minare.core.entity.annotations.State
 
-@_root_ide_package_.com.minare.core.models.annotations.entity.EntityType("node")
-class Node : Entity {
-    @_root_ide_package_.com.minare.core.models.annotations.entity.State
-    val label: String
+@EntityType("node")
+class Node() : Entity() {
+    @State
+    var label: String = ""
 
-    @_root_ide_package_.com.minare.core.models.annotations.entity.State
-    @_root_ide_package_.com.minare.core.models.annotations.entity.ParentReference
+    @State
+    @ParentReference
     var parentId: String? = null
 
-    @_root_ide_package_.com.minare.core.models.annotations.entity.State
-    @_root_ide_package_.com.minare.core.models.annotations.entity.ChildReference
-    val childIds: MutableList<String> = mutableListOf()
+    @State
+    @ChildReference
+    var childIds: MutableList<String> = mutableListOf()
 
-    @_root_ide_package_.com.minare.core.models.annotations.entity.State
-    val value: Int
-
-    constructor(label: String, value: Int) : super("node") {
-        this.label = label
-        this.value = value
-    }
-
-    override fun toJson(): JsonObject {
-        val json = super.toJson()
-        val stateJson = JsonObject()
-            .put("label", label)
-            .put("parentId", parentId)
-            .put("childIds", childIds)
-            .put("value", value)
-
-        return json.put("state", stateJson)
-    }
+    @State
+    var value: Int = 0
 
     fun addChild(child: Node) {
-        childIds.add(child.id)
-        child.parentId = this.id
+        child._id?.let { childIds.add(it) }
+        child.parentId = this._id
     }
 }
