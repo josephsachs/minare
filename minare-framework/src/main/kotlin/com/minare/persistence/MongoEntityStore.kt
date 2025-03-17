@@ -3,7 +3,8 @@ package com.minare.persistence
 import com.google.inject.Singleton
 import com.minare.core.models.Entity
 import com.minare.core.entity.EntityFactory
-import com.minare.core.entity.EntityReflector
+import com.minare.core.entity.ReflectionCache
+import com.minare.core.entity.annotations.Parent
 import io.vertx.core.Future
 import io.vertx.core.json.JsonArray
 import io.vertx.core.json.JsonObject
@@ -25,7 +26,7 @@ class MongoEntityStore @Inject constructor(
     private val mongoClient: MongoClient,
     private val collection: String,
     private val entityFactory: EntityFactory,
-    private val entityReflector: EntityReflector
+    private val reflectionCache: ReflectionCache
 ) : EntityStore {
 
     private val log = LoggerFactory.getLogger(MongoEntityStore::class.java)
@@ -37,8 +38,8 @@ class MongoEntityStore @Inject constructor(
      * @return A JsonObject containing the aggregation pipeline
      */
     suspend fun buildAncestorTraversalQuery(entityId: String): JsonObject {
-        // Get all parent reference field paths from the reflection cache
-        val parentRefPaths = entityReflector.getAllParentReferenceFieldPaths()
+        // Get all parent reference field paths from entity classes
+        val parentRefPaths = getAllParentReferenceFieldPaths()
 
         // Build the aggregation pipeline
         val pipeline = JsonArray().apply {
@@ -52,7 +53,7 @@ class MongoEntityStore @Inject constructor(
             // Stage 2: Use $graphLookup to find all potential ancestors
             add(JsonObject().apply {
                 put("${'$'}graphLookup", JsonObject().apply {
-                    put("from", collection)
+                    put("from", "entities")
                     put("startWith", "${'$'}_id")
                     put("connectFromField", "_id")
                     put("connectToField", "state.*")
@@ -64,6 +65,32 @@ class MongoEntityStore @Inject constructor(
         }
 
         return JsonObject().put("pipeline", pipeline)
+    }
+
+    /**
+     * Gets all parent reference field paths for all registered entity types.
+     * This is useful for building MongoDB traversal queries.
+     */
+    private fun getAllParentReferenceFieldPaths(): List<String> {
+        // Get classes from the entity factory
+        val entityClasses = mutableListOf<Class<*>>()
+
+        // Assuming entityFactory has a method to get registered class types
+        // If not, we'll need another way to get the list of entity classes
+        val entityTypeNames = entityFactory.getTypeNames()
+
+        for (typeName in entityTypeNames) {
+            entityFactory.useClass(typeName)?.let {
+                entityClasses.add(it)
+            }
+        }
+
+        return entityClasses.flatMap { entityClass ->
+            reflectionCache.getFieldsWithAnnotation<Parent>(entityClass)
+                .map { field ->
+                    "state.${field.name}"
+                }
+        }.distinct()
     }
 
     /**
@@ -159,12 +186,15 @@ class MongoEntityStore @Inject constructor(
             val sourceType = json.getString("type")
             val sourceEntity = entitiesById[sourceId] ?: return@forEach
 
-            // Get reflection cache for this entity type
-            val cache = entityReflector.getReflectionCache(sourceType) ?: return@forEach
+            // Get entity class for this type
+            val entityClass = entityFactory.useClass(sourceType) ?: return@forEach
 
-            // For each parent reference field defined in the reflection cache
-            cache.parentReferenceFields.forEach { parentField ->
-                val fieldName = parentField.fieldName
+            // Get parent fields for this entity type using the reflection cache
+            val parentFields = reflectionCache.getFieldsWithAnnotation<Parent>(entityClass)
+
+            // For each parent reference field
+            parentFields.forEach { field ->
+                val fieldName = field.name
 
                 // Get the value from the state object
                 val state = json.getJsonObject("state", JsonObject())

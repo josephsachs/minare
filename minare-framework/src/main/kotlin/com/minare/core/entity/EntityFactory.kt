@@ -1,6 +1,7 @@
 package com.minare.core.entity
 
 import com.minare.core.models.Entity
+import kotlin.reflect.KClass
 
 /**
  * Factory interface for creating entity instances by type.
@@ -22,4 +23,8 @@ interface EntityFactory {
      * @return The entity class
      */
     fun useClass(type: String): Class<*>?
+
+    fun getTypeNames(): List<String>
+
+    fun getTypeList(): List<KClass<*>>
 }

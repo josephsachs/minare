@@ -1,11 +1,8 @@
 package com.minare.core.models
 
 import com.fasterxml.jackson.annotation.*
-import com.fasterxml.jackson.databind.DeserializationFeature
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.minare.core.entity.EntityFactory
-import com.minare.core.entity.EntityReflector
 import com.minare.core.entity.ReflectionCache
+import com.minare.core.entity.annotations.*
 import com.minare.core.entity.serialize.EntitySerializationVisitor
 import com.minare.persistence.EntityStore
 import com.minare.utils.EntityGraph
@@ -14,10 +11,9 @@ import io.vertx.core.json.JsonObject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-import io.vertx.kotlin.coroutines.await
 import org.jgrapht.Graph
 import org.jgrapht.graph.DefaultEdge
-import org.jgrapht.traverse.DepthFirstIterator
+import java.lang.reflect.Field
 import javax.inject.Inject
 
 @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type")
@@ -36,13 +32,7 @@ open class Entity {
         lateinit var entityStore: EntityStore
 
         @Inject
-        lateinit var entityReflector: EntityReflector
-
-        companion object {
-                private val objectMapper = ObjectMapper()
-                        .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
-                        .setVisibility(PropertyAccessor.FIELD, JsonAutoDetect.Visibility.ANY)
-        }
+        lateinit var reflectionCache: ReflectionCache
 
         override fun equals(other: Any?): Boolean {
                 if (this === other) return true
@@ -72,6 +62,46 @@ open class Entity {
         }
 
         /**
+         * Process the mutation based on consistency rules.
+         */
+        suspend fun mutate(delta: JsonObject): JsonObject {
+                val prunedDelta = getMutateDelta(delta)
+
+                if (prunedDelta.isEmpty) {
+                        return JsonObject().put("success", false).put("message", "No valid mutable fields found")
+                }
+
+                for (fieldName in prunedDelta.fieldNames()) {
+                        val consistencyLevel = getConsistencyLevel(fieldName)
+
+                        // Apply the appropriate consistency check based on the field's consistency level
+                        when (consistencyLevel) {
+                                ConsistencyLevel.STRICT -> {
+                                        // Implementation of strict consistency check
+                                        // This might involve version checks or other validation
+                                }
+                                ConsistencyLevel.PESSIMISTIC -> {
+                                        // Implementation of pessimistic consistency check
+                                }
+                                else -> {
+                                        // OPTIMISTIC is the default, no special check needed
+                                }
+                        }
+                }
+
+                if (!::entityStore.isInitialized) {
+                        throw IllegalStateException("EntityStore not set")
+                }
+
+                val result = entityStore.save(this)
+                update()
+
+                return JsonObject()
+                        .put("success", true)
+                        .put("version", version)
+        }
+
+        /**
          * Updates the version of this entity and its ancestors based on parent reference rules.
          */
         suspend fun update(): JsonObject {
@@ -83,13 +113,8 @@ open class Entity {
                         throw IllegalStateException("Entity ID not set")
                 }
 
-                // Get the ancestor graph
                 val graph = entityStore.getAncestorGraph(_id!!)
-
-                // Find entities that need version updates
                 val idsToUpdate = findEntitiesForVersionUpdate(graph)
-
-                // Update versions and return the result
                 return entityStore.updateVersions(idsToUpdate)
         }
 
@@ -100,15 +125,12 @@ open class Entity {
                 val idsToUpdate = mutableSetOf<String>()
                 val visited = mutableSetOf<String>()
 
-                // Find self in the graph
                 val self = graph.vertexSet()
                         .find { _id == it._id }
                         ?: return idsToUpdate
 
-                // Always update self
                 _id?.let { idsToUpdate.add(it) }
 
-                // Use recursion to traverse the graph
                 traverseParents(graph, self, idsToUpdate, visited)
 
                 return idsToUpdate
@@ -123,30 +145,22 @@ open class Entity {
                 idsToUpdate: MutableSet<String>,
                 visited: MutableSet<String>
         ) {
-                // Mark as visited to prevent cycles
                 entity._id?.let { visited.add(it) }
 
-                // Get all outgoing edges (child to parent)
                 val outEdges = graph.outgoingEdgesOf(entity)
 
-                // Process each parent
                 outEdges.forEach { edge ->
                         val parent = graph.getEdgeTarget(edge)
 
-                        // Skip if already visited
                         if (parent._id in visited) {
                                 return@forEach
                         }
 
-                        // Check if we should bubble version to this parent
                         if (shouldBubbleVersionToParent(entity, parent)) {
-                                // Add parent to the update set
                                 parent._id?.let { idsToUpdate.add(it) }
 
-                                // Continue traversal to this parent's parents
                                 traverseParents(graph, parent, idsToUpdate, visited)
                         }
-                        // If bubble_version is false, stop traversal along this path
                 }
         }
 
@@ -155,17 +169,123 @@ open class Entity {
          */
         private fun shouldBubbleVersionToParent(child: Entity, parent: Entity): Boolean {
                 return try {
-                        // Get reflection cache for the child entity type
-                        val childCache = entityReflector.getReflectionCache(child::class.java)
-                                ?: return false
+                        // Get all parent fields from the child entity
+                        val parentFields = child.getParentFields()
 
-                        // Check if any parent reference has bubble_version=false
-                        // This is a simplified implementation - in a complete version,
-                        // you would need to determine which specific field links to this particular parent
-                        childCache.parentReferenceFields.all { it.isBubbleVersion }
+                        if (parentFields.isEmpty()) {
+                                return false
+                        }
+
+                        val matchingParentFields = parentFields.filter { field ->
+                                field.isAccessible = true
+                                val fieldValue = field.get(child)
+
+                                // Check if this field references the parent we're checking
+                                when (fieldValue) {
+                                        is Entity -> fieldValue._id == parent._id
+                                        is String -> fieldValue == parent._id
+                                        else -> false
+                                }
+                        }
+
+                        if (matchingParentFields.isEmpty()) {
+                                return false
+                        }
+
+                        matchingParentFields.all { field ->
+                                field.getAnnotation(Parent::class.java)?.bubble_version ?: false
+                        }
                 } catch (e: Exception) {
-                        // If any error occurs, don't bubble
                         false
                 }
+        }
+
+        /**
+         * Returns a filtered JsonObject containing only the fields that are mutable
+         * based on the @Mutable annotation.
+         */
+        suspend fun getMutateDelta(delta: JsonObject): JsonObject {
+                if (!::reflectionCache.isInitialized) {
+                        throw IllegalStateException("ReflectionCache not initialized")
+                }
+
+                val mutableFields = reflectionCache.getFieldsWithAnnotation<Mutable>(this::class)
+                val prunedDelta = JsonObject()
+
+                for (fieldName in delta.fieldNames()) {
+                        val field = mutableFields.find {
+                                val stateName = it.getAnnotation(State::class.java)?.fieldName?.takeIf { name -> name.isNotEmpty() } ?: it.name
+                                stateName == fieldName
+                        }
+
+                        if (field != null) {
+                                // Check if the value type is compatible with the field type
+                                val fieldValue = delta.getValue(fieldName)
+                                val isTypeCompatible = when (field.type) {
+                                        Int::class.java, Integer::class.java -> fieldValue is Int || fieldValue is Integer
+                                        Long::class.java -> fieldValue is Long
+                                        Double::class.java -> fieldValue is Double
+                                        Float::class.java -> fieldValue is Float
+                                        Boolean::class.java -> fieldValue is Boolean
+                                        String::class.java -> fieldValue is String
+                                        // Add more type checks as needed for arrays, collections, etc.
+                                        else -> true // For complex types, we'll let it pass for now
+                                }
+
+                                if (isTypeCompatible) {
+                                        // Field is mutable and value type is compatible, add it to the pruned delta
+                                        prunedDelta.put(fieldName, fieldValue)
+                                }
+                        }
+                }
+
+                return prunedDelta
+        }
+
+        /**
+         * Gets all fields marked with @Mutable annotation.
+         */
+        fun getMutableFields(): List<Field> {
+                if (!::reflectionCache.isInitialized) {
+                        throw IllegalStateException("ReflectionCache not initialized")
+                }
+
+                return reflectionCache.getFieldsWithAnnotation<Mutable>(this::class)
+        }
+
+        /**
+         * Gets all fields marked with @Parent annotation.
+         */
+        fun getParentFields(): List<Field> {
+                if (!::reflectionCache.isInitialized) {
+                        throw IllegalStateException("ReflectionCache not initialized")
+                }
+
+                return reflectionCache.getFieldsWithAnnotation<Parent>(this::class)
+        }
+
+        /**
+         * Gets all fields marked with @Child annotation.
+         */
+        fun getChildFields(): List<Field> {
+                if (!::reflectionCache.isInitialized) {
+                        throw IllegalStateException("ReflectionCache not initialized")
+                }
+
+                return reflectionCache.getFieldsWithAnnotation<Child>(this::class)
+        }
+
+        /**
+         * Gets consistency level for a specific field.
+         */
+        fun getConsistencyLevel(fieldName: String): ConsistencyLevel? {
+                val mutableFields = getMutableFields()
+
+                val field = mutableFields.find {
+                        val stateName = it.getAnnotation(State::class.java)?.fieldName?.takeIf { name -> name.isNotEmpty() } ?: it.name
+                        stateName == fieldName
+                }
+
+                return field?.getAnnotation(Mutable::class.java)?.consistency
         }
 }

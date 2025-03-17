@@ -4,6 +4,7 @@ import com.minare.core.entity.EntityFactory
 import com.minare.core.entity.annotations.*
 import com.minare.core.models.Entity
 import io.vertx.core.json.JsonObject
+import kotlin.reflect.KClass
 
 @JsonTypeName("Region")
 @EntityType("Region")
@@ -56,7 +57,7 @@ class Building : Entity() {
     @JsonProperty("position")
     @State
     @Child
-    var position: MapVector2? = null
+    lateinit var position: MapVector2
 
     @JsonProperty("statuses")
     @State
@@ -95,18 +96,18 @@ class MapUnit : Entity() {
 class MapVector2 : Entity() {
     @JsonProperty("x")
     @State
-    @Mutable
+    @Mutable(ConsistencyLevel.STRICT)
     var x: Double = 0.0
 
     @JsonProperty("y")
     @State
-    @Mutable
+    @Mutable(ConsistencyLevel.STRICT)
     var y: Double = 0.0
 
     @JsonProperty("parentEntity")
     @State
     @Parent
-    lateinit var parentEntity: MapUnit  // back-reference to either Building or MapUnit
+    lateinit var parentEntity: Entity  // back-reference to either Building or MapUnit
 }
 
 class TestEntityFactory : EntityFactory {
@@ -134,5 +135,22 @@ class TestEntityFactory : EntityFactory {
             "mapvector2" -> MapVector2()
             else -> Entity()
         }
+    }
+
+    /**
+     * Helper method to get registered entity types - implement based on your EntityFactory
+     */
+    override fun getTypeNames(): List<String> {
+        return listOf("MapVector2", "MapUnit", "Zone", "Region", "Building")
+    }
+
+    override fun getTypeList(): List<KClass<*>> {
+        return listOf(
+            Region::class,
+            Zone::class,
+            Building::class,
+            MapUnit::class,
+            MapVector2::class
+        )
     }
 }

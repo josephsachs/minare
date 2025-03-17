@@ -6,7 +6,6 @@ package com.minare.core.entity.annotations
 @Retention(AnnotationRetention.RUNTIME)
 @Target(AnnotationTarget.FIELD)
 annotation class Mutable(
-    val name: String = "",
     val consistency: ConsistencyLevel = ConsistencyLevel.OPTIMISTIC
 )
 

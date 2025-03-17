@@ -1,95 +1,109 @@
 import io.vertx.core.json.JsonArray
 import io.vertx.core.json.JsonObject
+import com.google.inject.Injector
 
 class EntityTestFixtures {
-    fun createTestFixture(): Region {
-        val region = Region()
-        region._id = "507f1f77bcf86cd799439011"
-        region.name = "Test Region Alpha"
-        region.zones = ArrayList()
+    fun createTestFixture(injector: Injector): Region {
+        // Use the injector to create properly initialized entities
 
-        val zone1 = Zone()
-        zone1._id = "507f1f77bcf86cd799439012"
-        zone1.name = "Combat Zone"
-        zone1.region = region
-        zone1.units = ArrayList()
-        zone1.buildings = ArrayList()
+        var regionObj = injector.getInstance(Region::class.java).apply {
+            _id = "507f1f77bcf86cd799439011"
+            name = "Test Region Alpha"
+            zones = ArrayList()
+        }
 
-        val zone2 = Zone()
-        zone2._id = "507f1f77bcf86cd799439013"
-        zone2.name = "Safe Zone"
-        zone2.region = region
-        zone2.units = ArrayList()
-        zone2.buildings = ArrayList()
+        val zone1 = injector.getInstance(Zone::class.java).apply {
+            _id = "507f1f77bcf86cd799439012"
+            name = "Combat Zone"
+            region = regionObj
+            units = ArrayList()
+            buildings = ArrayList()
+        }
 
-        val hq = Building()
-        hq._id = "507f1f77bcf86cd799439014"
-        hq.name = "Headquarters"
-        hq.zone = zone1
-        //hq.position = MapVector2()
-        //hq.position._id = "507f1f77bcf86cd799439018"
-        //hq.position.x = 100.0
-        //hq.position.y = 100.0
-        //hq.position.owner = hq
-        hq.statuses = HashSet<String>()
-        hq.statuses.add("fortified")
-        hq.statuses.add("powered")
+        val zone2 = injector.getInstance(Zone::class.java).apply {
+            _id = "507f1f77bcf86cd799439013"
+            name = "Safe Zone"
+            region = regionObj
+            units = ArrayList()
+            buildings = ArrayList()
+        }
 
-        val barracks = Building()
-        barracks._id = "507f1f77bcf86cd799439015"
-        barracks.name = "Barracks"
-        barracks.zone = zone1
-        //barracks.position = MapVector2()
-        //barracks.position._id = "507f1f77bcf86cd799439019"
-        //barracks.position.x = 150.0
-        //barracks.position.y = 100.0
-        //barracks.position.owner = barracks
-        barracks.statuses = HashSet()  // empty set
+        val hq = injector.getInstance(Building::class.java).apply {
+            _id = "507f1f77bcf86cd799439014"
+            name = "Headquarters"
+            zone = zone1
+            position = injector.getInstance(MapVector2::class.java).apply {
+                _id = "507f1f77bcf86cd799439018"
+                x = 100.0
+                y = 100.0
+            }
+            statuses = HashSet<String>()
+            statuses.add("fortified")
+            statuses.add("powered")
+        }
+        hq.position.parentEntity = hq
 
-        val soldier = MapUnit()
-        soldier._id = "507f1f77bcf86cd799439016"
-        soldier.name = "Elite Soldier"
-        soldier.zone = zone1
-        soldier.position = MapVector2()
-        soldier.position._id = "507f1f77bcf86cd799439020"
-        soldier.position.x = 120.0
-        soldier.position.y = 120.0
+        val barracks = injector.getInstance(Building::class.java).apply {
+            _id = "507f1f77bcf86cd799439015"
+            name = "Barracks"
+            zone = zone1
+            position = injector.getInstance(MapVector2::class.java).apply {
+                _id = "507f1f77bcf86cd799439019"
+                x = 150.0
+                y = 100.0
+            }
+            statuses = HashSet()  // empty set
+        }
+        barracks.position.parentEntity = barracks
+
+        val soldier = injector.getInstance(MapUnit::class.java).apply {
+            _id = "507f1f77bcf86cd799439016"
+            name = "Elite Soldier"
+            zone = zone1
+            position = injector.getInstance(MapVector2::class.java).apply {
+                _id = "507f1f77bcf86cd799439020"
+                x = 120.0
+                y = 120.0
+            }
+            statuses = HashSet()
+            statuses.add("alert")
+            statuses.add("armed")
+            offense = JsonObject()
+                .put("burn", true)
+                .put("AP", false)
+                .put("melee", true)
+                .put("damage", JsonArray().add(5).add(10).add(15))
+        }
         soldier.position.parentEntity = soldier
-        soldier.statuses = HashSet()
-        soldier.statuses.add("alert")
-        soldier.statuses.add("armed")
-        soldier.offense = JsonObject()
-            .put("burn", true)
-            .put("AP", false)
-            .put("melee", true)
-            .put("damage", JsonArray().add(5).add(10).add(15))
 
-        val medic = MapUnit()
-        medic._id = "507f1f77bcf86cd799439017"
-        medic.name = "Field Medic"
-        medic.zone = zone2  // in safe zone
-        medic.position = MapVector2()
-        medic.position._id = "507f1f77bcf86cd799439021"
-        medic.position.x = 200.0
-        medic.position.y = 200.0
+        val medic = injector.getInstance(MapUnit::class.java).apply {
+            _id = "507f1f77bcf86cd799439017"
+            name = "Field Medic"
+            zone = zone2  // in safe zone
+            position = injector.getInstance(MapVector2::class.java).apply {
+                _id = "507f1f77bcf86cd799439021"
+                x = 200.0
+                y = 200.0
+            }
+            statuses = HashSet()
+            statuses.add("healing")
+            offense = JsonObject()
+                .put("burn", false)
+                .put("AP", false)
+                .put("melee", false)
+                .put("damage", JsonArray().add(1))
+        }
         medic.position.parentEntity = medic
-        medic.statuses = HashSet()
-        medic.statuses.add("healing")
-        medic.offense = JsonObject()
-            .put("burn", false)
-            .put("AP", false)
-            .put("melee", false)
-            .put("damage", JsonArray().add(1))
 
         // Wire up all the references
         zone1.buildings.add(hq)
         zone1.buildings.add(barracks)
         zone1.units.add(soldier)
         zone2.units.add(medic)
-        region.zones.add(zone1)
-        region.zones.add(zone2)
+        regionObj.zones.add(zone1)
+        regionObj.zones.add(zone2)
 
-        return region
+        return regionObj
     }
 
     // The expected serialized form (would be generated from actual output)
@@ -256,6 +270,24 @@ class EntityTestFixtures {
                 )
         )
 
+        // Barracks position vector
+        documents.add(
+            JsonObject()
+                .put("_id", "507f1f77bcf86cd799439019")
+                .put("type", "MapVector2")
+                .put("version", 1)
+                .put(
+                    "state", JsonObject()
+                        .put(
+                            "parentEntity", JsonObject()
+                                .put("\$ref", "entity")
+                                .put("\$id", "507f1f77bcf86cd799439015")
+                        )
+                        .put("x", 150.0)
+                        .put("y", 100.0)
+                )
+        )
+
         // Headquarters
         documents.add(
             JsonObject()
@@ -280,6 +312,24 @@ class EntityTestFixtures {
                                 .put("\$ref", "entity")
                                 .put("\$id", "507f1f77bcf86cd799439012")
                         )
+                )
+        )
+
+        // HQ position vector
+        documents.add(
+            JsonObject()
+                .put("_id", "507f1f77bcf86cd799439018")
+                .put("type", "MapVector2")
+                .put("version", 1)
+                .put(
+                    "state", JsonObject()
+                        .put(
+                            "parentEntity", JsonObject()
+                                .put("\$ref", "entity")
+                                .put("\$id", "507f1f77bcf86cd799439014")
+                        )
+                        .put("x", 100.0)
+                        .put("y", 100.0)
                 )
         )
 
@@ -518,4 +568,62 @@ class EntityTestFixtures {
     fun createUpdateQuery(): JsonArray {
         return JsonArray()
     }
+
+    // Function to generate test cases for MapVector2 mutations
+    fun createMapVector2MutationTestCases(): List<MutationTestCase> {
+        val testCases = mutableListOf<MutationTestCase>()
+
+        // Case 1: Valid mutation with only mutable fields
+        testCases.add(
+            MutationTestCase(
+                inputDelta = JsonObject()
+                    .put("x", 150.0)
+                    .put("y", 200.0),
+                expectedPrunedDelta = JsonObject()
+                    .put("x", 150.0)
+                    .put("y", 200.0)
+            )
+        )
+
+        // Case 2: Mixed valid and invalid fields
+        testCases.add(
+            MutationTestCase(
+                inputDelta = JsonObject()
+                    .put("x", 150.0)
+                    .put("parentEntity", "not_allowed")  // Cannot mutate parent reference
+                    .put("nonExistentField", "should_be_removed"),
+                expectedPrunedDelta = JsonObject()
+                    .put("x", 150.0)  // Only x should remain
+            )
+        )
+
+        // Case 3: None of the fields are mutable
+        testCases.add(
+            MutationTestCase(
+                inputDelta = JsonObject()
+                    .put("parentEntity", "not_allowed")
+                    .put("_id", "cannot_change_id")
+                    .put("type", "cannot_change_type"),
+                expectedPrunedDelta = JsonObject()  // Should be empty after pruning
+            )
+        )
+
+        // Case 4: Nested JSON in mutable fields (if supported)
+        testCases.add(
+            MutationTestCase(
+                inputDelta = JsonObject()
+                    .put("x", JsonObject().put("nested", "value"))  // Invalid type for x
+                    .put("y", 100.0),
+                expectedPrunedDelta = JsonObject()
+                    .put("y", 100.0)  // Only y should remain
+            )
+        )
+
+        return testCases
+    }
 }
+
+data class MutationTestCase(
+    val inputDelta: JsonObject,  // The client-sent mutation delta
+    val expectedPrunedDelta: JsonObject  // The filtered delta that should be passed to entityStore
+)
