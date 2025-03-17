@@ -25,6 +25,8 @@ class DatabaseInitializer @Inject constructor(
             log.info("RESET_DB=true, dropping collections")
             mongoClient.dropCollection("connections")
                 .compose { mongoClient.dropCollection("entities") }
+                .compose { mongoClient.dropCollection("contexts") }
+                .compose { mongoClient.dropCollection("channels") }
                 .compose { initializeAllCollections() }
         } else {
             initializeAllCollections()
@@ -33,6 +35,8 @@ class DatabaseInitializer @Inject constructor(
 
     private fun initializeAllCollections(): Future<Void> {
         return initializeConnections()
+            .compose { initializeContexts() }
+            .compose { initializeChannels() }
             .compose { initializeEntities() }
     }
 
@@ -61,6 +65,22 @@ class DatabaseInitializer @Inject constructor(
             .compose { mongoClient.createIndex("entities", typeIndex) }
             .compose { mongoClient.createIndex("entities", versionIndex) }
             .onSuccess { log.info("Initialized entities collection with indexes") }
+            .mapEmpty()
+    }
+
+    private fun initializeContexts(): Future<Void> {
+        val entityIndex = JsonObject()
+            .put("entity", 1)
+
+        return mongoClient.createCollection("contexts")
+            .compose { mongoClient.createIndex("contexts", entityIndex) }
+            .onSuccess { log.info("Initialized contexts collection") }
+            .mapEmpty()
+    }
+
+    private fun initializeChannels(): Future<Void> {
+        return mongoClient.createCollection("channels")
+            .onSuccess { log.info("Initialized channels collection") }
             .mapEmpty()
     }
 }
