@@ -1,4 +1,4 @@
-package kotlin.com.minare.persistence;
+package com.minare.persistence;
 
 public interface Store {
 }
