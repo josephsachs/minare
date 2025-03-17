@@ -210,16 +210,15 @@ open class Entity {
                 }
 
                 val mutableFields = reflectionCache.getFieldsWithAnnotation<Mutable>(this::class)
-                val prunedDelta = JsonObject()
 
-                for (fieldName in delta.fieldNames()) {
-                        val field = mutableFields.find {
-                                val stateName = it.getAnnotation(State::class.java)?.fieldName?.takeIf { name -> name.isNotEmpty() } ?: it.name
-                                stateName == fieldName
-                        }
+                return delta.fieldNames()
+                        .asSequence()
+                        .mapNotNull { fieldName ->
+                                val field = mutableFields.find {
+                                        val stateName = it.getAnnotation(State::class.java)?.fieldName?.takeIf { name -> name.isNotEmpty() } ?: it.name
+                                        stateName == fieldName
+                                } ?: return@mapNotNull null
 
-                        if (field != null) {
-                                // Check if the value type is compatible with the field type
                                 val fieldValue = delta.getValue(fieldName)
                                 val isTypeCompatible = when (field.type) {
                                         Int::class.java, Integer::class.java -> fieldValue is Int || fieldValue is Integer
@@ -228,18 +227,15 @@ open class Entity {
                                         Float::class.java -> fieldValue is Float
                                         Boolean::class.java -> fieldValue is Boolean
                                         String::class.java -> fieldValue is String
-                                        // Add more type checks as needed for arrays, collections, etc.
+                                        // Add more type checks as needed
                                         else -> true // For complex types, we'll let it pass for now
                                 }
 
-                                if (isTypeCompatible) {
-                                        // Field is mutable and value type is compatible, add it to the pruned delta
-                                        prunedDelta.put(fieldName, fieldValue)
-                                }
+                                if (isTypeCompatible) Pair(fieldName, fieldValue) else null
                         }
-                }
-
-                return prunedDelta
+                        .fold(JsonObject()) { acc, (fieldName, fieldValue) ->
+                                acc.put(fieldName, fieldValue)
+                        }
         }
 
         /**
