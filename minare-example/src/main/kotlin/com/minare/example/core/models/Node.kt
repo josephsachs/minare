@@ -6,7 +6,7 @@ import com.minare.core.entity.annotations.EntityType
 import com.minare.core.entity.annotations.Parent
 import com.minare.core.entity.annotations.State
 
-@EntityType("node")
+@EntityType("Node")
 class Node() : Entity() {
     @State
     var label: String = ""

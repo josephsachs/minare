@@ -36,4 +36,12 @@ interface EntityStore {
      * @return The update results
      */
     suspend fun save(entity: Entity): Future<Entity>
+
+    /**
+     * Execute mutate operation for delta
+     *
+     * @param entityIds The set of entity IDs to update
+     * @return The update results
+     */
+    suspend fun mutateState(entityId: String, delta: JsonObject): JsonObject
 }

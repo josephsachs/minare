@@ -8,8 +8,7 @@ import com.minare.persistence.EntityStore
 import com.minare.utils.EntityGraph
 import io.vertx.core.json.JsonArray
 import io.vertx.core.json.JsonObject
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.*
 
 import org.jgrapht.Graph
 import org.jgrapht.graph.DefaultEdge
@@ -20,7 +19,7 @@ import javax.inject.Inject
 @JsonIgnoreProperties(ignoreUnknown = true)
 open class Entity {
         @JsonProperty("version")
-        var version: Int = 1
+        var version: Long = 1
 
         @JsonProperty("_id")
         var _id: String? = null
@@ -64,47 +63,62 @@ open class Entity {
         /**
          * Process the mutation based on consistency rules.
          */
-        suspend fun mutate(delta: JsonObject): JsonObject {
+        suspend fun mutate(requestObject: JsonObject): JsonObject {
+                val requestEntity = requestObject.getJsonObject("entity")
+
+                val delta = requestEntity.getJsonObject("state")
+                val requestedVersion = requestEntity.getLong("version")
+                val entityId = requestEntity.getString("_id")
+
                 val prunedDelta = getMutateDelta(delta)
 
                 if (prunedDelta.isEmpty) {
-                        return JsonObject().put("success", false).put("message", "No valid mutable fields found")
+                        return JsonObject()
+                                .put("success", false)
+                                .put("message", "No valid mutable fields found")
                 }
 
-                for (fieldName in prunedDelta.fieldNames()) {
-                        val consistencyLevel = getConsistencyLevel(fieldName)
+                val allowedChanges = filterDeltaByConsistencyLevel(prunedDelta, requestedVersion)
 
-                        // Apply the appropriate consistency check based on the field's consistency level
-                        when (consistencyLevel) {
-                                ConsistencyLevel.STRICT -> {
-                                        // Implementation of strict consistency check
-                                        // This might involve version checks or other validation
-                                }
-                                ConsistencyLevel.PESSIMISTIC -> {
-                                        // Implementation of pessimistic consistency check
-                                }
-                                else -> {
-                                        // OPTIMISTIC is the default, no special check needed
-                                }
-                        }
+                if (allowedChanges.isEmpty) {
+                        return JsonObject()
+                                .put("success", false)
+                                .put("message", "No allowed changes")
                 }
 
                 if (!::entityStore.isInitialized) {
                         throw IllegalStateException("EntityStore not set")
                 }
 
-                val result = entityStore.save(this)
-                update()
+                try {
+                        // Perform the mutation and await the result
+                        val result = entityStore.mutateState(entityId, allowedChanges)
 
-                return JsonObject()
-                        .put("success", true)
-                        .put("version", version)
+                        // After mutation is complete, bubble versions
+                        // Note: we're not waiting for bubbleVersions to complete before returning
+                        // If you need to wait, use: val bubbleResult = bubbleVersions()
+                        coroutineScope {
+                                launch {
+                                        bubbleVersions()
+                                }
+                        }
+                        // Return success response with updated version
+                        return JsonObject()
+                                .put("success", true)
+                                .put("version", result.getLong("version"))
+                } catch (error: Exception) {
+                        // Handle any errors
+                        return JsonObject()
+                                .put("success", false)
+                                .put("message", "Mutation failed: ${error.message}")
+                }
         }
 
         /**
          * Updates the version of this entity and its ancestors based on parent reference rules.
+         * Returns the result of the version update operation.
          */
-        suspend fun update(): JsonObject {
+        suspend fun bubbleVersions(): JsonObject {
                 if (!::entityStore.isInitialized) {
                         throw IllegalStateException("EntityStore not set")
                 }
@@ -113,8 +127,13 @@ open class Entity {
                         throw IllegalStateException("Entity ID not set")
                 }
 
+                // Get the ancestor graph using await extension function
                 val graph = entityStore.getAncestorGraph(_id!!)
+
+                // Find entities that need version updates
                 val idsToUpdate = findEntitiesForVersionUpdate(graph)
+
+                // Update the versions directly with the suspend function
                 return entityStore.updateVersions(idsToUpdate)
         }
 
@@ -221,7 +240,7 @@ open class Entity {
 
                                 val fieldValue = delta.getValue(fieldName)
                                 val isTypeCompatible = when (field.type) {
-                                        Int::class.java, Integer::class.java -> fieldValue is Int || fieldValue is Integer
+                                        Int::class.java, Integer::class.java -> fieldValue is Int
                                         Long::class.java -> fieldValue is Long
                                         Double::class.java -> fieldValue is Double
                                         Float::class.java -> fieldValue is Float
@@ -236,6 +255,59 @@ open class Entity {
                         .fold(JsonObject()) { acc, (fieldName, fieldValue) ->
                                 acc.put(fieldName, fieldValue)
                         }
+        }
+
+        suspend fun filterDeltaByConsistencyLevel(delta: JsonObject, requestedVersion: Long): JsonObject {
+                if (!::reflectionCache.isInitialized) {
+                        throw IllegalStateException("ReflectionCache not initialized")
+                }
+
+                val mutableFields = getMutableFields()
+
+                // First check for any STRICT fields with version mismatch
+                val strictViolation = delta.fieldNames().any { fieldName ->
+                        val field = findFieldByStateName(mutableFields, fieldName) ?: return@any false
+                        val mutableAnnotation = field.getAnnotation(Mutable::class.java)
+
+                        mutableAnnotation.consistency == ConsistencyLevel.STRICT && this.version != requestedVersion
+                }
+
+                if (strictViolation) {
+                        // Log the violation
+                        // logger.warn("Strict consistency violation detected. Entity: $id, Current: ${this.version}, Requested: $requestedVersion")
+                        // Return empty JsonObject to indicate no fields should be updated
+                        return JsonObject()
+                }
+
+                // Filter remaining fields based on consistency levels
+                return delta.fieldNames()
+                        .asSequence()
+                        .mapNotNull { fieldName ->
+                                val field = findFieldByStateName(mutableFields, fieldName) ?: return@mapNotNull null
+                                val mutableAnnotation = field.getAnnotation(Mutable::class.java)
+
+                                when (mutableAnnotation.consistency) {
+                                        ConsistencyLevel.OPTIMISTIC -> Pair(fieldName, delta.getValue(fieldName))
+                                        ConsistencyLevel.PESSIMISTIC -> {
+                                                if (requestedVersion >= this.version) {
+                                                        Pair(fieldName, delta.getValue(fieldName))
+                                                } else null
+                                        }
+                                        ConsistencyLevel.STRICT -> Pair(fieldName, delta.getValue(fieldName)) // Already checked above
+                                }
+                        }
+                        .fold(JsonObject()) { acc, (fieldName, fieldValue) ->
+                                acc.put(fieldName, fieldValue)
+                        }
+        }
+
+        // Helper function to find a field by its state name
+        private fun findFieldByStateName(fields: List<Field>, stateName: String): Field? {
+                return fields.find {
+                        val stateAnnotation = it.getAnnotation(State::class.java)
+                        val fieldStateName = stateAnnotation?.fieldName?.takeIf { name -> name.isNotEmpty() } ?: it.name
+                        fieldStateName == stateName
+                }
         }
 
         /**

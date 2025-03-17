@@ -155,7 +155,7 @@ class MongoEntityStore @Inject constructor(
                     val type = json.getString("type")
                     val entity = entityFactory.getNew(type).apply {
                         this._id = id
-                        this.version = json.getInteger("version", 1)
+                        this.version = json.getLong("version", 1)
                         this.type = type
                     }
 
@@ -287,5 +287,54 @@ class MongoEntityStore @Inject constructor(
                 .onSuccess { log.debug("Updated entity: {}", entity._id) }
         }
             .onFailure { err -> log.error("Failed to save entity: {}", entity._id, err) }
+    }
+
+    /**
+     * Updates an entity's state fields in MongoDB based on the provided delta
+     * @param entityId The ID of the entity to update
+     * @param delta The filtered delta containing only fields that passed consistency checks
+     * @return The updated entity document
+     */
+    override suspend fun mutateState(entityId: String, delta: JsonObject): JsonObject {
+        // If delta is empty, we have nothing to update
+        if (delta.isEmpty()) {
+            return JsonObject()
+        }
+
+        // Create the $set operation for state fields
+        val setOp = JsonObject()
+
+        // Add each field in the delta to the $set operation with "state." prefix
+        delta.fieldNames().forEach { fieldName ->
+            setOp.put("state.$fieldName", delta.getValue(fieldName))
+        }
+
+        // Add version increment
+        val update = JsonObject()
+            .put("\$set", setOp)
+            .put("\$inc", JsonObject().put("version", 1))
+
+        // Create the query to find the entity
+        val query = JsonObject()
+            .put("_id", entityId)
+
+        try {
+            // Execute the update and wait for the result
+            val updateResult = mongoClient.updateCollection(collection, query, update).await()
+
+            if (updateResult.docModified == 0L) {
+                // No document was updated - entity might not exist
+                throw IllegalStateException("Entity not found: $entityId")
+            }
+
+            // Fetch the updated document to return
+            val result = mongoClient.findOne(collection, JsonObject().put("_id", entityId), JsonObject()).await()
+
+            log.debug("Updated entity state: $entityId")
+            return result
+        } catch (err: Exception) {
+            log.error("Failed to update entity state: $entityId", err)
+            throw err
+        }
     }
 }

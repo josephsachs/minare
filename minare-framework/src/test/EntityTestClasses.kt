@@ -83,7 +83,7 @@ class MapUnit : Entity() {
 
     @JsonProperty("statuses")
     @State
-    @Mutable
+    @Mutable(ConsistencyLevel.PESSIMISTIC)
     var statuses: HashSet<String> = HashSet()
 
     @JsonProperty("offense")

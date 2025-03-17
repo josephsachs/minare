@@ -10,6 +10,7 @@ import com.minare.persistence.EntityStore
 import com.minare.persistence.MongoEntityStore
 import io.vertx.core.Vertx
 import io.vertx.core.json.JsonArray
+import io.vertx.core.json.JsonObject
 import org.mockito.Mock
 import org.mockito.MockitoAnnotations
 import io.vertx.ext.mongo.MongoClient
@@ -307,6 +308,52 @@ class EntityTest {
                         .isEqualTo(testCase.expectedPrunedDelta)
 
                     println("Test case $index passed!")
+                }
+            }
+
+            testContext.completeNow()
+        }
+    }
+
+    @Test
+    fun testFilterDeltaByConsistencyLevel(testContext: VertxTestContext) {
+        // Create test entities using Guice injection
+        val mapVector = testInjector.getInstance(MapVector2::class.java).apply {
+            _id = "test_vector_id"
+            version = 5 // Set a specific version for testing
+        }
+
+        val mapUnit = testInjector.getInstance(MapUnit::class.java).apply {
+            _id = "test_unit_id"
+            version = 5 // Match version with mapVector for consistency
+        }
+
+        // Define test cases
+        val testCases = testFixtures.createConsistencyLevelTestCases()
+
+        testContext.verify {
+            // Act & Assert - test each case
+            for ((index, testCase) in testCases.withIndex()) {
+                runBlocking {
+                    // Get the right entity based on test case type
+                    val entity = when (testCase.entityType) {
+                        "MapVector2" -> mapVector
+                        "MapUnit" -> mapUnit
+                        else -> throw IllegalArgumentException("Unknown entity type")
+                    }
+
+                    // Execute the filter function
+                    val filteredDelta = entity.filterDeltaByConsistencyLevel(
+                        testCase.inputDelta,
+                        testCase.requestedVersion
+                    )
+
+                    // Assert filtered correctly
+                    assertThat(filteredDelta)
+                        .usingRecursiveComparison()
+                        .isEqualTo(testCase.expectedFilteredDelta)
+
+                    println("Consistency level test case $index passed!")
                 }
             }
 

@@ -621,9 +621,83 @@ class EntityTestFixtures {
 
         return testCases
     }
+
+    data class MutationTestCase(
+        val inputDelta: JsonObject,  // The client-sent mutation delta
+        val expectedPrunedDelta: JsonObject  // The filtered delta that should be passed to entityStore
+    )
+
+    fun createConsistencyLevelTestCases(): List<ConsistencyLevelTestCase> {
+        return listOf(
+            // Case 1: STRICT fields with matching version - all should pass
+            ConsistencyLevelTestCase(
+                entityType = "MapVector2",
+                inputDelta = JsonObject()
+                    .put("x", 150.0)
+                    .put("y", 200.0),
+                requestedVersion = 5, // Matches entity version
+                expectedFilteredDelta = JsonObject()
+                    .put("x", 150.0)
+                    .put("y", 200.0)
+            ),
+
+            // Case 2: STRICT fields with mismatched version - should reject all
+            ConsistencyLevelTestCase(
+                entityType = "MapVector2",
+                inputDelta = JsonObject()
+                    .put("x", 150.0)
+                    .put("y", 200.0),
+                requestedVersion = 4, // Older than entity version
+                expectedFilteredDelta = JsonObject() // Empty result
+            ),
+
+            // Case 3: PESSIMISTIC fields with older version - should skip
+            ConsistencyLevelTestCase(
+                entityType = "MapUnit",
+                inputDelta = JsonObject()
+                    .put("statuses", JsonArray().add("wounded").add("retreating")),
+                requestedVersion = 4, // Older than entity version
+                expectedFilteredDelta = JsonObject() // Empty result, skip PESSIMISTIC
+            ),
+
+            // Case 4: PESSIMISTIC fields with matching version - should include
+            ConsistencyLevelTestCase(
+                entityType = "MapUnit",
+                inputDelta = JsonObject()
+                    .put("statuses", JsonArray().add("wounded").add("retreating")),
+                requestedVersion = 5, // Matches entity version
+                expectedFilteredDelta = JsonObject()
+                    .put("statuses", JsonArray().add("wounded").add("retreating"))
+            ),
+
+            // Case 5: PESSIMISTIC fields with newer version - should include
+            ConsistencyLevelTestCase(
+                entityType = "MapUnit",
+                inputDelta = JsonObject()
+                    .put("statuses", JsonArray().add("wounded").add("retreating")),
+                requestedVersion = 6, // Newer than entity version
+                expectedFilteredDelta = JsonObject()
+                    .put("statuses", JsonArray().add("wounded").add("retreating"))
+            ),
+
+            // Case 6: Mixed fields with STRICT violation - should reject all
+            ConsistencyLevelTestCase(
+                entityType = "MapVector2",
+                inputDelta = JsonObject()
+                    .put("x", 150.0) // STRICT field
+                    .put("y", 200.0), // STRICT field
+                requestedVersion = 6, // Different from entity version
+                expectedFilteredDelta = JsonObject() // Empty due to STRICT
+            )
+        )
+    }
+
+    // Data class for consistency level test cases
+    data class ConsistencyLevelTestCase(
+        val entityType: String,
+        val inputDelta: JsonObject,
+        val requestedVersion: Long,
+        val expectedFilteredDelta: JsonObject
+    )
 }
 
-data class MutationTestCase(
-    val inputDelta: JsonObject,  // The client-sent mutation delta
-    val expectedPrunedDelta: JsonObject  // The filtered delta that should be passed to entityStore
-)
