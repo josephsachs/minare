@@ -2,30 +2,32 @@ package com.minare.core.state
 
 import com.minare.core.websocket.UpdateSocketManager
 import com.minare.persistence.ChannelStore
+import com.minare.persistence.ContextStore
 import com.mongodb.ConnectionString
 import com.mongodb.client.MongoClients
 import com.mongodb.client.model.changestream.ChangeStreamDocument
 import com.mongodb.client.model.changestream.FullDocument
+import io.vertx.core.Vertx
 import io.vertx.core.json.JsonArray
 import io.vertx.core.json.JsonObject
 import io.vertx.kotlin.coroutines.dispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import org.bson.Document
 import org.slf4j.LoggerFactory
 import javax.inject.Inject
 import javax.inject.Named
-import com.minare.persistence.ContextStore
+import javax.inject.Singleton
 
+@Singleton
 class MongoEntityStreamConsumer @Inject constructor(
     private val contextStore: ContextStore,
     private val channelStore: ChannelStore,
     private val updateSocketManager: UpdateSocketManager,
-    private val vertx: io.vertx.core.Vertx,
+    private val vertx: Vertx,
     @Named("mongoDatabase") private val mongoDatabase: String,
     @Named("mongoConnectionString") private val mongoConnectionString: String
 ) {
@@ -74,7 +76,7 @@ class MongoEntityStreamConsumer @Inject constructor(
                 } catch (e: Exception) {
                     log.error("Error in change stream watcher", e)
                     // Restart after a delay
-                    delay(1000)
+                    kotlinx.coroutines.delay(1000)
                     startListening()
                 } finally {
                     // Clean up
@@ -154,13 +156,15 @@ class MongoEntityStreamConsumer @Inject constructor(
         // Create the update message
         val updateMessage = createUpdateMessage(entityId, version, state)
 
-        // Broadcast to all clients in all channels
-        for (channelId in channelIds) {
-            val clientIds = channelStore.getClientIds(channelId)
-            for (clientId in clientIds) {
-                /// YAY FINISH LINE!!!!!! HOORJ POKEY
-                ///updateSocketManager.sendToClient(clientId, updateMessage)
-            }
+        // Get clients for all channels and broadcast the update
+        // Using functional approach
+        val clientIds = channelIds.flatMap { channelId ->
+            channelStore.getClientIds(channelId)
+        }
+
+        // Send update to all clients
+        if (clientIds.isNotEmpty()) {
+            updateSocketManager.broadcastUpdate(clientIds, updateMessage)
         }
     }
 

@@ -27,6 +27,7 @@ class MongoConnectionStore @Inject constructor(
             id = connectionId,
             createdAt = now,
             lastUpdated = now,
+            commandSocketId = null,
             updateSocketId = null
         )
 
@@ -34,6 +35,7 @@ class MongoConnectionStore @Inject constructor(
             .put("_id", connection.id)
             .put("createdAt", connection.createdAt)
             .put("lastUpdated", connection.lastUpdated)
+            .put("commandSocketId", connection.commandSocketId)
             .put("updateSocketId", connection.updateSocketId)
 
         return mongoClient.save(collection, document)
@@ -70,6 +72,7 @@ class MongoConnectionStore @Inject constructor(
                             id = result.getString("_id"),
                             createdAt = result.getLong("createdAt"),
                             lastUpdated = result.getLong("lastUpdated"),
+                            commandSocketId = result.getString("commandSocketId"),
                             updateSocketId = result.getString("updateSocketId")
                         )
                     )
@@ -99,12 +102,13 @@ class MongoConnectionStore @Inject constructor(
     /**
      * Update the update socket ID
      */
-    fun updateUpdateSocketId(connectionId: String, updateSocketId: String?): Future<Connection> {
+    fun updateUpdateSocketId(connectionId: String, commandSocketId: String?, updateSocketId: String?): Future<Connection> {
         val query = JsonObject().put("_id", connectionId)
         val now = System.currentTimeMillis()
         val update = JsonObject()
             .put("\$set", JsonObject()
                 .put("lastUpdated", now)
+                .put("commandSocketId", commandSocketId)
                 .put("updateSocketId", updateSocketId)
             )
 
@@ -138,6 +142,7 @@ class MongoConnectionStore @Inject constructor(
                         id = doc.getString("_id"),
                         createdAt = doc.getLong("createdAt"),
                         lastUpdated = doc.getLong("lastUpdated"),
+                        commandSocketId = doc.getString("commandSocketId"),
                         updateSocketId = doc.getString("updateSocketId")
                     )
                 }

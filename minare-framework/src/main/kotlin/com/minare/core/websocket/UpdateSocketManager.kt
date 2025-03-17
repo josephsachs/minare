@@ -111,17 +111,24 @@ class UpdateSocketManager @Inject constructor(
     }
 
     /**
+     * Broadcast an update to specified clients
+     */
+    fun broadcastUpdate(clientIds: List<String>, update: JsonObject): Future<Void> {
+        val futures = clientIds.map { clientId ->
+            sendUpdate(clientId, update)
+                .otherwise { null } // Continue broadcasting even if some fail
+        }
+
+        return Future.all(futures).map { null }
+    }
+
+    /**
      * Broadcast an update to all connected clients
      */
-    fun broadcastUpdate(update: JsonObject): Future<Void> {
+    fun broadcastUpdateAll(update: JsonObject): Future<Void> {
         return connectionManager.getAllConnectedIds()
             .compose { connectionIds ->
-                val futures = connectionIds.map { connectionId ->
-                    sendUpdate(connectionId, update)
-                        .otherwise { null } // Continue broadcasting even if some fail
-                }
-
-                Future.all(futures).map { null }
+                broadcastUpdate(connectionIds, update)
             }
     }
 

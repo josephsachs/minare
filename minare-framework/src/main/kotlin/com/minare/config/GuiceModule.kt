@@ -27,6 +27,14 @@ class GuiceModule : AbstractModule() {
         bind(ChannelStore::class.java).to(MongoChannelStore::class.java).asEagerSingleton()
         bind(ContextStore::class.java).to(MongoContextStore::class.java).asEagerSingleton()
 
+        bind(String::class.java)
+            .annotatedWith(Names.named("mongoDatabase"))
+            .toInstance("minare")
+
+        bind(String::class.java)
+            .annotatedWith(Names.named("mongoConnectionString"))
+            .toInstance("mongodb://localhost:27017")
+
         bind(String::class.java).annotatedWith(Names.named("channels")).toInstance("channels")
         bind(String::class.java).annotatedWith(Names.named("contexts")).toInstance("contexts")
 

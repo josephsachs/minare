@@ -9,5 +9,6 @@ data class Connection(
     val id: String,
     val createdAt: Long,
     val lastUpdated: Long,
+    val commandSocketId: String? = null,
     val updateSocketId: String? = null
 )
