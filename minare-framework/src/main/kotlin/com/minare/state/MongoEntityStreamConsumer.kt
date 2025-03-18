@@ -40,7 +40,7 @@ class MongoEntityStreamConsumer @Inject constructor(
     /**
      * Starts listening to the MongoDB change stream
      */
-    suspend fun startListening() {
+    suspend fun listen() {
         try {
             // Use the native MongoDB Java driver
             val mongoClientSettings = com.mongodb.MongoClientSettings.builder()
@@ -51,23 +51,18 @@ class MongoEntityStreamConsumer @Inject constructor(
             val database = nativeMongoClient.getDatabase(mongoDatabase)
             val entitiesCollection = database.getCollection(collection)
 
-            // Start a coroutine to watch for changes, using our managed scope
             consumerScope.launch {
                 try {
-                    // Create a change stream with a full document lookup on updates
                     val changeStream = entitiesCollection.watch()
                         .fullDocument(FullDocument.UPDATE_LOOKUP)
 
-                    // Iterate through the change stream
                     val iterator = changeStream.iterator()
                     while (isActive && iterator.hasNext()) {
                         val changeDocument = iterator.next()
 
-                        // Convert the MongoDB document to a JsonObject
                         val changeEvent = convertChangeDocumentToJsonObject(changeDocument)
 
-                        // Process the change event
-                        try {
+                    try {
                             processChangeEvent(changeEvent)
                         } catch (e: Exception) {
                             log.error("Error processing change event", e)
@@ -75,11 +70,9 @@ class MongoEntityStreamConsumer @Inject constructor(
                     }
                 } catch (e: Exception) {
                     log.error("Error in change stream watcher", e)
-                    // Restart after a delay
                     kotlinx.coroutines.delay(1000)
-                    startListening()
+                    listen()
                 } finally {
-                    // Clean up
                     nativeMongoClient.close()
                 }
             }

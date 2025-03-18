@@ -1,49 +1,49 @@
 package com.minare
 
-import com.google.inject.Guice
-import com.minare.config.GuiceModule
-import com.minare.core.state.MongoChangeStreamConsumer
-import com.minare.core.websocket.WebSocketRoutes
-import com.minare.persistence.DatabaseInitializer
 import io.vertx.core.Vertx
-import io.vertx.ext.web.Router
 import org.slf4j.LoggerFactory
 
 /**
- * Main application entry point.
- * Initializes the dependency injection container and starts the server.
+ * Main utility class for the Minare framework.
+ * Provides helper methods for starting applications.
  */
 class Main {
     companion object {
         private val log = LoggerFactory.getLogger(Main::class.java)
 
+        /**
+         * A utility method to deploy a MinareApplication instance.
+         * This can be used by implementing applications as a convenience.
+         */
         @JvmStatic
-        fun main(args: Array<String>) {
-            val injector = Guice.createInjector(GuiceModule())
+        fun deployApplication(applicationClass: Class<out MinareApplication>) {
+            val vertx = Vertx.vertx()
 
-            val vertx = injector.getInstance(Vertx::class.java)
-            val wsRoutes = injector.getInstance(WebSocketRoutes::class.java)
-            val router = Router.router(vertx)
+            try {
+                log.info("Deploying Minare application: ${applicationClass.simpleName}")
 
-            val dbInitializer = injector.getInstance(DatabaseInitializer::class.java)
-            val changeStreamConsumer = injector.getInstance(MongoChangeStreamConsumer::class.java)
+                // Deploy the application verticle
+                vertx.deployVerticle(applicationClass.getDeclaredConstructor().newInstance())
+                    .onSuccess { id ->
+                        log.info("Successfully deployed application with ID: {}", id)
+                    }
+                    .onFailure { err ->
+                        log.error("Failed to deploy application", err)
+                        vertx.close()
+                        System.exit(1)
+                    }
 
-            dbInitializer.initialize()
-                .compose<Nothing?> {
-                    changeStreamConsumer.startConsuming()
-                    wsRoutes.register(router)
+                // Add shutdown hook for graceful termination
+                Runtime.getRuntime().addShutdownHook(Thread {
+                    log.info("Shutting down Minare application")
+                    vertx.close()
+                })
 
-                    // Start the HTTP server
-                    vertx.createHttpServer()
-                        .requestHandler(router)
-                        .listen(8080)
-                        .onSuccess { http -> log.info("Server started on port 8080") }
-                        .onFailure { err ->
-                            log.error("Failed to start server", err)
-                            System.exit(1)
-                        }
-                        .mapEmpty()
-                }
+            } catch (e: Exception) {
+                log.error("Failed to initialize application", e)
+                vertx.close()
+                System.exit(1)
+            }
         }
     }
 }

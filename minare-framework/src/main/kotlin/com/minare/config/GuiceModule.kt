@@ -4,28 +4,31 @@ import com.google.inject.AbstractModule
 import com.google.inject.Provides
 import com.google.inject.Singleton
 import com.google.inject.name.Names
-import com.minare.core.state.MongoChangeStreamConsumer
+import com.minare.cache.ConnectionCache
+import com.minare.cache.InMemoryConnectionCache
+import com.minare.controller.ConnectionController
+import com.minare.core.state.MongoEntityStreamConsumer
 import com.minare.core.websocket.CommandMessageHandler
 import com.minare.core.websocket.CommandSocketManager
-import com.minare.core.websocket.ConnectionManager
 import com.minare.core.websocket.UpdateSocketManager
 import com.minare.persistence.*
 import io.vertx.core.Vertx
 import io.vertx.core.json.JsonObject
 import io.vertx.ext.mongo.MongoClient
-import com.minare.core.state.MongoEntityStreamConsumer
-import com.minare.persistence.ContextStore
-import com.minare.persistence.MongoChannelStore
-import com.minare.persistence.MongoContextStore
+import io.vertx.kotlin.coroutines.dispatcher
+import kotlin.coroutines.CoroutineContext
 
 class GuiceModule : AbstractModule() {
 
     override fun configure() {
         // Store bindings
-        bind(EntityStore::class.java) to MongoEntityStore::class.java
-        bind(ConnectionStore::class.java) to MongoConnectionStore::class.java
-        bind(ChannelStore::class.java).to(MongoChannelStore::class.java).asEagerSingleton()
-        bind(ContextStore::class.java).to(MongoContextStore::class.java).asEagerSingleton()
+        bind(EntityStore::class.java).to(MongoEntityStore::class.java)
+        bind(ConnectionStore::class.java).to(MongoConnectionStore::class.java)
+        bind(ChannelStore::class.java).to(MongoChannelStore::class.java)
+        bind(ContextStore::class.java).to(MongoContextStore::class.java)
+
+        // Cache bindings
+        bind(ConnectionCache::class.java).to(InMemoryConnectionCache::class.java).`in`(Singleton::class.java)
 
         bind(String::class.java)
             .annotatedWith(Names.named("mongoDatabase"))
@@ -49,6 +52,12 @@ class GuiceModule : AbstractModule() {
 
     @Provides
     @Singleton
+    fun provideCoroutineContext(vertx: Vertx): CoroutineContext {
+        return vertx.dispatcher()
+    }
+
+    @Provides
+    @Singleton
     fun provideMongoClient(vertx: Vertx): MongoClient {
         val uri = System.getenv().getOrDefault("MONGO_URI", "mongodb://mongodb-rs:27017/?replicaSet=rs0")
 
@@ -61,43 +70,40 @@ class GuiceModule : AbstractModule() {
 
     @Provides
     @Singleton
-    fun provideConnectionManager(): ConnectionManager {
-        return ConnectionManager()
+    fun provideConnectionController(
+        connectionStore: ConnectionStore,
+        connectionCache: ConnectionCache
+    ): ConnectionController {
+        return ConnectionController(connectionStore, connectionCache)
     }
 
     @Provides
     @Singleton
-    fun provideCommandMessageHandler(): CommandMessageHandler {
-        return CommandMessageHandler()
+    fun provideCommandMessageHandler(
+        connectionController: ConnectionController,
+        coroutineContext: CoroutineContext
+    ): CommandMessageHandler {
+        return CommandMessageHandler(connectionController, coroutineContext)
     }
 
     @Provides
     @Singleton
     fun provideCommandSocketManager(
         connectionStore: ConnectionStore,
-        connectionManager: ConnectionManager,
-        messageHandler: CommandMessageHandler
+        connectionController: ConnectionController,
+        messageHandler: CommandMessageHandler,
+        coroutineContext: CoroutineContext
     ): CommandSocketManager {
-        return CommandSocketManager(connectionStore, connectionManager, messageHandler)
+        return CommandSocketManager(connectionStore, connectionController, messageHandler, coroutineContext)
     }
 
     @Provides
     @Singleton
     fun provideUpdateSocketManager(
         connectionStore: ConnectionStore,
-        connectionManager: ConnectionManager
+        connectionController: ConnectionController,
+        coroutineContext: CoroutineContext
     ): UpdateSocketManager {
-        return UpdateSocketManager(connectionStore, connectionManager)
-    }
-
-    @Provides
-    @Singleton
-    fun provideMongoChangeStreamConsumer(
-        mongoClient: MongoClient,
-        updateSocketManager: UpdateSocketManager,
-        connectionManager: ConnectionManager,
-        vertx: Vertx
-    ): MongoChangeStreamConsumer {
-        return MongoChangeStreamConsumer(mongoClient, updateSocketManager, connectionManager, vertx)
+        return UpdateSocketManager(connectionStore, connectionController, coroutineContext)
     }
 }

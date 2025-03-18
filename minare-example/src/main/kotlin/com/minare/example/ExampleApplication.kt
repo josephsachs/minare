@@ -49,7 +49,7 @@ class ExampleApplication @Inject constructor(
                 // Save nodes with relationships
                 saveAllNodes(listOf(nodeA, nodeB, nodeC, nodeE, nodeF))
             } catch (e: Exception) {
-                log.error("Error initializing node graph", e)
+                //log.error("Error initializing node graph", e)
                 throw e
             }
         }
@@ -61,16 +61,16 @@ class ExampleApplication @Inject constructor(
         }
     }
 
-    override fun onStart(): Future<Void> {
+    fun onStart(): Future<Void> {
         val promise = Promise.promise<Void>()
 
         CoroutineScope(vertx.dispatcher()).launch {
             try {
                 initializeNodeGraph()
-                log.info("Node graph successfully initialized")
+                //log.info("Node graph successfully initialized")
                 promise.complete()
             } catch (e: Exception) {
-                log.error("Failed to initialize node graph", e)
+                //log.error("Failed to initialize node graph", e)
                 promise.fail(e)
             }
         }
