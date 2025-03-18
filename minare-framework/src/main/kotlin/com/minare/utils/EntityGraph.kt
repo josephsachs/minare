@@ -6,9 +6,12 @@ import org.jgrapht.traverse.DepthFirstIterator
 import org.jgrapht.traverse.TopologicalOrderIterator
 import com.minare.core.models.Entity
 import com.minare.core.entity.annotations.State
+import io.vertx.core.json.JsonArray
+import io.vertx.core.json.JsonObject
+import org.jgrapht.Graph
 
 /**
- * Utility for building and traversing a directed graph of entity relationships.
+ * Utility for building, traversing, and serializing entity relationship graphs.
  * This helps with operations that need to understand entity hierarchies.
  */
 class EntityGraph(root: Entity) {
@@ -33,6 +36,15 @@ class EntityGraph(root: Entity) {
      */
     fun getDepthFirstIterator(): DepthFirstIterator<Entity, DefaultEdge> {
         return DepthFirstIterator(graph)
+    }
+
+    /**
+     * Converts this entity graph to a JsonObject suitable for sync responses
+     *
+     * @return JsonObject representation of the graph
+     */
+    suspend fun toJson(): JsonObject {
+        return graphToJson(graph)
     }
 
     /**
@@ -91,6 +103,76 @@ class EntityGraph(root: Entity) {
                     addFieldToGraph(entity, source)
                 }
             }
+        }
+    }
+
+    companion object {
+        /**
+         * Converts a graph of Entity objects to a JsonObject suitable for sync responses
+         *
+         * @param graph The entity graph to convert
+         * @return JsonObject representation of the graph
+         */
+        suspend fun graphToJson(graph: Graph<Entity, DefaultEdge>): JsonObject {
+            val result = JsonObject()
+            val entities = JsonArray()
+
+            // Add each entity to the array
+            for (entity in graph.vertexSet()) {
+                val entityJson = JsonObject()
+                    .put("_id", entity._id)
+                    .put("version", entity.version)
+                    .put("state", entity.serialize())
+
+                entities.add(entityJson)
+            }
+
+            // Add edges information
+            val edges = JsonArray()
+            for (edge in graph.edgeSet()) {
+                val source = graph.getEdgeSource(edge)
+                val target = graph.getEdgeTarget(edge)
+
+                edges.add(JsonObject()
+                    .put("source", source._id)
+                    .put("target", target._id))
+            }
+
+            return result
+                .put("entities", entities)
+                .put("edges", edges)
+        }
+
+        /**
+         * Converts a collection of entities to a JsonObject without edge information
+         *
+         * @param entities Collection of Entity objects
+         * @return JsonObject containing just the entities array
+         */
+        suspend fun entitiesToJson(entities: Collection<Entity>): JsonObject {
+            val result = JsonObject()
+            val entitiesArray = JsonArray()
+
+            for (entity in entities) {
+                val entityJson = JsonObject()
+                    .put("_id", entity._id)
+                    .put("version", entity.version)
+                    .put("state", entity.serialize())
+
+                entitiesArray.add(entityJson)
+            }
+
+            return result.put("entities", entitiesArray)
+        }
+
+        /**
+         * Converts a map of entities to a JsonObject without edge information
+         *
+         * @param entities Map of entity IDs to Entity objects
+         * @return JsonObject containing just the entities array
+         */
+        suspend fun entitiesToJson(entities: Map<String, Entity>): JsonObject {
+            return entitiesToJson(entities.values)
         }
     }
 }

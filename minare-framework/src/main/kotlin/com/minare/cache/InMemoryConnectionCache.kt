@@ -22,7 +22,7 @@ class InMemoryConnectionCache : ConnectionCache {
     private val updateSocketToConnection = ConcurrentHashMap<ServerWebSocket, Connection>()
 
     override fun storeConnection(connection: Connection) {
-        connections[connection.id] = connection
+        connections[connection._id] = connection
     }
 
     override fun removeConnection(connectionId: String) {
@@ -68,11 +68,11 @@ class InMemoryConnectionCache : ConnectionCache {
     }
 
     override fun getConnectionIdForCommandSocket(socket: ServerWebSocket): String? {
-        return commandSocketToConnection[socket]?.id
+        return commandSocketToConnection[socket]?._id
     }
 
     override fun getConnectionIdForUpdateSocket(socket: ServerWebSocket): String? {
-        return updateSocketToConnection[socket]?.id
+        return updateSocketToConnection[socket]?._id
     }
 
     override fun getConnectionForCommandSocket(socket: ServerWebSocket): Connection? {

@@ -6,7 +6,7 @@ package com.minare.core.models
  * - An update socket for pushing updates to the client
  */
 data class Connection(
-    val id: String,
+    val _id: String,
     val createdAt: Long,
     val lastUpdated: Long,
     val commandSocketId: String? = null,

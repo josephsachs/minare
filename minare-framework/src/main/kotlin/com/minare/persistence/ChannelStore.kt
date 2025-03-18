@@ -38,4 +38,11 @@ interface ChannelStore {
      * @return A list of client IDs
      */
     suspend fun getClientIds(channelId: String): List<String>
+
+    /**
+     * Gets all channel IDs that a client is subscribed to
+     * @param clientId The client ID
+     * @return A list of channel IDs
+     */
+    suspend fun getChannelsForClient(clientId: String): List<String>
 }

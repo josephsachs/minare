@@ -23,4 +23,11 @@ interface ContextStore {
      * @return A list of channel IDs
      */
     suspend fun getChannelsByEntityId(entityId: String): List<String>
+
+    /**
+     * Gets all entity IDs associated with a channel
+     * @param channelId The channel ID
+     * @return A list of entity IDs
+     */
+    suspend fun getEntityIdsByChannel(channelId: String): List<String>
 }

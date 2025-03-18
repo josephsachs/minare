@@ -77,4 +77,16 @@ class MongoChannelStore @Inject constructor(
         val clientsArray = channel.getJsonArray("clients", JsonArray())
         return clientsArray.map { it.toString() }
     }
+
+    /**
+     * Gets all channel IDs that a client is subscribed to
+     * @param clientId The client ID
+     * @return A list of channel IDs
+     */
+    override suspend fun getChannelsForClient(clientId: String): List<String> {
+        val query = JsonObject().put("clients", clientId)
+        val results = mongoClient.find(collection, query).await()
+
+        return results.map { it.getString("_id") }
+    }
 }

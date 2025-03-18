@@ -57,7 +57,7 @@ class ExampleApplication @Inject constructor(
 
     private suspend fun saveAllNodes(nodes: List<Node>) {
         for (node in nodes) {
-            entityStore.save(node).await()
+            entityStore.save(node)
         }
     }
 

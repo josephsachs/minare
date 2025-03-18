@@ -3,7 +3,12 @@ package com.minare.controller
 import com.minare.cache.ConnectionCache
 import com.minare.core.models.Connection
 import com.minare.persistence.ConnectionStore
+import com.minare.persistence.ChannelStore
+import com.minare.persistence.ContextStore
+import com.minare.persistence.EntityStore
+import com.minare.utils.EntityGraph
 import io.vertx.core.http.ServerWebSocket
+import io.vertx.core.json.JsonObject
 import org.slf4j.LoggerFactory
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -15,7 +20,10 @@ import javax.inject.Singleton
 @Singleton
 class ConnectionController @Inject constructor(
     private val connectionStore: ConnectionStore,
-    private val connectionCache: ConnectionCache
+    private val connectionCache: ConnectionCache,
+    private val channelStore: ChannelStore,
+    private val contextStore: ContextStore,
+    private val entityStore: EntityStore
 ) {
     private val log = LoggerFactory.getLogger(ConnectionController::class.java)
 
@@ -26,7 +34,7 @@ class ConnectionController @Inject constructor(
         val connection = connectionStore.create()
         // Store in memory cache
         connectionCache.storeConnection(connection)
-        log.info("Connection created and stored in memory: {}", connection.id)
+        log.info("Connection created and stored in memory: {}", connection._id)
         return connection
     }
 
@@ -44,7 +52,7 @@ class ConnectionController @Inject constructor(
         val connection = connectionStore.find(connectionId)
         // Store in memory cache for future use
         connectionCache.storeConnection(connection)
-        log.debug("Connection loaded from database to memory: {}", connection.id)
+        log.debug("Connection loaded from database to memory: {}", connection._id)
         return connection
     }
 
@@ -64,7 +72,7 @@ class ConnectionController @Inject constructor(
 
         // Update command socket ID and update socket ID in database
         return connectionStore.updateSocketIds(
-            connection.id,
+            connection._id,
             connection.commandSocketId,
             connection.updateSocketId
         )
@@ -311,5 +319,88 @@ class ConnectionController @Inject constructor(
      */
     fun isFullyConnected(connectionId: String): Boolean {
         return connectionCache.isFullyConnected(connectionId)
+    }
+
+    /**
+     * Synchronize a connection with all entities in its channels
+     * This is typically called when a connection is first established
+     *
+     * @param connectionId The ID of the connection to synchronize
+     * @return True if sync was successful, false otherwise
+     */
+    suspend fun syncConnection(connectionId: String): Boolean {
+        try {
+            log.info("Starting sync for connection: {}", connectionId)
+
+            // Get all channels this connection is subscribed to
+            val channels = channelStore.getChannelsForClient(connectionId)
+
+            if (channels.isEmpty()) {
+                log.info("No channels found for connection: {}", connectionId)
+                return true // Nothing to sync
+            }
+
+            // For each channel, sync all entities
+            for (channelId in channels) {
+                syncChannelToConnection(channelId, connectionId)
+            }
+
+            log.info("Sync completed for connection: {}", connectionId)
+            return true
+
+        } catch (e: Exception) {
+            log.error("Error during connection sync: {}", connectionId, e)
+            return false
+        }
+    }
+
+    /**
+     * Synchronize all entities in a channel to a specific connection
+     *
+     * @param channelId The channel containing the entities
+     * @param connectionId The connection to sync to
+     */
+    private suspend fun syncChannelToConnection(channelId: String, connectionId: String) {
+        try {
+            log.debug("Syncing channel {} to connection {}", channelId, connectionId)
+
+            // Get all entity IDs in this channel
+            val entityIds = contextStore.getEntityIdsByChannel(channelId)
+
+            if (entityIds.isEmpty()) {
+                log.debug("No entities found in channel: {}", channelId)
+                return
+            }
+
+            // Option 1: Fetch entities as a map (simpler)
+            val entities = entityStore.findEntitiesByIds(entityIds)
+            val syncData = EntityGraph.entitiesToJson(entities)
+
+            // Option 2: Build and convert a full graph (with relationships)
+            // Use this if relationships between entities are important
+            // val graph = entityStore.buildEntityGraph(entityIds)
+            // val syncData = EntityGraph.graphToJson(graph)
+
+            // Add metadata
+            syncData.put("channelId", channelId)
+            syncData.put("timestamp", System.currentTimeMillis())
+
+            // Create the sync message
+            val syncMessage = JsonObject()
+                .put("type", "sync")
+                .put("data", syncData)
+
+            // Send to the client
+            val commandSocket = getCommandSocket(connectionId)
+            if (commandSocket != null && !commandSocket.isClosed()) {
+                commandSocket.writeTextMessage(syncMessage.encode())
+                log.debug("Sent sync data for channel {} to connection {}", channelId, connectionId)
+            } else {
+                log.warn("Cannot sync: command socket not found or closed for connection {}", connectionId)
+            }
+
+        } catch (e: Exception) {
+            log.error("Error syncing channel {} to connection {}", channelId, connectionId, e)
+        }
     }
 }

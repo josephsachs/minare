@@ -24,7 +24,7 @@ class MongoConnectionStore @Inject constructor(
         val now = System.currentTimeMillis()
 
         val connection = Connection(
-            id = connectionId,
+            _id = connectionId,
             createdAt = now,
             lastUpdated = now,
             commandSocketId = null,
@@ -32,7 +32,7 @@ class MongoConnectionStore @Inject constructor(
         )
 
         val document = JsonObject()
-            .put("_id", connection.id)
+            .put("_id", connection._id)
             .put("createdAt", connection.createdAt)
             .put("lastUpdated", connection.lastUpdated)
             .put("commandSocketId", connection.commandSocketId)
@@ -92,7 +92,7 @@ class MongoConnectionStore @Inject constructor(
             ?: throw IllegalArgumentException("Connection not found: $connectionId")
 
         return Connection(
-            id = result.getString("_id"),
+            _id = result.getString("_id"),
             createdAt = result.getLong("createdAt"),
             lastUpdated = result.getLong("lastUpdated"),
             commandSocketId = result.getString("commandSocketId"),
@@ -155,7 +155,7 @@ class MongoConnectionStore @Inject constructor(
         val documents = mongoClient.find(collection, query).await()
         return documents.map { doc ->
             Connection(
-                id = doc.getString("_id"),
+                _id = doc.getString("_id"),
                 createdAt = doc.getLong("createdAt"),
                 lastUpdated = doc.getLong("lastUpdated"),
                 commandSocketId = doc.getString("commandSocketId"),

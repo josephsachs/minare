@@ -56,4 +56,16 @@ class MongoContextStore @Inject constructor(
 
         return results.mapNotNull { it.getString("channel") }
     }
+
+    /**
+     * Gets all entity IDs associated with a channel
+     * @param channelId The channel ID
+     * @return A list of entity IDs
+     */
+    override suspend fun getEntityIdsByChannel(channelId: String): List<String> {
+        val query = JsonObject().put("channel", channelId)
+        val results = mongoClient.find(collection, query).await()
+
+        return results.mapNotNull { it.getString("entity") }
+    }
 }

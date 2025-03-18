@@ -50,7 +50,7 @@ class UpdateSocketManager @Inject constructor(
                 try {
                     val connection = connectionController.getConnectionForUpdateSocket(websocket)
                     if (connection != null) {
-                        connectionController.removeUpdateSocket(connection.id)
+                        connectionController.removeUpdateSocket(connection._id)
                     }
                 } catch (e: Exception) {
                     log.error("Error handling update socket close", e)

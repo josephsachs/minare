@@ -56,8 +56,11 @@ class CommandSocketManager @Inject constructor(
     private suspend fun initiateConnection(websocket: ServerWebSocket) {
         try {
             val connection = connectionStore.create()
-            connectionController.registerCommandSocket(connection.id, websocket)
-            sendConnectionConfirmation(websocket, connection.id)
+            connectionController.registerCommandSocket(connection._id, websocket)
+            sendConnectionConfirmation(websocket, connection._id)
+
+            // After connection is established, trigger sync
+            connectionController.syncConnection(connection._id)
         } catch (e: Exception) {
             handleError(websocket, e)
         }
@@ -77,7 +80,7 @@ class CommandSocketManager @Inject constructor(
         try {
             val connection = connectionController.getConnectionForCommandSocket(websocket)
             if (connection != null) {
-                messageHandler.handle(connection.id, message)
+                messageHandler.handle(connection._id, message)
             } else {
                 throw IllegalStateException("No connection found for this websocket")
             }
@@ -91,7 +94,7 @@ class CommandSocketManager @Inject constructor(
             val connection = connectionController.getConnectionForCommandSocket(websocket)
             if (connection != null) {
                 // Notify the update socket manager to close the update socket if it exists
-                connectionController.handleCommandSocketClosed(connection.id)
+                connectionController.handleCommandSocketClosed(connection._id)
             }
         } catch (e: Exception) {
             log.error("Error handling websocket close", e)

@@ -247,7 +247,7 @@ class MongoEntityStore @Inject constructor(
         }
     }
 
-    override suspend fun save(entity: Entity): Future<Entity> {
+    override suspend fun save(entity: Entity): Entity {
         val document = JsonObject()
             .put("_id", entity._id)
             .put("type", entity.type)
@@ -256,37 +256,34 @@ class MongoEntityStore @Inject constructor(
 
         document.put("state", stateJson)
 
-        // Check if this is an update or new entity (based on id presence)
-        return if (entity._id.isNullOrEmpty()) {
-            // New entity - let MongoDB generate an ID and set initial version
-            document.put("version", 1)
+        try {
+            // Check if this is an update or new entity (based on id presence)
+            if (entity._id.isNullOrEmpty()) {
+                // New entity - let MongoDB generate an ID and set initial version
+                document.put("version", 1)
 
-            mongoClient.insert(collection, document)
-                .map { generatedId ->
-                    // Update entity with the generated ID
-                    entity._id = generatedId
-                    entity
+                val generatedId = mongoClient.insert(collection, document).await()
+                // Update entity with the generated ID
+                entity._id = generatedId
+                log.debug("Created new entity with ID: {}", entity._id)
+            } else {
+                // Existing entity - just update it, version handling will be done elsewhere
+                val query = JsonObject().put("_id", entity._id)
+                val update = JsonObject().put("\$set", document)
+
+                val result = mongoClient.updateCollection(collection, query, update).await()
+                if (result.docModified == 0L) {
+                    // No document was updated - entity might not exist
+                    throw IllegalStateException("Entity not found: ${entity._id}")
                 }
-                .onSuccess { log.debug("Created new entity with ID: {}", entity._id) }
-        } else {
-            // Existing entity - just update it, version handling will be done elsewhere
-            val query = JsonObject()
-                .put("_id", entity._id)
+                log.debug("Updated entity: {}", entity._id)
+            }
 
-            val update = JsonObject().put("\$set", document)
-
-            mongoClient.updateCollection(collection, query, update)
-                .compose { result ->
-                    if (result.docModified == 0L) {
-                        // No document was updated - entity might not exist
-                        Future.failedFuture("Entity not found: ${entity._id}")
-                    } else {
-                        Future.succeededFuture(entity)
-                    }
-                }
-                .onSuccess { log.debug("Updated entity: {}", entity._id) }
+            return entity
+        } catch (err: Exception) {
+            log.error("Failed to save entity: {}", entity._id, err)
+            throw err
         }
-            .onFailure { err -> log.error("Failed to save entity: {}", entity._id, err) }
     }
 
     /**
@@ -336,5 +333,109 @@ class MongoEntityStore @Inject constructor(
             log.error("Failed to update entity state: $entityId", err)
             throw err
         }
+    }
+
+    /**
+     * Fetches multiple entities by their IDs
+     *
+     * @param entityIds List of entity IDs to fetch
+     * @return Map of entity IDs to entity objects
+     */
+    override suspend fun findEntitiesByIds(entityIds: List<String>): Map<String, Entity> {
+        if (entityIds.isEmpty()) {
+            return emptyMap()
+        }
+
+        // Create a query to find all entities with IDs in the provided list
+        val query = JsonObject().put("_id", JsonObject().put("\$in", JsonArray(entityIds)))
+
+        try {
+            // Execute the query and wait for results
+            val results = mongoClient.find(collection, query).await()
+
+            // Convert the document results to Entity objects
+            return results.mapNotNull { document ->
+                try {
+                    val id = document.getString("_id")
+                    val type = document.getString("type")
+                    val version = document.getLong("version", 1L)
+                    val state = document.getJsonObject("state", JsonObject())
+
+                    // Create a new entity instance of the appropriate type
+                    val entityType = type ?: "unknown"
+                    val entity = entityFactory.getNew(entityType).apply {
+                        this._id = id
+                        this.version = version
+                        this.type = entityType
+
+                        // TODO: Implement deserialize method
+                        // this.deserialize(state)
+                    }
+
+                    id to entity
+                } catch (e: Exception) {
+                    log.error("Error deserializing entity: ${document.getString("_id")}", e)
+                    null
+                }
+            }.toMap()
+        } catch (err: Exception) {
+            log.error("Failed to fetch entities by IDs", err)
+            throw err
+        }
+    }
+
+    /**
+     * Builds a graph of entities based on a list of entity IDs
+     *
+     * @param entityIds List of entity IDs to include in the graph
+     * @return A graph containing the requested entities and their relationships
+     */
+    override suspend fun buildEntityGraph(entityIds: List<String>): Graph<Entity, DefaultEdge> {
+        if (entityIds.isEmpty()) {
+            return DefaultDirectedGraph(DefaultEdge::class.java)
+        }
+
+        // First, fetch all the requested entities
+        val entitiesMap = findEntitiesByIds(entityIds)
+        if (entitiesMap.isEmpty()) {
+            return DefaultDirectedGraph(DefaultEdge::class.java)
+        }
+
+        // Create a new directed graph
+        val graph = DefaultDirectedGraph<Entity, DefaultEdge>(DefaultEdge::class.java)
+
+        // Add all entities as vertices
+        entitiesMap.values.forEach { entity ->
+            graph.addVertex(entity)
+        }
+
+        // Now analyze each entity to find relationships
+        for (entity in entitiesMap.values) {
+            // Get entity class for this type
+            val entityType = entity.type ?: continue
+            val entityClass = entityFactory.useClass(entityType) ?: continue
+
+            // Get parent fields for this entity type using the reflection cache
+            val parentFields = reflectionCache.getFieldsWithAnnotation<Parent>(entityClass)
+
+            // For each parent reference field
+            for (field in parentFields) {
+                field.isAccessible = true
+                try {
+                    val fieldValue = field.get(entity)
+                    val parentId = extractParentId(fieldValue) ?: continue
+
+                    // If the parent entity is in our map, add an edge
+                    val parentEntity = entitiesMap[parentId] ?: continue
+
+                    // Add an edge from this entity to its parent
+                    graph.addEdge(entity, parentEntity)
+                } catch (e: Exception) {
+                    log.debug("Error accessing field ${field.name} on entity ${entity._id}", e)
+                }
+            }
+        }
+
+        return graph
     }
 }

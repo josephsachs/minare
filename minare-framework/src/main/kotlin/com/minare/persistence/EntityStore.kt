@@ -32,16 +32,33 @@ interface EntityStore {
     /**
      * Creates or updates an entity
      *
-     * @param entityIds The set of entity IDs to update
-     * @return The update results
+     * @param entity The entity to save
+     * @return The saved entity
      */
-    suspend fun save(entity: Entity): Future<Entity>
+    suspend fun save(entity: Entity): Entity
 
     /**
      * Execute mutate operation for delta
      *
-     * @param entityIds The set of entity IDs to update
+     * @param entityId The entity ID to mutate
+     * @param delta The changes to apply
      * @return The update results
      */
     suspend fun mutateState(entityId: String, delta: JsonObject): JsonObject
+
+    /**
+     * Fetches multiple entities by their IDs
+     *
+     * @param entityIds List of entity IDs to fetch
+     * @return Map of entity IDs to entity objects
+     */
+    suspend fun findEntitiesByIds(entityIds: List<String>): Map<String, Entity>
+
+    /**
+     * Builds a graph of entities based on a list of entity IDs
+     *
+     * @param entityIds List of entity IDs to include in the graph
+     * @return A graph containing the requested entities and their relationships
+     */
+    suspend fun buildEntityGraph(entityIds: List<String>): Graph<Entity, DefaultEdge>
 }

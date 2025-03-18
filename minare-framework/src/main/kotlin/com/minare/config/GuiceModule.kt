@@ -72,9 +72,12 @@ class GuiceModule : AbstractModule() {
     @Singleton
     fun provideConnectionController(
         connectionStore: ConnectionStore,
-        connectionCache: ConnectionCache
+        connectionCache: ConnectionCache,
+        channelStore: ChannelStore,
+        contextStore: ContextStore,
+        entityStore: EntityStore
     ): ConnectionController {
-        return ConnectionController(connectionStore, connectionCache)
+        return ConnectionController(connectionStore, connectionCache, channelStore, contextStore, entityStore)
     }
 
     @Provides
