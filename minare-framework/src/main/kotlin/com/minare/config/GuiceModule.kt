@@ -7,8 +7,6 @@ import com.google.inject.name.Names
 import com.minare.cache.ConnectionCache
 import com.minare.cache.InMemoryConnectionCache
 import com.minare.controller.ConnectionController
-import com.minare.core.entity.DefaultEntityFactory
-import com.minare.core.entity.EntityFactory
 import com.minare.core.state.ChangeStreamWorkerVerticle
 import com.minare.core.websocket.CommandMessageHandler
 import com.minare.core.websocket.CommandSocketManager
@@ -35,8 +33,6 @@ class GuiceModule : AbstractModule() {
         bind(ConnectionStore::class.java).to(MongoConnectionStore::class.java)
         bind(ChannelStore::class.java).to(MongoChannelStore::class.java)
         bind(ContextStore::class.java).to(MongoContextStore::class.java)
-
-        // Cache bindings
         bind(ConnectionCache::class.java).to(InMemoryConnectionCache::class.java).`in`(Singleton::class.java)
 
         // We'll add EntityFactory binding in the child modules instead
@@ -83,17 +79,17 @@ class GuiceModule : AbstractModule() {
         return MongoClient.createShared(vertx, config)
     }
 
-    @Provides
-    @Singleton
-    fun provideConnectionController(
-        connectionStore: ConnectionStore,
-        connectionCache: ConnectionCache,
-        channelStore: ChannelStore,
-        contextStore: ContextStore,
-        entityStore: EntityStore
-    ): ConnectionController {
-        return ConnectionController(connectionStore, connectionCache, channelStore, contextStore, entityStore)
-    }
+    //@Provides
+    //@Singleton
+    //fun provideConnectionController(
+    //    connectionStore: ConnectionStore,
+    //    connectionCache: ConnectionCache,
+    //    channelStore: ChannelStore,
+    //    contextStore: ContextStore,
+    //    entityStore: EntityStore
+    //): ConnectionController {
+    //    return ConnectionController(connectionStore, connectionCache, channelStore, contextStore, entityStore)
+   ///}
 
     @Provides
     @Singleton

@@ -2,7 +2,7 @@ package com.minare.example
 
 import com.minare.core.entity.EntityFactory
 import com.minare.core.models.Entity
-import com.minare.example.core.models.Node
+import com.minare.example.models.Node
 import org.slf4j.LoggerFactory
 import javax.inject.Singleton
 import kotlin.reflect.KClass

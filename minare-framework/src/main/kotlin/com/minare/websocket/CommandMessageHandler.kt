@@ -29,8 +29,8 @@ open class CommandMessageHandler @Inject constructor(
         }
 
         when (command) {
-            "mutate" -> handleMutate(connectionId, message.getJsonObject("command"))
-            "sync" -> handleSync(connectionId, message.getJsonObject("command"))
+            "mutate" -> handleMutate(connectionId, message)
+            "sync" -> handleSync(connectionId, message)
             else -> {
                 log.warn("Unknown command: {}", command)
                 throw IllegalArgumentException("Unknown command: $command")
@@ -78,10 +78,31 @@ open class CommandMessageHandler @Inject constructor(
         // Get connection from memory
         val connection = connectionController.getConnection(connectionId)
 
-        // Extract sync details
+        // Check if this is a full channel sync request (no entity specified)
         val entityObject = message.getJsonObject("entity")
-            ?: throw IllegalArgumentException("Sync command requires a target entity")
 
+        if (entityObject == null) {
+            // This is a full channel sync request
+            log.info("Full channel sync requested for connection: {}", connectionId)
+
+            // Use the existing connection controller method to sync all channels
+            val success = connectionController.syncConnection(connectionId)
+
+            // Send confirmation that sync was initiated
+            val response = JsonObject()
+                .put("type", "sync_initiated")
+                .put("success", success)
+                .put("timestamp", System.currentTimeMillis())
+
+            val commandSocket = connectionController.getCommandSocket(connectionId)
+            if (commandSocket != null && !commandSocket.isClosed()) {
+                commandSocket.writeTextMessage(response.encode())
+            }
+
+            return
+        }
+
+        // Otherwise, handle entity-specific sync request
         val id = entityObject.getString("_id") ?: ""
         if (id.isEmpty()) {
             throw IllegalArgumentException("Sync command requires an entity with a valid _id")

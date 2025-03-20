@@ -269,14 +269,9 @@ abstract class MinareApplication : CoroutineVerticle() {
                     }
                 }
 
-                // Create injector with combined module
-                val injector = Guice.createInjector(combinedModule)
-
-                // Get a properly instantiated application instance with all dependencies
-                val app = injector.getInstance(applicationClass)
-
-                // Store injector reference in a static field if needed
-                InternalInjectorHolder.setInjector(injector)
+                val injector = Guice.createInjector(combinedModule) // Create injector with combined module
+                val app = injector.getInstance(applicationClass) // Get a properly instantiated application instance with all dependencies
+                InternalInjectorHolder.setInjector(injector) // Store injector reference in a static field if needed
 
                 // Deploy the verticle with proper coroutine context
                 vertx.deployVerticle(app)

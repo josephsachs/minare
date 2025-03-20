@@ -11,7 +11,7 @@ import javax.inject.Singleton
  * Controller responsible for managing entity-channel relationships
  */
 @Singleton
-class ChannelController @Inject constructor(
+open class ChannelController @Inject constructor(
     private val channelStore: ChannelStore,
     private val contextStore: ContextStore
 ) {
@@ -77,6 +77,24 @@ class ChannelController @Inject constructor(
      */
     suspend fun createChannel(): String {
         return channelStore.createChannel()
+    }
+
+    /**
+     * Subscribe a client to a channel
+     *
+     * @param connectionId The client connection ID
+     * @param channelId The channel ID
+     * @return True if subscription was successful
+     */
+    suspend fun subscribeClientToChannel(connectionId: String, channelId: String): Boolean {
+        return try {
+            channelStore.addClientToChannel(connectionId, channelId)
+            log.info("Client {} subscribed to channel {}", connectionId, channelId)
+            true
+        } catch (e: Exception) {
+            log.error("Failed to subscribe client {} to channel {}", connectionId, channelId, e)
+            false
+        }
     }
 
     /**

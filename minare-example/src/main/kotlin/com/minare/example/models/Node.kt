@@ -1,4 +1,4 @@
-package com.minare.example.core.models
+package com.minare.example.models
 
 import com.minare.core.models.Entity
 import com.minare.core.entity.annotations.Child

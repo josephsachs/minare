@@ -18,12 +18,12 @@ import javax.inject.Singleton
  * Provides fast access to connection objects and associated websockets.
  */
 @Singleton
-class ConnectionController @Inject constructor(
-    private val connectionStore: ConnectionStore,
-    private val connectionCache: ConnectionCache,
-    private val channelStore: ChannelStore,
-    private val contextStore: ContextStore,
-    private val entityStore: EntityStore
+open class ConnectionController @Inject constructor(
+    val connectionStore: ConnectionStore,
+    val connectionCache: ConnectionCache,
+    val channelStore: ChannelStore,
+    val contextStore: ContextStore,
+    val entityStore: EntityStore
 ) {
     private val log = LoggerFactory.getLogger(ConnectionController::class.java)
 
@@ -129,6 +129,8 @@ class ConnectionController @Inject constructor(
             }
 
             val connection = getConnection(connectionId)
+            val wasFullyConnected = connection.updateSocketId != null
+
             val updatedConnection = connection.copy(
                 updateSocketId = socketId ?: "us-${java.util.UUID.randomUUID()}",
                 lastUpdated = System.currentTimeMillis()
@@ -141,10 +143,28 @@ class ConnectionController @Inject constructor(
                 updatedConnection.commandSocketId,
                 updatedConnection.updateSocketId
             )
+
+            // Check if the client is now fully connected but wasn't before
+            val isNowFullyConnected = updatedConnection.updateSocketId != null
+            if (!wasFullyConnected && isNowFullyConnected) {
+                // Client has become fully connected
+                onClientFullyConnected(updatedConnection)
+            }
         } catch (e: Exception) {
             log.error("Failed to register update WebSocket for {}", connectionId, e)
             throw e
         }
+    }
+
+    /**
+     * Hook called when a client becomes fully connected (has both command and update sockets).
+     * Applications can override this to handle connection-specific logic.
+     *
+     * @param connection The fully connected connection
+     */
+    open suspend fun onClientFullyConnected(connection: Connection) {
+        log.info("Client {} is now fully connected", connection._id)
+        // Default implementation is empty - application should override this
     }
 
     /**
@@ -333,7 +353,7 @@ class ConnectionController @Inject constructor(
      * @param channelId The channel containing the entities
      * @param connectionId The connection to sync to
      */
-    private suspend fun syncChannelToConnection(channelId: String, connectionId: String) {
+    suspend fun syncChannelToConnection(channelId: String, connectionId: String) {
         try {
             log.debug("Syncing channel {} to connection {}", channelId, connectionId)
 

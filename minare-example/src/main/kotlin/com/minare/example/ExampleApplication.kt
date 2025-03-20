@@ -2,8 +2,7 @@ package com.minare.example
 
 import com.minare.MinareApplication
 import com.minare.example.config.ExampleGuiceModule
-import com.minare.example.controller.ChannelController
-import com.minare.example.core.models.Node
+import com.minare.example.controller.ExampleChannelController
 import com.minare.example.core.models.NodeGraphBuilder
 import io.vertx.ext.web.Router
 import io.vertx.ext.web.handler.StaticHandler
@@ -16,10 +15,9 @@ import javax.inject.Inject
  */
 class ExampleApplication : MinareApplication() {
     private val log = LoggerFactory.getLogger(ExampleApplication::class.java)
-    private lateinit var defaultChannelId: String
 
     @Inject
-    lateinit var channelController: ChannelController
+    lateinit var channelController: ExampleChannelController
 
     @Inject
     lateinit var entityFactory: ExampleEntityFactory
@@ -33,8 +31,11 @@ class ExampleApplication : MinareApplication() {
     override suspend fun onApplicationStart() {
         try {
             // Create a default channel for testing
-            defaultChannelId = channelController.createChannel()
+            val defaultChannelId = channelController.createChannel()
             log.info("Created default channel: $defaultChannelId")
+
+            // Set this as the default channel in the controller
+            channelController.setDefaultChannel(defaultChannelId)
 
             // Initialize the node graph
             initializeNodeGraph(defaultChannelId)
@@ -45,6 +46,8 @@ class ExampleApplication : MinareApplication() {
             throw e
         }
     }
+
+    // Rest of the class remains unchanged
 
     // This is the single implementation of the route setup method
     override fun setupApplicationRoutes(router: Router) {
