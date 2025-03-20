@@ -8,6 +8,11 @@ import com.minare.core.entity.annotations.State
 
 @EntityType("Node")
 class Node() : Entity() {
+    init {
+        // Set the type property based on the EntityType annotation
+        type = "Node"
+    }
+
     @State
     var label: String = ""
 
@@ -20,10 +25,19 @@ class Node() : Entity() {
     var childIds: MutableList<String> = mutableListOf()
 
     @State
-    var value: Int = 0
+    var color: String = "#CCCCCC" // Default boring gray color
 
+    /**
+     * Add a child node to this node
+     * Updates the in-memory relationship only - caller must persist both entities
+     */
     fun addChild(child: Node) {
-        child._id?.let { childIds.add(it) }
+        child._id?.let { childId ->
+            if (!childIds.contains(childId)) {
+                childIds.add(childId)
+            }
+        }
+
         child.parentId = this._id
     }
 }

@@ -28,7 +28,7 @@ class MongoEntityStreamConsumer @Inject constructor(
     private val channelStore: ChannelStore,
     private val updateSocketManager: UpdateSocketManager,
     private val vertx: Vertx,
-    @Named("mongoDatabase") private val mongoDatabase: String,
+    @Named("databaseName") private val mongoDatabase: String,
     @Named("mongoConnectionString") private val mongoConnectionString: String
 ) {
     private val collection = "entities"
@@ -62,7 +62,7 @@ class MongoEntityStreamConsumer @Inject constructor(
 
                         val changeEvent = convertChangeDocumentToJsonObject(changeDocument)
 
-                    try {
+                        try {
                             processChangeEvent(changeEvent)
                         } catch (e: Exception) {
                             log.error("Error processing change event", e)
@@ -113,6 +113,7 @@ class MongoEntityStreamConsumer @Inject constructor(
             document.forEach { key, value ->
                 when (value) {
                     is Document -> fullDoc.put(key, JsonObject(value.toJson()))
+                    is Number -> fullDoc.put(key, value)  // Preserve numeric types
                     else -> fullDoc.put(key, value.toString())
                 }
             }
@@ -137,25 +138,29 @@ class MongoEntityStreamConsumer @Inject constructor(
         val entityId = documentKey?.getString("_id") ?: return
 
         val fullDocument = event.getJsonObject("fullDocument") ?: return
-        val version = fullDocument.getLong("version") ?: 0L
+
+        // Handle version value that might be a string or a number
+        val version = when (val versionValue = fullDocument.getValue("version")) {
+            is Number -> versionValue.toLong()
+            is String -> try { versionValue.toLong() } catch (e: Exception) { 0L }
+            else -> 0L
+        }
+
         val state = fullDocument.getJsonObject("state") ?: JsonObject()
 
-        // Find channels associated with this entity
         val channelIds = contextStore.getChannelsByEntityId(entityId)
+
         if (channelIds.isEmpty()) {
             return // No channels subscribed to this entity
         }
 
-        // Create the update message
         val updateMessage = createUpdateMessage(entityId, version, state)
 
         // Get clients for all channels and broadcast the update
-        // Using functional approach
         val clientIds = channelIds.flatMap { channelId ->
             channelStore.getClientIds(channelId)
         }
 
-        // Send update to all clients
         if (clientIds.isNotEmpty()) {
             updateSocketManager.broadcastUpdate(clientIds, updateMessage)
         }

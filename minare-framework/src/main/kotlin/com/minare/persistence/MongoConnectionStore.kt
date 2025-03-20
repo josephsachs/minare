@@ -12,14 +12,14 @@ import javax.inject.Singleton
 @Singleton
 class MongoConnectionStore @Inject constructor(
     private val mongoClient: MongoClient
-) {
+) : ConnectionStore {
     private val log = LoggerFactory.getLogger(MongoConnectionStore::class.java)
     private val collection = "connections"
 
     /**
      * Create a new connection in the database
      */
-    suspend fun create(): Connection {
+    override suspend fun create(): Connection {
         val connectionId = UUID.randomUUID().toString()
         val now = System.currentTimeMillis()
 
@@ -51,7 +51,7 @@ class MongoConnectionStore @Inject constructor(
     /**
      * Delete a connection
      */
-    suspend fun delete(connectionId: String) {
+    override suspend fun delete(connectionId: String) {
         val query = JsonObject().put("_id", connectionId)
 
         try {
@@ -64,7 +64,7 @@ class MongoConnectionStore @Inject constructor(
     }
 
     /**
-     * Delete a connection by connection ID
+     * Delete a connection by connection ID (not part of the interface)
      */
     suspend fun deleteByConnectionId(connectionId: String) {
         val query = JsonObject().put("_id", connectionId)
@@ -85,7 +85,7 @@ class MongoConnectionStore @Inject constructor(
     /**
      * Find a connection by ID
      */
-    suspend fun find(connectionId: String): Connection {
+    override suspend fun find(connectionId: String): Connection {
         val query = JsonObject().put("_id", connectionId)
 
         val result = mongoClient.findOne(collection, query, null).await()
@@ -101,7 +101,7 @@ class MongoConnectionStore @Inject constructor(
     }
 
     /**
-     * Update the lastUpdated timestamp
+     * Update the lastUpdated timestamp (not part of the interface)
      */
     suspend fun updateLastUpdated(connectionId: String): Connection {
         val query = JsonObject().put("_id", connectionId)
@@ -118,9 +118,37 @@ class MongoConnectionStore @Inject constructor(
     }
 
     /**
+     * Update the update socket ID (implementation of interface method)
+     */
+    override suspend fun updateUpdateSocketId(connectionId: String, updateSocketId: String?): Connection {
+        val query = JsonObject().put("_id", connectionId)
+        val now = System.currentTimeMillis()
+        val update = JsonObject()
+            .put("\$set", JsonObject()
+                .put("lastUpdated", now)
+                .put("updateSocketId", updateSocketId)
+            )
+
+        val result = mongoClient.updateCollection(collection, query, update).await()
+        if (result.docModified == 0L) {
+            throw IllegalArgumentException("Connection not found: $connectionId")
+        }
+
+        val connection = find(connectionId)
+
+        if (updateSocketId != null) {
+            log.info("Update socket ID set for connection {}: {}", connectionId, updateSocketId)
+        } else {
+            log.info("Update socket ID cleared for connection {}", connectionId)
+        }
+
+        return connection
+    }
+
+    /**
      * Update the socket IDs
      */
-    suspend fun updateSocketIds(connectionId: String, commandSocketId: String?, updateSocketId: String?): Connection {
+    override suspend fun updateSocketIds(connectionId: String, commandSocketId: String?, updateSocketId: String?): Connection {
         val query = JsonObject().put("_id", connectionId)
         val now = System.currentTimeMillis()
         val update = JsonObject()
@@ -149,7 +177,7 @@ class MongoConnectionStore @Inject constructor(
     /**
      * Get all connections with update sockets
      */
-    suspend fun findAllWithUpdateSocket(): List<Connection> {
+    override suspend fun findAllWithUpdateSocket(): List<Connection> {
         val query = JsonObject().put("updateSocketId", JsonObject().put("\$ne", null))
 
         val documents = mongoClient.find(collection, query).await()

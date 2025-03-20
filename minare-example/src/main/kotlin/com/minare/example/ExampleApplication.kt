@@ -1,80 +1,97 @@
 package com.minare.example
 
 import com.minare.MinareApplication
+import com.minare.example.config.ExampleGuiceModule
+import com.minare.example.controller.ChannelController
 import com.minare.example.core.models.Node
-import com.minare.persistence.EntityStore
-import io.vertx.core.Future
-import io.vertx.core.Promise
-import io.vertx.kotlin.coroutines.await
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import io.vertx.kotlin.coroutines.dispatcher
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.launch
+import com.minare.example.core.models.NodeGraphBuilder
+import io.vertx.ext.web.Router
+import io.vertx.ext.web.handler.StaticHandler
+import org.slf4j.LoggerFactory
 import javax.inject.Inject
 
-class ExampleApplication @Inject constructor(
-    private val entityStore: EntityStore
-) : MinareApplication() {
+/**
+ * Example application that demonstrates the framework capabilities.
+ * Creates a complex node graph with parent/child relationships using JGraphT.
+ */
+class ExampleApplication : MinareApplication() {
+    private val log = LoggerFactory.getLogger(ExampleApplication::class.java)
+    private lateinit var defaultChannelId: String
 
-    suspend fun initializeNodeGraph() {
-        withContext(Dispatchers.IO) {
-            try {
-                // Create nodes
-                val nodeA = Node().apply { label = "A"; value = 1 }
-                val nodeB = Node().apply { label = "B"; value = 2 }
-                val nodeC = Node().apply { label = "C"; value = 3 }
-                val nodeD = Node().apply { label = "D"; value = 4 }
-                val nodeE = Node().apply { label = "E"; value = 5 }
-                val nodeF = Node().apply { label = "F"; value = 6 }
-                val nodeG = Node().apply { label = "G"; value = 7 }
-                val nodeH = Node().apply { label = "H"; value = 8 }
-                val nodeI = Node().apply { label = "I"; value = 9 }
-                val nodeJ = Node().apply { label = "J"; value = 10 }
+    @Inject
+    lateinit var channelController: ChannelController
 
-                // First batch: Save all nodes to generate IDs
-                saveAllNodes(listOf(nodeA, nodeB, nodeC, nodeD, nodeE, nodeF, nodeG, nodeH, nodeI, nodeJ))
+    @Inject
+    lateinit var entityFactory: ExampleEntityFactory
 
-                // Build the relationships
-                nodeA.addChild(nodeB)
-                nodeA.addChild(nodeC)
-                nodeB.addChild(nodeD)
-                nodeB.addChild(nodeE)
-                nodeC.addChild(nodeF)
-                nodeE.addChild(nodeG)
-                nodeE.addChild(nodeH)
-                nodeF.addChild(nodeI)
-                nodeF.addChild(nodeJ)
+    @Inject
+    lateinit var nodeGraphBuilder: NodeGraphBuilder
 
-                // Save nodes with relationships
-                saveAllNodes(listOf(nodeA, nodeB, nodeC, nodeE, nodeF))
-            } catch (e: Exception) {
-                //log.error("Error initializing node graph", e)
-                throw e
-            }
+    /**
+     * Application-specific initialization logic that runs after the server starts.
+     */
+    override suspend fun onApplicationStart() {
+        try {
+            // Create a default channel for testing
+            defaultChannelId = channelController.createChannel()
+            log.info("Created default channel: $defaultChannelId")
+
+            // Initialize the node graph
+            initializeNodeGraph(defaultChannelId)
+
+            log.info("Example application started with default channel: $defaultChannelId")
+        } catch (e: Exception) {
+            log.error("Failed to start example application", e)
+            throw e
         }
     }
 
-    private suspend fun saveAllNodes(nodes: List<Node>) {
-        for (node in nodes) {
-            entityStore.save(node)
+    // This is the single implementation of the route setup method
+    override fun setupApplicationRoutes(router: Router) {
+        // Serve static content from the resources/example.webroot directory
+        val staticHandler = StaticHandler.create()
+            .setWebRoot("example.webroot")  // Path relative to resources directory
+            .setCachingEnabled(false)       // Disable caching for development
+            .setDirectoryListing(true)      // Optional: Enable directory listing for debugging
+            .setIncludeHidden(false)        // Don't serve hidden files
+            .setFilesReadOnly(true)        // Read-only access to files
+
+        router.route("/*").handler(staticHandler)
+
+        log.info("Example application routes configured")
+    }
+
+    /**
+     * Creates a sample node graph with parent/child relationships
+     * using JGraphT to generate an asymmetric tree structure
+     */
+    private suspend fun initializeNodeGraph(channelId: String) {
+        try {
+            // Build an asymmetric tree using our graph builder
+            // Now returns both the root node and a list of all nodes
+            val (rootNode, allNodes) = nodeGraphBuilder.buildAsymmetricTree(
+                maxDepth = 4,           // Up to 4 levels deep
+                maxBranchingFactor = 3, // At most 3 children per node
+                totalNodes = 25,        // Aim for about 25 nodes total
+                randomSeed = 42L        // Fixed seed for reproducibility
+            )
+
+            // Add all nodes to the channel using the channel controller
+            val nodesAdded = channelController.addEntitiesToChannel(allNodes, channelId)
+            log.info("Added $nodesAdded nodes to channel $channelId")
+
+            log.info("Node graph initialized successfully")
+        } catch (e: Exception) {
+            log.error("Failed to initialize node graph", e)
+            throw e
         }
     }
 
-    fun onStart(): Future<Void> {
-        val promise = Promise.promise<Void>()
-
-        CoroutineScope(vertx.dispatcher()).launch {
-            try {
-                initializeNodeGraph()
-                //log.info("Node graph successfully initialized")
-                promise.complete()
-            } catch (e: Exception) {
-                //log.error("Failed to initialize node graph", e)
-                promise.fail(e)
-            }
-        }
-
-        return promise.future()
+    companion object {
+        /**
+         * Returns the Guice module for this application
+         */
+        @JvmStatic
+        fun getModule() = ExampleGuiceModule()
     }
 }

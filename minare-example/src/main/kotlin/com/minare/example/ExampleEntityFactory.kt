@@ -3,37 +3,71 @@ package com.minare.example
 import com.minare.core.entity.EntityFactory
 import com.minare.core.models.Entity
 import com.minare.example.core.models.Node
+import org.slf4j.LoggerFactory
+import javax.inject.Singleton
 import kotlin.reflect.KClass
 
-class TestEntityFactory : EntityFactory {
+@Singleton
+class ExampleEntityFactory : EntityFactory {
+    private val log = LoggerFactory.getLogger(ExampleEntityFactory::class.java)
     private val classes: HashMap<String, Class<*>> = HashMap()
 
     init {
-        // Register our base types
-        classes.put("Node", Node::class.java)
+        // Register our entity types - use lowercase for consistency in lookups
+        classes["node"] = Node::class.java
+        classes["entity"] = Entity::class.java  // Base entity type as fallback
+
+        log.info("Registered entity types: ${classes.keys.joinToString()}")
     }
 
     override fun useClass(type: String): Class<*>? {
-        return classes[type.lowercase()]
+        val normalizedType = type.lowercase()
+        val result = classes[normalizedType]
+        if (result == null) {
+            log.warn("Unknown entity type requested: $type")
+        }
+        return result
     }
 
     override fun getNew(type: String): Entity {
-        return when (type.lowercase()) {
-            "Node" -> Node()
-            else -> Entity()
+        val normalizedType = type.lowercase()
+        return when (normalizedType) {
+            "node" -> Node()
+            else -> {
+                if (normalizedType != "entity") {
+                    log.warn("Unknown entity type requested: $type, returning generic Entity")
+                }
+                Entity()
+            }
         }
     }
 
     /**
-     * Helper method to get registered entity types - implement based on your EntityFactory
+     * Type-safe entity creation method
+     */
+    @Suppress("UNCHECKED_CAST")
+    override fun <T : Entity> createEntity(entityClass: Class<T>): T {
+        return when {
+            Node::class.java.isAssignableFrom(entityClass) -> Node() as T
+            Entity::class.java.isAssignableFrom(entityClass) -> Entity() as T
+            else -> {
+                log.warn("Unknown entity class requested: ${entityClass.name}, returning generic Entity")
+                Entity() as T
+            }
+        }
+    }
+
+    /**
+     * Helper method to get registered entity types
      */
     override fun getTypeNames(): List<String> {
-        return listOf("Node")
+        return classes.keys.toList()
     }
 
     override fun getTypeList(): List<KClass<*>> {
         return listOf(
-            Node::class
+            Node::class,
+            Entity::class
         )
     }
 }

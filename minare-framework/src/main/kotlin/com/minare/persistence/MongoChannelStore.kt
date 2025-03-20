@@ -19,13 +19,12 @@ class MongoChannelStore @Inject constructor(
      * @return The generated channel ID
      */
     override suspend fun createChannel(): String {
-        val channelId = UUID.randomUUID().toString()
         val document = JsonObject()
-            .put("_id", channelId)
             .put("clients", JsonArray())
             .put("created", System.currentTimeMillis())
 
         val result = mongoClient.insert(collection, document).await()
+
         return result
     }
 
@@ -40,6 +39,7 @@ class MongoChannelStore @Inject constructor(
         val update = JsonObject().put("\$addToSet", JsonObject().put("clients", clientId))
 
         val result = mongoClient.updateCollection(collection, query, update).await()
+
         return result.docMatched > 0
     }
 
@@ -54,6 +54,7 @@ class MongoChannelStore @Inject constructor(
         val update = JsonObject().put("\$pull", JsonObject().put("clients", clientId))
 
         val result = mongoClient.updateCollection(collection, query, update).await()
+
         return result.docMatched > 0
     }
 
@@ -64,6 +65,7 @@ class MongoChannelStore @Inject constructor(
      */
     override suspend fun getChannel(channelId: String): JsonObject? {
         val query = JsonObject().put("_id", channelId)
+
         return mongoClient.findOne(collection, query, null).await()
     }
 
@@ -75,6 +77,7 @@ class MongoChannelStore @Inject constructor(
     override suspend fun getClientIds(channelId: String): List<String> {
         val channel = getChannel(channelId) ?: return emptyList()
         val clientsArray = channel.getJsonArray("clients", JsonArray())
+
         return clientsArray.map { it.toString() }
     }
 

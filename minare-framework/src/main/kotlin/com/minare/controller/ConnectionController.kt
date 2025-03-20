@@ -42,17 +42,18 @@ class ConnectionController @Inject constructor(
      * Get a connection by ID from memory or database
      */
     suspend fun getConnection(connectionId: String): Connection {
-        // Try memory cache first
         val cachedConnection = connectionCache.getConnection(connectionId)
+
         if (cachedConnection != null) {
             return cachedConnection
         }
 
-        // Fall back to database
         val connection = connectionStore.find(connectionId)
-        // Store in memory cache for future use
+
         connectionCache.storeConnection(connection)
+
         log.debug("Connection loaded from database to memory: {}", connection._id)
+
         return connection
     }
 
@@ -67,10 +68,8 @@ class ConnectionController @Inject constructor(
      * Update a connection in both memory and database
      */
     suspend fun updateConnection(connection: Connection): Connection {
-        // Update in memory cache
         connectionCache.storeConnection(connection)
 
-        // Update command socket ID and update socket ID in database
         return connectionStore.updateSocketIds(
             connection._id,
             connection.commandSocketId,
@@ -83,7 +82,6 @@ class ConnectionController @Inject constructor(
      */
     suspend fun registerCommandSocket(connectionId: String, websocket: ServerWebSocket, socketId: String? = null) {
         try {
-            // Close any existing socket
             connectionCache.getCommandSocket(connectionId)?.let { existingSocket ->
                 try {
                     existingSocket.close()
@@ -92,20 +90,16 @@ class ConnectionController @Inject constructor(
                 }
             }
 
-            // Update the connection in memory
             val connection = getConnection(connectionId)
             val updatedConnection = connection.copy(
                 commandSocketId = socketId ?: "cs-${java.util.UUID.randomUUID()}",
                 lastUpdated = System.currentTimeMillis()
             )
 
-            // Store in cache
             connectionCache.storeConnection(updatedConnection)
 
-            // Register the new socket in cache
             connectionCache.storeCommandSocket(connectionId, websocket, updatedConnection)
 
-            // Update in database
             connectionStore.updateSocketIds(
                 connectionId,
                 updatedConnection.commandSocketId,
@@ -122,12 +116,10 @@ class ConnectionController @Inject constructor(
      */
     suspend fun registerUpdateSocket(connectionId: String, websocket: ServerWebSocket, socketId: String? = null) {
         try {
-            // Verify command socket exists (update socket is secondary)
             if (connectionCache.getCommandSocket(connectionId) == null) {
                 throw IllegalStateException("Cannot register update socket: no command socket exists for $connectionId")
             }
 
-            // Close any existing socket
             connectionCache.getUpdateSocket(connectionId)?.let { existingSocket ->
                 try {
                     existingSocket.close()
@@ -136,20 +128,14 @@ class ConnectionController @Inject constructor(
                 }
             }
 
-            // Update the connection in memory
             val connection = getConnection(connectionId)
             val updatedConnection = connection.copy(
                 updateSocketId = socketId ?: "us-${java.util.UUID.randomUUID()}",
                 lastUpdated = System.currentTimeMillis()
             )
 
-            // Store in cache
             connectionCache.storeConnection(updatedConnection)
-
-            // Register the new socket in cache
             connectionCache.storeUpdateSocket(connectionId, websocket, updatedConnection)
-
-            // Update in database
             connectionStore.updateSocketIds(
                 connectionId,
                 updatedConnection.commandSocketId,
@@ -209,7 +195,6 @@ class ConnectionController @Inject constructor(
      */
     suspend fun removeCommandSocket(connectionId: String) {
         try {
-            // Remove from memory cache and close socket
             connectionCache.removeCommandSocket(connectionId)?.let { socket ->
                 try {
                     socket.close()
@@ -218,13 +203,10 @@ class ConnectionController @Inject constructor(
                 }
             }
 
-            // Connection should be removed from DB when command socket closes
-            // But first we need to clean up the update socket
+            // Command socket is required so clean up the update socket too
             removeUpdateSocket(connectionId)
 
-            // Remove from memory cache
             connectionCache.removeConnection(connectionId)
-            // Remove from database
             connectionStore.delete(connectionId)
         } catch (e: Exception) {
             log.error("Failed to remove command WebSocket for {}", connectionId, e)
@@ -238,7 +220,6 @@ class ConnectionController @Inject constructor(
      */
     suspend fun removeUpdateSocket(connectionId: String) {
         try {
-            // Remove from memory cache and close socket
             connectionCache.removeUpdateSocket(connectionId)?.let { socket ->
                 try {
                     socket.close()
@@ -247,7 +228,6 @@ class ConnectionController @Inject constructor(
                 }
             }
 
-            // Update the connection in memory
             val connection = getConnection(connectionId)
             val updatedConnection = connection.copy(
                 updateSocketId = null,
@@ -255,7 +235,6 @@ class ConnectionController @Inject constructor(
             )
             connectionCache.storeConnection(updatedConnection)
 
-            // Update in database
             connectionStore.updateSocketIds(
                 connectionId,
                 updatedConnection.commandSocketId,
@@ -273,13 +252,9 @@ class ConnectionController @Inject constructor(
      * should be terminated completely.
      */
     suspend fun handleCommandSocketClosed(connectionId: String) {
-        // Store update socket (if any) before removing everything
         val updateSocket = connectionCache.getUpdateSocket(connectionId)
-
-        // First remove command socket and its references
         removeCommandSocket(connectionId)
 
-        // If we had an update socket, make sure it's closed too
         updateSocket?.let {
             if (!it.isClosed()) {
                 try {
@@ -332,15 +307,13 @@ class ConnectionController @Inject constructor(
         try {
             log.info("Starting sync for connection: {}", connectionId)
 
-            // Get all channels this connection is subscribed to
             val channels = channelStore.getChannelsForClient(connectionId)
 
             if (channels.isEmpty()) {
                 log.info("No channels found for connection: {}", connectionId)
-                return true // Nothing to sync
+                return true
             }
 
-            // For each channel, sync all entities
             for (channelId in channels) {
                 syncChannelToConnection(channelId, connectionId)
             }

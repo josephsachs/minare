@@ -16,6 +16,7 @@ import org.jgrapht.graph.DefaultDirectedGraph
 import org.jgrapht.graph.DefaultEdge
 import org.slf4j.LoggerFactory
 import javax.inject.Inject
+import javax.inject.Named
 
 /**
  * MongoDB implementation of the EntityStore interface.
@@ -24,12 +25,14 @@ import javax.inject.Inject
 @Singleton
 class MongoEntityStore @Inject constructor(
     private val mongoClient: MongoClient,
-    private val collection: String,
     private val entityFactory: EntityFactory,
     private val reflectionCache: ReflectionCache
 ) : EntityStore {
 
     private val log = LoggerFactory.getLogger(MongoEntityStore::class.java)
+
+    // Default collection name for all entities
+    private val collection = "entities"
 
     /**
      * Builds a MongoDB aggregation pipeline to retrieve an entity and all its potential ancestors.
@@ -53,7 +56,7 @@ class MongoEntityStore @Inject constructor(
             // Stage 2: Use $graphLookup to find all potential ancestors
             add(JsonObject().apply {
                 put("${'$'}graphLookup", JsonObject().apply {
-                    put("from", "entities")
+                    put("from", collection)
                     put("startWith", "${'$'}_id")
                     put("connectFromField", "_id")
                     put("connectToField", "state.*")
@@ -247,12 +250,40 @@ class MongoEntityStore @Inject constructor(
         }
     }
 
+    /**
+     * Inserts or updates a given entity
+     * @param entity A new Entity object with type and version specified
+     * @return The updated entity document with id
+     */
     override suspend fun save(entity: Entity): Entity {
+        log.debug("Saving entity of type: ${entity.type} to collection: $collection")
+
         val document = JsonObject()
-            .put("_id", entity._id)
             .put("type", entity.type)
             .put("version", entity.version)
         val stateJson = JsonObject()
+
+        // Extract state from the entity
+        val entityType = entity.type
+        if (entityType != null) {
+            entityFactory.useClass(entityType)?.let { entityClass ->
+                // Get fields with the @State annotation
+                val stateFields = reflectionCache.getFieldsWithAnnotation<com.minare.core.entity.annotations.State>(entityClass)
+                for (field in stateFields) {
+                    field.isAccessible = true
+                    try {
+                        val value = field.get(entity)
+                        if (value != null) {
+                            stateJson.put(field.name, value)
+                        }
+                    } catch (e: Exception) {
+                        log.warn("Error getting field ${field.name} from entity", e)
+                    }
+                }
+            }
+        } else {
+            log.warn("Cannot extract state: entity type is null")
+        }
 
         document.put("state", stateJson)
 

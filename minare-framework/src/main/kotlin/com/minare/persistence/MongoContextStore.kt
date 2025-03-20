@@ -5,12 +5,16 @@ import com.google.inject.name.Named
 import io.vertx.core.json.JsonObject
 import io.vertx.ext.mongo.MongoClient
 import io.vertx.kotlin.coroutines.await
+import org.slf4j.LoggerFactory
 import java.util.*
+import javax.inject.Singleton
 
+@Singleton
 class MongoContextStore @Inject constructor(
-    private val mongoClient: MongoClient
+    private val mongoClient: MongoClient,
+    @Named("contexts") private val collection: String
 ) : ContextStore {
-    private val collection = "contexts"
+    private val log = LoggerFactory.getLogger(MongoContextStore::class.java)
 
     /**
      * Creates a context linking an entity to a channel
@@ -19,15 +23,62 @@ class MongoContextStore @Inject constructor(
      * @return The generated context ID
      */
     override suspend fun createContext(entityId: String, channelId: String): String {
-        val contextId = UUID.randomUUID().toString()
+        if (entityId.isBlank()) {
+            throw IllegalArgumentException("Entity ID cannot be blank")
+        }
+
+        if (channelId.isBlank()) {
+            throw IllegalArgumentException("Channel ID cannot be blank")
+        }
+
+        val contextId = "$entityId-$channelId"
+
         val document = JsonObject()
             .put("_id", contextId)
             .put("entity", entityId)
             .put("channel", channelId)
             .put("created", System.currentTimeMillis())
 
-        val result = mongoClient.insert(collection, document).await()
-        return result
+        log.debug("Creating context with ID: $contextId for entity: $entityId and channel: $channelId")
+
+        try {
+            if (mongoClient == null) {
+                log.error("MongoClient is null")
+                throw NullPointerException("MongoClient is null")
+            }
+
+            // When using replica sets, the insert operation may return null even on success
+            // This is due to write concern behavior in replica sets
+            val result = mongoClient.insert(collection, document).await()
+
+            // Handle the case where result is null (expected with replica sets)
+            if (result == null) {
+                log.info("MongoDB insert operation completed but returned null ID for contextId: $contextId")
+
+                // Verify the document was actually inserted
+                val query = JsonObject().put("_id", contextId)
+                val exists = mongoClient.findOne(collection, query, JsonObject()).await() != null
+
+                if (exists) {
+                    log.debug("Verified document exists in collection after insert")
+                } else {
+                    log.warn("Document appears to not exist after insert operation - replica set may be syncing")
+                }
+
+                // Return the predefined contextId since we set it explicitly
+                return contextId
+            }
+
+            log.debug("Context created successfully with returned ID: $result")
+            return result
+        } catch (e: Exception) {
+            if (e.message?.contains("duplicate key") == true) {
+                log.debug("Context already exists: $contextId")
+                return contextId
+            }
+            log.error("Failed to create context", e)
+            throw e
+        }
     }
 
     /**

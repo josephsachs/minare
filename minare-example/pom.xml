@@ -93,6 +93,14 @@
         <sourceDirectory>${project.basedir}/src/main</sourceDirectory>
         <testSourceDirectory>${project.basedir}/src/test</testSourceDirectory>
 
+        <!-- Explicitly configure resources -->
+        <resources>
+            <resource>
+                <directory>${project.basedir}/src/resources</directory>
+                <filtering>false</filtering>
+            </resource>
+        </resources>
+
         <plugins>
             <plugin>
                 <groupId>org.jetbrains.kotlin</groupId>

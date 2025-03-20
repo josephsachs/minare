@@ -7,18 +7,27 @@ import com.google.inject.name.Names
 import com.minare.cache.ConnectionCache
 import com.minare.cache.InMemoryConnectionCache
 import com.minare.controller.ConnectionController
-import com.minare.core.state.MongoEntityStreamConsumer
+import com.minare.core.entity.DefaultEntityFactory
+import com.minare.core.entity.EntityFactory
+import com.minare.core.state.ChangeStreamWorkerVerticle
 import com.minare.core.websocket.CommandMessageHandler
 import com.minare.core.websocket.CommandSocketManager
 import com.minare.core.websocket.UpdateSocketManager
 import com.minare.persistence.*
 import io.vertx.core.Vertx
+import io.vertx.core.impl.logging.LoggerFactory
 import io.vertx.core.json.JsonObject
 import io.vertx.ext.mongo.MongoClient
 import io.vertx.kotlin.coroutines.dispatcher
+import javax.inject.Named
 import kotlin.coroutines.CoroutineContext
 
+/**
+ * Core framework Guice module that provides default bindings.
+ * Applications can override these bindings by using a child injector.
+ */
 class GuiceModule : AbstractModule() {
+    private val log = LoggerFactory.getLogger(GuiceModule::class.java)
 
     override fun configure() {
         // Store bindings
@@ -30,24 +39,20 @@ class GuiceModule : AbstractModule() {
         // Cache bindings
         bind(ConnectionCache::class.java).to(InMemoryConnectionCache::class.java).`in`(Singleton::class.java)
 
-        bind(String::class.java)
-            .annotatedWith(Names.named("mongoDatabase"))
-            .toInstance("minare")
+        // We'll add EntityFactory binding in the child modules instead
+        // to avoid conflicts with application-specific implementations
 
+        // Core configuration
         bind(String::class.java)
             .annotatedWith(Names.named("mongoConnectionString"))
             .toInstance("mongodb://localhost:27017")
 
+        // Collection names
         bind(String::class.java).annotatedWith(Names.named("channels")).toInstance("channels")
         bind(String::class.java).annotatedWith(Names.named("contexts")).toInstance("contexts")
 
-        bind(MongoEntityStreamConsumer::class.java).asEagerSingleton()
-    }
-
-    @Provides
-    @Singleton
-    fun provideVertx(): Vertx {
-        return Vertx.vertx()
+        // Register the change stream consumer
+        bind(ChangeStreamWorkerVerticle::class.java)
     }
 
     @Provides
@@ -58,12 +63,22 @@ class GuiceModule : AbstractModule() {
 
     @Provides
     @Singleton
-    fun provideMongoClient(vertx: Vertx): MongoClient {
-        val uri = System.getenv().getOrDefault("MONGO_URI", "mongodb://mongodb-rs:27017/?replicaSet=rs0")
+    fun provideMongoClient(vertx: Vertx, @Named("databaseName") dbName: String): MongoClient {
+        // First try environment variable, fallback to localhost if not available
+        val uri = System.getenv("MONGO_URI") ?: "mongodb://localhost:27017"
+
+        log.info("Connecting to MongoDB at: $uri with database: $dbName")
 
         val config = JsonObject()
             .put("connection_string", uri)
-            .put("db_name", "your_database_name")  // Change this to your actual DB name
+            .put("db_name", dbName)
+            .put("useObjectId", true)
+            // Set write concern for replica set environment
+            .put("writeConcern", "majority")
+            // Add timeout settings
+            .put("serverSelectionTimeoutMS", 5000)
+            .put("connectTimeoutMS", 10000)
+            .put("socketTimeoutMS", 60000)
 
         return MongoClient.createShared(vertx, config)
     }
