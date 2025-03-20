@@ -53,13 +53,13 @@ class ExampleApplication : MinareApplication() {
     override fun setupApplicationRoutes(router: Router) {
         // Serve static content from the resources/example.webroot directory
         val staticHandler = StaticHandler.create()
-            .setWebRoot("example.webroot")  // Path relative to resources directory
+            .setWebRoot("webroot")  // Path relative to resources directory
             .setCachingEnabled(false)       // Disable caching for development
             .setDirectoryListing(true)      // Optional: Enable directory listing for debugging
             .setIncludeHidden(false)        // Don't serve hidden files
             .setFilesReadOnly(true)        // Read-only access to files
 
-        router.route("/*").handler(staticHandler)
+        router.route("/static/*").handler(staticHandler)
 
         log.info("Example application routes configured")
     }
