@@ -45,8 +45,8 @@ export class Lurker {
     };
 
     // Configuration
-    this.minInterval = config.simulation?.lurker?.minMutationInterval || 1000;
-    this.maxInterval = config.simulation?.lurker?.maxMutationInterval || 5000;
+    this.minInterval = config.simulation?.lurker?.minMutationInterval || 60000;
+    this.maxInterval = config.simulation?.lurker?.maxMutationInterval || 120000;
 
     logger.info(`Created lurker: ${this.id}`);
   }
