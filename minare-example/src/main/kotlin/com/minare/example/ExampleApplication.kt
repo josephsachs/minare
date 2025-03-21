@@ -4,6 +4,8 @@ import com.minare.MinareApplication
 import com.minare.example.config.ExampleGuiceModule
 import com.minare.example.controller.ExampleChannelController
 import com.minare.example.core.models.NodeGraphBuilder
+import io.vertx.core.buffer.Buffer
+import io.vertx.core.http.HttpHeaders
 import io.vertx.ext.web.Router
 import io.vertx.ext.web.handler.StaticHandler
 import org.slf4j.LoggerFactory
@@ -51,17 +53,50 @@ class ExampleApplication : MinareApplication() {
 
     // This is the single implementation of the route setup method
     override fun setupApplicationRoutes(router: Router) {
-        // Serve static content from the resources/example.webroot directory
         val staticHandler = StaticHandler.create()
-            .setWebRoot("webroot")  // Path relative to resources directory
-            .setCachingEnabled(false)       // Disable caching for development
-            .setDirectoryListing(true)      // Optional: Enable directory listing for debugging
-            .setIncludeHidden(false)        // Don't serve hidden files
-            .setFilesReadOnly(true)        // Read-only access to files
+            .setCachingEnabled(false)  // Disable caching during development
+            .setAllowRootFileSystemAccess(false)
+            .setDefaultContentEncoding("UTF-8")
+            .setFilesReadOnly(true)
 
-        router.route("/static/*").handler(staticHandler)
+        router.route("/*").handler(staticHandler)
 
-        log.info("Example application routes configured")
+        router.get("/client").handler { ctx ->
+            // Try to read the file directly from resources
+            val resource = Thread.currentThread().contextClassLoader.getResourceAsStream("webroot/index.html")
+
+            if (resource != null) {
+                val content = resource.readAllBytes()
+                ctx.response()
+                    .putHeader(HttpHeaders.CONTENT_TYPE, "text/html")
+                    .end(Buffer.buffer(content))
+            } else {
+                ctx.response()
+                    .setStatusCode(404)
+                    .end("Couldn't find index.html in resources")
+            }
+        }
+
+        // Add a debug endpoint to check classpath
+        router.get("/debug-resources").handler { ctx ->
+            val classLoader = Thread.currentThread().contextClassLoader
+            val resourceUrl = classLoader.getResource("webroot/index.html")
+            val resourceStream = classLoader.getResourceAsStream("webroot/index.html")
+
+            val response = StringBuilder()
+            response.append("Resource URL: ${resourceUrl}\n")
+            response.append("Resource Stream null? ${resourceStream == null}\n")
+
+            if (resourceStream != null) {
+                val content = String(resourceStream.readAllBytes())
+                response.append("Content length: ${content.length}\n")
+                response.append("First 100 chars: ${content.take(100)}\n")
+            }
+
+            ctx.response()
+                .putHeader("content-type", "text/plain")
+                .end(response.toString())
+        }
     }
 
     /**

@@ -95,8 +95,12 @@
 
         <!-- Explicitly configure resources -->
         <resources>
+            <!--- <resource> -->
+                <!--- <directory>${project.basedir}/src/resources</directory> -->
+                <!--- <filtering>false</filtering> -->
+            <!--- </resource> -->
             <resource>
-                <directory>${project.basedir}/src/resources</directory>
+                <directory>src/main/resources</directory>
                 <filtering>false</filtering>
             </resource>
         </resources>
