@@ -50,8 +50,8 @@ export const config = {
   simulation: {
     // Lurker simulation settings
     lurker: {
-      minMutationInterval: 60000,  // Minimum time between mutations (ms)
-      maxMutationInterval: 120000   // Maximum time between mutations (ms)
+      minMutationInterval: 10000,  // Minimum time between mutations (ms)
+      maxMutationInterval: 20000   // Maximum time between mutations (ms)
     }
   }
 };
