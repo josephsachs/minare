@@ -1,18 +1,17 @@
 package com.minare.persistence
 
 import com.google.inject.Inject
-import com.google.inject.name.Named
-import com.minare.persistence.ChannelStore
 import io.vertx.core.json.JsonArray
 import io.vertx.core.json.JsonObject
 import io.vertx.ext.mongo.MongoClient
 import io.vertx.kotlin.coroutines.await
-import java.util.*
+import org.slf4j.LoggerFactory
 
 class MongoChannelStore @Inject constructor(
     private val mongoClient: MongoClient
 ) : ChannelStore {
     private val collection = "channels"
+    private val log = LoggerFactory.getLogger(MongoChannelStore::class.java)
 
     /**
      * Creates a new channel
@@ -24,7 +23,7 @@ class MongoChannelStore @Inject constructor(
             .put("created", System.currentTimeMillis())
 
         val result = mongoClient.insert(collection, document).await()
-
+        log.info("Created new channel with ID: $result")
         return result
     }
 
@@ -35,12 +34,26 @@ class MongoChannelStore @Inject constructor(
      * @return Boolean indicating success or failure
      */
     override suspend fun addClientToChannel(channelId: String, clientId: String): Boolean {
-        val query = JsonObject().put("_id", channelId)
-        val update = JsonObject().put("\$addToSet", JsonObject().put("clients", clientId))
+        try {
+            // Create a proper ObjectId query for MongoDB
+            val query = JsonObject().put("_id", JsonObject().put("\$oid", channelId))
+            val update = JsonObject().put("\$addToSet", JsonObject().put("clients", clientId))
 
-        val result = mongoClient.updateCollection(collection, query, update).await()
+            log.debug("Adding client $clientId to channel $channelId, query: $query")
 
-        return result.docMatched > 0
+            val result = mongoClient.updateCollection(collection, query, update).await()
+
+            if (result.docMatched == 0L) {
+                log.warn("No channel found with ID: $channelId")
+                return false
+            }
+
+            log.debug("Client $clientId added to channel $channelId, matched: ${result.docMatched}, modified: ${result.docModified}")
+            return result.docModified > 0
+        } catch (e: Exception) {
+            log.error("Failed to add client $clientId to channel $channelId", e)
+            return false
+        }
     }
 
     /**
@@ -50,12 +63,22 @@ class MongoChannelStore @Inject constructor(
      * @return Boolean indicating success or failure
      */
     override suspend fun removeClientFromChannel(channelId: String, clientId: String): Boolean {
-        val query = JsonObject().put("_id", channelId)
-        val update = JsonObject().put("\$pull", JsonObject().put("clients", clientId))
+        try {
+            val query = JsonObject().put("_id", JsonObject().put("\$oid", channelId))
+            val update = JsonObject().put("\$pull", JsonObject().put("clients", clientId))
 
-        val result = mongoClient.updateCollection(collection, query, update).await()
+            val result = mongoClient.updateCollection(collection, query, update).await()
 
-        return result.docMatched > 0
+            if (result.docMatched == 0L) {
+                log.warn("No channel found with ID: $channelId when removing client")
+                return false
+            }
+
+            return result.docModified > 0
+        } catch (e: Exception) {
+            log.error("Failed to remove client $clientId from channel $channelId", e)
+            return false
+        }
     }
 
     /**
@@ -64,9 +87,13 @@ class MongoChannelStore @Inject constructor(
      * @return A JsonObject representing the channel, or null if not found
      */
     override suspend fun getChannel(channelId: String): JsonObject? {
-        val query = JsonObject().put("_id", channelId)
-
-        return mongoClient.findOne(collection, query, null).await()
+        try {
+            val query = JsonObject().put("_id", JsonObject().put("\$oid", channelId))
+            return mongoClient.findOne(collection, query, null).await()
+        } catch (e: Exception) {
+            log.error("Failed to get channel $channelId", e)
+            return null
+        }
     }
 
     /**
@@ -75,10 +102,19 @@ class MongoChannelStore @Inject constructor(
      * @return A list of client IDs
      */
     override suspend fun getClientIds(channelId: String): List<String> {
-        val channel = getChannel(channelId) ?: return emptyList()
-        val clientsArray = channel.getJsonArray("clients", JsonArray())
+        try {
+            val channel = getChannel(channelId)
+            if (channel == null) {
+                log.warn("No channel found with ID: $channelId when getting client IDs")
+                return emptyList()
+            }
 
-        return clientsArray.map { it.toString() }
+            val clientsArray = channel.getJsonArray("clients", JsonArray())
+            return clientsArray.map { it.toString() }
+        } catch (e: Exception) {
+            log.error("Failed to get client IDs for channel $channelId", e)
+            return emptyList()
+        }
     }
 
     /**
@@ -87,9 +123,23 @@ class MongoChannelStore @Inject constructor(
      * @return A list of channel IDs
      */
     override suspend fun getChannelsForClient(clientId: String): List<String> {
-        val query = JsonObject().put("clients", clientId)
-        val results = mongoClient.find(collection, query).await()
+        try {
+            val query = JsonObject().put("clients", clientId)
+            val results = mongoClient.find(collection, query).await()
 
-        return results.map { it.getString("_id") }
+            return results.mapNotNull { document ->
+                val idObject = document.getJsonObject("_id")
+
+                // Extract the ObjectId value correctly
+                if (idObject != null && idObject.containsKey("\$oid")) {
+                    idObject.getString("\$oid")
+                } else {
+                    document.getString("_id")
+                }
+            }
+        } catch (e: Exception) {
+            log.error("Failed to get channels for client $clientId", e)
+            return emptyList()
+        }
     }
 }

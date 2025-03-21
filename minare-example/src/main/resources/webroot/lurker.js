@@ -1,14 +1,11 @@
 /**
- * Lurker simulated user
+ * Lurker simulated user with independent WebSocket connections
  *
- * This simulated user selects a random node from the graph and mutates its color
- * at random intervals between 1-5 seconds.
+ * This simulated user maintains its own WebSocket connections to the server
+ * and selects random nodes to mutate their colors at intervals of 1-5 seconds.
  */
 import config from './config.js';
-import store from './store.js';
 import logger from './logger.js';
-import { sendCommand } from './connection.js';
-import createEventEmitter from './events.js';
 
 export class Lurker {
   /**
@@ -21,6 +18,12 @@ export class Lurker {
     this.timer = null;
     this.targetedNodes = new Set();
     this.pendingMutations = new Map();
+
+    // Connection state
+    this.connectionId = null;
+    this.commandSocket = null;
+    this.updateSocket = null;
+    this.connected = false;
 
     // The lurker's own view of the entity graph
     this.entityStore = {
@@ -41,52 +44,188 @@ export class Lurker {
       }
     };
 
-    // Event emitter for this lurker
-    this.events = createEventEmitter();
-
     // Configuration
-    this.minInterval = config.simulation?.lurker?.minMutationInterval || 9000;
-    this.maxInterval = config.simulation?.lurker?.maxMutationInterval || 18000;
-
-    // Initialize by copying the current entity graph from the main store
-    this.syncWithMainStore();
-
-    // Set up subscription to entity updates
-    this.storeSubscription = store.on('entities.updated', this.handleEntityUpdates.bind(this));
+    this.minInterval = config.simulation?.lurker?.minMutationInterval || 1000;
+    this.maxInterval = config.simulation?.lurker?.maxMutationInterval || 5000;
 
     logger.info(`Created lurker: ${this.id}`);
   }
 
   /**
-   * Initialize entity store from main store
+   * Connect to the server with independent WebSocket connections
+   * @returns {Promise<boolean>} Success indicator
    */
-  syncWithMainStore() {
-    const entities = store.getEntities();
+  async connect() {
+    if (this.connected) return true;
 
-    if (entities.length > 0) {
-      logger.info(`Lurker ${this.id}: Syncing ${entities.length} entities from main store`);
-      this.entityStore.updateEntities(entities);
-    } else {
-      logger.info(`Lurker ${this.id}: No entities available in main store for initial sync`);
+    try {
+      // Create command socket
+      const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsBaseUrl = `${wsProtocol}//${window.location.host}`;
+
+      // Connect the command socket
+      this.commandSocket = new WebSocket(`${wsBaseUrl}/ws`);
+
+      // Wait for connection to establish and receive connection ID
+      await new Promise((resolve, reject) => {
+        this.commandSocket.onopen = () => {
+          logger.info(`Lurker ${this.id}: Command socket connected`);
+        };
+
+        this.commandSocket.onmessage = (event) => {
+          try {
+            const message = JSON.parse(event.data);
+            logger.info(`Lurker ${this.id}: Command socket received: ${JSON.stringify(message)}`);
+
+            if (message.type === 'connection_confirm') {
+              this.connectionId = message.connectionId;
+              logger.info(`Lurker ${this.id}: Connection established with ID: ${this.connectionId}`);
+              resolve();
+            } else if (message.type === 'sync') {
+              // Handle initial sync data
+              if (message.data && message.data.entities) {
+                logger.info(`Lurker ${this.id}: Received initial sync with ${message.data.entities.length} entities`);
+
+                // Transform the data to match our entity store format
+                const entities = message.data.entities.map(entity => ({
+                  id: entity._id,
+                  version: entity.version,
+                  type: entity.type,
+                  state: entity.state
+                }));
+
+                // Update our entity store
+                this.entityStore.updateEntities(entities);
+              }
+            } else if (message.type === 'initial_sync_complete') {
+              logger.info(`Lurker ${this.id}: Initial sync complete`);
+            }
+          } catch (error) {
+            reject(error);
+          }
+        };
+
+        this.commandSocket.onerror = (error) => {
+          logger.error(`Lurker ${this.id}: Command socket error: ${error}`);
+          reject(error);
+        };
+
+        this.commandSocket.onclose = () => {
+          logger.info(`Lurker ${this.id}: Command socket closed`);
+          if (this.connected) this.disconnect();
+        };
+      });
+
+      // Connect the update socket using the connection ID
+      this.updateSocket = new WebSocket(`${wsBaseUrl}/ws/updates`);
+
+      await new Promise((resolve, reject) => {
+        this.updateSocket.onopen = () => {
+          logger.info(`Lurker ${this.id}: Update socket connected`);
+
+          // Send connection ID to associate the update socket
+          const associationMessage = {
+            connectionId: this.connectionId
+          };
+          this.updateSocket.send(JSON.stringify(associationMessage));
+        };
+
+        this.updateSocket.onmessage = (event) => {
+          try {
+            const message = JSON.parse(event.data);
+            logger.info(`Lurker ${this.id}: Update socket received: ${JSON.stringify(message)}`);
+
+            if (message.type === 'update_socket_confirm') {
+              logger.info(`Lurker ${this.id}: Update socket confirmed`);
+              this.connected = true;
+              resolve();
+            } else if (message.type === 'sync') {
+              // Handle sync data from update socket
+              if (message.data && message.data.entities) {
+                logger.info(`Lurker ${this.id}: Received sync with ${message.data.entities.length} entities`);
+
+                // Transform the data to match our entity store format
+                const entities = message.data.entities.map(entity => ({
+                  id: entity._id,
+                  version: entity.version,
+                  type: entity.type,
+                  state: entity.state
+                }));
+
+                // Update our entity store
+                this.entityStore.updateEntities(entities);
+              }
+            } else if (message.update && message.update.entities) {
+              // Process incremental entity updates
+              logger.info(`Lurker ${this.id}: Received update with ${message.update.entities.length} entities`);
+              this.handleEntityUpdates(message.update.entities);
+            }
+          } catch (error) {
+            logger.error(`Lurker ${this.id}: Error processing update message: ${error.message}`);
+          }
+        };
+
+        this.updateSocket.onerror = (error) => {
+          logger.error(`Lurker ${this.id}: Update socket error: ${error}`);
+          reject(error);
+        };
+
+        this.updateSocket.onclose = () => {
+          logger.info(`Lurker ${this.id}: Update socket closed`);
+          if (this.connected) this.disconnect();
+        };
+      });
+
+      return true;
+    } catch (error) {
+      logger.error(`Lurker ${this.id}: Connection failed: ${error.message}`);
+      this.disconnect(); // Clean up any partial connections
+      return false;
     }
   }
 
   /**
-   * Handle entity updates from the main store
+   * Disconnect from the server
+   */
+  disconnect() {
+    if (this.updateSocket) {
+      this.updateSocket.close();
+      this.updateSocket = null;
+    }
+
+    if (this.commandSocket) {
+      this.commandSocket.close();
+      this.commandSocket = null;
+    }
+
+    this.connectionId = null;
+    this.connected = false;
+
+    logger.info(`Lurker ${this.id}: Disconnected from server`);
+  }
+
+  /**
+   * Handle entity updates from the server
    * @param {Array} entities - Updated entities
    */
   handleEntityUpdates(entities) {
-    if (!this.active) return;
-
     const updatedEntities = [];
 
     for (const entity of entities) {
+      // Transform entity if needed (the format might be different from our internal format)
+      const transformedEntity = {
+        id: entity.id || entity._id,
+        version: entity.version,
+        type: entity.type,
+        state: entity.state
+      };
+
       // Skip entities we have pending mutations for to avoid race conditions
-      if (this.pendingMutations.has(entity.id)) {
+      if (this.pendingMutations.has(transformedEntity.id)) {
         continue;
       }
 
-      updatedEntities.push(entity);
+      updatedEntities.push(transformedEntity);
     }
 
     if (updatedEntities.length > 0) {
@@ -97,16 +236,20 @@ export class Lurker {
 
   /**
    * Start the lurker
-   * @returns {boolean} Success indicator
+   * @returns {Promise<boolean>} Success indicator
    */
-  start() {
+  async start() {
     if (this.active) return false;
+
+    // Connect to the server first
+    const connected = await this.connect();
+    if (!connected) {
+      logger.error(`Lurker ${this.id}: Cannot start because connection failed`);
+      return false;
+    }
 
     this.active = true;
     logger.info(`Starting lurker: ${this.id}`);
-
-    // Ensure we have the latest entity graph
-    this.syncWithMainStore();
 
     // Schedule the first mutation
     this.scheduleNextMutation();
@@ -128,97 +271,143 @@ export class Lurker {
       this.timer = null;
     }
 
-    // Clean up store subscription
-    if (this.storeSubscription) {
-      store.off('entities.updated', this.storeSubscription);
-    }
+    // Disconnect from the server
+    this.disconnect();
   }
 
   /**
    * Schedule the next mutation
    */
   scheduleNextMutation() {
-    if (!this.active) return;
+    if (!this.active) {
+      logger.info(`Lurker ${this.id}: Not scheduling next mutation because lurker is not active`);
+      return;
+    }
 
     // Random interval between min and max
     const interval = Math.floor(
       Math.random() * (this.maxInterval - this.minInterval) + this.minInterval
     );
 
-    this.timer = setTimeout(() => this.performMutation(), interval);
+    logger.info(`Lurker ${this.id}: Scheduling next mutation in ${interval}ms`);
+
+    // Clear any existing timer first to avoid duplicate timers
+    if (this.timer) {
+      clearTimeout(this.timer);
+    }
+
+    this.timer = setTimeout(() => {
+      logger.info(`Lurker ${this.id}: Executing scheduled mutation`);
+      this.performMutation();
+    }, interval);
   }
 
   /**
    * Perform a random color mutation on a node
    */
   performMutation() {
-    if (!this.active) return;
+    if (!this.active) {
+      logger.info(`Lurker ${this.id}: Not active, skipping mutation`);
+      return;
+    }
 
-    // Get all nodes from our entity store
-    const entities = this.entityStore.getEntities();
-
-    // Filter based on the type Node either:
-    // 1. Node entities have state.label field (that's our best indicator without type)
-    // 2. If the type property exists and equals "Node"
-    const nodes = entities.filter(entity =>
-      (entity.state && entity.state.label) ||
-      (entity.type === 'Node')
-    );
-
-    if (nodes.length === 0) {
-      logger.info(`Lurker ${this.id}: No nodes available for mutation (entities: ${entities.length})`);
+    if (!this.connected) {
+      logger.info(`Lurker ${this.id}: Not connected, skipping mutation`);
+      // Even if we're not connected, we should schedule the next attempt
       this.scheduleNextMutation();
       return;
     }
 
-    // Select a random node
-    const randomIndex = Math.floor(Math.random() * nodes.length);
-    const targetNode = nodes[randomIndex];
+    try {
+      // Get all nodes from our entity store
+      const entities = this.entityStore.getEntities();
+      logger.info(`Lurker ${this.id}: Selecting from ${entities.length} entities for mutation`);
 
-    // Keep track of nodes this lurker has interacted with
-    this.targetedNodes.add(targetNode.id);
+      // Filter based on the type Node either:
+      // 1. Node entities have state.label field (that's our best indicator without type)
+      // 2. If the type property exists and equals "Node"
+      const nodes = entities.filter(entity =>
+        (entity.state && entity.state.label) ||
+        (entity.type === 'Node')
+      );
 
-    // Generate a slightly modified color
-    const currentColor = targetNode.state?.color || '#CCCCCC';
-    const newColor = this.generateRandomColor(currentColor);
-
-    // Prepare mutation command
-    const command = {
-      command: 'mutate',
-      entity: {
-        _id: targetNode.id,
-        version: targetNode.version,
-        state: {
-          color: newColor
-        }
+      if (nodes.length === 0) {
+        logger.info(`Lurker ${this.id}: No nodes available for mutation (entities: ${entities.length})`);
+        this.scheduleNextMutation();
+        return;
       }
-    };
 
-    // Track this pending mutation
-    this.pendingMutations.set(targetNode.id, {
-      timestamp: Date.now(),
-      oldVersion: targetNode.version,
-      newColor: newColor
-    });
+      // Select a random node
+      const randomIndex = Math.floor(Math.random() * nodes.length);
+      const targetNode = nodes[randomIndex];
 
-    // Send the command
-    const success = sendCommand(command);
+      // Keep track of nodes this lurker has interacted with
+      this.targetedNodes.add(targetNode.id);
 
-    if (success) {
-      logger.info(`Lurker ${this.id}: Sent mutation for node ${targetNode.id} color to ${newColor}`);
-    } else {
-      logger.error(`Lurker ${this.id}: Failed to send mutation for node ${targetNode.id}`);
-      // Remove from pending mutations since it failed to send
-      this.pendingMutations.delete(targetNode.id);
+      // Generate a slightly modified color
+      const currentColor = targetNode.state?.color || '#CCCCCC';
+      const newColor = this.generateRandomColor(currentColor);
+
+      // Prepare mutation command
+      const command = {
+        command: 'mutate',
+        entity: {
+          _id: targetNode.id,
+          version: targetNode.version,
+          state: {
+            color: newColor
+          }
+        }
+      };
+
+      // Track this pending mutation
+      this.pendingMutations.set(targetNode.id, {
+        timestamp: Date.now(),
+        oldVersion: targetNode.version,
+        newColor: newColor
+      });
+
+      // Send the command using this lurker's own command socket
+      const success = this.sendCommand(command);
+
+      if (!success) {
+        logger.error(`Lurker ${this.id}: Failed to send mutation command`);
+        // Clean up the pending mutation since it failed
+        this.pendingMutations.delete(targetNode.id);
+      }
+    } catch (error) {
+      logger.error(`Lurker ${this.id}: Error performing mutation: ${error.message}`);
+    } finally {
+      // Always schedule the next mutation, even if this one failed
+      this.scheduleNextMutation();
     }
-
-    // Schedule the next mutation
-    this.scheduleNextMutation();
   }
 
   /**
-   * Handle mutation response
-   * @param {Object} response - Mutation response from server
+   * Send a command to the server
+   * @param {Object} command - Command object
+   * @returns {boolean} Success indicator
+   */
+  sendCommand(command) {
+    if (!this.commandSocket || this.commandSocket.readyState !== WebSocket.OPEN) {
+      logger.error(`Lurker ${this.id}: Cannot send command: Command socket not connected`);
+      return false;
+    }
+
+    try {
+      const message = JSON.stringify(command);
+      this.commandSocket.send(message);
+      logger.info(`Lurker ${this.id}: Sent mutation for node ${command.entity._id} color to ${command.entity.state.color}`);
+      return true;
+    } catch (error) {
+      logger.error(`Lurker ${this.id}: Failed to send command: ${error.message}`);
+      return false;
+    }
+  }
+
+  /**
+   * Handle mutation response from server
+   * @param {Object} response - Mutation response
    */
   handleMutationResponse(response) {
     const entityId = response.entity?._id;
@@ -281,6 +470,8 @@ export class Lurker {
     return {
       id: this.id,
       active: this.active,
+      connected: this.connected,
+      connectionId: this.connectionId,
       targetCount: this.targetedNodes.size,
       entityCount: this.entityStore.getEntities().length,
       pendingMutations: this.pendingMutations.size

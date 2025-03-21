@@ -127,7 +127,7 @@ class MongoEntityStreamConsumer @Inject constructor(
      * Processes a single change event from MongoDB
      * @param event The change event from MongoDB
      */
-    suspend fun processChangeEvent(event: JsonObject) {
+    private suspend fun processChangeEvent(event: JsonObject) {
         // Extract entity information
         val operationType = event.getString("operationType")
         if (operationType != "insert" && operationType != "update" && operationType != "replace") {

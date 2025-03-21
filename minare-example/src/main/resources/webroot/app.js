@@ -249,12 +249,22 @@ class App {
     this.lurkers.push(lurker);
 
     // Start the lurker
-    lurker.start();
+    lurker.start().then(success => {
+      if (success) {
+        logger.info(`Added and started lurker: ${lurker.id}`);
+      } else {
+        logger.error(`Failed to start lurker: ${lurker.id}`);
+      }
 
-    // Update UI
+      // Update UI regardless of success/failure
+      this.updateLurkerUI();
+    }).catch(error => {
+      logger.error(`Error starting lurker: ${error.message}`);
+      this.updateLurkerUI();
+    });
+
+    // Update UI immediately to show the pending lurker
     this.updateLurkerUI();
-
-    logger.info(`Added lurker: ${lurker.id}`);
   }
 
   /**

@@ -49,7 +49,7 @@ class ExampleConnectionController @Inject constructor(
         }
 
         // Subscribe the client to the default channel
-        if (channelController.subscribeClientToChannel(connection._id, defaultChannelId)) {
+        if (channelController.subscribeClientToChannel(defaultChannelId, connection._id)) {
             // Sync the channel data to the client
             syncChannelToConnection(defaultChannelId, connection._id)
 

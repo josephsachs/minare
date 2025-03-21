@@ -144,16 +144,27 @@ class ChangeStreamWorkerVerticle @Inject constructor(
     /**
      * Converts a MongoDB ChangeStreamDocument to a Vert.x JsonObject
      */
+    /**
+     * Converts a MongoDB ChangeStreamDocument to a Vert.x JsonObject
+     */
+    /**
+     * Converts a MongoDB ChangeStreamDocument to a Vert.x JsonObject
+     */
     private fun convertChangeDocumentToJsonObject(changeDocument: ChangeStreamDocument<Document>): JsonObject {
         val result = JsonObject()
 
         // Add operation type
-        result.put("operationType", changeDocument.operationType.value)
+        result.put("operationType", changeDocument.operationType?.value)
 
         // Add document key
         val documentKey = JsonObject()
         changeDocument.documentKey?.forEach { key, value ->
-            documentKey.put(key, value.toString())
+            // Handle BSON ObjectId values specially
+            if (value is org.bson.BsonObjectId) {
+                documentKey.put(key, value.getValue().toHexString())
+            } else {
+                documentKey.put(key, value.toString())
+            }
         }
         result.put("documentKey", documentKey)
 
@@ -164,6 +175,7 @@ class ChangeStreamWorkerVerticle @Inject constructor(
                 when (value) {
                     is Document -> fullDoc.put(key, JsonObject(value.toJson()))
                     is Number -> fullDoc.put(key, value)  // Preserve numeric types
+                    is org.bson.types.ObjectId -> fullDoc.put(key, value.toHexString())
                     else -> fullDoc.put(key, value.toString())
                 }
             }
