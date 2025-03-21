@@ -2,6 +2,7 @@ package com.minare.example.controller
 
 import com.minare.cache.ConnectionCache
 import com.minare.controller.ConnectionController
+import com.minare.core.entity.ReflectionCache
 import com.minare.core.models.Connection
 import com.minare.persistence.*
 import io.vertx.core.json.JsonObject
@@ -20,13 +21,15 @@ class ExampleConnectionController @Inject constructor(
     channelStore: ChannelStore,
     contextStore: ContextStore,
     entityStore: EntityStore,
+    reflectionCache: ReflectionCache,
     private val channelController: ExampleChannelController
 ) : ConnectionController(
     connectionStore,
     connectionCache,
     channelStore,
     contextStore,
-    entityStore
+    entityStore,
+    reflectionCache
 ) {
     private val log = LoggerFactory.getLogger(ExampleConnectionController::class.java)
 

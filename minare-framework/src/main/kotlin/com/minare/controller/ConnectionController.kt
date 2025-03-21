@@ -10,6 +10,7 @@ import com.minare.utils.EntityGraph
 import io.vertx.core.http.ServerWebSocket
 import io.vertx.core.json.JsonObject
 import org.slf4j.LoggerFactory
+import com.minare.core.entity.ReflectionCache
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -23,7 +24,8 @@ open class ConnectionController @Inject constructor(
     val connectionCache: ConnectionCache,
     val channelStore: ChannelStore,
     val contextStore: ContextStore,
-    val entityStore: EntityStore
+    val entityStore: EntityStore,
+    val reflectionCache: ReflectionCache
 ) {
     private val log = LoggerFactory.getLogger(ConnectionController::class.java)
 
@@ -365,14 +367,11 @@ open class ConnectionController @Inject constructor(
                 return
             }
 
-            // Option 1: Fetch entities as a map (simpler)
-            val entities = entityStore.findEntitiesByIds(entityIds)
-            val syncData = EntityGraph.entitiesToJson(entities)
+            // Build the document graph - works directly with MongoDB documents
+            val documentGraph = entityStore.buildDocumentGraph(entityIds)
 
-            // Option 2: Build and convert a full graph (with relationships)
-            // Use this if relationships between entities are important
-            // val graph = entityStore.buildEntityGraph(entityIds)
-            // val syncData = EntityGraph.graphToJson(graph)
+            // Convert the document graph to JSON format suitable for client consumption
+            val syncData = EntityGraph.documentGraphToJson(documentGraph)
 
             // Add metadata
             syncData.put("channelId", channelId)

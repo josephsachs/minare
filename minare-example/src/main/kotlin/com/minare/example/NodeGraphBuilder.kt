@@ -98,7 +98,9 @@ class NodeGraphBuilder @Inject constructor(
                         // We'll only update the parent entity since the child's references were just created
                         // and don't need another update
                         try {
+                            log.debug("BEFORE saving parent: ${parent._id}")
                             val updatedParent = entityStore.save(parent) as Node
+                            log.debug("AFTER saving parent: ${updatedParent._id}")
 
                             // Update our references to use the latest versions
                             graph.addVertex(savedChild)

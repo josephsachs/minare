@@ -377,12 +377,45 @@ class MongoEntityStore @Inject constructor(
             return emptyMap()
         }
 
-        // Create a query to find all entities with IDs in the provided list
-        val query = JsonObject().put("_id", JsonObject().put("\$in", JsonArray(entityIds)))
-
         try {
+            // Log the query for debugging
+            log.debug("Finding ${entityIds.size} entities by IDs")
+
+            // Create an $or query to handle potential ObjectId vs String ID issues
+            val orCriteria = JsonArray()
+            entityIds.forEach { id ->
+                orCriteria.add(JsonObject().put("_id", id))
+            }
+            val query = JsonObject().put("\$or", orCriteria)
+
+            // Log the actual query for debugging
+            log.debug("MongoDB query: ${query.encode()}")
+
             // Execute the query and wait for results
-            val results = mongoClient.find(collection, query).await()
+            var results = mongoClient.find(collection, query).await()
+
+            log.debug("Query results size: ${results.size}")
+
+            if (results.isEmpty()) {
+                log.debug("No results with \$or query, trying with individual queries")
+
+                // Try querying one by one as a fallback
+                val individualResults = mutableListOf<JsonObject>()
+                for (id in entityIds) {
+                    val singleQuery = JsonObject().put("_id", id)
+                    log.debug("Individual query: ${singleQuery.encode()}")
+
+                    val singleResult = mongoClient.findOne(collection, singleQuery, JsonObject()).await()
+                    if (singleResult != null) {
+                        individualResults.add(singleResult)
+                    }
+                }
+
+                if (individualResults.isNotEmpty()) {
+                    log.debug("Found ${individualResults.size} entities using individual queries")
+                    results = individualResults
+                }
+            }
 
             // Convert the document results to Entity objects
             return results.mapNotNull { document ->
@@ -426,44 +459,140 @@ class MongoEntityStore @Inject constructor(
             return DefaultDirectedGraph(DefaultEdge::class.java)
         }
 
-        // First, fetch all the requested entities
-        val entitiesMap = findEntitiesByIds(entityIds)
-        if (entitiesMap.isEmpty()) {
+        // First, fetch all the requested entities as JSON documents
+        // Create an $or query to handle potential ObjectId vs String ID issues
+        val orCriteria = JsonArray()
+        entityIds.forEach { id ->
+            orCriteria.add(JsonObject().put("_id", id))
+        }
+        val query = JsonObject().put("\$or", orCriteria)
+
+        // Log the query for debugging
+        log.debug("Building entity graph with query: ${query.encode()}")
+
+        val documents = mongoClient.find(collection, query).await()
+
+        log.debug("Found ${documents.size} documents for graph")
+
+        if (documents.isEmpty()) {
             return DefaultDirectedGraph(DefaultEdge::class.java)
         }
 
         // Create a new directed graph
         val graph = DefaultDirectedGraph<Entity, DefaultEdge>(DefaultEdge::class.java)
+        val entitiesById = mutableMapOf<String, Entity>()
 
         // Add all entities as vertices
-        entitiesMap.values.forEach { entity ->
+        for (document in documents) {
+            val id = document.getString("_id")
+            val type = document.getString("type") ?: "unknown"
+            val version = document.getLong("version", 1L)
+
+            // Create a minimal entity with just the core properties
+            val entity = entityFactory.getNew(type).apply {
+                this._id = id
+                this.version = version
+                this.type = type
+                // We don't need to fully deserialize the state
+            }
+
             graph.addVertex(entity)
+            entitiesById[id] = entity
         }
 
-        // Now analyze each entity to find relationships
-        for (entity in entitiesMap.values) {
-            // Get entity class for this type
-            val entityType = entity.type ?: continue
-            val entityClass = entityFactory.useClass(entityType) ?: continue
+        // Now analyze each document to find relationships
+        for (document in documents) {
+            val sourceId = document.getString("_id")
+            val state = document.getJsonObject("state", JsonObject())
+            val sourceEntity = entitiesById[sourceId] ?: continue
 
-            // Get parent fields for this entity type using the reflection cache
-            val parentFields = reflectionCache.getFieldsWithAnnotation<Parent>(entityClass)
+            // Look for parent references in the state
+            val parentId = state.getString("parentId")
+            if (parentId != null && entitiesById.containsKey(parentId)) {
+                val parentEntity = entitiesById[parentId]!!
+                graph.addEdge(sourceEntity, parentEntity)
+            }
+        }
 
-            // For each parent reference field
-            for (field in parentFields) {
-                field.isAccessible = true
-                try {
-                    val fieldValue = field.get(entity)
-                    val parentId = extractParentId(fieldValue) ?: continue
+        return graph
+    }
 
-                    // If the parent entity is in our map, add an edge
-                    val parentEntity = entitiesMap[parentId] ?: continue
+    /**
+     * Builds a graph of Mongo documents based on a list of entity IDs
+     *
+     * @param entityIds List of entity IDs to include in the graph
+     * @return A graph containing the requested entity documents and their relationships
+     */
+    override suspend fun buildDocumentGraph(entityIds: List<String>): Graph<JsonObject, DefaultEdge> {
+        if (entityIds.isEmpty()) {
+            return DefaultDirectedGraph(DefaultEdge::class.java)
+        }
 
-                    // Add an edge from this entity to its parent
-                    graph.addEdge(entity, parentEntity)
-                } catch (e: Exception) {
-                    log.debug("Error accessing field ${field.name} on entity ${entity._id}", e)
+        // Fetch all documents using $or query for better compatibility with ObjectId
+        val orCriteria = JsonArray()
+        entityIds.forEach { id ->
+            orCriteria.add(JsonObject().put("_id", id))
+        }
+        val query = JsonObject().put("\$or", orCriteria)
+
+        // Log the query for debugging
+        log.debug("Building document graph with query: ${query.encode()}")
+
+        val documents = mongoClient.find(collection, query).await()
+
+        log.debug("Found ${documents.size} documents for graph")
+
+        if (documents.isEmpty()) {
+            // Try individual queries as fallback
+            log.debug("No results with \$or query, trying with individual queries")
+
+            val individualResults = mutableListOf<JsonObject>()
+            for (id in entityIds) {
+                val singleQuery = JsonObject().put("_id", id)
+                log.debug("Individual query: ${singleQuery.encode()}")
+
+                val singleResult = mongoClient.findOne(collection, singleQuery, JsonObject()).await()
+                if (singleResult != null) {
+                    individualResults.add(singleResult)
+                    log.debug("Found document with ID: $id")
+                } else {
+                    log.debug("No document found with ID: $id")
                 }
+            }
+
+            if (individualResults.isEmpty()) {
+                return DefaultDirectedGraph(DefaultEdge::class.java)
+            }
+
+            return buildDocumentGraphFromDocuments(individualResults)
+        }
+
+        return buildDocumentGraphFromDocuments(documents)
+    }
+
+    /**
+     * Helper method to build a document graph from a list of MongoDB documents
+     */
+    private fun buildDocumentGraphFromDocuments(documents: List<JsonObject>): Graph<JsonObject, DefaultEdge> {
+        // Create document lookup map for efficiency
+        val documentsById = documents.associateBy { it.getString("_id") }
+
+        // Create a new directed graph
+        val graph = DefaultDirectedGraph<JsonObject, DefaultEdge>(DefaultEdge::class.java)
+
+        // Add all documents as vertices
+        for (document in documents) {
+            graph.addVertex(document)
+        }
+
+        // Now analyze each document to find relationships
+        for (document in documents) {
+            val state = document.getJsonObject("state", JsonObject())
+            val parentId = state.getString("parentId")
+
+            if (parentId != null && documentsById.containsKey(parentId)) {
+                val parentDocument = documentsById[parentId]!!
+                graph.addEdge(document, parentDocument)
             }
         }
 
