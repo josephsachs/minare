@@ -1,10 +1,7 @@
 package com.minare.example.models
 
+import com.minare.core.entity.annotations.*
 import com.minare.core.models.Entity
-import com.minare.core.entity.annotations.Child
-import com.minare.core.entity.annotations.EntityType
-import com.minare.core.entity.annotations.Parent
-import com.minare.core.entity.annotations.State
 
 @EntityType("Node")
 class Node() : Entity() {
@@ -25,6 +22,7 @@ class Node() : Entity() {
     var childIds: MutableList<String> = mutableListOf()
 
     @State
+    @Mutable
     var color: String = "#CCCCCC" // Default boring gray color
 
     /**

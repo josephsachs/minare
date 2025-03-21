@@ -129,10 +129,16 @@ export class D3GraphVisualizer {
 
     logger.info(`Processing ${entities.length} entities for D3 visualization`);
 
-    // Create nodes from entities
+    // Create nodes from entities - filter to those with state.label or type='Node'
     entities.forEach(entity => {
       // Skip entities without proper data
       if (!entity.id) {
+        return;
+      }
+
+      // Check if it's likely a node
+      const isNode = (entity.state && entity.state.label) || entity.type === 'Node';
+      if (!isNode) {
         return;
       }
 

@@ -52,19 +52,17 @@ export class GridVisualizer {
     let renderedCount = 0;
 
     for (const node of nodes) {
-      // Check if it's a Node type - accept either in state or as a direct property
-      const isNode = (node.state && node.state.type === 'Node') || node.type === 'Node';
+      // Identify nodes by presence of state.label or type property
+      const isNode = (node.state && node.state.label) || node.type === 'Node';
 
       if (!isNode) continue;
 
       const nodeElement = document.createElement('div');
       nodeElement.className = 'node';
-
-      // Get color from state if available
-      const color = node.state?.color || '#ffffff';
-      nodeElement.style.backgroundColor = color;
+      nodeElement.style.backgroundColor = node.state?.color || '#ffffff';
 
       // Make text color black or white depending on background brightness
+      const color = node.state?.color || '#ffffff';
       const r = parseInt(color.slice(1, 3), 16);
       const g = parseInt(color.slice(3, 5), 16);
       const b = parseInt(color.slice(5, 7), 16);

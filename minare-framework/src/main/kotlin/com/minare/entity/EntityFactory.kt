@@ -33,4 +33,6 @@ interface EntityFactory {
      * Get a list of registered entity type Kotlin classes
      */
     fun getTypeList(): List<KClass<*>>
+
+    fun <T : Entity> ensureDependencies(entity: T): T
 }

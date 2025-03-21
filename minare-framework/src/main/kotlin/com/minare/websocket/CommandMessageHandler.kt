@@ -1,6 +1,9 @@
 package com.minare.core.websocket
 
 import com.minare.controller.ConnectionController
+import com.minare.core.entity.ReflectionCache
+import com.minare.core.models.Entity
+import com.minare.persistence.EntityStore
 import io.vertx.core.json.JsonObject
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
@@ -12,7 +15,9 @@ import kotlin.coroutines.CoroutineContext
 @Singleton
 open class CommandMessageHandler @Inject constructor(
     private val connectionController: ConnectionController,
-    private val coroutineContext: CoroutineContext
+    private val coroutineContext: CoroutineContext,
+    private val entityStore: EntityStore,
+    private val reflectionCache: ReflectionCache
 ) {
     private val log = LoggerFactory.getLogger(CommandMessageHandler::class.java)
 
@@ -54,18 +59,34 @@ open class CommandMessageHandler @Inject constructor(
         // }
 
         // Extract operation details
+        // Assuming this is already within a suspending function
         val entityObject = message.getJsonObject("entity")
         val entityId = entityObject?.getString("_id")
         val version = entityObject?.getLong("version")
         val state = entityObject?.getJsonObject("state")
 
-        // Validate required fields
+// Validate required fields
         if (entityId == null || version == null || state == null) {
             throw IllegalArgumentException("Mutate command requires id, version and new state")
         }
 
-        // Stub implementation - to be overridden by application
         log.info("Mutate operation on entity '{}' requested", entityId)
+
+        try {
+            // Using a functional approach
+            val entities: Map<String, Entity> = entityStore.findEntitiesByIds(listOf(entityId))
+
+            entities.forEach { (_, entity) ->
+                // Manually inject just the reflection cache - this is what's causing the NPE
+                entity.reflectionCache = this.reflectionCache
+                entity.entityStore = this.entityStore
+
+                // Call mutate with the entity object
+                entity.mutate(entityObject)
+            }
+        } catch (e: Exception) {
+            log.error("Tried to find nonexistent entity ${entityId}", e)
+        }
     }
 
     /**

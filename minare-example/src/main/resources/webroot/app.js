@@ -258,6 +258,22 @@ class App {
   }
 
   /**
+   * Handle mutation response
+   * @param {Object} response - Mutation response from server
+   */
+  handleMutationResponse(response) {
+    // Route the mutation response to each lurker
+    for (const lurker of this.lurkers) {
+      if (lurker.active) {
+        lurker.handleMutationResponse(response);
+      }
+    }
+
+    // Update the UI to reflect the new status
+    this.updateLurkerUI();
+  }
+
+  /**
    * Remove all lurkers
    */
   removeAllLurkers() {
@@ -301,7 +317,9 @@ class App {
           <strong>Lurker ${index + 1}</strong>
           <span class="lurker-status">
             (${status.active ? 'Active' : 'Inactive'},
-            Targets: ${status.targetCount})
+            Targets: ${status.targetCount},
+            Entities: ${status.entityCount || 0},
+            Pending: ${status.pendingMutations || 0})
           </span>
         </div>
         <button class="sim-button remove-lurker" data-index="${index}">Remove</button>

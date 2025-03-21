@@ -7,6 +7,7 @@ import com.google.inject.name.Names
 import com.minare.cache.ConnectionCache
 import com.minare.cache.InMemoryConnectionCache
 import com.minare.controller.ConnectionController
+import com.minare.core.entity.ReflectionCache
 import com.minare.core.state.ChangeStreamWorkerVerticle
 import com.minare.core.websocket.CommandMessageHandler
 import com.minare.core.websocket.CommandSocketManager
@@ -95,9 +96,11 @@ class GuiceModule : AbstractModule() {
     @Singleton
     fun provideCommandMessageHandler(
         connectionController: ConnectionController,
-        coroutineContext: CoroutineContext
+        coroutineContext: CoroutineContext,
+        entityStore: EntityStore,
+        reflectionCache: ReflectionCache
     ): CommandMessageHandler {
-        return CommandMessageHandler(connectionController, coroutineContext)
+        return CommandMessageHandler(connectionController, coroutineContext, entityStore, reflectionCache)
     }
 
     @Provides

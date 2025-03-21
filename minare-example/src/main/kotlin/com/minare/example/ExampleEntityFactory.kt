@@ -1,14 +1,20 @@
 package com.minare.example
 
 import com.minare.core.entity.EntityFactory
+import com.minare.core.entity.ReflectionCache
 import com.minare.core.models.Entity
 import com.minare.example.models.Node
+import com.minare.persistence.EntityStore
 import org.slf4j.LoggerFactory
+import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.reflect.KClass
 
 @Singleton
-class ExampleEntityFactory : EntityFactory {
+class ExampleEntityFactory @Inject constructor(
+    private val reflectionCache: ReflectionCache,
+    private val entityStore: EntityStore
+) : EntityFactory {
     private val log = LoggerFactory.getLogger(ExampleEntityFactory::class.java)
     private val classes: HashMap<String, Class<*>> = HashMap()
 
@@ -31,7 +37,7 @@ class ExampleEntityFactory : EntityFactory {
 
     override fun getNew(type: String): Entity {
         val normalizedType = type.lowercase()
-        return when (normalizedType) {
+        val entity = when (normalizedType) {
             "node" -> Node()
             else -> {
                 if (normalizedType != "entity") {
@@ -40,6 +46,9 @@ class ExampleEntityFactory : EntityFactory {
                 Entity()
             }
         }
+
+        // Inject dependencies
+        return ensureDependencies(entity)
     }
 
     /**
@@ -47,7 +56,7 @@ class ExampleEntityFactory : EntityFactory {
      */
     @Suppress("UNCHECKED_CAST")
     override fun <T : Entity> createEntity(entityClass: Class<T>): T {
-        return when {
+        val entity = when {
             Node::class.java.isAssignableFrom(entityClass) -> Node() as T
             Entity::class.java.isAssignableFrom(entityClass) -> Entity() as T
             else -> {
@@ -55,6 +64,9 @@ class ExampleEntityFactory : EntityFactory {
                 Entity() as T
             }
         }
+
+        // Inject dependencies
+        return ensureDependencies(entity)
     }
 
     /**
@@ -69,5 +81,16 @@ class ExampleEntityFactory : EntityFactory {
             Node::class,
             Entity::class
         )
+    }
+
+    /**
+     * Ensure an entity has all required dependencies injected
+     */
+    override fun <T : Entity> ensureDependencies(entity: T): T {
+        // Inject dependencies if they're not already initialized
+        entity.reflectionCache = reflectionCache
+        entity.entityStore = entityStore
+
+        return entity
     }
 }

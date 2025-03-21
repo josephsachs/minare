@@ -1,7 +1,9 @@
 package com.minare.core.entity
 
 import com.minare.core.models.Entity
+import com.minare.persistence.EntityStore
 import org.slf4j.LoggerFactory
+import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.reflect.KClass
 
@@ -11,7 +13,10 @@ import kotlin.reflect.KClass
  * implementation to the EntityFactory interface in their Guice module.
  */
 @Singleton
-class DefaultEntityFactory : EntityFactory {
+class DefaultEntityFactory @Inject constructor(
+    private val reflectionCache: ReflectionCache,
+    private val entityStore: EntityStore
+) : EntityFactory {
     private val log = LoggerFactory.getLogger(DefaultEntityFactory::class.java)
     private val classes: HashMap<String, Class<*>> = HashMap()
 
@@ -55,5 +60,16 @@ class DefaultEntityFactory : EntityFactory {
 
     override fun getTypeList(): List<KClass<*>> {
         return listOf(Entity::class)
+    }
+
+    /**
+     * Ensure an entity has all required dependencies injected
+     */
+    override fun <T : Entity> ensureDependencies(entity: T): T {
+        // Inject dependencies if they're not already initialized
+        entity.reflectionCache = reflectionCache
+        entity.entityStore = entityStore
+
+        return entity
     }
 }

@@ -64,13 +64,12 @@ open class Entity {
          * Process the mutation based on consistency rules.
          */
         suspend fun mutate(requestObject: JsonObject): JsonObject {
-                val requestEntity = requestObject.getJsonObject("entity")
 
-                val delta = requestEntity.getJsonObject("state")
-                val requestedVersion = requestEntity.getLong("version")
-                val entityId = requestEntity.getString("_id")
+                val delta = requestObject.getJsonObject("state")
+                val requestedVersion = requestObject.getLong("version")
+                val entityId = requestObject.getString("_id")
 
-                val prunedDelta = getMutateDelta(delta)
+                 val prunedDelta = getMutateDelta(delta)
 
                 if (prunedDelta.isEmpty) {
                         return JsonObject()

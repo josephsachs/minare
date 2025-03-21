@@ -4,6 +4,7 @@
 import store from './store.js';
 import logger from './logger.js';
 import { connectUpdateSocket } from './connection.js';
+import app from './app.js';
 
 /**
  * Handle messages from the command socket
@@ -37,6 +38,27 @@ export const handleCommandSocketMessage = (event) => {
         }));
 
         store.updateEntities(transformedEntities);
+      }
+    } else if (message.type === 'mutation_response' || message.type === 'mutation_success') {
+      // Process mutation response
+      logger.info(`Received mutation response for entity: ${message.entity?._id}`);
+
+      // Transform the entity data to our format
+      if (message.entity) {
+        const entityData = {
+          id: message.entity._id,
+          version: message.entity.version,
+          state: message.entity.state,
+          type: message.entity.type
+        };
+
+        // Update our store with the new version
+        store.updateEntities([entityData]);
+
+        // Notify app about mutation response
+        if (app && typeof app.handleMutationResponse === 'function') {
+          app.handleMutationResponse(message);
+        }
       }
     } else {
       logger.info(`Unhandled command message type: ${message.type}`);

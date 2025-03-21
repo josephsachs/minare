@@ -432,8 +432,6 @@ class MongoEntityStore @Inject constructor(
                         this.version = version
                         this.type = entityType
 
-                        // TODO: Implement deserialize method
-                        // this.deserialize(state)
                     }
 
                     id to entity
