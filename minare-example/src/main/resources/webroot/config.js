@@ -21,18 +21,22 @@ export const config = {
     }
   },
 
-// Logging settings
+  // Logging settings
   logging: {
     // Whether to log messages to the browser console
     console: true,
     // Maximum number of log entries to keep in the UI
-    maxEntries: 1000,
+    maxEntries: 500,
     // Whether to log verbose messages (like all updates and commands)
     verbose: false,
     // How often to flush the log buffer (in milliseconds)
-    flushIntervalMs: 500,
+    flushIntervalMs: 1000,
     // Maximum number of messages to buffer before forcing a flush
-    maxBufferSize: 100
+    maxBufferSize: 100,
+    // Throttle update messages (only log 1 in X)
+    updateLogThrottle: 10,
+    // Enable detailed entity logging
+    logDetailedEntities: false
   },
 
   // Visualization settings
@@ -49,15 +53,6 @@ export const config = {
       nodeDefaultColor: '#CCCCCC',
       linkColor: '#999',
       linkOpacity: 0.6
-    }
-  },
-
-  // Simulation settings
-  simulation: {
-    // Lurker simulation settings
-    lurker: {
-      minMutationInterval: 10000,  // Minimum time between mutations (ms)
-      maxMutationInterval: 20000   // Maximum time between mutations (ms)
     }
   }
 };

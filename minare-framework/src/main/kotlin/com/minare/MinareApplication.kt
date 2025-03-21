@@ -2,13 +2,13 @@ package com.minare
 
 import com.google.inject.*
 import com.google.inject.name.Names
-import com.minare.config.DatabaseNameProvider
-import com.minare.config.GuiceModule
-import com.minare.config.InternalInjectorHolder
-import com.minare.core.state.ChangeStreamWorkerVerticle
+import com.minare.config.*
+import com.minare.worker.ChangeStreamWorkerVerticle
+import com.minare.worker.MutationVerticle
 import com.minare.core.websocket.CommandSocketManager
 import com.minare.core.websocket.UpdateSocketManager
 import com.minare.persistence.DatabaseInitializer
+import com.minare.worker.MinareVerticleFactory
 import io.vertx.core.DeploymentOptions
 import io.vertx.core.Vertx
 import io.vertx.core.json.JsonObject
@@ -37,13 +37,11 @@ abstract class MinareApplication : CoroutineVerticle() {
     lateinit var databaseInitializer: DatabaseInitializer
 
     @Inject
-    lateinit var changeStreamWorkerVerticle: ChangeStreamWorkerVerticle
+    lateinit var injector: Injector
 
-    // Guice injector for dependency management (not needed to be injected anymore)
-    // We'll use InternalInjectorHolder instead if we need access to the injector
-
-    // Track the deployment ID of our worker verticle
+    // Track the deployment IDs of our worker verticles
     private var changeStreamWorkerDeploymentId: String? = null
+    private var mutationVerticleDeploymentId: String? = null
 
     /**
      * Main startup method. Initializes the dependency injection,
@@ -55,15 +53,40 @@ abstract class MinareApplication : CoroutineVerticle() {
             databaseInitializer.initialize()
             log.info("Database initialized successfully")
 
+            // Register the Guice Verticle Factory
+            vertx.registerVerticleFactory(MinareVerticleFactory(injector))
+            log.info("Registered GuiceVerticleFactory")
+
             // Deploy the change stream worker verticle as a worker verticle
-            val options = DeploymentOptions()
+            val changeStreamOptions = DeploymentOptions()
                 .setWorker(true)
                 .setWorkerPoolName("change-stream-pool")
                 .setWorkerPoolSize(1)  // We only need one worker for the change stream
                 .setMaxWorkerExecuteTime(Long.MAX_VALUE)  // Allow long-running tasks
 
-            changeStreamWorkerDeploymentId = vertx.deployVerticle(changeStreamWorkerVerticle, options).await()
+            // Deploy using the GuiceVerticleFactory
+            changeStreamWorkerDeploymentId = vertx.deployVerticle(
+                "guice:" + ChangeStreamWorkerVerticle::class.java.name,
+                changeStreamOptions
+            ).await()
             log.info("Change stream worker deployed with ID: $changeStreamWorkerDeploymentId")
+
+            // Deploy the mutation verticle with multiple instances based on core count
+            val processorCount = Runtime.getRuntime().availableProcessors()
+            val mutationInstances = processorCount.coerceAtLeast(2) // At least 2 instances
+
+            val mutationOptions = DeploymentOptions()
+                .setWorker(true)
+                .setWorkerPoolName("mutation-pool")
+                .setWorkerPoolSize(mutationInstances)
+                .setInstances(mutationInstances)
+
+            // Deploy using the GuiceVerticleFactory
+            mutationVerticleDeploymentId = vertx.deployVerticle(
+                "guice:" + MutationVerticle::class.java.name,
+                mutationOptions
+            ).await()
+            log.info("Mutation verticle deployed with $mutationInstances instances, ID: $mutationVerticleDeploymentId")
 
             // Register event bus handlers for change stream events
             vertx.eventBus().consumer<Boolean>(ChangeStreamWorkerVerticle.ADDRESS_STREAM_STARTED) {
@@ -163,6 +186,16 @@ abstract class MinareApplication : CoroutineVerticle() {
      */
     override suspend fun stop() {
         try {
+            // Undeploy the mutation verticle
+            if (mutationVerticleDeploymentId != null) {
+                try {
+                    vertx.undeploy(mutationVerticleDeploymentId).await()
+                    log.info("Mutation verticle undeployed successfully")
+                } catch (e: Exception) {
+                    log.error("Error undeploying mutation verticle", e)
+                }
+            }
+
             // Undeploy the change stream worker verticle
             if (changeStreamWorkerDeploymentId != null) {
                 try {
@@ -237,7 +270,7 @@ abstract class MinareApplication : CoroutineVerticle() {
                 log.info("Using database name: $dbName")
 
                 // Create the framework module
-                val frameworkModule = GuiceModule()
+                val frameworkModule = MinareModule()
 
                 // Create a module for database name binding
                 val dbNameModule = object : AbstractModule() {

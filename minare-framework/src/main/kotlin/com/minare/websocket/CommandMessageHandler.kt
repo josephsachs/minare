@@ -3,8 +3,12 @@ package com.minare.core.websocket
 import com.minare.controller.ConnectionController
 import com.minare.core.entity.ReflectionCache
 import com.minare.core.models.Entity
+import com.minare.worker.MutationVerticle
 import com.minare.persistence.EntityStore
+import io.vertx.core.Vertx
+import io.vertx.core.eventbus.ReplyException
 import io.vertx.core.json.JsonObject
+import io.vertx.kotlin.coroutines.await
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import org.slf4j.LoggerFactory
@@ -17,7 +21,8 @@ open class CommandMessageHandler @Inject constructor(
     private val connectionController: ConnectionController,
     private val coroutineContext: CoroutineContext,
     private val entityStore: EntityStore,
-    private val reflectionCache: ReflectionCache
+    private val reflectionCache: ReflectionCache,
+    private val vertx: Vertx
 ) {
     private val log = LoggerFactory.getLogger(CommandMessageHandler::class.java)
 
@@ -44,48 +49,76 @@ open class CommandMessageHandler @Inject constructor(
     }
 
     /**
-     * Handle a mutate command
-     * Mutate commands are used to modify data in the database
+     * Handle a mutate command by delegating to the MutationVerticle
      */
     protected open suspend fun handleMutate(connectionId: String, message: JsonObject) {
-        log.debug("Handling mutate command for connection {}: {}", connectionId, message)
+        log.debug("Handling mutate command for connection {}", connectionId)
 
-        // Get connection from memory
-        val connection = connectionController.getConnection(connectionId)
-
-        // Authentication would go here
-        // if (!authenticator.validate(connection)) {
-        //     throw SecurityException("Unauthorized")
-        // }
-
-        // Extract operation details
-        // Assuming this is already within a suspending function
+        // Extract entity details for logging
         val entityObject = message.getJsonObject("entity")
         val entityId = entityObject?.getString("_id")
-        val version = entityObject?.getLong("version")
-        val state = entityObject?.getJsonObject("state")
 
-// Validate required fields
-        if (entityId == null || version == null || state == null) {
-            throw IllegalArgumentException("Mutate command requires id, version and new state")
+        if (entityId == null) {
+            log.error("Mutate command missing entity ID")
+            sendErrorToClient(connectionId, "Missing entity ID")
+            return
         }
 
-        log.info("Mutate operation on entity '{}' requested", entityId)
+        log.debug("Delegating mutation for entity {} to MutationVerticle", entityId)
 
         try {
-            // Using a functional approach
-            val entities: Map<String, Entity> = entityStore.findEntitiesByIds(listOf(entityId))
+            // Create a message with the mutation command and connection ID
+            val mutationCommand = JsonObject()
+                .put("connectionId", connectionId)
+                .put("entity", entityObject)
 
-            entities.forEach { (_, entity) ->
-                // Manually inject just the reflection cache - this is what's causing the NPE
-                entity.reflectionCache = this.reflectionCache
-                entity.entityStore = this.entityStore
+            // Send to MutationVerticle and await response
+            try {
+                val response = vertx.eventBus().request<JsonObject>(
+                    MutationVerticle.ADDRESS_MUTATION,
+                    mutationCommand
+                ).await().body()
 
-                // Call mutate with the entity object
-                entity.mutate(entityObject)
+                // Send success response to client
+                sendSuccessToClient(connectionId, response.getJsonObject("entity"))
+
+            } catch (e: ReplyException) {
+                // Handle error response from the verticle
+                log.error("Mutation failed: ${e.message}")
+                sendErrorToClient(connectionId, e.message ?: "Mutation failed")
             }
+
         } catch (e: Exception) {
-            log.error("Tried to find nonexistent entity ${entityId}", e)
+            log.error("Error processing mutation command", e)
+            sendErrorToClient(connectionId, "Internal error: ${e.message}")
+        }
+    }
+
+    /**
+     * Send a success response to the client
+     */
+    private suspend fun sendSuccessToClient(connectionId: String, entity: JsonObject?) {
+        val response = JsonObject()
+            .put("type", "mutation_success")
+            .put("entity", entity)
+
+        val socket = connectionController.getCommandSocket(connectionId)
+        if (socket != null && !socket.isClosed()) {
+            socket.writeTextMessage(response.encode())
+        }
+    }
+
+    /**
+     * Send an error response to the client
+     */
+    private suspend fun sendErrorToClient(connectionId: String, errorMessage: String) {
+        val response = JsonObject()
+            .put("type", "mutation_error")
+            .put("error", errorMessage)
+
+        val socket = connectionController.getCommandSocket(connectionId)
+        if (socket != null && !socket.isClosed()) {
+            socket.writeTextMessage(response.encode())
         }
     }
 

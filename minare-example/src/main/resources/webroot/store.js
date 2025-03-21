@@ -69,16 +69,30 @@ const createStore = () => {
     getEntityById: (id) => _state.entities[id],
 
     updateEntities: (entities) => {
+      console.log('Store updating entities:', JSON.stringify(entities));
+
       for (const entity of entities) {
         if (entity.id) {
           _state.entities[entity.id] = {
             id: entity.id,
             version: entity.version,
-            state: entity.state
+            state: entity.state,
+            type: entity.type  // Make sure we're storing the type property
           };
         }
       }
-      events.emit('entities.updated', Object.values(_state.entities));
+
+      const allEntities = Object.values(_state.entities);
+      console.log(`Store now has ${allEntities.length} entities`);
+
+      // Debug: Check if any entities would be recognized as nodes
+      const potentialNodes = allEntities.filter(entity =>
+        (entity.state && entity.state.label) ||
+        (entity.type === 'Node')
+      );
+      console.log(`Of these, ${potentialNodes.length} would be recognized as nodes`);
+
+      events.emit('entities.updated', allEntities);
     },
 
     clearEntities: () => {

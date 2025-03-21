@@ -9,7 +9,7 @@ import logger from './logger.js';
 import { connect, disconnect, sendCommand } from './connection.js';
 import { GridVisualizer } from './grid-visualizer.js';
 import { D3GraphVisualizer } from './d3-visualizer.js';
-import { Lurker } from './lurker.js';
+// Lurker import removed
 
 /**
  * Main application class
@@ -24,14 +24,13 @@ class App {
       logEntries: null,
       graphContainer: null,
       toggleVisBtn: null,
-      simulationContainer: null
+      simulationContainer: null,
+      simulationPanel: null,
+      simulationPanelHeader: null
     };
 
     // Active visualizer instance
     this.visualizer = null;
-
-    // Simulation state
-    this.lurkers = [];
 
     // Initialize the application when DOM is ready
     window.addEventListener('load', () => this.init());
@@ -49,6 +48,8 @@ class App {
     this.elements.graphContainer = document.getElementById('graph');
     this.elements.toggleVisBtn = document.getElementById('toggleVisBtn');
     this.elements.simulationContainer = document.querySelector('.simulation-panel-content');
+    this.elements.simulationPanel = document.querySelector('.simulation-panel');
+    this.elements.simulationPanelHeader = document.querySelector('.simulation-panel h2');
 
     // Initialize logger
     logger.init(this.elements.logEntries);
@@ -80,7 +81,17 @@ class App {
     // Toggle visualization button
     this.elements.toggleVisBtn.addEventListener('click', () => this.toggleVisualization());
 
+    // Toggle simulation panel
+    this.elements.simulationPanelHeader.addEventListener('click', () => this.toggleSimulationPanel());
+
     logger.info('Event listeners set up');
+  }
+
+  /**
+   * Toggle the simulation panel collapsed state
+   */
+  toggleSimulationPanel() {
+    this.elements.simulationPanel.classList.toggle('collapsed');
   }
 
   /**
@@ -174,26 +185,44 @@ class App {
     controlsContainer.style.flexDirection = 'column';
     controlsContainer.style.gap = '10px';
 
-    // Add lurker controls
-    const lurkerControls = document.createElement('div');
-    lurkerControls.innerHTML = `
-      <h3>Lurker Simulation</h3>
+    // Add information text
+    const infoText = document.createElement('div');
+    infoText.innerHTML = `
+      <h3>Simulation Information</h3>
+      <p>Simulation controls have been moved to Artillery load tests.</p>
+      <p>This panel is kept for development purposes.</p>
+    `;
+
+    // Add connection testing buttons
+    const connectionTest = document.createElement('div');
+    connectionTest.innerHTML = `
+      <h3>Connection Testing</h3>
       <div style="margin-bottom: 10px;">
-        <button id="addLurkerBtn" class="sim-button">Add Lurker</button>
-        <button id="removeAllLurkersBtn" class="sim-button">Remove All</button>
-      </div>
-      <div id="activeLurkers" class="active-lurkers">
-        No active lurkers
+        <button id="testWebsocketBtn" class="sim-button">Test WebSocket</button>
+        <button id="clearLogBtn" class="sim-button">Clear Log</button>
       </div>
     `;
 
     // Add to container
-    controlsContainer.appendChild(lurkerControls);
+    controlsContainer.appendChild(infoText);
+    controlsContainer.appendChild(connectionTest);
     this.elements.simulationContainer.appendChild(controlsContainer);
 
     // Add event listeners
-    document.getElementById('addLurkerBtn').addEventListener('click', () => this.addLurker());
-    document.getElementById('removeAllLurkersBtn').addEventListener('click', () => this.removeAllLurkers());
+    document.getElementById('testWebsocketBtn')?.addEventListener('click', () => {
+      // Simple test command to verify websocket works
+      if (store.isConnected()) {
+        sendCommand({ command: 'ping', timestamp: Date.now() });
+        logger.info('Sent test ping command');
+      } else {
+        logger.error('Cannot send test command: Not connected to server');
+      }
+    });
+
+    document.getElementById('clearLogBtn')?.addEventListener('click', () => {
+      logger.clear();
+      logger.info('Log cleared');
+    });
 
     // Style for simulation buttons
     const style = document.createElement('style');
@@ -210,165 +239,10 @@ class App {
       .sim-button:hover {
         background-color: #5a6268;
       }
-      .lurker-item {
-        padding: 8px;
-        background-color: #f8f9fa;
-        border: 1px solid #dee2e6;
-        border-radius: 4px;
-        margin-bottom: 5px;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-      }
-      .lurker-status {
-        font-size: 0.85em;
-        color: #6c757d;
-      }
-      .active-lurkers {
-        max-height: 200px;
-        overflow-y: auto;
-        color: #666;
-      }
     `;
     document.head.appendChild(style);
 
     logger.info('Simulation controls initialized');
-  }
-
-  /**
-   * Add a lurker to the simulation
-   */
-  addLurker() {
-    if (!store.isConnected()) {
-      logger.error('Cannot add lurker: Not connected to server');
-      alert('Please connect to the server first');
-      return;
-    }
-
-    const lurker = new Lurker();
-    this.lurkers.push(lurker);
-
-    // Start the lurker
-    lurker.start().then(success => {
-      if (success) {
-        logger.info(`Added and started lurker: ${lurker.id}`);
-      } else {
-        logger.error(`Failed to start lurker: ${lurker.id}`);
-      }
-
-      // Update UI regardless of success/failure
-      this.updateLurkerUI();
-    }).catch(error => {
-      logger.error(`Error starting lurker: ${error.message}`);
-      this.updateLurkerUI();
-    });
-
-    // Update UI immediately to show the pending lurker
-    this.updateLurkerUI();
-  }
-
-  /**
-   * Handle mutation response
-   * @param {Object} response - Mutation response from server
-   */
-  handleMutationResponse(response) {
-    // Route the mutation response to each lurker
-    for (const lurker of this.lurkers) {
-      if (lurker.active) {
-        lurker.handleMutationResponse(response);
-      }
-    }
-
-    // Update the UI to reflect the new status
-    this.updateLurkerUI();
-  }
-
-  /**
-   * Remove all lurkers
-   */
-  removeAllLurkers() {
-    // Stop all lurkers
-    for (const lurker of this.lurkers) {
-      lurker.stop();
-    }
-
-    // Clear the list
-    this.lurkers = [];
-
-    // Update UI
-    this.updateLurkerUI();
-
-    logger.info('Removed all lurkers');
-  }
-
-  /**
-   * Update lurker UI
-   */
-  updateLurkerUI() {
-    const container = document.getElementById('activeLurkers');
-
-    if (!container) return;
-
-    if (this.lurkers.length === 0) {
-      container.innerHTML = 'No active lurkers';
-      return;
-    }
-
-    // Create list of lurkers
-    const lurkerList = document.createElement('div');
-
-    this.lurkers.forEach((lurker, index) => {
-      const status = lurker.getStatus();
-      const lurkerItem = document.createElement('div');
-      lurkerItem.className = 'lurker-item';
-
-      lurkerItem.innerHTML = `
-        <div>
-          <strong>Lurker ${index + 1}</strong>
-          <span class="lurker-status">
-            (${status.active ? 'Active' : 'Inactive'},
-            Targets: ${status.targetCount},
-            Entities: ${status.entityCount || 0},
-            Pending: ${status.pendingMutations || 0})
-          </span>
-        </div>
-        <button class="sim-button remove-lurker" data-index="${index}">Remove</button>
-      `;
-
-      lurkerList.appendChild(lurkerItem);
-    });
-
-    // Replace container content
-    container.innerHTML = '';
-    container.appendChild(lurkerList);
-
-    // Add event listeners to remove buttons
-    const removeButtons = container.querySelectorAll('.remove-lurker');
-    removeButtons.forEach(button => {
-      button.addEventListener('click', (event) => {
-        const index = parseInt(event.target.getAttribute('data-index'));
-        this.removeLurker(index);
-      });
-    });
-  }
-
-  /**
-   * Remove a specific lurker
-   * @param {number} index - Lurker index
-   */
-  removeLurker(index) {
-    if (index >= 0 && index < this.lurkers.length) {
-      // Stop the lurker
-      this.lurkers[index].stop();
-
-      // Remove from array
-      this.lurkers.splice(index, 1);
-
-      // Update UI
-      this.updateLurkerUI();
-
-      logger.info(`Removed lurker at index ${index}`);
-    }
   }
 
   /**
@@ -395,11 +269,6 @@ class App {
    * Handle disconnect button click
    */
   handleDisconnect() {
-    // Stop all lurkers
-    for (const lurker of this.lurkers) {
-      lurker.stop();
-    }
-
     // Disconnect from server
     disconnect();
   }
@@ -414,9 +283,6 @@ class App {
 
     this.elements.connectBtn.disabled = connected;
     this.elements.disconnectBtn.disabled = !connected;
-
-    // Update lurker UI
-    this.updateLurkerUI();
   }
 }
 

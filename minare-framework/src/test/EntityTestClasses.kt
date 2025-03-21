@@ -137,6 +137,24 @@ class TestEntityFactory : EntityFactory {
         }
     }
 
+    @Suppress("UNCHECKED_CAST")
+    override fun <T : Entity> createEntity(entityClass: Class<T>): T {
+        val entity = when {
+            Region::class.java.isAssignableFrom(entityClass) -> Region() as T
+            Zone::class.java.isAssignableFrom(entityClass) -> Zone() as T
+            Building::class.java.isAssignableFrom(entityClass) -> Building() as T
+            MapUnit::class.java.isAssignableFrom(entityClass) -> MapUnit() as T
+            MapVector2::class.java.isAssignableFrom(entityClass) -> MapVector2() as T
+            Entity::class.java.isAssignableFrom(entityClass) -> Entity() as T
+            else -> {
+                Entity() as T
+            }
+        }
+
+        // Inject dependencies
+        return ensureDependencies(entity)
+    }
+
     /**
      * Helper method to get registered entity types - implement based on your EntityFactory
      */
@@ -152,5 +170,13 @@ class TestEntityFactory : EntityFactory {
             MapUnit::class,
             MapVector2::class
         )
+    }
+
+    /**
+     * Ensure an entity has all required dependencies injected
+     */
+    override fun <T : Entity> ensureDependencies(entity: T): T {
+        // These will be mocked
+        return entity
     }
 }

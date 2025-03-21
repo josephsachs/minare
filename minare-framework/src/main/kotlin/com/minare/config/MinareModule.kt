@@ -1,6 +1,7 @@
 package com.minare.config
 
 import com.google.inject.AbstractModule
+import com.google.inject.Injector
 import com.google.inject.Provides
 import com.google.inject.Singleton
 import com.google.inject.name.Names
@@ -8,10 +9,12 @@ import com.minare.cache.ConnectionCache
 import com.minare.cache.InMemoryConnectionCache
 import com.minare.controller.ConnectionController
 import com.minare.core.entity.ReflectionCache
-import com.minare.core.state.ChangeStreamWorkerVerticle
+import com.minare.worker.ChangeStreamWorkerVerticle
+import com.minare.worker.MutationVerticle
 import com.minare.core.websocket.CommandMessageHandler
 import com.minare.core.websocket.CommandSocketManager
 import com.minare.core.websocket.UpdateSocketManager
+import com.minare.worker.MinareVerticleFactory
 import com.minare.persistence.*
 import io.vertx.core.Vertx
 import io.vertx.core.impl.logging.LoggerFactory
@@ -25,8 +28,8 @@ import kotlin.coroutines.CoroutineContext
  * Core framework Guice module that provides default bindings.
  * Applications can override these bindings by using a child injector.
  */
-class GuiceModule : AbstractModule() {
-    private val log = LoggerFactory.getLogger(GuiceModule::class.java)
+class MinareModule : AbstractModule() {
+    private val log = LoggerFactory.getLogger(MinareModule::class.java)
 
     override fun configure() {
         // Store bindings
@@ -35,9 +38,6 @@ class GuiceModule : AbstractModule() {
         bind(ChannelStore::class.java).to(MongoChannelStore::class.java)
         bind(ContextStore::class.java).to(MongoContextStore::class.java)
         bind(ConnectionCache::class.java).to(InMemoryConnectionCache::class.java).`in`(Singleton::class.java)
-
-        // We'll add EntityFactory binding in the child modules instead
-        // to avoid conflicts with application-specific implementations
 
         // Core configuration
         bind(String::class.java)
@@ -50,6 +50,18 @@ class GuiceModule : AbstractModule() {
 
         // Register the change stream consumer
         bind(ChangeStreamWorkerVerticle::class.java)
+
+        // Register the mutation verticle
+        bind(MutationVerticle::class.java)
+    }
+
+    /**
+     * Provides the MinareVerticleFactory
+     */
+    @Provides
+    @Singleton
+    fun provideMinareVerticleFactory(injector: Injector): MinareVerticleFactory {
+        return MinareVerticleFactory(injector)
     }
 
     @Provides
@@ -80,27 +92,16 @@ class GuiceModule : AbstractModule() {
         return MongoClient.createShared(vertx, config)
     }
 
-    //@Provides
-    //@Singleton
-    //fun provideConnectionController(
-    //    connectionStore: ConnectionStore,
-    //    connectionCache: ConnectionCache,
-    //    channelStore: ChannelStore,
-    //    contextStore: ContextStore,
-    //    entityStore: EntityStore
-    //): ConnectionController {
-    //    return ConnectionController(connectionStore, connectionCache, channelStore, contextStore, entityStore)
-   ///}
-
     @Provides
     @Singleton
     fun provideCommandMessageHandler(
         connectionController: ConnectionController,
         coroutineContext: CoroutineContext,
         entityStore: EntityStore,
-        reflectionCache: ReflectionCache
+        reflectionCache: ReflectionCache,
+        vertx: Vertx
     ): CommandMessageHandler {
-        return CommandMessageHandler(connectionController, coroutineContext, entityStore, reflectionCache)
+        return CommandMessageHandler(connectionController, coroutineContext, entityStore, reflectionCache, vertx)
     }
 
     @Provides

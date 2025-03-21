@@ -75,15 +75,29 @@
             border: 1px solid #ddd;
             border-radius: 5px;
             padding: 15px;
-            margin-bottom: 20px;
+            margin-top: 20px;
             background-color: #f0f0f0;
+            transition: max-height 0.3s ease-out, padding 0.3s ease-out;
+        }
+        .simulation-panel.collapsed {
+            max-height: 50px;
+            overflow: hidden;
+            padding: 10px 15px;
         }
         .simulation-panel h2 {
             margin-top: 0;
             margin-bottom: 15px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
         }
         .simulation-panel-content {
             min-height: 100px;
+            transition: opacity 0.2s ease-out;
+        }
+        .collapsed .simulation-panel-content {
+            opacity: 0;
         }
         .graph-panel {
             flex: 1;
@@ -159,6 +173,14 @@
             stroke: #999;
             stroke-opacity: 0.6;
         }
+        .panel-toggle-icon {
+            width: 20px;
+            height: 20px;
+            transition: transform 0.3s ease;
+        }
+        .collapsed .panel-toggle-icon {
+            transform: rotate(180deg);
+        }
     </style>
 </head>
 <body>
@@ -176,13 +198,6 @@
     </div>
 </div>
 
-<div class="simulation-panel">
-    <h2>Simulation Controls</h2>
-    <div class="simulation-panel-content">
-        <!-- Simulation controls will be added here by JavaScript -->
-    </div>
-</div>
-
 <div class="graph-panel">
     <div class="graph-header">
         <h2>Node Graph</h2>
@@ -196,6 +211,18 @@
 <div class="log-container">
     <h3>WebSocket Log</h3>
     <div id="logEntries"></div>
+</div>
+
+<div class="simulation-panel collapsed">
+    <h2>
+        Simulation Controls
+        <svg class="panel-toggle-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M18 15l-6-6-6 6"/>
+        </svg>
+    </h2>
+    <div class="simulation-panel-content">
+        <!-- Simulation controls will be added here by JavaScript -->
+    </div>
 </div>
 
 <!-- Load D3.js from CDN -->

@@ -1,4 +1,4 @@
-package com.minare.core.state
+package com.minare.persistence
 
 import com.minare.core.websocket.UpdateSocketManager
 import com.minare.persistence.ChannelStore

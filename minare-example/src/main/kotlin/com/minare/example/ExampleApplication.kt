@@ -1,7 +1,7 @@
 package com.minare.example
 
 import com.minare.MinareApplication
-import com.minare.example.config.ExampleGuiceModule
+import com.minare.example.config.ExampleModule
 import com.minare.example.controller.ExampleChannelController
 import com.minare.example.core.models.NodeGraphBuilder
 import io.vertx.core.buffer.Buffer
@@ -127,6 +127,6 @@ class ExampleApplication : MinareApplication() {
          * Returns the Guice module for this application
          */
         @JvmStatic
-        fun getModule() = ExampleGuiceModule()
+        fun getModule() = ExampleModule()
     }
 }

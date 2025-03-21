@@ -161,18 +161,32 @@ export class D3GraphVisualizer {
     // Map for quick lookup
     const entityMap = new Map();
 
-    // Create nodes from entities - filter to those with state.label or type='Node'
+    // Create nodes from entities with more flexible node identification
+    let nodeCount = 0;
+    let skippedCount = 0;
+
     entities.forEach(entity => {
       // Skip entities without proper data
       if (!entity.id) {
+        skippedCount++;
         return;
       }
 
-      // Check if it's likely a node
-      const isNode = (entity.state && entity.state.label) || entity.type === 'Node';
+      // Try multiple ways to identify nodes - be more permissive
+      const hasLabel = entity.state && entity.state.label;
+      const hasNodeType = entity.type === 'Node';
+      const typeContainsNode = entity.type && typeof entity.type === 'string' &&
+                             entity.type.toLowerCase().includes('node');
+      const hasColor = entity.state && entity.state.color;
+
+      const isNode = hasLabel || hasNodeType || typeContainsNode || hasColor;
+
       if (!isNode) {
+        skippedCount++;
         return;
       }
+
+      nodeCount++;
 
       const defaultColor = config.visualization?.d3?.nodeDefaultColor || '#CCCCCC';
 
@@ -291,14 +305,15 @@ export class D3GraphVisualizer {
 
     logger.info(`Created ${this.nodes.length} nodes and ${this.links.length} links for visualization`);
 
-    if (this.structureChanged) {
-      if (needsInitialLayout) {
-        logger.info('Will perform full layout simulation for spread-out positioning');
-      } else {
-        logger.info('Graph structure has changed, will perform layout for new nodes only');
+    if (this.nodes.length === 0 && config.logging?.verbose) {
+      console.log('WARNING: No nodes were created for D3 visualization!');
+      // If we have entities but no nodes, dump more detailed info about the first few entities
+      if (entities.length > 0 && config.logging?.logDetailedEntities) {
+        console.log('First few entities that weren\'t recognized as nodes:');
+        entities.slice(0, 3).forEach((entity, i) => {
+          console.log(`Entity ${i+1}:`, JSON.stringify(entity));
+        });
       }
-    } else {
-      logger.info('Only node attributes changed, keeping all positions fixed');
     }
 
     // Remember if we need to do a full layout
@@ -309,6 +324,10 @@ export class D3GraphVisualizer {
    * Update the visualization with current nodes and links
    */
   update() {
+    if (config.logging?.verbose) {
+      console.log(`D3 update: ${this.nodes.length} nodes, ${this.links.length} links`);
+    }
+
     // Handle links
     this.linkElements = this.graphContainer.selectAll('.link')
       .data(this.links, d => {

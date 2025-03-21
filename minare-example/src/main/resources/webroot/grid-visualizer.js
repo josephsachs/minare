@@ -2,6 +2,7 @@
  * Grid-based visualization for entity graph
  */
 import logger from './logger.js';
+import config from './config.js';
 
 export class GridVisualizer {
   /**
@@ -21,16 +22,47 @@ export class GridVisualizer {
 
   /**
    * Update visualization with new data
-   * @param {Array} nodes - Array of node objects
+   * @param {Array} entities - Array of entity objects
    */
-  updateData(nodes) {
-    if (!nodes || nodes.length === 0) {
+  updateData(entities) {
+    if (config.logging?.verbose) {
+      console.log('GridVisualizer received entities:', entities.length);
+    }
+
+    if (!entities || entities.length === 0) {
       this.renderEmptyMessage();
       return;
     }
 
-    logger.info(`Rendering grid with ${nodes.length} nodes`);
-    this.renderGrid(nodes);
+    // Find all nodes (entities with label or Node type)
+    const identifiedNodes = entities.filter(entity =>
+      (entity.state && entity.state.label) ||
+      (entity.type === 'Node') ||
+      (entity.type && typeof entity.type === 'string' && entity.type.toLowerCase().includes('node')) ||
+      (entity.state && entity.state.color)
+    );
+
+    if (config.logging?.verbose) {
+      console.log(`GridVisualizer: Found ${identifiedNodes.length} nodes out of ${entities.length} entities`);
+    }
+
+    // If no nodes identified but we have entities, log only in verbose mode
+    if (identifiedNodes.length === 0 && entities.length > 0 && config.logging?.logDetailedEntities && config.logging?.verbose) {
+      console.log('Entity structure examples:');
+      console.log('First entity:', JSON.stringify(entities[0]));
+      console.log('Entity properties:', Object.keys(entities[0]));
+      if (entities[0].state) {
+        console.log('State properties:', Object.keys(entities[0].state));
+      }
+    }
+
+    if (identifiedNodes.length === 0) {
+      this.renderEmptyMessage();
+      return;
+    }
+
+    logger.info(`Rendering grid with ${identifiedNodes.length} nodes`);
+    this.renderGrid(entities);
   }
 
   /**
@@ -50,12 +82,26 @@ export class GridVisualizer {
 
     // Counting nodes that actually get rendered
     let renderedCount = 0;
+    let skippedCount = 0;
+
+    if (config.logging?.verbose) {
+      console.log('renderGrid received nodes:', nodes.length);
+    }
 
     for (const node of nodes) {
-      // Identify nodes by presence of state.label or type property
-      const isNode = (node.state && node.state.label) || node.type === 'Node';
+      // Try multiple ways to identify nodes - be more permissive
+      const hasLabel = node.state && node.state.label;
+      const hasNodeType = node.type === 'Node';
+      const typeContainsNode = node.type && typeof node.type === 'string' &&
+                             node.type.toLowerCase().includes('node');
+      const hasColor = node.state && node.state.color;
 
-      if (!isNode) continue;
+      const isNode = hasLabel || hasNodeType || typeContainsNode || hasColor;
+
+      if (!isNode) {
+        skippedCount++;
+        continue;
+      }
 
       const nodeElement = document.createElement('div');
       nodeElement.className = 'node';
@@ -84,7 +130,7 @@ export class GridVisualizer {
     }
 
     this.container.appendChild(flexContainer);
-    logger.info(`Rendered ${renderedCount} nodes in grid view`);
+    logger.info(`Rendered ${renderedCount} nodes in grid view (skipped ${skippedCount})`);
 
     // If no nodes were rendered, show empty message
     if (renderedCount === 0) {

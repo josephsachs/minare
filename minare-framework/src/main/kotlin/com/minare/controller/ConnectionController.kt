@@ -15,7 +15,7 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Controls connection lifecycle and maintains in-memory connection state.
+ * Controls connection lifecycle and maintains in-memory connection worker.
  * Provides fast access to connection objects and associated websockets.
  */
 @Singleton
