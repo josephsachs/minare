@@ -45,8 +45,8 @@ export class Lurker {
     this.events = createEventEmitter();
 
     // Configuration
-    this.minInterval = config.simulation?.lurker?.minMutationInterval || 1000;
-    this.maxInterval = config.simulation?.lurker?.maxMutationInterval || 5000;
+    this.minInterval = config.simulation?.lurker?.minMutationInterval || 9000;
+    this.maxInterval = config.simulation?.lurker?.maxMutationInterval || 18000;
 
     // Initialize by copying the current entity graph from the main store
     this.syncWithMainStore();
