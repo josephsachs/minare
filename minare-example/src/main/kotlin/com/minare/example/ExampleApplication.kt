@@ -49,13 +49,10 @@ class ExampleApplication : MinareApplication() {
         }
     }
 
-    // Rest of the class remains unchanged
-
     // This is the single implementation of the route setup method
     override fun setupApplicationRoutes(router: Router) {
         val staticHandler = StaticHandler.create()
             .setCachingEnabled(false)  // Disable caching during development
-            .setAllowRootFileSystemAccess(false)
             .setDefaultContentEncoding("UTF-8")
             .setFilesReadOnly(true)
 
@@ -78,7 +75,7 @@ class ExampleApplication : MinareApplication() {
         }
 
         // Add a debug endpoint to check classpath
-        router.get("/debug-resources").handler { ctx ->
+        router.get("/debug").handler { ctx ->
             val classLoader = Thread.currentThread().contextClassLoader
             val resourceUrl = classLoader.getResource("webroot/index.html")
             val resourceStream = classLoader.getResourceAsStream("webroot/index.html")

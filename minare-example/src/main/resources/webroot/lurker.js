@@ -303,85 +303,95 @@ export class Lurker {
   }
 
   /**
-   * Perform a random color mutation on a node
-   */
-  performMutation() {
-    if (!this.active) {
-      logger.info(`Lurker ${this.id}: Not active, skipping mutation`);
-      return;
-    }
+     * Perform a random color mutation on a node
+     */
+    performMutation() {
+      if (!this.active) {
+        logger.info(`Lurker ${this.id}: Not active, skipping mutation`);
+        return;
+      }
 
-    if (!this.connected) {
-      logger.info(`Lurker ${this.id}: Not connected, skipping mutation`);
-      // Even if we're not connected, we should schedule the next attempt
-      this.scheduleNextMutation();
-      return;
-    }
-
-    try {
-      // Get all nodes from our entity store
-      const entities = this.entityStore.getEntities();
-      logger.info(`Lurker ${this.id}: Selecting from ${entities.length} entities for mutation`);
-
-      // Filter based on the type Node either:
-      // 1. Node entities have state.label field (that's our best indicator without type)
-      // 2. If the type property exists and equals "Node"
-      const nodes = entities.filter(entity =>
-        (entity.state && entity.state.label) ||
-        (entity.type === 'Node')
-      );
-
-      if (nodes.length === 0) {
-        logger.info(`Lurker ${this.id}: No nodes available for mutation (entities: ${entities.length})`);
+      if (!this.connected) {
+        logger.info(`Lurker ${this.id}: Not connected, skipping mutation`);
+        // Even if we're not connected, we should schedule the next attempt
         this.scheduleNextMutation();
         return;
       }
 
-      // Select a random node
-      const randomIndex = Math.floor(Math.random() * nodes.length);
-      const targetNode = nodes[randomIndex];
+      // Random chance to bail (75%)
+      const shouldBail = (Math.random() * (100 - 1) + 1) < 75;
 
-      // Keep track of nodes this lurker has interacted with
-      this.targetedNodes.add(targetNode.id);
-
-      // Generate a slightly modified color
-      const currentColor = targetNode.state?.color || '#CCCCCC';
-      const newColor = this.generateRandomColor(currentColor);
-
-      // Prepare mutation command
-      const command = {
-        command: 'mutate',
-        entity: {
-          _id: targetNode.id,
-          version: targetNode.version,
-          state: {
-            color: newColor
-          }
-        }
-      };
-
-      // Track this pending mutation
-      this.pendingMutations.set(targetNode.id, {
-        timestamp: Date.now(),
-        oldVersion: targetNode.version,
-        newColor: newColor
-      });
-
-      // Send the command using this lurker's own command socket
-      const success = this.sendCommand(command);
-
-      if (!success) {
-        logger.error(`Lurker ${this.id}: Failed to send mutation command`);
-        // Clean up the pending mutation since it failed
-        this.pendingMutations.delete(targetNode.id);
+      if (shouldBail) {
+        logger.info(`Lurker ${this.id}: Randomly decided to skip this mutation opportunity`);
+        // Always schedule the next mutation even when bailing
+        this.scheduleNextMutation();
+        return;
       }
-    } catch (error) {
-      logger.error(`Lurker ${this.id}: Error performing mutation: ${error.message}`);
-    } finally {
-      // Always schedule the next mutation, even if this one failed
-      this.scheduleNextMutation();
+
+      try {
+        // Get all nodes from our entity store
+        const entities = this.entityStore.getEntities();
+        logger.info(`Lurker ${this.id}: Selecting from ${entities.length} entities for mutation`);
+
+        // Filter based on the type Node either:
+        // 1. Node entities have state.label field (that's our best indicator without type)
+        // 2. If the type property exists and equals "Node"
+        const nodes = entities.filter(entity =>
+          (entity.state && entity.state.label) ||
+          (entity.type === 'Node')
+        );
+
+        if (nodes.length === 0) {
+          logger.info(`Lurker ${this.id}: No nodes available for mutation (entities: ${entities.length})`);
+          this.scheduleNextMutation();
+          return;
+        }
+
+        // Select a random node
+        const randomIndex = Math.floor(Math.random() * nodes.length);
+        const targetNode = nodes[randomIndex];
+
+        // Keep track of nodes this lurker has interacted with
+        this.targetedNodes.add(targetNode.id);
+
+        // Generate a slightly modified color
+        const currentColor = targetNode.state?.color || '#CCCCCC';
+        const newColor = this.generateRandomColor(currentColor);
+
+        // Prepare mutation command
+        const command = {
+          command: 'mutate',
+          entity: {
+            _id: targetNode.id,
+            version: targetNode.version,
+            state: {
+              color: newColor
+            }
+          }
+        };
+
+        // Track this pending mutation
+        this.pendingMutations.set(targetNode.id, {
+          timestamp: Date.now(),
+          oldVersion: targetNode.version,
+          newColor: newColor
+        });
+
+        // Send the command using this lurker's own command socket
+        const success = this.sendCommand(command);
+
+        if (!success) {
+          logger.error(`Lurker ${this.id}: Failed to send mutation command`);
+          // Clean up the pending mutation since it failed
+          this.pendingMutations.delete(targetNode.id);
+        }
+      } catch (error) {
+        logger.error(`Lurker ${this.id}: Error performing mutation: ${error.message}`);
+      } finally {
+        // Always schedule the next mutation, even if this one failed
+        this.scheduleNextMutation();
+      }
     }
-  }
 
   /**
    * Send a command to the server

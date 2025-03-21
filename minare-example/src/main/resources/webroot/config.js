@@ -21,12 +21,18 @@ export const config = {
     }
   },
 
-  // Logging settings
+// Logging settings
   logging: {
     // Whether to log messages to the browser console
     console: true,
     // Maximum number of log entries to keep in the UI
-    maxEntries: 1000
+    maxEntries: 1000,
+    // Whether to log verbose messages (like all updates and commands)
+    verbose: false,
+    // How often to flush the log buffer (in milliseconds)
+    flushIntervalMs: 500,
+    // Maximum number of messages to buffer before forcing a flush
+    maxBufferSize: 100
   },
 
   // Visualization settings
