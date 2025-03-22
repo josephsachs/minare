@@ -5,3 +5,4 @@ docker/data
 logs/
 target/
 performance-test/node_modules
+dbExec.sh
