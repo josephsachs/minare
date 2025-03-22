@@ -57,6 +57,9 @@ abstract class MinareApplication : CoroutineVerticle() {
             databaseInitializer.initialize()
             log.info("Database initialized successfully")
 
+            // Deploy verticles with multiple instances based on core count
+            val processorCount = Runtime.getRuntime().availableProcessors()
+
             // Register the Guice Verticle Factory
             vertx.registerVerticleFactory(MinareVerticleFactory(injector))
             log.info("Registered MinareVerticleFactory")
@@ -78,7 +81,7 @@ abstract class MinareApplication : CoroutineVerticle() {
             val changeStreamOptions = DeploymentOptions()
                 .setWorker(true)
                 .setWorkerPoolName("change-stream-pool")
-                .setWorkerPoolSize(1)  // We only need one worker for the change stream
+                .setInstances(processorCount.coerceAtLeast(2))
                 .setMaxWorkerExecuteTime(Long.MAX_VALUE)  // Allow long-running tasks
 
             // Deploy using the GuiceVerticleFactory
@@ -88,8 +91,6 @@ abstract class MinareApplication : CoroutineVerticle() {
             ).await()
             log.info("Change stream worker deployed with ID: $changeStreamWorkerDeploymentId")
 
-            // Deploy the mutation verticle with multiple instances based on core count
-            val processorCount = Runtime.getRuntime().availableProcessors()
             val mutationInstances = processorCount.coerceAtLeast(2) // At least 2 instances
 
             val mutationOptions = DeploymentOptions()
