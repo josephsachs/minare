@@ -1,10 +1,13 @@
 package com.minare.core.websocket
 
+import com.minare.cache.ConnectionCache
 import com.minare.controller.ConnectionController
 import com.minare.core.entity.ReflectionCache
 import com.minare.core.models.Entity
 import com.minare.worker.MutationVerticle
 import com.minare.persistence.EntityStore
+import com.minare.worker.CommandSocketVerticle
+import io.vertx.kotlin.coroutines.await
 import io.vertx.core.Vertx
 import io.vertx.core.eventbus.ReplyException
 import io.vertx.core.json.JsonObject
@@ -22,7 +25,8 @@ open class CommandMessageHandler @Inject constructor(
     private val coroutineContext: CoroutineContext,
     private val entityStore: EntityStore,
     private val reflectionCache: ReflectionCache,
-    private val vertx: Vertx
+    private val vertx: Vertx,
+    private val connectionCache: ConnectionCache
 ) {
     private val log = LoggerFactory.getLogger(CommandMessageHandler::class.java)
 
@@ -33,8 +37,9 @@ open class CommandMessageHandler @Inject constructor(
     suspend fun handle(connectionId: String, message: JsonObject) {
         val command = message.getString("command")
 
-        // Verify the connection exists in memory
-        if (!connectionController.hasConnection(connectionId)) {
+        // Verify the connection exists in memory first for better performance
+        if (!connectionCache.hasConnection(connectionId)) {
+            log.warn("Connection not found in cache: {}", connectionId)
             throw IllegalArgumentException("Invalid connection ID: $connectionId")
         }
 
@@ -84,7 +89,7 @@ open class CommandMessageHandler @Inject constructor(
 
             } catch (e: ReplyException) {
                 // Handle error response from the verticle
-                log.error("Mutation failed: ${e.message}")
+                log.error("Mutation failed: {}", e.message)
                 sendErrorToClient(connectionId, e.message ?: "Mutation failed")
             }
 
@@ -102,9 +107,11 @@ open class CommandMessageHandler @Inject constructor(
             .put("type", "mutation_success")
             .put("entity", entity)
 
-        val socket = connectionController.getCommandSocket(connectionId)
+        val socket = connectionCache.getCommandSocket(connectionId)
         if (socket != null && !socket.isClosed()) {
             socket.writeTextMessage(response.encode())
+        } else {
+            log.warn("Cannot send success response: command socket not found or closed for {}", connectionId)
         }
     }
 
@@ -116,9 +123,11 @@ open class CommandMessageHandler @Inject constructor(
             .put("type", "mutation_error")
             .put("error", errorMessage)
 
-        val socket = connectionController.getCommandSocket(connectionId)
+        val socket = connectionCache.getCommandSocket(connectionId)
         if (socket != null && !socket.isClosed()) {
             socket.writeTextMessage(response.encode())
+        } else {
+            log.warn("Cannot send error response: command socket not found or closed for {}", connectionId)
         }
     }
 
@@ -128,9 +137,6 @@ open class CommandMessageHandler @Inject constructor(
      */
     protected open suspend fun handleSync(connectionId: String, message: JsonObject) {
         log.debug("Handling sync command for connection {}: {}", connectionId, message)
-
-        // Get connection from memory
-        val connection = connectionController.getConnection(connectionId)
 
         // Check if this is a full channel sync request (no entity specified)
         val entityObject = message.getJsonObject("entity")
@@ -148,9 +154,11 @@ open class CommandMessageHandler @Inject constructor(
                 .put("success", success)
                 .put("timestamp", System.currentTimeMillis())
 
-            val commandSocket = connectionController.getCommandSocket(connectionId)
+            val commandSocket = connectionCache.getCommandSocket(connectionId)
             if (commandSocket != null && !commandSocket.isClosed()) {
                 commandSocket.writeTextMessage(response.encode())
+            } else {
+                log.warn("Cannot send sync initiated response: command socket not found or closed for {}", connectionId)
             }
 
             return
@@ -162,7 +170,32 @@ open class CommandMessageHandler @Inject constructor(
             throw IllegalArgumentException("Sync command requires an entity with a valid _id")
         }
 
-        // Stub implementation - to be overridden by application
-        log.info("Sync operation on entity '{}' requested", id)
+        // Handle entity-specific sync
+        handleEntitySync(connectionId, id)
+    }
+
+    /**
+     * Handle entity-specific sync request
+     */
+    private suspend fun handleEntitySync(connectionId: String, entityId: String) {
+        log.debug("Entity sync requested for entity {} by connection {}", entityId, connectionId)
+
+        try {
+            // Delegate to the CommandSocketVerticle to handle the entity sync
+            val syncCommand = JsonObject()
+                .put("connectionId", connectionId)
+                .put("entityId", entityId)
+
+            // Send sync request to verticle
+            vertx.eventBus().request<JsonObject>(
+                CommandSocketVerticle.ADDRESS_ENTITY_SYNC,
+                syncCommand
+            ).await()
+
+            log.debug("Entity sync request for {} processed", entityId)
+        } catch (e: Exception) {
+            log.error("Error during entity sync for entity {}", entityId, e)
+            sendErrorToClient(connectionId, "Failed to sync entity: ${e.message}")
+        }
     }
 }

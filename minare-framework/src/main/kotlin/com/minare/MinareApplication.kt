@@ -4,13 +4,14 @@ import com.google.inject.*
 import com.google.inject.name.Names
 import com.minare.config.*
 import com.minare.worker.ChangeStreamWorkerVerticle
+import com.minare.worker.CommandSocketVerticle
 import com.minare.worker.MutationVerticle
-import com.minare.core.websocket.CommandSocketManager
 import com.minare.core.websocket.UpdateSocketManager
 import com.minare.persistence.DatabaseInitializer
 import com.minare.worker.MinareVerticleFactory
 import io.vertx.core.DeploymentOptions
 import io.vertx.core.Vertx
+import io.vertx.core.http.HttpServer
 import io.vertx.core.json.JsonObject
 import io.vertx.ext.web.Router
 import io.vertx.ext.web.handler.BodyHandler
@@ -28,9 +29,6 @@ abstract class MinareApplication : CoroutineVerticle() {
     private val log = LoggerFactory.getLogger(MinareApplication::class.java)
 
     @Inject
-    lateinit var commandSocketManager: CommandSocketManager
-
-    @Inject
     lateinit var updateSocketManager: UpdateSocketManager
 
     @Inject
@@ -42,6 +40,10 @@ abstract class MinareApplication : CoroutineVerticle() {
     // Track the deployment IDs of our worker verticles
     private var changeStreamWorkerDeploymentId: String? = null
     private var mutationVerticleDeploymentId: String? = null
+    private var commandSocketVerticleDeploymentId: String? = null
+
+    // Main HTTP server
+    private var httpServer: HttpServer? = null
 
     /**
      * Main startup method. Initializes the dependency injection,
@@ -55,7 +57,20 @@ abstract class MinareApplication : CoroutineVerticle() {
 
             // Register the Guice Verticle Factory
             vertx.registerVerticleFactory(MinareVerticleFactory(injector))
-            log.info("Registered GuiceVerticleFactory")
+            log.info("Registered MinareVerticleFactory")
+
+            // Deploy the command socket verticle first
+            val commandSocketOptions = DeploymentOptions()
+                .setWorker(true)
+                .setWorkerPoolName("command-socket-pool")
+                .setWorkerPoolSize(2)  // Adjust based on needs
+                .setInstances(1)  // Only one instance to manage connections centrally
+
+            commandSocketVerticleDeploymentId = vertx.deployVerticle(
+                "guice:" + CommandSocketVerticle::class.java.name,
+                commandSocketOptions
+            ).await()
+            log.info("Command socket verticle deployed with ID: $commandSocketVerticleDeploymentId")
 
             // Deploy the change stream worker verticle as a worker verticle
             val changeStreamOptions = DeploymentOptions()
@@ -113,7 +128,7 @@ abstract class MinareApplication : CoroutineVerticle() {
 
             // Start HTTP server
             val serverPort = getServerPort()
-            val server = vertx.createHttpServer()
+            httpServer = vertx.createHttpServer()
                 .requestHandler(router)
                 .listen(serverPort)
                 .await()
@@ -134,9 +149,32 @@ abstract class MinareApplication : CoroutineVerticle() {
      */
     private fun setupCoreRoutes(router: Router) {
         // Command socket route for client requests
+        // Now delegate to the CommandSocketVerticle via the event bus
         router.route("/ws").handler { context ->
             context.request().toWebSocket()
-                .onSuccess(commandSocketManager)
+                .onSuccess { socket ->
+                    // Send to the CommandSocketVerticle to handle
+                    val socketId = "ws-" + java.util.UUID.randomUUID().toString()
+
+                    // Get a reference to the CommandSocketVerticle
+                    val commandSocketVerticle = injector.getInstance(CommandSocketVerticle::class.java)
+
+                    // Directly handle the socket
+                    vertx.executeBlocking<Unit>({ promise ->
+                        try {
+                            runBlocking {
+                                commandSocketVerticle.handleCommandSocket(socket)
+                            }
+                            promise.complete()
+                        } catch (e: Exception) {
+                            promise.fail(e)
+                        }
+                    }, { result ->
+                        if (result.failed()) {
+                            log.error("Failed to handle command socket", result.cause())
+                        }
+                    })
+                }
                 .onFailure { err ->
                     log.error("Command WebSocket upgrade failed", err)
                     context.response()
@@ -186,6 +224,16 @@ abstract class MinareApplication : CoroutineVerticle() {
      */
     override suspend fun stop() {
         try {
+            // Undeploy the command socket verticle
+            if (commandSocketVerticleDeploymentId != null) {
+                try {
+                    vertx.undeploy(commandSocketVerticleDeploymentId).await()
+                    log.info("Command socket verticle undeployed successfully")
+                } catch (e: Exception) {
+                    log.error("Error undeploying command socket verticle", e)
+                }
+            }
+
             // Undeploy the mutation verticle
             if (mutationVerticleDeploymentId != null) {
                 try {
@@ -206,7 +254,15 @@ abstract class MinareApplication : CoroutineVerticle() {
                 }
             }
 
-            // Add other cleanup tasks here
+            // Close HTTP server
+            if (httpServer != null) {
+                try {
+                    httpServer?.close()?.await()
+                    log.info("HTTP server closed successfully")
+                } catch (e: Exception) {
+                    log.error("Error closing HTTP server", e)
+                }
+            }
 
             log.info("Application stopped gracefully")
         } catch (e: Exception) {

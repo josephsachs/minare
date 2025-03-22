@@ -50,77 +50,123 @@ class MongoConnectionStore @Inject constructor(
 
     /**
      * Delete a connection
+     * This method is more resilient to race conditions.
      */
     override suspend fun delete(connectionId: String) {
         val query = JsonObject().put("_id", connectionId)
 
         try {
-            mongoClient.removeDocument(collection, query).await()
-            log.info("Connection deleted: {}", connectionId)
+            val result = mongoClient.removeDocument(collection, query).await()
+            if (result.removedCount > 0) {
+                log.info("Connection deleted: {}", connectionId)
+            } else {
+                log.debug("Connection not found for deletion: {}", connectionId)
+            }
         } catch (e: Exception) {
-            log.error("Failed to delete connection: {}", connectionId, e)
-            throw e
+            log.warn("Error deleting connection: {}", connectionId, e)
+            // We don't rethrow the exception to avoid cascading failures in cleanup
         }
     }
 
     /**
-     * Delete a connection by connection ID (not part of the interface)
+     * Check if a connection exists in the database
+     * This is useful for avoiding exceptions when the connection may have been deleted
      */
-    suspend fun deleteByConnectionId(connectionId: String) {
+    suspend fun exists(connectionId: String): Boolean {
         val query = JsonObject().put("_id", connectionId)
 
         try {
-            val result = mongoClient.removeDocument(collection, query).await()
-            if (result.removedCount > 0) {
-                log.info("Connection deleted by ID: {}", connectionId)
-            } else {
-                log.warn("Connection not found for deletion by ID: {}", connectionId)
-            }
+            val count = mongoClient.count(collection, query).await()
+            return count > 0
         } catch (e: Exception) {
-            log.error("Failed to delete connection by ID: {}", connectionId, e)
-            throw e
+            log.error("Error checking if connection exists: {}", connectionId, e)
+            return false
         }
     }
 
     /**
      * Find a connection by ID
+     * Added defensive coding to handle potential race conditions
      */
     override suspend fun find(connectionId: String): Connection {
         val query = JsonObject().put("_id", connectionId)
 
-        val result = mongoClient.findOne(collection, query, null).await()
-            ?: throw IllegalArgumentException("Connection not found: $connectionId")
+        try {
+            val result = mongoClient.findOne(collection, query, null).await()
 
-        return Connection(
-            _id = result.getString("_id"),
-            createdAt = result.getLong("createdAt"),
-            lastUpdated = result.getLong("lastUpdated"),
-            commandSocketId = result.getString("commandSocketId"),
-            updateSocketId = result.getString("updateSocketId")
-        )
+            if (result == null) {
+                log.debug("Connection not found: {}", connectionId)
+                throw IllegalArgumentException("Connection not found: $connectionId")
+            }
+
+            return Connection(
+                _id = result.getString("_id"),
+                createdAt = result.getLong("createdAt"),
+                lastUpdated = result.getLong("lastUpdated"),
+                commandSocketId = result.getString("commandSocketId"),
+                updateSocketId = result.getString("updateSocketId")
+            )
+        } catch (e: Exception) {
+            if (e is IllegalArgumentException) {
+                // Just rethrow our own exception
+                throw e
+            }
+            log.error("Error finding connection: {}", connectionId, e)
+            throw IllegalArgumentException("Connection not found: $connectionId")
+        }
     }
 
     /**
-     * Update the lastUpdated timestamp (not part of the interface)
+     * Find a connection by ID with fallback to empty connection
+     * This helps avoid exceptions in cleanup processes
      */
-    suspend fun updateLastUpdated(connectionId: String): Connection {
+    suspend fun findWithFallback(connectionId: String): Connection? {
+        try {
+            return find(connectionId)
+        } catch (e: Exception) {
+            log.debug("Connection not found with fallback: {}", connectionId)
+            return null
+        }
+    }
+
+    /**
+     * Update the lastUpdated timestamp
+     */
+    suspend fun updateLastUpdated(connectionId: String): Connection? {
+        if (!exists(connectionId)) {
+            log.debug("Connection doesn't exist for updateLastUpdated: {}", connectionId)
+            return null
+        }
+
         val query = JsonObject().put("_id", connectionId)
         val now = System.currentTimeMillis()
         val update = JsonObject()
             .put("\$set", JsonObject().put("lastUpdated", now))
 
-        val result = mongoClient.updateCollection(collection, query, update).await()
-        if (result.docModified == 0L) {
-            throw IllegalArgumentException("Connection not found: $connectionId")
-        }
+        try {
+            val result = mongoClient.updateCollection(collection, query, update).await()
+            if (result.docModified == 0L) {
+                log.debug("Connection not found for updateLastUpdated: {}", connectionId)
+                return null
+            }
 
-        return find(connectionId)
+            return findWithFallback(connectionId)
+        } catch (e: Exception) {
+            log.error("Error updating timestamp: {}", connectionId, e)
+            return null
+        }
     }
 
     /**
-     * Update the update socket ID (implementation of interface method)
+     * Update the update socket ID
+     * More resilient to connection not being found
      */
     override suspend fun updateUpdateSocketId(connectionId: String, updateSocketId: String?): Connection {
+        if (!exists(connectionId)) {
+            log.debug("Connection doesn't exist for updateUpdateSocketId: {}", connectionId)
+            throw IllegalArgumentException("Connection not found: $connectionId")
+        }
+
         val query = JsonObject().put("_id", connectionId)
         val now = System.currentTimeMillis()
         val update = JsonObject()
@@ -129,26 +175,39 @@ class MongoConnectionStore @Inject constructor(
                 .put("updateSocketId", updateSocketId)
             )
 
-        val result = mongoClient.updateCollection(collection, query, update).await()
-        if (result.docModified == 0L) {
+        try {
+            val result = mongoClient.updateCollection(collection, query, update).await()
+            if (result.docModified == 0L) {
+                log.debug("Connection not found for updateUpdateSocketId: {}", connectionId)
+                throw IllegalArgumentException("Connection not found: $connectionId")
+            }
+
+            val connection = find(connectionId)
+
+            if (updateSocketId != null) {
+                log.info("Update socket ID set for connection {}: {}", connectionId, updateSocketId)
+            } else {
+                log.info("Update socket ID cleared for connection {}", connectionId)
+            }
+
+            return connection
+        } catch (e: Exception) {
+            log.error("Error updating update socket ID: {}", connectionId, e)
             throw IllegalArgumentException("Connection not found: $connectionId")
         }
-
-        val connection = find(connectionId)
-
-        if (updateSocketId != null) {
-            log.info("Update socket ID set for connection {}: {}", connectionId, updateSocketId)
-        } else {
-            log.info("Update socket ID cleared for connection {}", connectionId)
-        }
-
-        return connection
     }
 
     /**
      * Update the socket IDs
+     * More resilient to connection not being found
      */
     override suspend fun updateSocketIds(connectionId: String, commandSocketId: String?, updateSocketId: String?): Connection {
+        // Check existence first - this may fail if race condition, but better to know early
+        if (!exists(connectionId)) {
+            log.debug("Connection doesn't exist for updateSocketIds: {}", connectionId)
+            throw IllegalArgumentException("Connection not found: $connectionId")
+        }
+
         val query = JsonObject().put("_id", connectionId)
         val now = System.currentTimeMillis()
         val update = JsonObject()
@@ -158,20 +217,23 @@ class MongoConnectionStore @Inject constructor(
                 .put("updateSocketId", updateSocketId)
             )
 
-        val result = mongoClient.updateCollection(collection, query, update).await()
-        if (result.docModified == 0L) {
+        try {
+            val result = mongoClient.updateCollection(collection, query, update).await()
+            if (result.docModified == 0L) {
+                log.debug("Connection not found for updateSocketIds: {}", connectionId)
+                throw IllegalArgumentException("Connection not found: $connectionId")
+            }
+
+            val connection = find(connectionId)
+
+            log.debug("Updated socket IDs for connection {}: command={}, update={}",
+                connectionId, commandSocketId, updateSocketId)
+
+            return connection
+        } catch (e: Exception) {
+            log.error("Error updating socket IDs: {}", connectionId, e)
             throw IllegalArgumentException("Connection not found: $connectionId")
         }
-
-        val connection = find(connectionId)
-
-        if (updateSocketId != null) {
-            log.info("Update socket ID set for connection {}: {}", connectionId, updateSocketId)
-        } else {
-            log.info("Update socket ID cleared for connection {}", connectionId)
-        }
-
-        return connection
     }
 
     /**
@@ -180,15 +242,20 @@ class MongoConnectionStore @Inject constructor(
     override suspend fun findAllWithUpdateSocket(): List<Connection> {
         val query = JsonObject().put("updateSocketId", JsonObject().put("\$ne", null))
 
-        val documents = mongoClient.find(collection, query).await()
-        return documents.map { doc ->
-            Connection(
-                _id = doc.getString("_id"),
-                createdAt = doc.getLong("createdAt"),
-                lastUpdated = doc.getLong("lastUpdated"),
-                commandSocketId = doc.getString("commandSocketId"),
-                updateSocketId = doc.getString("updateSocketId")
-            )
+        try {
+            val documents = mongoClient.find(collection, query).await()
+            return documents.map { doc ->
+                Connection(
+                    _id = doc.getString("_id"),
+                    createdAt = doc.getLong("createdAt"),
+                    lastUpdated = doc.getLong("lastUpdated"),
+                    commandSocketId = doc.getString("commandSocketId"),
+                    updateSocketId = doc.getString("updateSocketId")
+                )
+            }
+        } catch (e: Exception) {
+            log.error("Error finding connections with update socket", e)
+            return emptyList()
         }
     }
 }

@@ -16,6 +16,7 @@ import com.minare.core.websocket.CommandSocketManager
 import com.minare.core.websocket.UpdateSocketManager
 import com.minare.worker.MinareVerticleFactory
 import com.minare.persistence.*
+import com.minare.worker.CommandSocketVerticle
 import io.vertx.core.Vertx
 import io.vertx.core.impl.logging.LoggerFactory
 import io.vertx.core.json.JsonObject
@@ -99,9 +100,17 @@ class MinareModule : AbstractModule() {
         coroutineContext: CoroutineContext,
         entityStore: EntityStore,
         reflectionCache: ReflectionCache,
-        vertx: Vertx
+        vertx: Vertx,
+        connectionCache: ConnectionCache
     ): CommandMessageHandler {
-        return CommandMessageHandler(connectionController, coroutineContext, entityStore, reflectionCache, vertx)
+        return CommandMessageHandler(
+            connectionController,
+            coroutineContext,
+            entityStore,
+            reflectionCache,
+            vertx,
+            connectionCache
+        )
     }
 
     @Provides
@@ -117,11 +126,41 @@ class MinareModule : AbstractModule() {
 
     @Provides
     @Singleton
+    fun provideCommandSocketVerticle(
+        connectionStore: ConnectionStore,
+        connectionCache: ConnectionCache,
+        channelStore: ChannelStore,
+        contextStore: ContextStore,
+        messageHandler: CommandMessageHandler,
+        reflectionCache: ReflectionCache,
+        entityStore: EntityStore
+    ): CommandSocketVerticle {
+        return CommandSocketVerticle(
+            connectionStore,
+            connectionCache,
+            channelStore,
+            contextStore,
+            messageHandler,
+            reflectionCache,
+            entityStore
+        )
+    }
+
+    @Provides
+    @Singleton
     fun provideUpdateSocketManager(
         connectionStore: ConnectionStore,
         connectionController: ConnectionController,
-        coroutineContext: CoroutineContext
+        coroutineContext: CoroutineContext,
+        connectionCache: ConnectionCache,
+        vertx: Vertx
     ): UpdateSocketManager {
-        return UpdateSocketManager(connectionStore, connectionController, coroutineContext)
+        return UpdateSocketManager(
+            connectionStore,
+            connectionController,
+            coroutineContext,
+            connectionCache,
+            vertx
+        )
     }
 }

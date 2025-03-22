@@ -1,8 +1,10 @@
 package com.minare.core.websocket
 
+import com.minare.cache.ConnectionCache
 import com.minare.controller.ConnectionController
 import com.minare.persistence.ConnectionStore
 import io.vertx.core.Handler
+import io.vertx.core.Vertx
 import io.vertx.core.http.ServerWebSocket
 import io.vertx.core.json.JsonObject
 import kotlinx.coroutines.CoroutineScope
@@ -20,7 +22,9 @@ import kotlin.coroutines.CoroutineContext
 class UpdateSocketManager @Inject constructor(
     private val connectionStore: ConnectionStore,
     private val connectionController: ConnectionController,
-    private val coroutineContext: CoroutineContext
+    private val coroutineContext: CoroutineContext,
+    private val connectionCache: ConnectionCache,
+    private val vertx: Vertx
 ) : Handler<ServerWebSocket> {
 
     private val log = LoggerFactory.getLogger(UpdateSocketManager::class.java)

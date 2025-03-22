@@ -82,7 +82,7 @@ export const handleUpdateSocketMessage = (event) => {
 
     // Only log detailed message content in verbose mode to reduce noise
     if (config.logging?.verbose) {
-      logger.update(`Received update message: ${JSON.stringify(message)}`);
+      //logger.update(`Received update message: ${JSON.stringify(message)}`);
     } else {
       // Just log the type and entity count for normal mode
       let entityCount = 0;
@@ -93,9 +93,9 @@ export const handleUpdateSocketMessage = (event) => {
       }
 
       if (entityCount > 0) {
-        logger.update(`Received update message type: ${message.type} with ${entityCount} entities`);
+        //logger.update(`Received update message type: ${message.type} with ${entityCount} entities`);
       } else {
-        logger.update(`Received update message type: ${message.type}`);
+        //logger.update(`Received update message type: ${message.type}`);
       }
     }
 
@@ -106,11 +106,11 @@ export const handleUpdateSocketMessage = (event) => {
     } else if (message.type === 'sync') {
       // Process entity updates from sync message
       if (message.data && message.data.entities) {
-        logger.info(`Processing ${message.data.entities.length} entity updates from update socket`);
+        // logger.info(`Processing ${message.data.entities.length} entity updates from update socket`);
 
         // Only log detailed entity data if configured
         if (config.logging?.logDetailedEntities && config.logging?.verbose) {
-          console.log('Update socket sync example entity:', JSON.stringify(message.data.entities[0]));
+          //console.log('Update socket sync example entity:', JSON.stringify(message.data.entities[0]));
         }
 
         // Transform the entity data to match our expected format
@@ -125,11 +125,11 @@ export const handleUpdateSocketMessage = (event) => {
       }
     } else if (message.update && message.update.entities) {
       // Handle legacy format
-      logger.info(`Processing ${message.update.entities.length} entity updates from update message`);
+      // logger.info(`Processing ${message.update.entities.length} entity updates from update message`);
 
       // Only log detailed entity data if configured
       if (config.logging?.logDetailedEntities && config.logging?.verbose) {
-        console.log('Legacy format entity example:', JSON.stringify(message.update.entities[0]));
+        // console.log('Legacy format entity example:', JSON.stringify(message.update.entities[0]));
       }
 
       // Check if these entities need transformation

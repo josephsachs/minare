@@ -274,9 +274,16 @@ open class ConnectionController @Inject constructor(
      * should be terminated completely.
      */
     suspend fun handleCommandSocketClosed(connectionId: String) {
+        // First get references to both sockets
         val updateSocket = connectionCache.getUpdateSocket(connectionId)
+
+        // Remove from channels first (this preserves the connection record for now)
+        cleanupConnection(connectionId)
+
+        // Then remove the command socket and update socket
         removeCommandSocket(connectionId)
 
+        // Close the update socket if it exists
         updateSocket?.let {
             if (!it.isClosed()) {
                 try {
@@ -286,6 +293,10 @@ open class ConnectionController @Inject constructor(
                 }
             }
         }
+
+        // Finally, delete the connection record itself
+        connectionStore.delete(connectionId)
+        connectionCache.removeConnection(connectionId)
 
         log.info("Connection {} fully closed and removed", connectionId)
     }
@@ -393,6 +404,44 @@ open class ConnectionController @Inject constructor(
 
         } catch (e: Exception) {
             log.error("Error syncing channel {} to connection {}", channelId, connectionId, e)
+        }
+    }
+
+    /**
+     * Handles the cleanup when a connection is terminated
+     * Removes the connection from all associated channels
+     */
+    suspend fun cleanupConnection(connectionId: String) {
+        try {
+            log.info("Cleaning up connection {}", connectionId)
+
+            // 1. Get all channels that this connection is subscribed to
+            val channels = channelStore.getChannelsForClient(connectionId)
+
+            if (channels.isNotEmpty()) {
+                log.info("Removing connection {} from {} channels", connectionId, channels.size)
+
+                // 2. Remove the connection from each channel
+                for (channelId in channels) {
+                    channelStore.removeClientFromChannel(channelId, connectionId)
+                    log.debug("Removed connection {} from channel {}", connectionId, channelId)
+                }
+            }
+
+            // 3. Now proceed with removing the connection itself
+            connectionStore.delete(connectionId)
+            connectionCache.removeConnection(connectionId)
+
+            log.info("Connection {} cleanup completed", connectionId)
+        } catch (e: Exception) {
+            log.error("Error during connection cleanup: {}", connectionId, e)
+            // Continue with deletion attempt even if channel cleanup fails
+            try {
+                connectionStore.delete(connectionId)
+                connectionCache.removeConnection(connectionId)
+            } catch (innerE: Exception) {
+                log.error("Failed to delete connection after channel cleanup failure", innerE)
+            }
         }
     }
 }
