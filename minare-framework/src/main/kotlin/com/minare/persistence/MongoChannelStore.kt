@@ -35,8 +35,7 @@ class MongoChannelStore @Inject constructor(
      */
     override suspend fun addClientToChannel(channelId: String, clientId: String): Boolean {
         try {
-            // Create a proper ObjectId query for MongoDB
-            val query = JsonObject().put("_id", JsonObject().put("\$oid", channelId))
+            val query = JsonObject().put("_id", channelId)
             val update = JsonObject().put("\$addToSet", JsonObject().put("clients", clientId))
 
             log.debug("Adding client $clientId to channel $channelId, query: $query")
@@ -57,14 +56,14 @@ class MongoChannelStore @Inject constructor(
     }
 
     /**
-     * Removes a client from a channel
+     * Removes a client from a channel - doesn't care if client exists
      * @param channelId The channel ID
      * @param clientId The client ID to remove
      * @return Boolean indicating success or failure
      */
     override suspend fun removeClientFromChannel(channelId: String, clientId: String): Boolean {
         try {
-            val query = JsonObject().put("_id", JsonObject().put("\$oid", channelId))
+            val query = JsonObject().put("_id", channelId)
             val update = JsonObject().put("\$pull", JsonObject().put("clients", clientId))
 
             val result = mongoClient.updateCollection(collection, query, update).await()
@@ -82,13 +81,39 @@ class MongoChannelStore @Inject constructor(
     }
 
     /**
+     * Removes a client from all channels - doesn't care if client exists
+     * @param clientId The client ID to remove
+     * @return Number of channels the client was removed from
+     */
+    override suspend fun removeClientFromAllChannels(clientId: String): Int {
+        try {
+            // Find any channel that has this client in its array
+            val query = JsonObject().put("clients", clientId)
+            val update = JsonObject().put("\$pull", JsonObject().put("clients", clientId))
+
+            val result = mongoClient.updateCollectionWithOptions(
+                collection,
+                query,
+                update,
+                io.vertx.ext.mongo.UpdateOptions().setMulti(true) // Update all matching documents
+            ).await()
+
+            log.info("Removed client $clientId from ${result.docModified} channels")
+            return result.docModified.toInt()
+        } catch (e: Exception) {
+            log.error("Failed to remove client $clientId from all channels", e)
+            return 0
+        }
+    }
+
+    /**
      * Gets a channel by ID
      * @param channelId The channel ID to retrieve
      * @return A JsonObject representing the channel, or null if not found
      */
     override suspend fun getChannel(channelId: String): JsonObject? {
         try {
-            val query = JsonObject().put("_id", JsonObject().put("\$oid", channelId))
+            val query = JsonObject().put("_id", channelId)
             return mongoClient.findOne(collection, query, null).await()
         } catch (e: Exception) {
             log.error("Failed to get channel $channelId", e)
@@ -118,7 +143,9 @@ class MongoChannelStore @Inject constructor(
     }
 
     /**
-     * Gets all channel IDs that a client is subscribed to
+     * Gets all channel IDs that a client is subscribed to.
+     * This method doesn't care if the client exists as a Connection.
+     *
      * @param clientId The client ID
      * @return A list of channel IDs
      */
@@ -127,15 +154,9 @@ class MongoChannelStore @Inject constructor(
             val query = JsonObject().put("clients", clientId)
             val results = mongoClient.find(collection, query).await()
 
+            // Simply extract the string ID from each document
             return results.mapNotNull { document ->
-                val idObject = document.getJsonObject("_id")
-
-                // Extract the ObjectId value correctly
-                if (idObject != null && idObject.containsKey("\$oid")) {
-                    idObject.getString("\$oid")
-                } else {
-                    document.getString("_id")
-                }
+                document.getString("_id")
             }
         } catch (e: Exception) {
             log.error("Failed to get channels for client $clientId", e)

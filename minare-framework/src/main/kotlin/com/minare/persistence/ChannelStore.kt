@@ -45,4 +45,11 @@ interface ChannelStore {
      * @return A list of channel IDs
      */
     suspend fun getChannelsForClient(clientId: String): List<String>
+
+    /**
+     * Removes a client from all channels it belongs to
+     * @param clientId The client ID to remove
+     * @return Number of channels the client was removed from
+     */
+    suspend fun removeClientFromAllChannels(clientId: String): Int
 }

@@ -10,6 +10,7 @@ import com.minare.cache.InMemoryConnectionCache
 import com.minare.controller.ConnectionController
 import com.minare.core.entity.ReflectionCache
 import com.minare.worker.ChangeStreamWorkerVerticle
+import com.minare.worker.CleanupVerticle
 import com.minare.worker.MutationVerticle
 import com.minare.core.websocket.CommandMessageHandler
 import com.minare.core.websocket.CommandSocketManager
@@ -49,10 +50,8 @@ class MinareModule : AbstractModule() {
         bind(String::class.java).annotatedWith(Names.named("channels")).toInstance("channels")
         bind(String::class.java).annotatedWith(Names.named("contexts")).toInstance("contexts")
 
-        // Register the change stream consumer
+        // Register the verticles
         bind(ChangeStreamWorkerVerticle::class.java)
-
-        // Register the mutation verticle
         bind(MutationVerticle::class.java)
     }
 
@@ -126,6 +125,38 @@ class MinareModule : AbstractModule() {
 
     @Provides
     @Singleton
+    fun provideUpdateSocketManager(
+        connectionStore: ConnectionStore,
+        connectionController: ConnectionController,
+        coroutineContext: CoroutineContext,
+        connectionCache: ConnectionCache,
+        vertx: Vertx
+    ): UpdateSocketManager {
+        return UpdateSocketManager(
+            connectionStore,
+            connectionController,
+            coroutineContext,
+            connectionCache,
+            vertx
+        )
+    }
+
+    @Provides
+    @Singleton
+    fun provideCleanupVerticle(
+        connectionStore: ConnectionStore,
+        connectionCache: ConnectionCache,
+        connectionController: ConnectionController
+    ): CleanupVerticle {
+        return CleanupVerticle(
+            connectionStore,
+            connectionCache,
+            connectionController
+        )
+    }
+
+    @Provides
+    @Singleton
     fun provideCommandSocketVerticle(
         connectionStore: ConnectionStore,
         connectionCache: ConnectionCache,
@@ -143,24 +174,6 @@ class MinareModule : AbstractModule() {
             messageHandler,
             reflectionCache,
             entityStore
-        )
-    }
-
-    @Provides
-    @Singleton
-    fun provideUpdateSocketManager(
-        connectionStore: ConnectionStore,
-        connectionController: ConnectionController,
-        coroutineContext: CoroutineContext,
-        connectionCache: ConnectionCache,
-        vertx: Vertx
-    ): UpdateSocketManager {
-        return UpdateSocketManager(
-            connectionStore,
-            connectionController,
-            coroutineContext,
-            connectionCache,
-            vertx
         )
     }
 }

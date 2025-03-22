@@ -162,9 +162,17 @@ class MongoConnectionStore @Inject constructor(
      * More resilient to connection not being found
      */
     override suspend fun updateUpdateSocketId(connectionId: String, updateSocketId: String?): Connection {
+        // First check existence - safer than waiting for the update to fail
         if (!exists(connectionId)) {
-            log.debug("Connection doesn't exist for updateUpdateSocketId: {}", connectionId)
-            throw IllegalArgumentException("Connection not found: $connectionId")
+            log.debug("Connection {} doesn't exist for updateUpdateSocketId", connectionId)
+            // Return a placeholder connection instead of throwing
+            return Connection(
+                _id = connectionId,
+                createdAt = System.currentTimeMillis(),
+                lastUpdated = System.currentTimeMillis(),
+                commandSocketId = null,
+                updateSocketId = updateSocketId
+            )
         }
 
         val query = JsonObject().put("_id", connectionId)
@@ -179,10 +187,23 @@ class MongoConnectionStore @Inject constructor(
             val result = mongoClient.updateCollection(collection, query, update).await()
             if (result.docModified == 0L) {
                 log.debug("Connection not found for updateUpdateSocketId: {}", connectionId)
-                throw IllegalArgumentException("Connection not found: $connectionId")
+                // Return a placeholder connection instead of throwing
+                return Connection(
+                    _id = connectionId,
+                    createdAt = now,
+                    lastUpdated = now,
+                    commandSocketId = null,
+                    updateSocketId = updateSocketId
+                )
             }
 
-            val connection = find(connectionId)
+            val connection = findWithFallback(connectionId) ?: Connection(
+                _id = connectionId,
+                createdAt = now,
+                lastUpdated = now,
+                commandSocketId = null,
+                updateSocketId = updateSocketId
+            )
 
             if (updateSocketId != null) {
                 log.info("Update socket ID set for connection {}: {}", connectionId, updateSocketId)
@@ -193,7 +214,14 @@ class MongoConnectionStore @Inject constructor(
             return connection
         } catch (e: Exception) {
             log.error("Error updating update socket ID: {}", connectionId, e)
-            throw IllegalArgumentException("Connection not found: $connectionId")
+            // Return a placeholder connection instead of throwing
+            return Connection(
+                _id = connectionId,
+                createdAt = System.currentTimeMillis(),
+                lastUpdated = System.currentTimeMillis(),
+                commandSocketId = null,
+                updateSocketId = updateSocketId
+            )
         }
     }
 
@@ -202,10 +230,17 @@ class MongoConnectionStore @Inject constructor(
      * More resilient to connection not being found
      */
     override suspend fun updateSocketIds(connectionId: String, commandSocketId: String?, updateSocketId: String?): Connection {
-        // Check existence first - this may fail if race condition, but better to know early
+        // First check existence - safer than waiting for the update to fail
         if (!exists(connectionId)) {
-            log.debug("Connection doesn't exist for updateSocketIds: {}", connectionId)
-            throw IllegalArgumentException("Connection not found: $connectionId")
+            log.debug("Connection {} doesn't exist for updateSocketIds", connectionId)
+            // Return a placeholder connection instead of throwing
+            return Connection(
+                _id = connectionId,
+                createdAt = System.currentTimeMillis(),
+                lastUpdated = System.currentTimeMillis(),
+                commandSocketId = commandSocketId,
+                updateSocketId = updateSocketId
+            )
         }
 
         val query = JsonObject().put("_id", connectionId)
@@ -221,10 +256,23 @@ class MongoConnectionStore @Inject constructor(
             val result = mongoClient.updateCollection(collection, query, update).await()
             if (result.docModified == 0L) {
                 log.debug("Connection not found for updateSocketIds: {}", connectionId)
-                throw IllegalArgumentException("Connection not found: $connectionId")
+                // Return a placeholder connection instead of throwing
+                return Connection(
+                    _id = connectionId,
+                    createdAt = now,
+                    lastUpdated = now,
+                    commandSocketId = commandSocketId,
+                    updateSocketId = updateSocketId
+                )
             }
 
-            val connection = find(connectionId)
+            val connection = findWithFallback(connectionId) ?: Connection(
+                _id = connectionId,
+                createdAt = now,
+                lastUpdated = now,
+                commandSocketId = commandSocketId,
+                updateSocketId = updateSocketId
+            )
 
             log.debug("Updated socket IDs for connection {}: command={}, update={}",
                 connectionId, commandSocketId, updateSocketId)
@@ -232,7 +280,14 @@ class MongoConnectionStore @Inject constructor(
             return connection
         } catch (e: Exception) {
             log.error("Error updating socket IDs: {}", connectionId, e)
-            throw IllegalArgumentException("Connection not found: $connectionId")
+            // Return a placeholder connection instead of throwing
+            return Connection(
+                _id = connectionId,
+                createdAt = System.currentTimeMillis(),
+                lastUpdated = System.currentTimeMillis(),
+                commandSocketId = commandSocketId,
+                updateSocketId = updateSocketId
+            )
         }
     }
 

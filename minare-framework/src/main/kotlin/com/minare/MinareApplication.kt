@@ -5,6 +5,7 @@ import com.google.inject.name.Names
 import com.minare.config.*
 import com.minare.worker.ChangeStreamWorkerVerticle
 import com.minare.worker.CommandSocketVerticle
+import com.minare.worker.CleanupVerticle
 import com.minare.worker.MutationVerticle
 import com.minare.core.websocket.UpdateSocketManager
 import com.minare.persistence.DatabaseInitializer
@@ -41,6 +42,7 @@ abstract class MinareApplication : CoroutineVerticle() {
     private var changeStreamWorkerDeploymentId: String? = null
     private var mutationVerticleDeploymentId: String? = null
     private var commandSocketVerticleDeploymentId: String? = null
+    private var cleanupVerticleDeploymentId: String? = null
 
     // Main HTTP server
     private var httpServer: HttpServer? = null
@@ -102,6 +104,19 @@ abstract class MinareApplication : CoroutineVerticle() {
                 mutationOptions
             ).await()
             log.info("Mutation verticle deployed with $mutationInstances instances, ID: $mutationVerticleDeploymentId")
+
+            // Deploy the cleanup verticle
+            val cleanupOptions = DeploymentOptions()
+                .setWorker(true)
+                .setWorkerPoolName("cleanup-pool")
+                .setWorkerPoolSize(1)  // Only need one worker
+                .setInstances(1)
+
+            cleanupVerticleDeploymentId = vertx.deployVerticle(
+                "guice:" + CleanupVerticle::class.java.name,
+                cleanupOptions
+            ).await()
+            log.info("Cleanup verticle deployed with ID: $cleanupVerticleDeploymentId")
 
             // Register event bus handlers for change stream events
             vertx.eventBus().consumer<Boolean>(ChangeStreamWorkerVerticle.ADDRESS_STREAM_STARTED) {
@@ -251,6 +266,16 @@ abstract class MinareApplication : CoroutineVerticle() {
                     log.info("Change stream worker undeployed successfully")
                 } catch (e: Exception) {
                     log.error("Error undeploying change stream worker", e)
+                }
+            }
+
+            // Undeploy the cleanup verticle
+            if (cleanupVerticleDeploymentId != null) {
+                try {
+                    vertx.undeploy(cleanupVerticleDeploymentId).await()
+                    log.info("Cleanup verticle undeployed successfully")
+                } catch (e: Exception) {
+                    log.error("Error undeploying cleanup verticle", e)
                 }
             }
 

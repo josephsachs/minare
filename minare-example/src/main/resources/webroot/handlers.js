@@ -64,6 +64,29 @@ export const handleCommandSocketMessage = (event) => {
     } else if (message.type === 'pong' || message.type === 'ping_response') {
       // Handle ping responses
       logger.info(`Received ping response: ${message.timestamp ? `latency=${Date.now() - message.timestamp}ms` : 'no timestamp'}`);
+    } else if (message.type === 'reconnect_update_socket') {
+      // Handle server request to reconnect update socket
+      logger.info(`Server requested update socket reconnection at ${message.timestamp}`);
+
+      // Close the existing update socket if it exists
+      const updateSocket = store.getUpdateSocket();
+      if (updateSocket) {
+        try {
+          if (updateSocket.readyState === WebSocket.OPEN ||
+              updateSocket.readyState === WebSocket.CONNECTING) {
+            logger.info('Closing existing update socket before reconnection');
+            updateSocket.close();
+          }
+          store.setUpdateSocket(null);
+        } catch (e) {
+          logger.error(`Error closing existing update socket: ${e.message}`);
+        }
+      }
+
+      // Reconnect the update socket
+      connectUpdateSocket()
+        .then(() => logger.info('Update socket reconnected successfully'))
+        .catch(err => logger.error(`Failed to reconnect update socket: ${err.message}`));
     } else {
       logger.info(`Unhandled command message type: ${message.type}`);
     }

@@ -2,15 +2,12 @@ package com.minare.controller
 
 import com.minare.cache.ConnectionCache
 import com.minare.core.models.Connection
-import com.minare.persistence.ConnectionStore
-import com.minare.persistence.ChannelStore
-import com.minare.persistence.ContextStore
-import com.minare.persistence.EntityStore
 import com.minare.utils.EntityGraph
 import io.vertx.core.http.ServerWebSocket
 import io.vertx.core.json.JsonObject
 import org.slf4j.LoggerFactory
 import com.minare.core.entity.ReflectionCache
+import com.minare.persistence.*
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -229,7 +226,13 @@ open class ConnectionController @Inject constructor(
             removeUpdateSocket(connectionId)
 
             connectionCache.removeConnection(connectionId)
-            connectionStore.delete(connectionId)
+
+            try {
+                connectionStore.delete(connectionId)
+            } catch (e: Exception) {
+                log.warn("Error deleting connection {} from database - it may already be deleted", connectionId)
+                // Continue with cleanup regardless of database deletion result
+            }
         } catch (e: Exception) {
             log.error("Failed to remove command WebSocket for {}", connectionId, e)
             throw e
@@ -250,21 +253,31 @@ open class ConnectionController @Inject constructor(
                 }
             }
 
-            val connection = getConnection(connectionId)
-            val updatedConnection = connection.copy(
-                updateSocketId = null,
-                lastUpdated = System.currentTimeMillis()
-            )
-            connectionCache.storeConnection(updatedConnection)
+            // First update cache
+            val connection = connectionCache.getConnection(connectionId)
+            if (connection != null) {
+                val updatedConnection = connection.copy(
+                    updateSocketId = null,
+                    lastUpdated = System.currentTimeMillis()
+                )
+                connectionCache.storeConnection(updatedConnection)
+            }
 
-            connectionStore.updateSocketIds(
-                connectionId,
-                updatedConnection.commandSocketId,
-                null
-            )
+            // Then try to update database - with failure handling
+            try {
+                connectionStore.updateSocketIds(
+                    connectionId,
+                    connection?.commandSocketId,
+                    null
+                )
+            } catch (e: Exception) {
+                // This might fail if connection was already deleted or is being deleted concurrently
+                // Log it but don't throw - we've already updated the cache
+                log.warn("Failed to update database for update socket removal: {}", e.message)
+            }
         } catch (e: Exception) {
             log.error("Failed to remove update WebSocket for {}", connectionId, e)
-            throw e
+            // Don't rethrow - we want this to be resilient to failures
         }
     }
 
@@ -280,8 +293,9 @@ open class ConnectionController @Inject constructor(
         // Remove from channels first (this preserves the connection record for now)
         cleanupConnection(connectionId)
 
-        // Then remove the command socket and update socket
-        removeCommandSocket(connectionId)
+        // Then remove the command socket and update socket from cache
+        connectionCache.removeCommandSocket(connectionId)
+        connectionCache.removeUpdateSocket(connectionId)
 
         // Close the update socket if it exists
         updateSocket?.let {
@@ -294,8 +308,14 @@ open class ConnectionController @Inject constructor(
             }
         }
 
-        // Finally, delete the connection record itself
-        connectionStore.delete(connectionId)
+        // Finally, delete the connection record itself - with failure handling
+        try {
+            connectionStore.delete(connectionId)
+        } catch (e: Exception) {
+            log.warn("Error deleting connection {} from database during command socket closure - it may already be deleted", connectionId)
+            // Continue with cleanup regardless of database deletion result
+        }
+
         connectionCache.removeConnection(connectionId)
 
         log.info("Connection {} fully closed and removed", connectionId)
@@ -408,40 +428,62 @@ open class ConnectionController @Inject constructor(
     }
 
     /**
-     * Handles the cleanup when a connection is terminated
-     * Removes the connection from all associated channels
+     * Handles the cleanup when a connection is terminated.
+     * Channel cleanup is decoupled from connection existence.
      */
     suspend fun cleanupConnection(connectionId: String) {
+        log.info("Cleaning up connection {}", connectionId)
+
+        // Step 1: Remove the connection from all channels
+        // This is the most important part and should happen regardless of whether
+        // the connection exists in the database or not
         try {
-            log.info("Cleaning up connection {}", connectionId)
+            val removedCount = channelStore.removeClientFromAllChannels(connectionId)
+            log.info("Removed connection {} from {} channels", connectionId, removedCount)
+        } catch (e: Exception) {
+            log.error("Error removing connection {} from channels: {}", connectionId, e.message)
+            // Even if channel cleanup fails, we continue with other cleanup steps
+        }
 
-            // 1. Get all channels that this connection is subscribed to
-            val channels = channelStore.getChannelsForClient(connectionId)
-
-            if (channels.isNotEmpty()) {
-                log.info("Removing connection {} from {} channels", connectionId, channels.size)
-
-                // 2. Remove the connection from each channel
-                for (channelId in channels) {
-                    channelStore.removeClientFromChannel(channelId, connectionId)
-                    log.debug("Removed connection {} from channel {}", connectionId, channelId)
+        // Step 2: Clean up cache entries - this is in-memory and should be reliable
+        try {
+            // Close any open sockets
+            connectionCache.getCommandSocket(connectionId)?.let { socket ->
+                try {
+                    if (!socket.isClosed()) socket.close()
+                } catch (e: Exception) {
+                    log.warn("Error closing command socket for {}", connectionId, e)
                 }
             }
 
-            // 3. Now proceed with removing the connection itself
-            connectionStore.delete(connectionId)
-            connectionCache.removeConnection(connectionId)
-
-            log.info("Connection {} cleanup completed", connectionId)
-        } catch (e: Exception) {
-            log.error("Error during connection cleanup: {}", connectionId, e)
-            // Continue with deletion attempt even if channel cleanup fails
-            try {
-                connectionStore.delete(connectionId)
-                connectionCache.removeConnection(connectionId)
-            } catch (innerE: Exception) {
-                log.error("Failed to delete connection after channel cleanup failure", innerE)
+            connectionCache.getUpdateSocket(connectionId)?.let { socket ->
+                try {
+                    if (!socket.isClosed()) socket.close()
+                } catch (e: Exception) {
+                    log.warn("Error closing update socket for {}", connectionId, e)
+                }
             }
+
+            // Remove from cache
+            connectionCache.removeCommandSocket(connectionId)
+            connectionCache.removeUpdateSocket(connectionId)
+            connectionCache.removeConnection(connectionId)
+        } catch (e: Exception) {
+            log.error("Error cleaning up connection {} cache entries: {}", connectionId, e.message)
+            // Continue even if cache cleanup fails
         }
+
+        // Step 3: Finally try to delete the connection from the database
+        // This is last because it's the least important - if the connection
+        // is already gone, that's actually fine
+        try {
+            connectionStore.delete(connectionId)
+        } catch (e: Exception) {
+            log.debug("Error deleting connection {} from database - it may already be deleted: {}",
+                connectionId, e.message)
+            // This is expected in some cases and not an error
+        }
+
+        log.info("Connection {} cleanup completed", connectionId)
     }
 }
