@@ -5,7 +5,6 @@
   "main": "minare-processor.js",
   "scripts": {
     "dev": "artillery run simple-test.yml",
-    "test": "artillery run minare-test.yml",
     "report": "artillery report artillery_report.json"
   },
   "dependencies": {
