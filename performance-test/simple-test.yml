@@ -1,7 +1,7 @@
 config:
   target: "http://localhost:8080"
   phases:
-    - duration: 30
+    - duration: 60
       arrivalRate: 1
       name: "Testing basic connection"
   processor: "./simple-processor.js"
@@ -21,8 +21,13 @@ scenarios:
     flow:
       - log: "Starting WebSocket connection test"
       - function: "connectCommandSocket"
-      - think: 5
+      - think: 2  # Short wait after command socket connection
       - function: "connectUpdateSocket"
-      - think: 10  # Increased to give more time for entity sync
+      - think: 5  # Wait to receive initial entity sync
       - function: "sendMutationCommand"
-      - think: 5
+      - think: 2  # Wait after mutation
+      # Optionally, send more mutations for a more realistic test
+      - loop:
+          - function: "sendMutationCommand"
+          - think: 3
+        count: 3

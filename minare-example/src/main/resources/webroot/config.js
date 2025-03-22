@@ -26,13 +26,13 @@ export const config = {
     // Whether to log messages to the browser console
     console: true,
     // Maximum number of log entries to keep in the UI
-    maxEntries: 500,
+    maxEntries: 20,
     // Whether to log verbose messages (like all updates and commands)
     verbose: false,
     // How often to flush the log buffer (in milliseconds)
     flushIntervalMs: 1000,
     // Maximum number of messages to buffer before forcing a flush
-    maxBufferSize: 100,
+    maxBufferSize: 2,
     // Throttle update messages (only log 1 in X)
     updateLogThrottle: 10,
     // Enable detailed entity logging

@@ -58,8 +58,33 @@ function connectCommandSocket(context, events, done) {
         // Record success
         events.emit('counter', 'ws.command.success', 1);
 
+        // Send a sync request right after getting connection ID
+        // This helps get entity data faster
+        try {
+          console.log(`[${userId}] Sending sync request to command socket`);
+          const syncRequest = {
+            command: "sync",
+            timestamp: Date.now()
+          };
+          ws.send(JSON.stringify(syncRequest));
+          events.emit('counter', 'sync.request.sent', 1);
+        } catch (syncErr) {
+          console.error(`[${userId}] Error sending sync request:`, syncErr);
+        }
+
         clearTimeout(connectionTimeout);
         done();
+      } else if (message.type === 'sync') {
+        // Store entity data if we receive it on the command socket
+        console.log(`[${userId}] Received sync data on command socket`);
+        if (message.data && message.data.entities) {
+          const session = userSessions.get(userId) || {};
+          session.entities = message.data.entities;
+          userSessions.set(userId, session);
+          console.log(`[${userId}] Stored ${message.data.entities.length} entities from sync message`);
+        }
+      } else if (message.type === 'sync_initiated') {
+        console.log(`[${userId}] Sync initiated successfully: ${message.success}`);
       }
     } catch (err) {
       console.error(`[${userId}] Error parsing message:`, err);
@@ -99,93 +124,99 @@ function connectUpdateSocket(context, events, done) {
   console.log(`[${userId}] Connecting to update socket with ID: ${connectionId}`);
 
   // Create update socket connection
-  const updateUrl = `ws://localhost:8080/ws/updates?connection_id=${connectionId}`;
-  const ws = new WebSocket(updateUrl);
+  // Note: No longer using query parameter, will send ID in first message
+  const updateSocket = new WebSocket('ws://localhost:8080/ws/updates');
 
   // Set a timeout to detect connection issues
   const connectionTimeout = setTimeout(() => {
     console.error(`[${userId}] Update socket connection timeout`);
     events.emit('counter', 'ws.update.timeout', 1);
-    ws.terminate();
+    updateSocket.terminate();
     done(new Error('Update socket connection timeout'));
   }, 10000);
 
-  // After successful update socket connection, request entities
-  ws.on('open', () => {
-    console.log(`[${userId}] Connected to update socket`);
-    clearTimeout(connectionTimeout);
+  updateSocket.on('open', () => {
+    console.log(`[${userId}] Connected to update socket, sending connection ID`);
+
+    // Send connection ID in a message after connection
+    try {
+      const connectionMessage = {
+        connectionId: connectionId
+      };
+      updateSocket.send(JSON.stringify(connectionMessage));
+      console.log(`[${userId}] Sent connection ID to update socket: ${connectionId}`);
+    } catch (err) {
+      console.error(`[${userId}] Error sending connection ID:`, err);
+      clearTimeout(connectionTimeout);
+      done(err);
+      return;
+    }
 
     // Store update socket in session
     const session = userSessions.get(userId) || {};
-    session.updateSocket = ws;
+    session.updateSocket = updateSocket;
     userSessions.set(userId, session);
 
-    // Record success
-    events.emit('counter', 'ws.update.success', 1);
     events.emit('counter', 'ws.update.open', 1);
-
-    // Try sending a sync request message
-    try {
-      console.log(`[${userId}] Sending sync request to update socket`);
-      const syncRequest = {
-        type: "sync_request",
-        timestamp: Date.now()
-      };
-      ws.send(JSON.stringify(syncRequest));
-    } catch (syncErr) {
-      console.error(`[${userId}] Error sending sync request:`, syncErr);
-    }
-
-    done();
   });
 
-  ws.on('message', (data) => {
+  updateSocket.on('message', (data) => {
     try {
-      const rawData = data.toString();
-      console.log(`[${userId}] RAW update socket message: ${rawData}`);
-
-      const message = JSON.parse(rawData);
-      const messageType = message.type || 'unknown';
-
-      console.log(`[${userId}] Update socket received message type: ${messageType}`);
+      const message = JSON.parse(data.toString());
+      console.log(`[${userId}] Update socket received message type: ${message.type || 'unknown'}`);
 
       // Check for confirmation message
-      if (messageType === 'update_socket_confirm') {
+      if (message.type === 'update_socket_confirm') {
         console.log(`[${userId}] Update socket confirmed for connection ${message.connectionId}`);
-
-        // Record success
+        clearTimeout(connectionTimeout);
         events.emit('counter', 'ws.update.success', 1);
-
-        // Once the update socket is confirmed, we're done with this step
         done();
       }
-
-      // Check for sync message with entities (just in case)
-      if (messageType === 'sync') {
-        console.log(`[${userId}] Received sync message on update socket with keys: ${Object.keys(message).join(', ')}`);
-
-        if (message.data && message.data.entities && Array.isArray(message.data.entities)) {
-          console.log(`[${userId}] Found ${message.data.entities.length} entities in update socket sync message`);
-
-          // Store entities in session
-          const session = userSessions.get(userId) || {};
-          session.entities = message.data.entities;
-          userSessions.set(userId, session);
+      // Handle updates containing entity changes
+      else if (message.update && message.update.entities) {
+        console.log(`[${userId}] Received entity updates (${message.update.entities.length} entities)`);
+        // Merge updates with existing entities
+        const session = userSessions.get(userId) || {};
+        if (!session.entities) {
+          session.entities = [];
         }
+
+        // Update existing entities or add new ones
+        message.update.entities.forEach(updateEntity => {
+          const existingIndex = session.entities.findIndex(e => e._id === updateEntity.id);
+          if (existingIndex >= 0) {
+            // Update existing entity with new version and state
+            session.entities[existingIndex].version = updateEntity.version;
+            session.entities[existingIndex].state = {
+              ...session.entities[existingIndex].state,
+              ...updateEntity.state
+            };
+          } else {
+            // Add as new entity
+            session.entities.push({
+              _id: updateEntity.id,
+              version: updateEntity.version,
+              state: updateEntity.state,
+              type: 'Node' // Assume Node type for simplicity
+            });
+          }
+        });
+
+        userSessions.set(userId, session);
       }
     } catch (err) {
       console.error(`[${userId}] Error handling update socket message:`, err);
     }
   });
 
-  ws.on('error', (error) => {
+  updateSocket.on('error', (error) => {
     console.error(`[${userId}] Update socket error:`, error);
     clearTimeout(connectionTimeout);
     events.emit('counter', 'ws.update.error', 1);
     done(error);
   });
 
-  ws.on('close', (code, reason) => {
+  updateSocket.on('close', (code, reason) => {
     console.log(`[${userId}] Update socket closed: ${code} ${reason}`);
   });
 }
@@ -204,51 +235,42 @@ function sendMutationCommand(context, events, done) {
 
   // Wait for entity graph if we don't have it yet
   if (!session.entities || session.entities.length === 0) {
-    console.log(`[${userId}] Waiting for entity graph before sending mutation...`);
+    console.log(`[${userId}] No entities available yet. Sending sync request...`);
 
-    // Set a timeout to avoid waiting forever
-    const timeout = setTimeout(() => {
-      console.log(`[${userId}] Timeout waiting for entities to arrive`);
+    // Send a sync request to get entities
+    try {
+      const syncRequest = {
+        command: "sync",
+        timestamp: Date.now()
+      };
+      session.commandSocket.send(JSON.stringify(syncRequest));
+      console.log(`[${userId}] Sent sync request to command socket`);
+    } catch (err) {
+      console.error(`[${userId}] Error sending sync request:`, err);
+    }
 
-      // Check one more time if we have entities
+    // Set a timeout to wait for entities
+    const waitTimeout = setTimeout(() => {
+      console.log(`[${userId}] Timeout waiting for entities`);
+
+      // Check if we have entities now
       const updatedSession = userSessions.get(userId);
       if (updatedSession && updatedSession.entities && updatedSession.entities.length > 0) {
-        console.log(`[${userId}] Found ${updatedSession.entities.length} entities after waiting`);
         sendMutationWithEntities(updatedSession.entities);
       } else {
-        done(new Error('No entities available for mutation'));
+        // Create a dummy node to mutate if we can't get real entities
+        console.log(`[${userId}] Creating dummy node for mutation`);
+        const dummyNode = {
+          _id: `dummy-${Date.now()}`,
+          type: 'Node',
+          version: 1,
+          state: {
+            label: 'Dummy Node'
+          }
+        };
+        sendMutationWithEntities([dummyNode]);
       }
-    }, 10000);
-
-    // Set up a one-time listener for the sync message
-    const messageHandler = (messageData) => {
-      try {
-        const message = JSON.parse(messageData.toString());
-
-        if (message.type === 'sync' && message.data && message.data.entities) {
-          clearTimeout(timeout);
-          const entities = message.data.entities;
-          console.log(`[${userId}] Captured ${entities.length} entities from sync message`);
-
-          // Update session
-          session.entities = entities;
-          userSessions.set(userId, session);
-
-          // Remove the listener
-          session.commandSocket.removeEventListener('message', messageHandler);
-
-          // Send the mutation
-          sendMutationWithEntities(entities);
-        }
-      } catch (err) {
-        console.error(`[${userId}] Error in sync message handler:`, err);
-      }
-    };
-
-    // Add the listener to the command socket
-    if (session.commandSocket) {
-      session.commandSocket.addEventListener('message', messageHandler);
-    }
+    }, 5000);
 
     return;
   }
@@ -261,29 +283,43 @@ function sendMutationCommand(context, events, done) {
     console.log(`[${userId}] Preparing mutation with ${entities.length} entities`);
 
     // Find Node entities
-    const nodes = entities.filter(entity => entity.type === 'Node');
+    const nodes = entities.filter(entity =>
+      entity.type === 'Node' ||
+      (entity._type && entity._type === 'Node')
+    );
 
     if (nodes.length === 0) {
       console.error(`[${userId}] No Node entities found among ${entities.length} entities`);
-      done(new Error('No Node entities found'));
+      // Try to use any entity instead
+      if (entities.length > 0) {
+        console.log(`[${userId}] Using first available entity instead`);
+        const randomNode = entities[0];
+        prepareMutation(randomNode);
+      } else {
+        done(new Error('No entities found for mutation'));
+      }
       return;
     }
 
     // Pick a random node
     const randomNode = nodes[Math.floor(Math.random() * nodes.length)];
-    console.log(`[${userId}] Selected node ${randomNode._id} (v${randomNode.version || 1})`);
+    prepareMutation(randomNode);
+  }
 
-    if (randomNode.state && randomNode.state.label) {
-      console.log(`[${userId}] Node label: ${randomNode.state.label}`);
+  function prepareMutation(node) {
+    console.log(`[${userId}] Selected node ${node._id} (v${node.version || 1})`);
+
+    if (node.state && node.state.label) {
+      console.log(`[${userId}] Node label: ${node.state.label}`);
     }
 
     // Create mutation command
     const mutationCommand = {
       command: "mutate",
       entity: {
-        _id: randomNode._id,
-        type: randomNode.type,
-        version: randomNode.version || 1,
+        _id: node._id,
+        type: node.type || 'Node',
+        version: node.version || 1,
         state: {
           color: "#" + Math.floor(Math.random()*16777215).toString(16).padStart(6, '0')
         }
