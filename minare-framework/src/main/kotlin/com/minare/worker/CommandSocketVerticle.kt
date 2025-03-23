@@ -25,6 +25,7 @@ import javax.inject.Inject
 class CommandSocketVerticle @Inject constructor(
     private val connectionStore: ConnectionStore,
     private val connectionCache: ConnectionCache,
+    private val connectionController: ConnectionController,
     private val channelStore: ChannelStore,
     private val contextStore: ContextStore,
     private val messageHandler: CommandMessageHandler,
@@ -124,15 +125,35 @@ class CommandSocketVerticle @Inject constructor(
 
     /**
      * Handle a new command socket connection
+     * Enhanced to support reconnection of existing connections
      */
     suspend fun handleCommandSocket(websocket: ServerWebSocket) {
         log.info("New command socket connection from {}", websocket.remoteAddress())
 
+        // Set up message handler for connection initialization or reconnect
+        var handshakeCompleted = false
+
         websocket.textMessageHandler { message ->
             CoroutineScope(vertx.dispatcher()).launch {
                 try {
-                    val msg = JsonObject(message)
-                    handleMessage(websocket, msg)
+                    // Only process the first message before handshake completes
+                    if (!handshakeCompleted) {
+                        val msg = JsonObject(message)
+                        if (msg.containsKey("reconnect") && msg.containsKey("connectionId")) {
+                            // This is a reconnection attempt
+                            val connectionId = msg.getString("connectionId")
+                            handshakeCompleted = true
+                            handleReconnection(websocket, connectionId)
+                        } else {
+                            // For regular messages after handshake, use the standard handler
+                            val msg = JsonObject(message)
+                            handleMessage(websocket, msg)
+                        }
+                    } else {
+                        // Regular message handling after handshake is complete
+                        val msg = JsonObject(message)
+                        handleMessage(websocket, msg)
+                    }
                 } catch (e: Exception) {
                     handleError(websocket, e)
                 }
@@ -146,13 +167,122 @@ class CommandSocketVerticle @Inject constructor(
         }
 
         websocket.accept()
+        log.info("[TRACE] Command socket accepted from {} with socketId: {}",
+            websocket.remoteAddress(),
+            websocket.textHandlerID())
 
-        // Create a new connection and register the socket
-        CoroutineScope(vertx.dispatcher()).launch {
-            initiateConnection(websocket)
+        // If no reconnection message is received, create a new connection
+        // This is done with a delay to give client time to send reconnect message
+        vertx.setTimer(500) {
+            if (!handshakeCompleted) {
+                handshakeCompleted = true
+                CoroutineScope(vertx.dispatcher()).launch {
+                    initiateConnection(websocket)
+                }
+            }
         }
     }
 
+    /**
+     * Handle a reconnection attempt
+     */
+    private suspend fun handleReconnection(websocket: ServerWebSocket, connectionId: String) {
+        try {
+            log.info("Handling reconnection attempt for connection: {}", connectionId)
+
+            // Check if connection exists and is reconnectable
+            val exists = connectionStore.exists(connectionId)
+            if (!exists) {
+                log.warn("Reconnection failed: Connection {} does not exist", connectionId)
+                sendReconnectionResponse(websocket, false, "Connection not found")
+                initiateConnection(websocket)  // Fallback to creating a new connection
+                return
+            }
+
+            // Find the connection to check reconnectable flag
+            val connection = connectionStore.find(connectionId)
+
+            if (!connection.reconnectable) {
+                log.warn("Reconnection rejected: Connection {} is not reconnectable", connectionId)
+                sendReconnectionResponse(websocket, false, "Connection not reconnectable")
+                initiateConnection(websocket)  // Fallback to creating a new connection
+                return
+            }
+
+            // Check last activity timestamp to see if within reconnection window
+            val now = System.currentTimeMillis()
+            val inactiveMs = now - connection.lastActivity
+            val reconnectWindowMs = CleanupVerticle.CONNECTION_RECONNECT_WINDOW_MS
+
+            if (inactiveMs > reconnectWindowMs) {
+                log.warn(
+                    "Reconnection window expired for connection {}: inactivity {}, window {}",
+                    connectionId, inactiveMs, reconnectWindowMs
+                )
+                sendReconnectionResponse(websocket, false, "Reconnection window expired")
+                initiateConnection(websocket)  // Fallback to creating a new connection
+                return
+            }
+
+            // Close existing command socket if any
+            connectionCache.getCommandSocket(connectionId)?.let { existingSocket ->
+                try {
+                    if (!existingSocket.isClosed()) {
+                        existingSocket.close()
+                        log.info("Closed existing command socket for connection {}", connectionId)
+                    }
+                } catch (e: Exception) {
+                    log.warn("Error closing existing command socket for {}", connectionId, e)
+                }
+            }
+
+            // Associate the new websocket with this connection
+            connectionCache.storeCommandSocket(connectionId, websocket, connection)
+
+            // Update the connection record with new socket ID and activity time
+            val socketId = "cs-${java.util.UUID.randomUUID()}"
+            val updatedConnection = connectionStore.updateSocketIds(
+                connectionId,
+                socketId,
+                connection.updateSocketId
+            )
+
+            log.info("Reconnection successful for connection {}", connectionId)
+
+            // Send confirmation to the client
+            sendReconnectionResponse(websocket, true, null)
+
+            // If connection has both sockets again, mark as fully connected
+            if (connectionCache.isFullyConnected(connectionId)) {
+                connectionController.onClientFullyConnected(updatedConnection)
+            }
+
+        } catch (e: Exception) {
+            log.error("Error handling reconnection for connection {}", connectionId, e)
+            sendReconnectionResponse(websocket, false, "Internal error")
+            initiateConnection(websocket)  // Fallback to creating a new connection
+        }
+    }
+
+    /**
+     * Send a reconnection response to the client
+     */
+    private fun sendReconnectionResponse(websocket: ServerWebSocket, success: Boolean, errorMessage: String?) {
+        val response = JsonObject()
+            .put("type", "reconnect_response")
+            .put("success", success)
+            .put("timestamp", System.currentTimeMillis())
+
+        if (!success && errorMessage != null) {
+            response.put("error", errorMessage)
+        }
+
+        websocket.writeTextMessage(response.encode())
+    }
+
+    /**
+     * Connect to the command socket
+     */
     private suspend fun initiateConnection(websocket: ServerWebSocket) {
         try {
             val connection = connectionStore.create()
@@ -160,15 +290,29 @@ class CommandSocketVerticle @Inject constructor(
             // Store in cache - separate from the DB operation
             connectionCache.storeConnection(connection)
 
-            // Register command socket - again, separate caching operation
-            connectionCache.storeCommandSocket(connection._id, websocket, connection)
+            log.info("[TRACE] Connection cache state after storing new connection:")
+            val cachedConnection = connectionCache.getConnection(connection._id)
+            log.info("[TRACE] Cache contains connection {}: {}, commandSocketId={}",
+                connection._id, cachedConnection != null, cachedConnection?.commandSocketId)
 
-            // The database update is handled by the store
-            connectionStore.updateSocketIds(
+            // Generate a command socket ID
+            val commandSocketId = "cs-${java.util.UUID.randomUUID()}"
+            log.info("[TRACE] Setting command socket ID: {} for connection: {}", commandSocketId, connection._id)
+
+            // Update the connection in the database
+            val updatedConnection = connectionStore.updateSocketIds(
                 connection._id,
-                "cs-${java.util.UUID.randomUUID()}",
+                commandSocketId,
                 null
             )
+
+            // IMPORTANT: Update the cache with the updated connection to prevent cache/DB inconsistency
+            connectionCache.storeConnection(updatedConnection)
+
+            // Register command socket - now with the updated connection that has the command socket ID
+            connectionCache.storeCommandSocket(connection._id, websocket, updatedConnection)
+
+            log.info("[TRACE] Command socket DB update result: commandSocketId={}", updatedConnection.commandSocketId)
 
             sendConnectionConfirmation(websocket, connection._id)
         } catch (e: Exception) {
@@ -190,6 +334,10 @@ class CommandSocketVerticle @Inject constructor(
         try {
             val connectionId = connectionCache.getConnectionIdForCommandSocket(websocket)
             if (connectionId != null) {
+                // Update last activity timestamp
+                connectionStore.updateLastActivity(connectionId)
+
+                // Process the message
                 messageHandler.handle(connectionId, message)
             } else {
                 throw IllegalStateException("No connection found for this websocket")
@@ -205,17 +353,15 @@ class CommandSocketVerticle @Inject constructor(
             if (connectionId != null) {
                 log.info("Command socket closed for connection {}", connectionId)
 
-                // Initiate coordinated cleanup via event bus
-                val cleanupResult = vertx.eventBus().request<JsonObject>(
-                    ADDRESS_CONNECTION_CLEANUP,
-                    JsonObject().put("connectionId", connectionId)
-                ).await()
+                // Instead of immediate cleanup, keep connection for potential reconnection
+                // Set it as reconnectable for the reconnection window
+                connectionStore.updateReconnectable(connectionId, true)
 
-                if (cleanupResult.body().getBoolean("success", false)) {
-                    log.info("Connection {} fully cleaned up", connectionId)
-                } else {
-                    log.warn("Connection {} cleanup may be incomplete", connectionId)
-                }
+                // Remove socket from cache but don't delete connection yet
+                connectionCache.removeCommandSocket(connectionId)
+
+                // If reconnection doesn't happen, cleanup verticle will handle it later
+                log.info("Connection {} marked for potential reconnection", connectionId)
             } else {
                 log.warn("Command socket closed, but no connection ID found")
             }
@@ -259,7 +405,14 @@ class CommandSocketVerticle @Inject constructor(
                 log.warn("Socket cleanup failed for connection {}", connectionId)
             }
 
-            // Step 3: Remove the connection from DB and cache
+            // Step 3: Mark connection as not reconnectable
+            try {
+                connectionStore.updateReconnectable(connectionId, false)
+            } catch (e: Exception) {
+                log.warn("Error marking connection as not reconnectable: {}", connectionId, e)
+            }
+
+            // Step 4: Remove the connection from DB and cache
             try {
                 // Try to delete from the database first
                 connectionStore.delete(connectionId)
@@ -409,10 +562,11 @@ class CommandSocketVerticle @Inject constructor(
 
             // Create a sync response message
             val syncData = JsonObject()
-                .put("entities", JsonObject()
-                    .put("_id", entity?._id)
-                    .put("type", entity?.type)
-                    .put("version", entity?.version)
+                .put(
+                    "entities", JsonObject()
+                        .put("_id", entity?._id)
+                        .put("type", entity?.type)
+                        .put("version", entity?.version)
                     // Add more entity fields as needed
                 )
                 .put("timestamp", System.currentTimeMillis())
@@ -424,6 +578,9 @@ class CommandSocketVerticle @Inject constructor(
             // Send the sync message to the client
             commandSocket.writeTextMessage(syncMessage.encode())
             log.debug("Entity sync data sent for entity {} to connection {}", entityId, connectionId)
+
+            // Update last activity
+            connectionStore.updateLastActivity(connectionId)
 
             return true
         } catch (e: Exception) {

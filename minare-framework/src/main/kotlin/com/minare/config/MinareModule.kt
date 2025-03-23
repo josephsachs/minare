@@ -160,6 +160,7 @@ class MinareModule : AbstractModule() {
     fun provideCommandSocketVerticle(
         connectionStore: ConnectionStore,
         connectionCache: ConnectionCache,
+        connectionController: ConnectionController,
         channelStore: ChannelStore,
         contextStore: ContextStore,
         messageHandler: CommandMessageHandler,
@@ -169,6 +170,7 @@ class MinareModule : AbstractModule() {
         return CommandSocketVerticle(
             connectionStore,
             connectionCache,
+            connectionController,
             channelStore,
             contextStore,
             messageHandler,

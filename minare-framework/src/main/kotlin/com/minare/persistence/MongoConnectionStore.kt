@@ -27,16 +27,20 @@ class MongoConnectionStore @Inject constructor(
             _id = connectionId,
             createdAt = now,
             lastUpdated = now,
+            lastActivity = now,
             commandSocketId = null,
-            updateSocketId = null
+            updateSocketId = null,
+            reconnectable = true
         )
 
         val document = JsonObject()
             .put("_id", connection._id)
             .put("createdAt", connection.createdAt)
             .put("lastUpdated", connection.lastUpdated)
+            .put("lastActivity", connection.lastActivity)
             .put("commandSocketId", connection.commandSocketId)
             .put("updateSocketId", connection.updateSocketId)
+            .put("reconnectable", connection.reconnectable)
 
         try {
             mongoClient.save(collection, document).await()
@@ -72,7 +76,7 @@ class MongoConnectionStore @Inject constructor(
      * Check if a connection exists in the database
      * This is useful for avoiding exceptions when the connection may have been deleted
      */
-    suspend fun exists(connectionId: String): Boolean {
+    override suspend fun exists(connectionId: String): Boolean {
         val query = JsonObject().put("_id", connectionId)
 
         try {
@@ -103,8 +107,10 @@ class MongoConnectionStore @Inject constructor(
                 _id = result.getString("_id"),
                 createdAt = result.getLong("createdAt"),
                 lastUpdated = result.getLong("lastUpdated"),
+                lastActivity = result.getLong("lastActivity", result.getLong("lastUpdated")), // Fallback for compatibility
                 commandSocketId = result.getString("commandSocketId"),
-                updateSocketId = result.getString("updateSocketId")
+                updateSocketId = result.getString("updateSocketId"),
+                reconnectable = result.getBoolean("reconnectable", true) // Default to true for backward compatibility
             )
         } catch (e: Exception) {
             if (e is IllegalArgumentException) {
@@ -130,29 +136,61 @@ class MongoConnectionStore @Inject constructor(
     }
 
     /**
-     * Update the lastUpdated timestamp
+     * Update the lastActivity timestamp
      */
-    suspend fun updateLastUpdated(connectionId: String): Connection? {
+    override suspend fun updateLastActivity(connectionId: String): Connection? {
         if (!exists(connectionId)) {
-            log.debug("Connection doesn't exist for updateLastUpdated: {}", connectionId)
+            log.debug("Connection doesn't exist for updateLastActivity: {}", connectionId)
             return null
         }
 
         val query = JsonObject().put("_id", connectionId)
         val now = System.currentTimeMillis()
         val update = JsonObject()
-            .put("\$set", JsonObject().put("lastUpdated", now))
+            .put("\$set", JsonObject().put("lastActivity", now))
 
         try {
             val result = mongoClient.updateCollection(collection, query, update).await()
             if (result.docModified == 0L) {
-                log.debug("Connection not found for updateLastUpdated: {}", connectionId)
+                log.debug("Connection not found for updateLastActivity: {}", connectionId)
                 return null
             }
 
             return findWithFallback(connectionId)
         } catch (e: Exception) {
-            log.error("Error updating timestamp: {}", connectionId, e)
+            log.error("Error updating activity timestamp: {}", connectionId, e)
+            return null
+        }
+    }
+
+    /**
+     * Update the reconnectable flag
+     */
+    override suspend fun updateReconnectable(connectionId: String, reconnectable: Boolean): Connection? {
+        if (!exists(connectionId)) {
+            log.debug("Connection doesn't exist for updateReconnectable: {}", connectionId)
+            return null
+        }
+
+        val query = JsonObject().put("_id", connectionId)
+        val now = System.currentTimeMillis()
+        val update = JsonObject()
+            .put("\$set", JsonObject()
+                .put("lastUpdated", now)
+                .put("lastActivity", now)
+                .put("reconnectable", reconnectable)
+            )
+
+        try {
+            val result = mongoClient.updateCollection(collection, query, update).await()
+            if (result.docModified == 0L) {
+                log.debug("Connection not found for updateReconnectable: {}", connectionId)
+                return null
+            }
+
+            return findWithFallback(connectionId)
+        } catch (e: Exception) {
+            log.error("Error updating reconnectable flag: {}", connectionId, e)
             return null
         }
     }
@@ -170,6 +208,7 @@ class MongoConnectionStore @Inject constructor(
                 _id = connectionId,
                 createdAt = System.currentTimeMillis(),
                 lastUpdated = System.currentTimeMillis(),
+                lastActivity = System.currentTimeMillis(),
                 commandSocketId = null,
                 updateSocketId = updateSocketId
             )
@@ -180,6 +219,7 @@ class MongoConnectionStore @Inject constructor(
         val update = JsonObject()
             .put("\$set", JsonObject()
                 .put("lastUpdated", now)
+                .put("lastActivity", now)
                 .put("updateSocketId", updateSocketId)
             )
 
@@ -192,6 +232,7 @@ class MongoConnectionStore @Inject constructor(
                     _id = connectionId,
                     createdAt = now,
                     lastUpdated = now,
+                    lastActivity = now,
                     commandSocketId = null,
                     updateSocketId = updateSocketId
                 )
@@ -201,6 +242,7 @@ class MongoConnectionStore @Inject constructor(
                 _id = connectionId,
                 createdAt = now,
                 lastUpdated = now,
+                lastActivity = now,
                 commandSocketId = null,
                 updateSocketId = updateSocketId
             )
@@ -219,6 +261,7 @@ class MongoConnectionStore @Inject constructor(
                 _id = connectionId,
                 createdAt = System.currentTimeMillis(),
                 lastUpdated = System.currentTimeMillis(),
+                lastActivity = System.currentTimeMillis(),
                 commandSocketId = null,
                 updateSocketId = updateSocketId
             )
@@ -238,6 +281,7 @@ class MongoConnectionStore @Inject constructor(
                 _id = connectionId,
                 createdAt = System.currentTimeMillis(),
                 lastUpdated = System.currentTimeMillis(),
+                lastActivity = System.currentTimeMillis(),
                 commandSocketId = commandSocketId,
                 updateSocketId = updateSocketId
             )
@@ -251,6 +295,7 @@ class MongoConnectionStore @Inject constructor(
                 .put("commandSocketId", commandSocketId)
                 .put("updateSocketId", updateSocketId)
             )
+        log.info("[TRACE] MongoDB update query: {} with update: {}", query.encode(), update.encode())
 
         try {
             val result = mongoClient.updateCollection(collection, query, update).await()
@@ -261,6 +306,7 @@ class MongoConnectionStore @Inject constructor(
                     _id = connectionId,
                     createdAt = now,
                     lastUpdated = now,
+                    lastActivity = now,
                     commandSocketId = commandSocketId,
                     updateSocketId = updateSocketId
                 )
@@ -270,6 +316,7 @@ class MongoConnectionStore @Inject constructor(
                 _id = connectionId,
                 createdAt = now,
                 lastUpdated = now,
+                lastActivity = now,
                 commandSocketId = commandSocketId,
                 updateSocketId = updateSocketId
             )
@@ -285,6 +332,7 @@ class MongoConnectionStore @Inject constructor(
                 _id = connectionId,
                 createdAt = System.currentTimeMillis(),
                 lastUpdated = System.currentTimeMillis(),
+                lastActivity = System.currentTimeMillis(),
                 commandSocketId = commandSocketId,
                 updateSocketId = updateSocketId
             )
@@ -304,12 +352,41 @@ class MongoConnectionStore @Inject constructor(
                     _id = doc.getString("_id"),
                     createdAt = doc.getLong("createdAt"),
                     lastUpdated = doc.getLong("lastUpdated"),
+                    lastActivity = doc.getLong("lastActivity", doc.getLong("lastUpdated")),
                     commandSocketId = doc.getString("commandSocketId"),
-                    updateSocketId = doc.getString("updateSocketId")
+                    updateSocketId = doc.getString("updateSocketId"),
+                    reconnectable = doc.getBoolean("reconnectable", true)
                 )
             }
         } catch (e: Exception) {
             log.error("Error finding connections with update socket", e)
+            return emptyList()
+        }
+    }
+
+    /**
+     * Find connections that haven't had activity for a specified time
+     * @param olderThanMs maximum age in milliseconds
+     */
+    override suspend fun findInactiveConnections(olderThanMs: Long): List<Connection> {
+        val cutoffTime = System.currentTimeMillis() - olderThanMs
+        val query = JsonObject().put("lastActivity", JsonObject().put("\$lt", cutoffTime))
+
+        try {
+            val documents = mongoClient.find(collection, query).await()
+            return documents.map { doc ->
+                Connection(
+                    _id = doc.getString("_id"),
+                    createdAt = doc.getLong("createdAt"),
+                    lastUpdated = doc.getLong("lastUpdated"),
+                    lastActivity = doc.getLong("lastActivity", doc.getLong("lastUpdated")),
+                    commandSocketId = doc.getString("commandSocketId"),
+                    updateSocketId = doc.getString("updateSocketId"),
+                    reconnectable = doc.getBoolean("reconnectable", true)
+                )
+            }
+        } catch (e: Exception) {
+            log.error("Error finding inactive connections", e)
             return emptyList()
         }
     }

@@ -1,5 +1,6 @@
 /**
- * WebSocket connection management
+ * WebSocket connection management with reconnection support
+ * Example client implementation for minare-example webapp
  */
 import config from './config.js';
 import store from './store.js';
@@ -42,24 +43,32 @@ const createWebSocket = (url, onMessage, options = {}) => {
 };
 
 /**
- * Connect command socket
+ * Connect command socket with reconnection support
+ * @param {boolean} isReconnect - If this is a reconnection attempt
  * @returns {Promise<WebSocket>} Command socket instance
  */
-export const connectCommandSocket = async () => {
+export const connectCommandSocket = async (isReconnect = false) => {
   // Get WebSocket base URL
   const baseUrl = config.websocket.getBaseUrl();
   const url = `${baseUrl}${config.websocket.commandEndpoint}`;
 
-  logger.info('Connecting command socket...');
+  logger.info(isReconnect ? 'Reconnecting command socket...' : 'Connecting command socket...');
 
   try {
     const socket = await createWebSocket(
       url,
       handleCommandSocketMessage,
       {
-        onClose: () => {
+        onClose: (event) => {
+          // Handle command socket disconnection
           if (store.isConnected()) {
-            disconnect();
+            // If unexpected close and reconnection is enabled
+            if (event.code !== 1000 && config.websocket.reconnect.enabled) {
+              handleCommandSocketDisconnect();
+            } else {
+              // Otherwise just disconnect fully
+              disconnect();
+            }
           }
         }
       }
@@ -67,6 +76,20 @@ export const connectCommandSocket = async () => {
 
     store.setCommandSocket(socket);
     logger.command('Command socket connected');
+
+    // If this is a reconnection attempt, send reconnection message
+    if (isReconnect) {
+      const connectionId = store.getConnectionId();
+      if (connectionId) {
+        const reconnectMessage = {
+          reconnect: true,
+          connectionId: connectionId,
+          timestamp: Date.now()
+        };
+        socket.send(JSON.stringify(reconnectMessage));
+        logger.info(`Sent reconnection request for connection ${connectionId}`);
+      }
+    }
 
     return socket;
   } catch (error) {
@@ -97,8 +120,9 @@ export const connectUpdateSocket = async () => {
       handleUpdateSocketMessage,
       {
         onClose: () => {
+          // Only handle update socket disconnection if we're still connected
           if (store.isConnected()) {
-            disconnect();
+            handleUpdateSocketDisconnect();
           }
         }
       }
@@ -122,12 +146,13 @@ export const connectUpdateSocket = async () => {
 
 /**
  * Connect to the server (both command and update sockets)
+ * @param {boolean} isReconnect - Whether this is a reconnect attempt
  * @returns {Promise<boolean>} Success indicator
  */
-export const connect = async () => {
+export const connect = async (isReconnect = false) => {
   try {
     // Connect command socket first
-    await connectCommandSocket();
+    await connectCommandSocket(isReconnect);
 
     // Update socket will be connected after receiving connection ID
     return true;
@@ -162,6 +187,83 @@ export const disconnect = () => {
 };
 
 /**
+ * Handle command socket disconnect
+ */
+const handleCommandSocketDisconnect = () => {
+  logger.warn('Command socket disconnected unexpectedly, attempting reconnect...');
+  store.setConnected(false);
+
+  // Clear the command socket reference
+  store.setCommandSocket(null);
+
+  // Don't clear connectionId - needed for reconnection
+
+  // Try to reconnect with exponential backoff
+  attemptReconnect(0);
+};
+
+/**
+ * Handle update socket disconnect
+ */
+const handleUpdateSocketDisconnect = () => {
+  logger.warn('Update socket disconnected, attempting to reconnect...');
+
+  // Clear update socket reference
+  store.setUpdateSocket(null);
+
+  // Attempt to reconnect the update socket
+  const attemptUpdateReconnect = async () => {
+    try {
+      await connectUpdateSocket();
+      logger.info('Update socket reconnected successfully');
+    } catch (error) {
+      logger.error(`Failed to reconnect update socket: ${error.message}`);
+
+      // If still connected (command socket is alive), try again after delay
+      if (store.getCommandSocket()) {
+        setTimeout(attemptUpdateReconnect, 1000);
+      }
+    }
+  };
+
+  attemptUpdateReconnect();
+};
+
+/**
+ * Attempt reconnection with exponential backoff
+ * @param {number} attempt - Current attempt number
+ */
+const attemptReconnect = async (attempt) => {
+  const maxAttempts = config.websocket.reconnect.maxAttempts;
+
+  if (attempt >= maxAttempts) {
+    logger.error(`Failed to reconnect after ${maxAttempts} attempts, giving up`);
+    disconnect(); // Full disconnect
+    return;
+  }
+
+  const delay = Math.min(30000, config.websocket.reconnect.delay * Math.pow(2, attempt));
+  logger.info(`Reconnect attempt ${attempt + 1} in ${delay}ms...`);
+
+  setTimeout(async () => {
+    try {
+      const success = await connect(true); // With reconnect flag
+
+      if (success) {
+        logger.info('Reconnected successfully');
+      } else {
+        // Try again with increased attempt count
+        attemptReconnect(attempt + 1);
+      }
+    } catch (error) {
+      logger.error(`Reconnection attempt failed: ${error.message}`);
+      // Try again with increased attempt count
+      attemptReconnect(attempt + 1);
+    }
+  }, delay);
+};
+
+/**
  * Send a command to the server
  * @param {Object} command - Command object
  * @returns {boolean} Success indicator
@@ -182,6 +284,27 @@ export const sendCommand = (command) => {
   } catch (error) {
     logger.error(`Failed to send command: ${error.message}`);
     return false;
+  }
+};
+
+// Configuration example for websocket reconnection
+export const reconnectConfig = {
+  websocket: {
+    // Base URL for WebSockets (derived from current location)
+    getBaseUrl: () => {
+      const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      return `${wsProtocol}//${window.location.host}`;
+    },
+    // Command socket endpoint
+    commandEndpoint: '/ws',
+    // Update socket endpoint
+    updateEndpoint: '/ws/updates',
+    // Reconnection settings
+    reconnect: {
+      enabled: true,
+      maxAttempts: 5,
+      delay: 1000  // Base delay in ms, will be used with exponential backoff
+    }
   }
 };
 

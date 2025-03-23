@@ -29,7 +29,12 @@ class CleanupVerticle @Inject constructor(
 
         // Cleanup configuration
         private const val CLEANUP_INTERVAL_MS = 60000L // 1 minute
-        private const val CONNECTION_EXPIRY_MS = 1800000L // 30 minutes
+
+        // Connection reconnection window - how long to keep connections available for reconnect after disconnect
+        const val CONNECTION_RECONNECT_WINDOW_MS = 60000L
+
+        // Connection expiry - when to clean up inactive connections
+        private const val CONNECTION_EXPIRY_MS = 180000L
     }
 
     override suspend fun start() {
@@ -83,13 +88,28 @@ class CleanupVerticle @Inject constructor(
             // Step 1: Verify cache-database consistency
             validateCacheIntegrity()
 
-            // Step 2: Clean up stale database connections
-            val staleDatabaseConnections = findStaleConnections(aggressive)
+            // Step 2: Find connections to clean up
+            val connectionsToClear = mutableListOf<String>()
 
-            // Step 3: Clean up each stale connection
-            for (connectionId in staleDatabaseConnections) {
+            // Find expired inactive connections
+            val expiredConnections = connectionStore.findInactiveConnections(CONNECTION_EXPIRY_MS)
+            log.info("Found ${expiredConnections.size} expired connections (inactive > ${CONNECTION_EXPIRY_MS/1000/60} minutes)")
+            connectionsToClear.addAll(expiredConnections.map { it._id })
+
+            // Find disconnected non-reconnectable connections
+            if (aggressive) {
+                // Only if aggressive cleanup is enabled
+                val recentlyDisconnected = connectionStore.findInactiveConnections(CONNECTION_RECONNECT_WINDOW_MS)
+                    .filter { !it.reconnectable || it.commandSocketId == null }
+
+                log.info("Found ${recentlyDisconnected.size} recently disconnected non-reconnectable connections")
+                connectionsToClear.addAll(recentlyDisconnected.map { it._id })
+            }
+
+            // Step 3: Clean up each connection
+            for (connectionId in connectionsToClear) {
                 try {
-                    log.info("Cleaning up stale connection: $connectionId")
+                    log.info("Cleaning up connection: $connectionId")
 
                     // Attempt to use the standard cleanup process
                     val cleanupSuccess = cleanupStaleConnection(connectionId)
@@ -149,52 +169,6 @@ class CleanupVerticle @Inject constructor(
         log.debug("Found ${cacheConnectionIds.size} connections in cache")
 
         // We could add more validation here if needed
-    }
-
-    /**
-     * Finds stale connections in the database
-     */
-    private suspend fun findStaleConnections(aggressive: Boolean): List<String> {
-        // This would typically query the database for connections that haven't been
-        // updated in a while or match other criteria for cleanup
-
-        val staleConnections = mutableListOf<String>()
-
-        // Example implementation - find connections where:
-        // 1. They have no command socket (definitely stale)
-        // 2. OR they haven't been updated in CONNECTION_EXPIRY_MS and aggressive=true
-
-        // In a real implementation, we would query the database directly
-        // For now, we'll use the cache to identify candidates
-
-        val cacheConnectionIds = connectionCache.getAllConnectedIds()
-
-        for (connectionId in cacheConnectionIds) {
-            val commandSocket = connectionCache.getCommandSocket(connectionId)
-
-            if (commandSocket == null || commandSocket.isClosed()) {
-                // No command socket or closed socket - definitely stale
-                staleConnections.add(connectionId)
-            } else if (aggressive) {
-                // In aggressive mode, also check last activity time
-                try {
-                    val connection = connectionStore.find(connectionId)
-                    val now = System.currentTimeMillis()
-
-                    if (now - connection.lastUpdated > CONNECTION_EXPIRY_MS) {
-                        log.info("Connection $connectionId has been inactive for ${(now - connection.lastUpdated) / 1000} seconds")
-                        staleConnections.add(connectionId)
-                    }
-                } catch (e: Exception) {
-                    // Error finding connection - add to stale list
-                    log.warn("Error checking connection $connectionId: ${e.message}")
-                    staleConnections.add(connectionId)
-                }
-            }
-        }
-
-        log.info("Found ${staleConnections.size} stale connections")
-        return staleConnections
     }
 
     /**

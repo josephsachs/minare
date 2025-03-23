@@ -22,12 +22,12 @@ interface ConnectionCache {
      * Get a connection from the cache
      * @return The connection or null if not found
      */
-    fun getConnection(connectionId: String): Connection?
+    suspend fun getConnection(connectionId: String): Connection?
 
     /**
      * Check if a connection exists in the cache
      */
-    fun hasConnection(connectionId: String): Boolean
+    suspend fun hasConnection(connectionId: String): Boolean
 
     /**
      * Associate a command socket with a connection

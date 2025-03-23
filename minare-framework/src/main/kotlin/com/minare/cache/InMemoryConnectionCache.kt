@@ -1,27 +1,32 @@
 package com.minare.cache
 
 import com.minare.core.models.Connection
+import com.minare.persistence.ConnectionStore
 import io.vertx.core.http.ServerWebSocket
+import org.slf4j.LoggerFactory
 import java.util.concurrent.ConcurrentHashMap
+import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
  * In-memory implementation of ConnectionCache using ConcurrentHashMaps
  */
 @Singleton
-class InMemoryConnectionCache : ConnectionCache {
-    // Connection storage
+class InMemoryConnectionCache @Inject constructor(
+    private val connectionStore: ConnectionStore
+) : ConnectionCache {
+    private val log = LoggerFactory.getLogger(InMemoryConnectionCache::class.java)
     private val connections = ConcurrentHashMap<String, Connection>()
 
-    // Socket storage
     private val commandSockets = ConcurrentHashMap<String, ServerWebSocket>()
     private val updateSockets = ConcurrentHashMap<String, ServerWebSocket>()
 
-    // Bidirectional mapping
     private val commandSocketToConnection = ConcurrentHashMap<ServerWebSocket, Connection>()
     private val updateSocketToConnection = ConcurrentHashMap<ServerWebSocket, Connection>()
 
     override fun storeConnection(connection: Connection) {
+        log.info("[TRACE] Storing connection in cache: {} with commandSocketId={}, updateSocketId={}",
+            connection._id, connection.commandSocketId, connection.updateSocketId)
         connections[connection._id] = connection
     }
 
@@ -29,12 +34,37 @@ class InMemoryConnectionCache : ConnectionCache {
         connections.remove(connectionId)
     }
 
-    override fun getConnection(connectionId: String): Connection? {
-        return connections[connectionId]
+    override suspend fun getConnection(connectionId: String): Connection? {
+        // First check in the local cache map
+        val cachedConnection = connections[connectionId]
+
+        if (cachedConnection != null) {
+            log.info("[TRACE] Retrieved connection from cache: {} with commandSocketId={}, updateSocketId={}",
+                cachedConnection._id, cachedConnection.commandSocketId, cachedConnection.updateSocketId)
+            return cachedConnection
+        }
+
+        // Not in cache, look up in database
+        try {
+            val connection = connectionStore.find(connectionId)
+            log.info("[TRACE] Retrieved connection from database: {} with commandSocketId={}, updateSocketId={}",
+                connection._id, connection.commandSocketId, connection.updateSocketId)
+
+            // Store in cache for future use
+            connections[connectionId] = connection
+            return connection
+        } catch (e: Exception) {
+            log.error("Failed to retrieve connection from database: {}", connectionId, e)
+            return null
+        }
     }
 
-    override fun hasConnection(connectionId: String): Boolean {
-        return connections.containsKey(connectionId)
+    override suspend fun hasConnection(connectionId: String): Boolean {
+        return connections.containsKey(connectionId) || try {
+            connectionStore.exists(connectionId)
+        } catch (e: Exception) {
+            false
+        }
     }
 
     override fun storeCommandSocket(connectionId: String, socket: ServerWebSocket, connection: Connection) {

@@ -9,4 +9,24 @@ interface ConnectionStore {
     suspend fun updateUpdateSocketId(connectionId: String, updateSocketId: String?): Connection
     suspend fun updateSocketIds(connectionId: String, commandSocketId: String?, updateSocketId: String?): Connection
     suspend fun findAllWithUpdateSocket(): List<Connection>
+
+    /**
+     * Update the lastActivity timestamp for a connection
+     */
+    suspend fun updateLastActivity(connectionId: String): Connection?
+
+    /**
+     * Update the reconnectable flag for a connection
+     */
+    suspend fun updateReconnectable(connectionId: String, reconnectable: Boolean): Connection?
+
+    /**
+     * Check if a connection exists by ID
+     */
+    suspend fun exists(connectionId: String): Boolean
+
+    /**
+     * Find connections that haven't had activity for a specified time
+     */
+    suspend fun findInactiveConnections(olderThanMs: Long): List<Connection>
 }

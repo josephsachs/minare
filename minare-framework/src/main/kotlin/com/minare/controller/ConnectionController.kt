@@ -3,11 +3,13 @@ package com.minare.controller
 import com.minare.cache.ConnectionCache
 import com.minare.core.models.Connection
 import com.minare.utils.EntityGraph
+import com.minare.worker.CommandSocketVerticle
 import io.vertx.core.http.ServerWebSocket
 import io.vertx.core.json.JsonObject
 import org.slf4j.LoggerFactory
 import com.minare.core.entity.ReflectionCache
 import com.minare.persistence.*
+import com.minare.config.InternalInjectorHolder
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -59,8 +61,26 @@ open class ConnectionController @Inject constructor(
     /**
      * Check if a connection exists in memory
      */
-    fun hasConnection(connectionId: String): Boolean {
+    suspend fun hasConnection(connectionId: String): Boolean {
         return connectionCache.hasConnection(connectionId)
+    }
+
+    /**
+     * Check if a connection exists in DB and is reconnectable
+     */
+    suspend fun isConnectionReconnectable(connectionId: String): Boolean {
+        try {
+            val connection = connectionStore.find(connectionId)
+
+            // Check if active within the reconnection window
+            val now = System.currentTimeMillis()
+            val reconnectWindow = 30000L // 30 seconds, should match CleanupVerticle.CONNECTION_RECONNECT_WINDOW_MS
+
+            // Return true if reconnectable flag is true and within reconnection window
+            return connection.reconnectable && (now - connection.lastActivity < reconnectWindow)
+        } catch (e: Exception) {
+            return false
+        }
     }
 
     /**
@@ -92,7 +112,8 @@ open class ConnectionController @Inject constructor(
             val connection = getConnection(connectionId)
             val updatedConnection = connection.copy(
                 commandSocketId = socketId ?: "cs-${java.util.UUID.randomUUID()}",
-                lastUpdated = System.currentTimeMillis()
+                lastUpdated = System.currentTimeMillis(),
+                lastActivity = System.currentTimeMillis()
             )
 
             connectionCache.storeConnection(updatedConnection)
@@ -128,20 +149,27 @@ open class ConnectionController @Inject constructor(
             }
 
             val connection = getConnection(connectionId)
+            log.info("[TRACE] Before update socket registration - Connection {}: commandSocketId={}, updateSocketId={}",
+                connectionId, connection.commandSocketId, connection.updateSocketId)
             val wasFullyConnected = connection.updateSocketId != null
 
             val updatedConnection = connection.copy(
                 updateSocketId = socketId ?: "us-${java.util.UUID.randomUUID()}",
-                lastUpdated = System.currentTimeMillis()
+                lastUpdated = System.currentTimeMillis(),
+                lastActivity = System.currentTimeMillis()
             )
 
             connectionCache.storeConnection(updatedConnection)
             connectionCache.storeUpdateSocket(connectionId, websocket, updatedConnection)
-            connectionStore.updateSocketIds(
+            log.info("[TRACE] Updating socket IDs in DB - Connection {}: commandSocketId={}, updateSocketId={}",
+                connectionId, updatedConnection.commandSocketId, updatedConnection.updateSocketId)
+            val updatedFromDb = connectionStore.updateSocketIds(
                 connectionId,
                 updatedConnection.commandSocketId,
                 updatedConnection.updateSocketId
             )
+            log.info("[TRACE] After DB update - Connection {}: commandSocketId={}, updateSocketId={}",
+                connectionId, updatedFromDb.commandSocketId, updatedFromDb.updateSocketId)
 
             // Check if the client is now fully connected but wasn't before
             val isNowFullyConnected = updatedConnection.updateSocketId != null
@@ -164,6 +192,19 @@ open class ConnectionController @Inject constructor(
     open suspend fun onClientFullyConnected(connection: Connection) {
         log.info("Client {} is now fully connected", connection._id)
         // Default implementation is empty - application should override this
+    }
+
+    /**
+     * Get the CommandSocketVerticle for advanced socket handling
+     * This uses the internal injector to access the verticle directly
+     */
+    fun getCommandSocketVerticle(): CommandSocketVerticle? {
+        return try {
+            InternalInjectorHolder.getInstance<CommandSocketVerticle>()
+        } catch (e: Exception) {
+            log.warn("Failed to get CommandSocketVerticle instance: {}", e.message)
+            null
+        }
     }
 
     /**
@@ -206,6 +247,33 @@ open class ConnectionController @Inject constructor(
      */
     fun getConnectionForUpdateSocket(websocket: ServerWebSocket): Connection? {
         return connectionCache.getConnectionForUpdateSocket(websocket)
+    }
+
+    /**
+     * Remove a command WebSocket and mark the connection for reconnection instead of immediately removing it
+     */
+    suspend fun markCommandSocketDisconnected(connectionId: String) {
+        try {
+            connectionCache.removeCommandSocket(connectionId)?.let { socket ->
+                try {
+                    socket.close()
+                } catch (e: Exception) {
+                    log.warn("Error closing command socket for {}", connectionId, e)
+                }
+            }
+
+            // Update the connection status in the database but don't delete it yet
+            // This allows reconnection within the reconnection window
+            connectionStore.updateLastActivity(connectionId)
+
+            log.info(
+                "Command socket for connection {} marked as disconnected, available for reconnection",
+                connectionId
+            )
+        } catch (e: Exception) {
+            log.error("Failed to mark command WebSocket disconnected for {}", connectionId, e)
+            throw e
+        }
     }
 
     /**
@@ -258,7 +326,8 @@ open class ConnectionController @Inject constructor(
             if (connection != null) {
                 val updatedConnection = connection.copy(
                     updateSocketId = null,
-                    lastUpdated = System.currentTimeMillis()
+                    lastUpdated = System.currentTimeMillis(),
+                    lastActivity = System.currentTimeMillis()
                 )
                 connectionCache.storeConnection(updatedConnection)
             }
@@ -282,43 +351,23 @@ open class ConnectionController @Inject constructor(
     }
 
     /**
-     * Handle the closure of a command socket by cleaning up both sockets and connection.
-     * This is called when the primary socket is closed, indicating the connection
-     * should be terminated completely.
+     * Handle the closure of a command socket by marking it for reconnection instead of cleaning up immediately
      */
     suspend fun handleCommandSocketClosed(connectionId: String) {
-        // First get references to both sockets
-        val updateSocket = connectionCache.getUpdateSocket(connectionId)
-
-        // Remove from channels first (this preserves the connection record for now)
-        cleanupConnection(connectionId)
-
-        // Then remove the command socket and update socket from cache
-        connectionCache.removeCommandSocket(connectionId)
-        connectionCache.removeUpdateSocket(connectionId)
-
-        // Close the update socket if it exists
-        updateSocket?.let {
-            if (!it.isClosed()) {
-                try {
-                    it.close()
-                } catch (e: Exception) {
-                    log.warn("Error closing update socket for connection {}", connectionId, e)
-                }
-            }
-        }
-
-        // Finally, delete the connection record itself - with failure handling
         try {
-            connectionStore.delete(connectionId)
+            log.info("Command socket closed for connection {}, marking for potential reconnection", connectionId)
+
+            // Mark the connection as reconnectable but don't fully clean up yet
+            connectionStore.updateReconnectable(connectionId, true)
+
+            // Remove socket from cache
+            connectionCache.removeCommandSocket(connectionId)
+
+            // We don't remove the connection from channels yet - that happens on final cleanup
+            // if reconnection doesn't happen
         } catch (e: Exception) {
-            log.warn("Error deleting connection {} from database during command socket closure - it may already be deleted", connectionId)
-            // Continue with cleanup regardless of database deletion result
+            log.error("Error handling command socket closure for {}", connectionId, e)
         }
-
-        connectionCache.removeConnection(connectionId)
-
-        log.info("Connection {} fully closed and removed", connectionId)
     }
 
     /**
@@ -479,8 +528,10 @@ open class ConnectionController @Inject constructor(
         try {
             connectionStore.delete(connectionId)
         } catch (e: Exception) {
-            log.debug("Error deleting connection {} from database - it may already be deleted: {}",
-                connectionId, e.message)
+            log.debug(
+                "Error deleting connection {} from database - it may already be deleted: {}",
+                connectionId, e.message
+            )
             // This is expected in some cases and not an error
         }
 
