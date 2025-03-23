@@ -2,6 +2,7 @@
  * Main application entry point
  *
  * Initializes the Minare Example Client
+ * Optimized for high-frequency updates
  */
 import config from './config.js';
 import store from './store.js';
@@ -31,6 +32,11 @@ class App {
 
     // Active visualizer instance
     this.visualizer = null;
+
+    // Visualization update debouncing
+    this.visualizationUpdateTimer = null;
+    this.visualizationUpdatePending = false;
+    this.VISUALIZATION_DEBOUNCE_MS = 250; // 250ms debounce for visualization updates
 
     // Initialize the application when DOM is ready
     window.addEventListener('load', () => this.init());
@@ -103,10 +109,27 @@ class App {
       this.updateConnectionStatus(connected);
     });
 
-    // Entity updates
+    // Entity updates - now with throttling/debouncing
     store.on('entities.updated', () => {
-      this.updateVisualization();
+      this.scheduleVisualizationUpdate();
     });
+  }
+
+  /**
+   * Schedule a visualization update with debouncing to reduce rendering load
+   */
+  scheduleVisualizationUpdate() {
+    this.visualizationUpdatePending = true;
+
+    if (!this.visualizationUpdateTimer) {
+      this.visualizationUpdateTimer = setTimeout(() => {
+        if (this.visualizationUpdatePending) {
+          this.updateVisualization();
+          this.visualizationUpdatePending = false;
+        }
+        this.visualizationUpdateTimer = null;
+      }, this.VISUALIZATION_DEBOUNCE_MS);
+    }
   }
 
   /**
@@ -163,12 +186,25 @@ class App {
 
   /**
    * Update visualization with current entities
+   * This is now called less frequently due to debouncing
    */
   updateVisualization() {
     if (!this.visualizer) return;
 
     const entities = store.getEntities();
+
+    // Performance tracking for visualization updates
+    const startTime = performance.now();
+
     this.visualizer.updateData(entities);
+
+    const endTime = performance.now();
+    const duration = endTime - startTime;
+
+    // Only log if updates take a significant amount of time
+    if (duration > 50) {
+      logger.info(`Visualization update took ${duration.toFixed(1)}ms for ${entities.length} entities`);
+    }
   }
 
   /**
@@ -203,9 +239,20 @@ class App {
       </div>
     `;
 
+    // Add performance monitoring section
+    const perfMonitoring = document.createElement('div');
+    perfMonitoring.innerHTML = `
+      <h3>Performance</h3>
+      <div style="margin-bottom: 10px;">
+        <button id="toggleThrottlingBtn" class="sim-button">Toggle Update Throttling</button>
+        <span id="throttlingStatus">Throttling: Enabled</span>
+      </div>
+    `;
+
     // Add to container
     controlsContainer.appendChild(infoText);
     controlsContainer.appendChild(connectionTest);
+    controlsContainer.appendChild(perfMonitoring);
     this.elements.simulationContainer.appendChild(controlsContainer);
 
     // Add event listeners
@@ -222,6 +269,20 @@ class App {
     document.getElementById('clearLogBtn')?.addEventListener('click', () => {
       logger.clear();
       logger.info('Log cleared');
+    });
+
+    // Throttling toggle button
+    document.getElementById('toggleThrottlingBtn')?.addEventListener('click', () => {
+      // Toggle the visualization debounce time between normal and none
+      if (this.VISUALIZATION_DEBOUNCE_MS > 0) {
+        this.VISUALIZATION_DEBOUNCE_MS = 0;
+        document.getElementById('throttlingStatus').textContent = 'Throttling: Disabled';
+        logger.info('Visualization update throttling disabled');
+      } else {
+        this.VISUALIZATION_DEBOUNCE_MS = 250;
+        document.getElementById('throttlingStatus').textContent = 'Throttling: Enabled';
+        logger.info('Visualization update throttling enabled');
+      }
     });
 
     // Style for simulation buttons

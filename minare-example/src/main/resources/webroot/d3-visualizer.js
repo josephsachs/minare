@@ -1,6 +1,6 @@
 /**
- * D3-based force-directed graph visualization
- * Optimized for efficient updates
+ * D3-based static graph visualization
+ * Optimized for performance with minimal animations and simplified render path
  */
 import config from './config.js';
 import logger from './logger.js';
@@ -33,22 +33,32 @@ export class D3GraphVisualizer {
     this.width = rect.width;
     this.height = rect.height || 500; // Use container height or fallback to 500px
 
+    // Data structures - using Maps for O(1) lookups
     this.nodes = [];
     this.links = [];
     this.nodeMap = new Map(); // For efficient node lookup
     this.linkMap = new Map(); // For efficient link lookup
-    this.simulation = null;
+
+    // Static layout grid parameters
+    this.gridColumns = 5;
+    this.nodeSpacing = 120;
+    this.nodeRadius = 30;
+
+    // Draw elements
     this.svg = null;
     this.graphContainer = null;
     this.tooltip = null;
     this.linkElements = null;
     this.nodeElements = null;
-    this.structureChanged = false;
 
     // Initialize the visualization
     this.initialize();
 
-    logger.info('D3 graph visualizer initialized');
+    // Adding resize handler with debounce
+    this.resizeTimer = null;
+    window.addEventListener('resize', () => this.handleResize());
+
+    logger.info('D3 graph visualizer initialized (static layout)');
   }
 
   /**
@@ -56,16 +66,13 @@ export class D3GraphVisualizer {
    */
   initialize() {
     try {
-      // Track initial render
-      this.firstRender = true;
-
       // Create SVG element
       this.svg = this.container.append('svg')
         .attr('width', this.width)
         .attr('height', this.height)
         .attr('class', 'd3-graph');
 
-      // Add zoom behavior
+      // Add basic zoom behavior (no animations)
       const zoom = d3.zoom()
         .scaleExtent([0.1, 4])
         .on('zoom', (event) => {
@@ -83,21 +90,14 @@ export class D3GraphVisualizer {
         .attr('class', 'tooltip')
         .style('opacity', 0);
 
-      // Setup force simulation
-      const d3Config = config.visualization?.d3 || {};
-
-      this.simulation = d3.forceSimulation()
-        .force('link', d3.forceLink().id(d => d.id).distance(d3Config.linkDistance || 100))
-        .force('charge', d3.forceManyBody().strength(d3Config.chargeStrength || -300))
-        .force('center', d3.forceCenter(this.width / 2, this.height / 2))
-        .force('collision', d3.forceCollide().radius(d3Config.collisionRadius || 40))
-        .on('tick', () => this.ticked());
-
-      // Disable auto-simulation after initialization
-      this.simulation.stop();
-
-      // Setup event listeners
-      window.addEventListener('resize', () => this.handleResize());
+      // Add performance mode indicator
+      this.performanceIndicator = this.svg.append('text')
+        .attr('x', 10)
+        .attr('y', 20)
+        .attr('class', 'performance-indicator')
+        .style('font-size', '12px')
+        .style('fill', '#666')
+        .text('Static Layout Mode');
 
     } catch (error) {
       logger.error(`Error initializing D3 visualization: ${error.message}`);
@@ -110,13 +110,14 @@ export class D3GraphVisualizer {
    * @param {Array} entities - Array of entity objects
    */
   updateData(entities) {
+    const startTime = performance.now();
+
     if (!entities || entities.length === 0) {
       // Clear the visualization if no entities
       this.nodes = [];
       this.links = [];
       this.nodeMap.clear();
       this.linkMap.clear();
-      this.structureChanged = true;
       this.update();
       return;
     }
@@ -126,6 +127,14 @@ export class D3GraphVisualizer {
 
     // Update visualization
     this.update();
+
+    const endTime = performance.now();
+    const duration = endTime - startTime;
+
+    // Only log if update took significant time
+    if (duration > 50) {
+      logger.info(`D3 visualization update took ${duration.toFixed(1)}ms for ${this.nodes.length} nodes`);
+    }
   }
 
   /**
@@ -133,22 +142,10 @@ export class D3GraphVisualizer {
    * @param {Array} entities - Array of entity objects
    */
   processEntityData(entities) {
-    // Track old node and link counts to detect structural changes
-    const oldNodeCount = this.nodes.length;
-    const oldLinksString = JSON.stringify(this.links.map(l => `${l.source}-${l.target}`).sort());
-
-    // Store previous node positions
-    const nodePositions = new Map();
-    this.nodes.forEach(node => {
-      if (node.x !== undefined && node.y !== undefined) {
-        nodePositions.set(node.id, { x: node.x, y: node.y });
-      }
-    });
-
     // Store previous node map for comparison
     const prevNodeMap = new Map(this.nodeMap);
 
-    // Reset maps
+    // Reset maps to build new graph
     this.nodeMap.clear();
     this.linkMap.clear();
 
@@ -156,21 +153,13 @@ export class D3GraphVisualizer {
     const newNodes = [];
     const newLinks = [];
 
-    logger.info(`Processing ${entities.length} entities for D3 visualization`);
-
     // Map for quick lookup
     const entityMap = new Map();
 
-    // Create nodes from entities with more flexible node identification
-    let nodeCount = 0;
-    let skippedCount = 0;
-
-    entities.forEach(entity => {
+    // Create nodes from entities
+    for (const entity of entities) {
       // Skip entities without proper data
-      if (!entity.id) {
-        skippedCount++;
-        return;
-      }
+      if (!entity.id) continue;
 
       // Try multiple ways to identify nodes - be more permissive
       const hasLabel = entity.state && entity.state.label;
@@ -181,12 +170,7 @@ export class D3GraphVisualizer {
 
       const isNode = hasLabel || hasNodeType || typeContainsNode || hasColor;
 
-      if (!isNode) {
-        skippedCount++;
-        return;
-      }
-
-      nodeCount++;
+      if (!isNode) continue;
 
       const defaultColor = config.visualization?.d3?.nodeDefaultColor || '#CCCCCC';
 
@@ -200,13 +184,20 @@ export class D3GraphVisualizer {
         type: entity.state?.type || entity.type
       };
 
+      // Keep the same position if node existed before
+      const prevNode = prevNodeMap.get(entity.id);
+      if (prevNode && prevNode.x !== undefined && prevNode.y !== undefined) {
+        node.x = prevNode.x;
+        node.y = prevNode.y;
+      }
+
       newNodes.push(node);
       entityMap.set(entity.id, node);
       this.nodeMap.set(entity.id, node);
-    });
+    }
 
     // Create links from parent-child relationships
-    entities.forEach(entity => {
+    for (const entity of entities) {
       if (entity.state?.parentId && entityMap.has(entity.state.parentId)) {
         const link = {
           source: entity.id,
@@ -231,159 +222,112 @@ export class D3GraphVisualizer {
           }
         });
       }
-    });
-
-    // Determine if structure has changed
-    const newNodeCount = newNodes.length;
-    const newLinksString = JSON.stringify(newLinks.map(l => `${l.source}-${l.target}`).sort());
-
-    this.structureChanged = oldNodeCount !== newNodeCount || oldLinksString !== newLinksString;
-
-    // If this is the first time we're seeing nodes or if most nodes are new, create a good initial layout
-    const percentNewNodes = oldNodeCount === 0 ? 1 : (newNodeCount - oldNodeCount) / newNodeCount;
-    const needsInitialLayout = this.firstRender || (this.structureChanged && percentNewNodes > 0.3);
-
-    if (needsInitialLayout) {
-      logger.info('Creating initial spread-out layout');
-
-      // Calculate a wide initial layout area
-      const totalNodes = newNodes.length;
-      const areaPerNode = 7000; // Reduced from 20000 to about 1/3 the spacing
-      const totalArea = totalNodes * areaPerNode;
-      const layoutWidth = Math.sqrt(totalArea * (this.width / this.height));
-      const layoutHeight = totalArea / layoutWidth;
-
-      // Distribute nodes in a grid-like pattern
-      const columns = Math.ceil(Math.sqrt(totalNodes));
-      const rows = Math.ceil(totalNodes / columns);
-      const cellWidth = layoutWidth / columns;
-      const cellHeight = layoutHeight / rows;
-
-      // Center this grid in the visible area
-      const offsetX = (this.width - layoutWidth) / 2 + cellWidth / 2;
-      const offsetY = (this.height - layoutHeight) / 2 + cellHeight / 2;
-
-      newNodes.forEach((node, index) => {
-        const col = index % columns;
-        const row = Math.floor(index / columns);
-
-        // Add some randomness to the grid to make it look more natural
-        const jitter = 0.3; // Percentage of the cell size to jitter
-        const jitterX = cellWidth * jitter * (Math.random() - 0.5);
-        const jitterY = cellHeight * jitter * (Math.random() - 0.5);
-
-        node.x = offsetX + col * cellWidth + jitterX;
-        node.y = offsetY + row * cellHeight + jitterY;
-      });
-
-      // No fixed positions yet - let simulation adjust the initial layout
-      this.nodes = newNodes;
-    } else {
-      // Apply previous positions to nodes
-      this.nodes = newNodes.map(newNode => {
-        // Try to get position from previous positions
-        const prevPosition = nodePositions.get(newNode.id);
-
-        if (prevPosition) {
-          // If node existed before, preserve its exact position with fixed coordinates
-          return {
-            ...newNode,
-            x: prevPosition.x,
-            y: prevPosition.y,
-            fx: prevPosition.x, // Force fixed x position
-            fy: prevPosition.y  // Force fixed y position
-          };
-        }
-
-        // For new nodes, they'll get positioned by the simulation
-        return newNode;
-      });
     }
 
-    // Update links array - handle source/target by id for new nodes
+    // Calculate static positions for any nodes that don't have them
+    this.assignStaticPositions(newNodes);
+
+    // Update the class properties
+    this.nodes = newNodes;
     this.links = newLinks;
+  }
 
-    logger.info(`Created ${this.nodes.length} nodes and ${this.links.length} links for visualization`);
+  /**
+   * Assign static grid-based positions to nodes
+   * @param {Array} nodes - Array of node objects
+   */
+  assignStaticPositions(nodes) {
+    // Only calculate positions for nodes that don't already have them
+    const nodesToPosition = nodes.filter(node => node.x === undefined || node.y === undefined);
 
-    if (this.nodes.length === 0 && config.logging?.verbose) {
-      console.log('WARNING: No nodes were created for D3 visualization!');
-      // If we have entities but no nodes, dump more detailed info about the first few entities
-      if (entities.length > 0 && config.logging?.logDetailedEntities) {
-        console.log('First few entities that weren\'t recognized as nodes:');
-        entities.slice(0, 3).forEach((entity, i) => {
-          console.log(`Entity ${i+1}:`, JSON.stringify(entity));
-        });
-      }
-    }
+    if (nodesToPosition.length === 0) return;
 
-    // Remember if we need to do a full layout
-    this.needsFullLayout = needsInitialLayout;
+    // Calculate grid dimensions
+    const nodeCount = nodesToPosition.length;
+    const totalNodes = nodes.length;
+
+    // Adjust columns based on total nodes for better layout
+    this.gridColumns = Math.ceil(Math.sqrt(totalNodes));
+    const rows = Math.ceil(totalNodes / this.gridColumns);
+
+    // Calculate cell size based on container dimensions and node count
+    const cellWidth = Math.min(this.width / this.gridColumns, this.nodeSpacing);
+    const cellHeight = Math.min(this.height / rows, this.nodeSpacing);
+
+    // Offset to center the grid
+    const offsetX = (this.width - (this.gridColumns * cellWidth)) / 2 + cellWidth / 2;
+    const offsetY = (this.height - (rows * cellHeight)) / 2 + cellHeight / 2;
+
+    // Assign positions based on grid
+    nodesToPosition.forEach((node, index) => {
+      const col = index % this.gridColumns;
+      const row = Math.floor(index / this.gridColumns);
+
+      node.x = offsetX + col * cellWidth;
+      node.y = offsetY + row * cellHeight;
+    });
   }
 
   /**
    * Update the visualization with current nodes and links
    */
   update() {
-    if (config.logging?.verbose) {
-      console.log(`D3 update: ${this.nodes.length} nodes, ${this.links.length} links`);
-    }
-
-    // Handle links
+    // First update links
     this.linkElements = this.graphContainer.selectAll('.link')
-      .data(this.links, d => {
-        // For consistency, ensure source and target are proper objects
-        const source = typeof d.source === 'string' ? this.nodeMap.get(d.source) : d.source;
-        const target = typeof d.target === 'string' ? this.nodeMap.get(d.target) : d.target;
-        return `${source?.id || d.source}-${target?.id || d.target}`;
-      });
+      .data(this.links, d => `${d.source}-${d.target}`);
 
-    this.linkElements.exit()
-      .transition()
-      .duration(300)
-      .attr('stroke-opacity', 0)
-      .remove();
+    // Remove old links
+    this.linkElements.exit().remove();
 
+    // Add new links
     const linkEnter = this.linkElements.enter()
       .append('line')
       .attr('class', 'link')
       .attr('stroke', config.visualization?.d3?.linkColor || '#999')
       .attr('stroke-width', 1.5)
-      .attr('stroke-opacity', 0)
+      .attr('stroke-opacity', config.visualization?.d3?.linkOpacity || 0.6)
       .attr('stroke-dasharray', d => d.type === 'child-to-parent' ? '5,5' : '0');
 
-    linkEnter.transition()
-      .duration(300)
-      .attr('stroke-opacity', config.visualization?.d3?.linkOpacity || 0.6);
-
     this.linkElements = linkEnter.merge(this.linkElements);
+
+    // Update link positions (source/target may be either objects or IDs)
+    this.linkElements
+      .attr('x1', d => {
+        const source = typeof d.source === 'string' ? this.nodeMap.get(d.source) : d.source;
+        return source?.x || 0;
+      })
+      .attr('y1', d => {
+        const source = typeof d.source === 'string' ? this.nodeMap.get(d.source) : d.source;
+        return source?.y || 0;
+      })
+      .attr('x2', d => {
+        const target = typeof d.target === 'string' ? this.nodeMap.get(d.target) : d.target;
+        return target?.x || 0;
+      })
+      .attr('y2', d => {
+        const target = typeof d.target === 'string' ? this.nodeMap.get(d.target) : d.target;
+        return target?.y || 0;
+      });
 
     // Handle nodes
     this.nodeElements = this.graphContainer.selectAll('.node')
       .data(this.nodes, d => d.id);
 
     // Remove nodes that no longer exist
-    this.nodeElements.exit()
-      .transition()
-      .duration(300)
-      .attr('opacity', 0)
-      .remove();
+    this.nodeElements.exit().remove();
 
     // Create new nodes
     const nodeEnter = this.nodeElements.enter()
       .append('g')
       .attr('class', 'node')
-      .attr('opacity', 0)
-      .attr('transform', d => {
-        // Position at current x/y coordinates if available
-        return `translate(${d.x || this.width/2},${d.y || this.height/2})`;
-      })
+      .attr('transform', d => `translate(${d.x || 0},${d.y || 0})`)
       .call(d3.drag()
         .on('start', (event, d) => this.dragstarted(event, d))
         .on('drag', (event, d) => this.dragged(event, d))
         .on('end', (event, d) => this.dragended(event, d)));
 
     nodeEnter.append('circle')
-      .attr('r', 30)
+      .attr('r', this.nodeRadius)
       .attr('fill', d => d.color)
       .on('mouseover', (event, d) => this.showTooltip(event, d))
       .on('mouseout', () => this.hideTooltip());
@@ -394,63 +338,19 @@ export class D3GraphVisualizer {
       .attr('fill', d => this.getTextColor(d.color))
       .text(d => d.label);
 
-    nodeEnter.transition()
-      .duration(300)
-      .attr('opacity', 1);
-
     // Merge enter and update selections
     this.nodeElements = nodeEnter.merge(this.nodeElements);
 
-    // Update existing nodes - only update the attributes that change
+    // Update existing nodes position
+    this.nodeElements.attr('transform', d => `translate(${d.x || 0},${d.y || 0})`);
+
+    // Update visual attributes of existing nodes
     this.nodeElements.select('circle')
-      .transition()
-      .duration(300)
       .attr('fill', d => d.color);
 
     this.nodeElements.select('text')
       .text(d => d.label)
-      .transition()
-      .duration(300)
       .attr('fill', d => this.getTextColor(d.color));
-
-    // Configure simulation for new node layout
-    this.simulation.nodes(this.nodes);
-    this.simulation.force('link').links(this.links);
-
-    if (this.needsFullLayout) {
-      // Adjust forces for better spread
-      this.simulation.force('charge')
-        .strength(-600); // Moderate repulsion (reduced from -1000)
-
-      this.simulation.force('link')
-        .distance(100); // Shorter links (reduced from 150)
-
-      // Run simulation longer for better spread
-      this.simulation
-        .alpha(1)
-        .alphaDecay(0.01) // Slower decay for more iterations
-        .restart();
-
-      // After layout completes, fix all positions
-      this.simulation.on('end', () => {
-        this.nodes.forEach(node => {
-          // Fix nodes in their final positions
-          node.fx = node.x;
-          node.fy = node.y;
-        });
-        // Update visualization with fixed positions
-        this.ticked();
-      });
-
-      this.needsFullLayout = false;
-      this.firstRender = false;
-    } else if (this.structureChanged && this.nodeElements.enter().size() > 0) {
-      // Only run simulation briefly for new nodes
-      this.simulation.alpha(0.3).restart();
-    } else {
-      // Just render current positions without simulation
-      this.ticked();
-    }
   }
 
   /**
@@ -468,46 +368,63 @@ export class D3GraphVisualizer {
   }
 
   /**
-   * Update positions on simulation tick
-   */
-  ticked() {
-    if (!this.linkElements || !this.nodeElements) return;
-
-    this.linkElements
-      .attr('x1', d => d.source.x)
-      .attr('y1', d => d.source.y)
-      .attr('x2', d => d.target.x)
-      .attr('y2', d => d.target.y);
-
-    this.nodeElements.attr('transform', d => `translate(${d.x},${d.y})`);
-  }
-
-  /**
    * Handle drag start event
    */
   dragstarted(event, d) {
-    if (!event.active) this.simulation.alphaTarget(0.3).restart();
-    d.fx = d.x;
-    d.fy = d.y;
-    d.userFixed = true; // Mark as explicitly fixed by user
+    // Store starting position
+    d._startX = d.x;
+    d._startY = d.y;
   }
 
   /**
    * Handle drag event
    */
   dragged(event, d) {
-    d.fx = event.x;
-    d.fy = event.y;
+    // Update node position directly
+    d.x = event.x;
+    d.y = event.y;
+
+    // Update node position
+    d3.select(event.sourceEvent.target.parentNode)
+      .attr('transform', `translate(${d.x},${d.y})`);
+
+    // Update connected links
+    this.updateConnectedLinks(d);
   }
 
   /**
-   * Handle drag end event
+   * Update links connected to the dragged node
+   */
+  updateConnectedLinks(node) {
+    this.linkElements
+      .filter(link => {
+        const sourceId = typeof link.source === 'string' ? link.source : link.source.id;
+        const targetId = typeof link.target === 'string' ? link.target : link.target.id;
+        return sourceId === node.id || targetId === node.id;
+      })
+      .attr('x1', link => {
+        const sourceId = typeof link.source === 'string' ? link.source : link.source.id;
+        return sourceId === node.id ? node.x : this.nodeMap.get(sourceId)?.x || 0;
+      })
+      .attr('y1', link => {
+        const sourceId = typeof link.source === 'string' ? link.source : link.source.id;
+        return sourceId === node.id ? node.y : this.nodeMap.get(sourceId)?.y || 0;
+      })
+      .attr('x2', link => {
+        const targetId = typeof link.target === 'string' ? link.target : link.target.id;
+        return targetId === node.id ? node.x : this.nodeMap.get(targetId)?.x || 0;
+      })
+      .attr('y2', link => {
+        const targetId = typeof link.target === 'string' ? link.target : link.target.id;
+        return targetId === node.id ? node.y : this.nodeMap.get(targetId)?.y || 0;
+      });
+  }
+
+  /**
+   * Handle drag end event - just update final positions
    */
   dragended(event, d) {
-    if (!event.active) this.simulation.alphaTarget(0);
-    // Keep fixed at final position instead of releasing
-    // d.fx = null;
-    // d.fy = null;
+    // Nothing needed here - positions already updated
   }
 
   /**
@@ -533,7 +450,7 @@ export class D3GraphVisualizer {
       .style('left', (event.pageX + 10) + 'px')
       .style('top', (event.pageY - 10) + 'px')
       .transition()
-      .duration(200)
+      .duration(100) // Faster transition
       .style('opacity', 0.9);
   }
 
@@ -543,39 +460,56 @@ export class D3GraphVisualizer {
   hideTooltip() {
     this.tooltip
       .transition()
-      .duration(200)
+      .duration(100) // Faster transition
       .style('opacity', 0);
   }
 
   /**
-   * Handle window resize
+   * Handle window resize with debounce
    */
   handleResize() {
-    const containerElement = document.getElementById(this.containerId);
-    if (!containerElement) return;
+    if (this.resizeTimer) {
+      clearTimeout(this.resizeTimer);
+    }
 
-    this.width = containerElement.getBoundingClientRect().width;
+    this.resizeTimer = setTimeout(() => {
+      const containerElement = document.getElementById(this.containerId);
+      if (!containerElement) return;
 
-    this.svg
-      .attr('width', this.width);
+      this.width = containerElement.getBoundingClientRect().width;
+      this.height = containerElement.getBoundingClientRect().height || 500;
 
-    this.simulation.force('center', d3.forceCenter(this.width / 2, this.height / 2));
-    this.simulation.alpha(0.5).restart();
+      this.svg
+        .attr('width', this.width)
+        .attr('height', this.height);
+
+      // Recalculate static positions if many nodes
+      if (this.nodes.length > 10) {
+        this.assignStaticPositions(this.nodes);
+        this.update();
+      }
+
+      this.resizeTimer = null;
+    }, 250);
   }
 
   /**
    * Clean up the visualizer
    */
   destroy() {
+    if (this.resizeTimer) {
+      clearTimeout(this.resizeTimer);
+      this.resizeTimer = null;
+    }
+
     window.removeEventListener('resize', this.handleResize);
+
     if (this.tooltip) {
       this.tooltip.remove();
     }
+
     if (this.container) {
       this.container.html('');
-    }
-    if (this.simulation) {
-      this.simulation.stop();
     }
   }
 }
