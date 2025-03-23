@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Minare Example Client</title>
+    <!-- Load Vis.js Network directly - will fail loudly if there's an issue -->
+    <script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -118,6 +120,17 @@
             padding: 10px;
             overflow: hidden;
             min-height: 750px;
+            position: relative; /* For Vis.js controls positioning */
+            background-color: #f5f5f5; /* Light background to see container bounds */
+        }
+
+        /* Make sure container is properly taking up space */
+        .graph-panel {
+            display: flex;
+            flex-direction: column;
+            height: 70vh; /* Explicit height */
+            min-height: 750px;
+            margin-bottom: 20px;
         }
         .node {
             padding: 15px;
@@ -164,15 +177,6 @@
             font-size: 12px;
             z-index: 1000;
         }
-        .d3-graph {
-            background-color: #f9f9f9;
-            border: 1px solid #ddd;
-            border-radius: 5px;
-        }
-        .link {
-            stroke: #999;
-            stroke-opacity: 0.6;
-        }
         .panel-toggle-icon {
             width: 20px;
             height: 20px;
@@ -180,6 +184,30 @@
         }
         .collapsed .panel-toggle-icon {
             transform: rotate(180deg);
+        }
+        /* Vis.js specific styles */
+        .vis-network {
+            width: 100%;
+            height: 100%;
+            border: 1px solid #eee;
+            border-radius: 4px;
+            background-color: #f9f9f9;
+        }
+        .physics-toggle {
+            position: absolute;
+            z-index: 10;
+            font-size: 12px;
+            background-color: #f0f0f0;
+            border: 1px solid #ccc;
+            border-radius: 3px;
+            padding: 4px 8px;
+            cursor: pointer;
+        }
+        .performance-indicator {
+            position: absolute;
+            z-index: 10;
+            font-size: 12px;
+            color: #666;
         }
     </style>
 </head>
@@ -202,7 +230,7 @@
     <div class="graph-header">
         <h2>Node Graph</h2>
         <div class="visualization-controls">
-            <button id="toggleVisBtn">Show D3 Visualization</button>
+            <button id="toggleVisBtn">Show Network Visualization</button>
         </div>
     </div>
     <div id="graph"></div>
@@ -225,9 +253,6 @@
     </div>
 </div>
 
-<!-- Load D3.js from CDN -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
-
 <!-- Load the modular JS files -->
 <script type="module" src="config.js"></script>
 <script type="module" src="events.js"></script>
@@ -236,7 +261,7 @@
 <script type="module" src="connection.js"></script>
 <script type="module" src="handlers.js"></script>
 <script type="module" src="grid-visualizer.js"></script>
-<script type="module" src="d3-visualizer.js"></script>
+<script type="module" src="vis-visualizer.js"></script>
 <script type="module" src="app.js"></script>
 </body>
 </html>

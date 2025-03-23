@@ -35,6 +35,9 @@ class CommandSocketVerticle @Inject constructor(
 
     private val log = LoggerFactory.getLogger(CommandSocketVerticle::class.java)
 
+    // Map to store heartbeat timer IDs
+    private val heartbeatTimers = mutableMapOf<String, Long>()
+
     companion object {
         const val ADDRESS_COMMAND_SOCKET_HANDLE = "minare.command.socket.handle"
         const val ADDRESS_COMMAND_SOCKET_CLOSE = "minare.command.socket.close"
@@ -42,6 +45,12 @@ class CommandSocketVerticle @Inject constructor(
         const val ADDRESS_CHANNEL_CLEANUP = "minare.channel.cleanup"
         const val ADDRESS_SOCKET_CLEANUP = "minare.socket.cleanup"
         const val ADDRESS_ENTITY_SYNC = "minare.entity.sync"
+
+        // Extended handshake timeout from 500ms to 3000ms (3 seconds)
+        const val HANDSHAKE_TIMEOUT_MS = 3000L
+
+        // Heartbeat interval of 15 seconds
+        const val HEARTBEAT_INTERVAL_MS = 15000L
     }
 
     override suspend fun start() {
@@ -172,12 +181,19 @@ class CommandSocketVerticle @Inject constructor(
             websocket.textHandlerID())
 
         // If no reconnection message is received, create a new connection
-        // This is done with a delay to give client time to send reconnect message
-        vertx.setTimer(500) {
+        // Extended handshake timer to account for network latency
+        vertx.setTimer(HANDSHAKE_TIMEOUT_MS) {
             if (!handshakeCompleted) {
+                log.info("Handshake timer expired after {}ms, initiating new connection for socket from {}",
+                    HANDSHAKE_TIMEOUT_MS, websocket.remoteAddress())
                 handshakeCompleted = true
                 CoroutineScope(vertx.dispatcher()).launch {
-                    initiateConnection(websocket)
+                    try {
+                        initiateConnection(websocket)
+                    } catch (e: Exception) {
+                        log.error("Failed to initiate new connection after handshake timeout", e)
+                        handleError(websocket, e)
+                    }
                 }
             }
         }
@@ -252,6 +268,9 @@ class CommandSocketVerticle @Inject constructor(
             // Send confirmation to the client
             sendReconnectionResponse(websocket, true, null)
 
+            // Start heartbeat for this connection
+            startHeartbeat(connectionId)
+
             // If connection has both sockets again, mark as fully connected
             if (connectionCache.isFullyConnected(connectionId)) {
                 connectionController.onClientFullyConnected(updatedConnection)
@@ -315,6 +334,9 @@ class CommandSocketVerticle @Inject constructor(
             log.info("[TRACE] Command socket DB update result: commandSocketId={}", updatedConnection.commandSocketId)
 
             sendConnectionConfirmation(websocket, connection._id)
+
+            // Start heartbeat for this connection
+            startHeartbeat(connection._id)
         } catch (e: Exception) {
             handleError(websocket, e)
         }
@@ -337,8 +359,13 @@ class CommandSocketVerticle @Inject constructor(
                 // Update last activity timestamp
                 connectionStore.updateLastActivity(connectionId)
 
-                // Process the message
-                messageHandler.handle(connectionId, message)
+                // Check for heartbeat response
+                if (message.getString("type") == "heartbeat_response") {
+                    handleHeartbeatResponse(connectionId, message)
+                } else {
+                    // Process regular message
+                    messageHandler.handle(connectionId, message)
+                }
             } else {
                 throw IllegalStateException("No connection found for this websocket")
             }
@@ -352,6 +379,9 @@ class CommandSocketVerticle @Inject constructor(
             val connectionId = connectionCache.getConnectionIdForCommandSocket(websocket)
             if (connectionId != null) {
                 log.info("Command socket closed for connection {}", connectionId)
+
+                // Stop the heartbeat
+                stopHeartbeat(connectionId)
 
                 // Instead of immediate cleanup, keep connection for potential reconnection
                 // Set it as reconnectable for the reconnection window
@@ -376,12 +406,95 @@ class CommandSocketVerticle @Inject constructor(
             val errorMessage = JsonObject()
                 .put("type", "error")
                 .put("message", error.message)
+                .put("timestamp", System.currentTimeMillis())
 
             websocket.writeTextMessage(errorMessage.encode())
+        } catch (e: Exception) {
+            log.error("Failed to send error message to client", e)
         } finally {
-            if (!websocket.isClosed()) {
+            // Don't close the socket here - let the client handle reconnection
+            // Only close if it's a critical error during handshake
+            val connectionId = connectionCache.getConnectionIdForCommandSocket(websocket)
+            if (connectionId == null && !websocket.isClosed()) {
                 websocket.close()
             }
+        }
+    }
+
+    /**
+     * Handle a heartbeat response from client
+     */
+    private fun handleHeartbeatResponse(connectionId: String, message: JsonObject) {
+        try {
+            // Calculate round-trip time
+            val serverTimestamp = message.getLong("timestamp")
+            val clientTimestamp = message.getLong("clientTimestamp", 0L)
+            val now = System.currentTimeMillis()
+            val roundTripTime = now - serverTimestamp
+
+            // Only log occasionally to reduce noise
+            if (Math.random() < 0.1) { // Log roughly 10% of heartbeat responses
+                log.debug("Received heartbeat response from {}: round-trip={}ms", connectionId, roundTripTime)
+            }
+        } catch (e: Exception) {
+            log.warn("Error processing heartbeat response: {}", e.message)
+        }
+    }
+
+    /**
+     * Start periodic heartbeat for a connection
+     */
+    private fun startHeartbeat(connectionId: String) {
+        // Stop any existing heartbeat for this connection
+        stopHeartbeat(connectionId)
+
+        // Run heartbeat every 15 seconds
+        val timerId = vertx.setPeriodic(HEARTBEAT_INTERVAL_MS) { _ ->
+            CoroutineScope(vertx.dispatcher()).launch {
+                try {
+                    val commandSocket = connectionCache.getCommandSocket(connectionId)
+                    if (commandSocket == null || commandSocket.isClosed()) {
+                        // Socket is gone, stop heartbeat
+                        stopHeartbeat(connectionId)
+                        return@launch
+                    }
+
+                    // Send heartbeat
+                    val heartbeatMessage = JsonObject()
+                        .put("type", "heartbeat")
+                        .put("timestamp", System.currentTimeMillis())
+
+                    commandSocket.writeTextMessage(heartbeatMessage.encode())
+
+                    // Update last activity
+                    connectionStore.updateLastActivity(connectionId)
+
+                    // Only log occasionally to reduce noise
+                    if (Math.random() < 0.05) { // Log roughly 5% of heartbeats
+                        log.debug("Sent heartbeat to connection {}", connectionId)
+                    }
+                } catch (e: Exception) {
+                    log.warn("Error sending heartbeat to connection {}: {}", connectionId, e.message)
+                    // Stop heartbeat if socket appears to be permanently gone
+                    if (e.message?.contains("Connection was closed") == true) {
+                        stopHeartbeat(connectionId)
+                    }
+                }
+            }
+        }
+
+        // Store timer ID for cancellation
+        heartbeatTimers[connectionId] = timerId
+        log.info("Started heartbeat for connection {}", connectionId)
+    }
+
+    /**
+     * Stop heartbeat for a connection
+     */
+    private fun stopHeartbeat(connectionId: String) {
+        heartbeatTimers.remove(connectionId)?.let { timerId ->
+            vertx.cancelTimer(timerId)
+            log.info("Stopped heartbeat for connection {}", connectionId)
         }
     }
 
@@ -398,7 +511,8 @@ class CommandSocketVerticle @Inject constructor(
                 log.warn("Channel cleanup failed for connection {}", connectionId)
             }
 
-            // Step 2: Clean up sockets
+            // Step 2: Clean up sockets and stop heartbeat
+            stopHeartbeat(connectionId)
             val updateSocket = connectionCache.getUpdateSocket(connectionId)
             val socketCleanupResult = cleanupConnectionSockets(connectionId, updateSocket != null)
             if (!socketCleanupResult) {

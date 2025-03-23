@@ -9,8 +9,8 @@ import store from './store.js';
 import logger from './logger.js';
 import { connect, disconnect, sendCommand } from './connection.js';
 import { GridVisualizer } from './grid-visualizer.js';
-import { D3GraphVisualizer } from './d3-visualizer.js';
-// Lurker import removed
+// import { D3GraphVisualizer } from './d3-visualizer.js'; // Replaced with Vis.js visualizer
+import { VisNetworkVisualizer } from './vis-visualizer.js';
 
 /**
  * Main application class
@@ -60,6 +60,13 @@ class App {
     // Initialize logger
     logger.init(this.elements.logEntries);
     logger.info('Application initialized');
+
+    // Check that vis.js is loaded - will fail loudly if not
+    if (typeof vis === 'undefined' || typeof vis.Network !== 'function') {
+      throw new Error('Vis.js Network library not loaded properly');
+    }
+
+    logger.info('Vis.js Network library detected');
 
     // Set up event listeners
     this.setupEventListeners();
@@ -113,6 +120,11 @@ class App {
     store.on('entities.updated', () => {
       this.scheduleVisualizationUpdate();
     });
+
+    // Connection health warnings
+    store.on('connection.health.warning', (healthInfo) => {
+      logger.warn(`Connection may be unhealthy: No messages for ${(healthInfo.timeSinceLastMessage/1000).toFixed(1)}s`);
+    });
   }
 
   /**
@@ -134,7 +146,7 @@ class App {
 
   /**
    * Initialize visualization
-   * @param {string} type - Visualization type ('grid' or 'd3')
+   * @param {string} type - Visualization type ('grid' or 'vis')
    */
   initVisualization(type) {
     // Clean up existing visualizer if any
@@ -143,42 +155,33 @@ class App {
       this.visualizer = null;
     }
 
-    try {
-      if (type === 'd3') {
-        // Initialize D3 visualization
-        this.visualizer = new D3GraphVisualizer('graph');
-        this.elements.toggleVisBtn.textContent = 'Show Grid View';
-      } else {
-        // Initialize grid visualization
-        this.visualizer = new GridVisualizer('graph');
-        this.elements.toggleVisBtn.textContent = 'Show D3 Visualization';
-      }
-
-      // Store current visualization type
-      store.setVisualizationType(type);
-      store.setVisualizationInstance(this.visualizer);
-
-      // Update visualization with current entities
-      this.updateVisualization();
-
-      logger.info(`Initialized ${type} visualization`);
-    } catch (error) {
-      logger.error(`Failed to initialize visualization: ${error.message}`);
-
-      // Fall back to grid visualization if D3 fails
-      if (type === 'd3') {
-        logger.info('Falling back to grid visualization');
-        this.initVisualization('grid');
-      }
+    // No try/catch - we want errors to fail loudly
+    if (type === 'vis') {
+      // Initialize Vis.js visualization
+      this.visualizer = new VisNetworkVisualizer('graph');
+      this.elements.toggleVisBtn.textContent = 'Show Grid View';
+    } else {
+      // Initialize grid visualization
+      this.visualizer = new GridVisualizer('graph');
+      this.elements.toggleVisBtn.textContent = 'Show Network Visualization';
     }
+
+    // Store current visualization type
+    store.setVisualizationType(type);
+    store.setVisualizationInstance(this.visualizer);
+
+    // Update visualization with current entities
+    this.updateVisualization();
+
+    logger.info(`Initialized ${type} visualization`);
   }
 
   /**
-   * Toggle between grid and D3 visualization
+   * Toggle between grid and Vis.js visualization
    */
   toggleVisualization() {
     const currentType = store.getVisualizationType();
-    const newType = currentType === 'grid' ? 'd3' : 'grid';
+    const newType = currentType === 'grid' ? 'vis' : 'grid';
 
     logger.info(`Switching visualization from ${currentType} to ${newType}`);
     this.initVisualization(newType);

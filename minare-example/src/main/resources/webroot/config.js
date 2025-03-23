@@ -41,9 +41,10 @@ export const config = {
 
   // Visualization settings
   visualization: {
-    // Default visualization type ('grid' or 'd3')
-    defaultType: 'grid',
-    // D3 force simulation settings
+    // Default visualization type ('grid' or 'vis')
+    // If vis.js isn't available, this will be forced to 'grid' at runtime
+    defaultType: typeof vis !== 'undefined' ? 'vis' : 'grid',
+    // D3 force simulation settings (kept for backward compatibility)
     d3: {
       // Force simulation parameters
       linkDistance: 100,
@@ -53,6 +54,36 @@ export const config = {
       nodeDefaultColor: '#CCCCCC',
       linkColor: '#999',
       linkOpacity: 0.6
+    },
+    // Vis.js network visualization settings
+    vis: {
+      // Node settings
+      node: {
+        size: 20,
+        color: '#CCCCCC',
+        borderWidth: 2,
+        font: {
+          size: 14
+        }
+      },
+      // Edge settings
+      edge: {
+        width: 1,
+        color: '#999',
+        opacity: 0.6,
+        smooth: true
+      },
+      // Physics settings
+      physics: {
+        enabled: true,
+        barnesHut: {
+          gravitationalConstant: -2000,
+          centralGravity: 0.3
+        },
+        stabilization: {
+          iterations: 100
+        }
+      }
     }
   }
 };

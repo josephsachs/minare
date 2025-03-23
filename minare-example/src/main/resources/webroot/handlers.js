@@ -1,6 +1,7 @@
 /**
  * WebSocket message handlers
  * Optimized for high-frequency updates
+ * Enhanced with heartbeat support
  */
 import store from './store.js';
 import logger from './logger.js';
@@ -106,6 +107,34 @@ export const handleCommandSocketMessage = (event) => {
 
       // Connect the update socket now that we have a connection ID
       connectUpdateSocket();
+    } else if (message.type === 'reconnect_response') {
+      // Handle reconnection response
+      if (message.success) {
+        logger.info(`Reconnection successful with ID: ${store.getConnectionId()}`);
+      } else {
+        logger.error(`Reconnection failed: ${message.error || 'Unknown error'}`);
+        // The server should have already created a new connection for us
+      }
+    } else if (message.type === 'heartbeat') {
+      // Handle heartbeat from server - send heartbeat response
+      const response = {
+        type: 'heartbeat_response',
+        timestamp: message.timestamp,
+        clientTimestamp: Date.now()
+      };
+
+      const commandSocket = store.getCommandSocket();
+      if (commandSocket && commandSocket.readyState === WebSocket.OPEN) {
+        commandSocket.send(JSON.stringify(response));
+
+        // Only log occasionally to reduce noise
+        if (Math.random() < 0.05) { // Log roughly 5% of heartbeats
+          logger.debug(`Received server heartbeat, responded with timestamp ${response.clientTimestamp}`);
+        }
+      }
+
+      // Update last activity time
+      store.updateLastActivity();
     } else if (message.type === 'initial_sync_complete') {
       logger.info('Initial sync complete');
     } else if (message.type === 'sync') {
@@ -196,6 +225,9 @@ export const handleUpdateSocketMessage = (event) => {
       // Update socket confirmed, we're fully connected
       store.setConnected(true);
       logger.info('Fully connected to server');
+
+      // Update last activity time
+      store.updateLastActivity();
     } else {
       logger.info(`Unhandled update message type: ${message.type}`);
     }

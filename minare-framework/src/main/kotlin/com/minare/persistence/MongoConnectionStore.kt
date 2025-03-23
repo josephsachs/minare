@@ -65,10 +65,11 @@ class MongoConnectionStore @Inject constructor(
                 log.info("Connection deleted: {}", connectionId)
             } else {
                 log.debug("Connection not found for deletion: {}", connectionId)
+                throw IllegalStateException("Connection not found: $connectionId")
             }
         } catch (e: Exception) {
-            log.warn("Error deleting connection: {}", connectionId, e)
-            // We don't rethrow the exception to avoid cascading failures in cleanup
+            log.error("Error deleting connection: {}", connectionId, e)
+            throw e
         }
     }
 
@@ -84,13 +85,13 @@ class MongoConnectionStore @Inject constructor(
             return count > 0
         } catch (e: Exception) {
             log.error("Error checking if connection exists: {}", connectionId, e)
-            return false
+            throw e
         }
     }
 
     /**
      * Find a connection by ID
-     * Added defensive coding to handle potential race conditions
+     * Improved error handling without fallbacks
      */
     override suspend fun find(connectionId: String): Connection {
         val query = JsonObject().put("_id", connectionId)
@@ -118,25 +119,13 @@ class MongoConnectionStore @Inject constructor(
                 throw e
             }
             log.error("Error finding connection: {}", connectionId, e)
-            throw IllegalArgumentException("Connection not found: $connectionId")
-        }
-    }
-
-    /**
-     * Find a connection by ID with fallback to empty connection
-     * This helps avoid exceptions in cleanup processes
-     */
-    suspend fun findWithFallback(connectionId: String): Connection? {
-        try {
-            return find(connectionId)
-        } catch (e: Exception) {
-            log.debug("Connection not found with fallback: {}", connectionId)
-            return null
+            throw IllegalArgumentException("Error finding connection: $connectionId", e)
         }
     }
 
     /**
      * Update the lastActivity timestamp
+     * Improved error handling to properly propagate errors
      */
     override suspend fun updateLastActivity(connectionId: String): Connection? {
         if (!exists(connectionId)) {
@@ -156,15 +145,16 @@ class MongoConnectionStore @Inject constructor(
                 return null
             }
 
-            return findWithFallback(connectionId)
+            return find(connectionId)
         } catch (e: Exception) {
             log.error("Error updating activity timestamp: {}", connectionId, e)
-            return null
+            throw e
         }
     }
 
     /**
      * Update the reconnectable flag
+     * Improved error handling to properly propagate errors
      */
     override suspend fun updateReconnectable(connectionId: String, reconnectable: Boolean): Connection? {
         if (!exists(connectionId)) {
@@ -188,30 +178,22 @@ class MongoConnectionStore @Inject constructor(
                 return null
             }
 
-            return findWithFallback(connectionId)
+            return find(connectionId)
         } catch (e: Exception) {
             log.error("Error updating reconnectable flag: {}", connectionId, e)
-            return null
+            throw e
         }
     }
 
     /**
      * Update the update socket ID
-     * More resilient to connection not being found
+     * Improved error handling to throw exceptions instead of using fallbacks
      */
     override suspend fun updateUpdateSocketId(connectionId: String, updateSocketId: String?): Connection {
-        // First check existence - safer than waiting for the update to fail
+        // First check existence
         if (!exists(connectionId)) {
-            log.debug("Connection {} doesn't exist for updateUpdateSocketId", connectionId)
-            // Return a placeholder connection instead of throwing
-            return Connection(
-                _id = connectionId,
-                createdAt = System.currentTimeMillis(),
-                lastUpdated = System.currentTimeMillis(),
-                lastActivity = System.currentTimeMillis(),
-                commandSocketId = null,
-                updateSocketId = updateSocketId
-            )
+            log.error("Connection {} doesn't exist for updateUpdateSocketId", connectionId)
+            throw IllegalArgumentException("Connection not found: $connectionId")
         }
 
         val query = JsonObject().put("_id", connectionId)
@@ -226,65 +208,26 @@ class MongoConnectionStore @Inject constructor(
         try {
             val result = mongoClient.updateCollection(collection, query, update).await()
             if (result.docModified == 0L) {
-                log.debug("Connection not found for updateUpdateSocketId: {}", connectionId)
-                // Return a placeholder connection instead of throwing
-                return Connection(
-                    _id = connectionId,
-                    createdAt = now,
-                    lastUpdated = now,
-                    lastActivity = now,
-                    commandSocketId = null,
-                    updateSocketId = updateSocketId
-                )
+                log.error("Connection not found for updateUpdateSocketId: {}", connectionId)
+                throw IllegalStateException("Failed to update connection: $connectionId")
             }
 
-            val connection = findWithFallback(connectionId) ?: Connection(
-                _id = connectionId,
-                createdAt = now,
-                lastUpdated = now,
-                lastActivity = now,
-                commandSocketId = null,
-                updateSocketId = updateSocketId
-            )
-
-            if (updateSocketId != null) {
-                log.info("Update socket ID set for connection {}: {}", connectionId, updateSocketId)
-            } else {
-                log.info("Update socket ID cleared for connection {}", connectionId)
-            }
-
-            return connection
+            return find(connectionId)
         } catch (e: Exception) {
             log.error("Error updating update socket ID: {}", connectionId, e)
-            // Return a placeholder connection instead of throwing
-            return Connection(
-                _id = connectionId,
-                createdAt = System.currentTimeMillis(),
-                lastUpdated = System.currentTimeMillis(),
-                lastActivity = System.currentTimeMillis(),
-                commandSocketId = null,
-                updateSocketId = updateSocketId
-            )
+            throw e
         }
     }
 
     /**
      * Update the socket IDs
-     * More resilient to connection not being found
+     * Improved error handling to throw exceptions instead of using fallbacks
      */
     override suspend fun updateSocketIds(connectionId: String, commandSocketId: String?, updateSocketId: String?): Connection {
-        // First check existence - safer than waiting for the update to fail
+        // First check existence
         if (!exists(connectionId)) {
-            log.debug("Connection {} doesn't exist for updateSocketIds", connectionId)
-            // Return a placeholder connection instead of throwing
-            return Connection(
-                _id = connectionId,
-                createdAt = System.currentTimeMillis(),
-                lastUpdated = System.currentTimeMillis(),
-                lastActivity = System.currentTimeMillis(),
-                commandSocketId = commandSocketId,
-                updateSocketId = updateSocketId
-            )
+            log.error("Connection {} doesn't exist for updateSocketIds", connectionId)
+            throw IllegalArgumentException("Connection not found: $connectionId")
         }
 
         val query = JsonObject().put("_id", connectionId)
@@ -292,6 +235,7 @@ class MongoConnectionStore @Inject constructor(
         val update = JsonObject()
             .put("\$set", JsonObject()
                 .put("lastUpdated", now)
+                .put("lastActivity", now)
                 .put("commandSocketId", commandSocketId)
                 .put("updateSocketId", updateSocketId)
             )
@@ -300,42 +244,14 @@ class MongoConnectionStore @Inject constructor(
         try {
             val result = mongoClient.updateCollection(collection, query, update).await()
             if (result.docModified == 0L) {
-                log.debug("Connection not found for updateSocketIds: {}", connectionId)
-                // Return a placeholder connection instead of throwing
-                return Connection(
-                    _id = connectionId,
-                    createdAt = now,
-                    lastUpdated = now,
-                    lastActivity = now,
-                    commandSocketId = commandSocketId,
-                    updateSocketId = updateSocketId
-                )
+                log.error("Connection not found for updateSocketIds: {}", connectionId)
+                throw IllegalStateException("Failed to update connection: $connectionId")
             }
 
-            val connection = findWithFallback(connectionId) ?: Connection(
-                _id = connectionId,
-                createdAt = now,
-                lastUpdated = now,
-                lastActivity = now,
-                commandSocketId = commandSocketId,
-                updateSocketId = updateSocketId
-            )
-
-            log.debug("Updated socket IDs for connection {}: command={}, update={}",
-                connectionId, commandSocketId, updateSocketId)
-
-            return connection
+            return find(connectionId)
         } catch (e: Exception) {
             log.error("Error updating socket IDs: {}", connectionId, e)
-            // Return a placeholder connection instead of throwing
-            return Connection(
-                _id = connectionId,
-                createdAt = System.currentTimeMillis(),
-                lastUpdated = System.currentTimeMillis(),
-                lastActivity = System.currentTimeMillis(),
-                commandSocketId = commandSocketId,
-                updateSocketId = updateSocketId
-            )
+            throw e
         }
     }
 
@@ -360,7 +276,7 @@ class MongoConnectionStore @Inject constructor(
             }
         } catch (e: Exception) {
             log.error("Error finding connections with update socket", e)
-            return emptyList()
+            throw e
         }
     }
 
@@ -387,7 +303,7 @@ class MongoConnectionStore @Inject constructor(
             }
         } catch (e: Exception) {
             log.error("Error finding inactive connections", e)
-            return emptyList()
+            throw e
         }
     }
 }

@@ -2,6 +2,7 @@
  * State management for the Minare client
  * Implements a simple store pattern
  * Optimized for high-frequency updates
+ * Enhanced with activity tracking
  */
 
 // Import event emitter functionality
@@ -17,7 +18,8 @@ const createStore = () => {
       id: null,
       connected: false,
       commandSocket: null,
-      updateSocket: null
+      updateSocket: null,
+      lastActivity: Date.now() // Track last activity for heartbeat monitoring
     },
 
     // Entities received from server
@@ -58,23 +60,40 @@ const createStore = () => {
     getConnectionId: () => _state.connection.id,
     setConnectionId: (id) => {
       _state.connection.id = id;
+      _state.connection.lastActivity = Date.now();
       events.emit('connection.id.changed', id);
     },
 
     isConnected: () => _state.connection.connected,
     setConnected: (connected) => {
       _state.connection.connected = connected;
+      _state.connection.lastActivity = Date.now();
       events.emit('connection.status.changed', connected);
     },
 
     getCommandSocket: () => _state.connection.commandSocket,
     setCommandSocket: (socket) => {
       _state.connection.commandSocket = socket;
+      _state.connection.lastActivity = Date.now();
     },
 
     getUpdateSocket: () => _state.connection.updateSocket,
     setUpdateSocket: (socket) => {
       _state.connection.updateSocket = socket;
+      _state.connection.lastActivity = Date.now();
+    },
+
+    // Track last activity time for heartbeat monitoring
+    getLastActivity: () => _state.connection.lastActivity,
+    updateLastActivity: () => {
+      _state.connection.lastActivity = Date.now();
+    },
+
+    // Check if socket connection is stale (no activity for over 40 seconds)
+    isConnectionStale: () => {
+      const now = Date.now();
+      const staleThreshold = 40000; // 40 seconds
+      return (now - _state.connection.lastActivity) > staleThreshold;
     },
 
     // Entity methods
@@ -169,23 +188,6 @@ const createStore = () => {
     },
 
     getPerformanceMetrics: () => ({..._state.performance}),
-
-    // Simulation methods
-    //getLurkers: () => _state.simulation.lurkers,
-    //addLurker: (lurker) => {
-    //  _state.simulation.lurkers.push(lurker);
-    //  events.emit('simulation.lurkers.updated', _state.simulation.lurkers);
-    //  return _state.simulation.lurkers.length - 1;  // Return index
-    //},
-
-    //removeLurker: (index) => {
-    //  if (index >= 0 && index < _state.simulation.lurkers.length) {
-    //    _state.simulation.lurkers.splice(index, 1);
-    //    events.emit('simulation.lurkers.updated', _state.simulation.lurkers);
-    //    return true;
-    //  }
-    //  return false;
-    //},
 
     // Event subscription
     on: events.on,

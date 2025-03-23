@@ -1,6 +1,6 @@
 /**
  * WebSocket connection management with reconnection support
- * Example client implementation for minare-example webapp
+ * Enhanced with improved heartbeat/reconnection support
  */
 import config from './config.js';
 import store from './store.js';
@@ -35,6 +35,19 @@ const createWebSocket = (url, onMessage, options = {}) => {
         logger.info(`WebSocket closed: ${event.code} ${event.reason}`);
         if (options.onClose) options.onClose(event);
       };
+
+      // Setup a timeout in case the connection takes too long
+      const timeout = setTimeout(() => {
+        if (socket.readyState !== WebSocket.OPEN) {
+          logger.error(`WebSocket connection timeout to ${url}`);
+          socket.close();
+          reject(new Error('Connection timeout'));
+        }
+      }, 10000); // 10 second timeout
+
+      // Clear timeout when connected
+      socket.addEventListener('open', () => clearTimeout(timeout));
+
     } catch (error) {
       logger.error(`Failed to create WebSocket: ${error.message}`);
       reject(error);
@@ -264,6 +277,30 @@ const attemptReconnect = async (attempt) => {
 };
 
 /**
+ * Check connection health
+ * Detects if sockets are stale based on last activity
+ * @returns {boolean} True if connection is healthy
+ */
+export const checkConnectionHealth = () => {
+  // If we're not connected, no need to check
+  if (!store.isConnected()) {
+    return false;
+  }
+
+  // Check if the connection is stale (no activity for too long)
+  if (store.isConnectionStale()) {
+    logger.warn('Connection appears stale, no activity detected recently');
+
+    // Attempt reconnection
+    disconnect();
+    connect(false);
+    return false;
+  }
+
+  return true;
+};
+
+/**
  * Send a command to the server
  * @param {Object} command - Command object
  * @returns {boolean} Success indicator
@@ -280,6 +317,9 @@ export const sendCommand = (command) => {
     const message = JSON.stringify(command);
     socket.send(message);
     logger.command(`Sent command: ${message}`);
+
+    // Update last activity time
+    store.updateLastActivity();
     return true;
   } catch (error) {
     logger.error(`Failed to send command: ${error.message}`);
@@ -308,10 +348,14 @@ export const reconnectConfig = {
   }
 };
 
+// Start connection health check timer
+setInterval(checkConnectionHealth, 30000); // Check every 30 seconds
+
 export default {
   connect,
   disconnect,
   sendCommand,
   connectCommandSocket,
-  connectUpdateSocket
+  connectUpdateSocket,
+  checkConnectionHealth
 };
