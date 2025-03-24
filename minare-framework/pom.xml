@@ -58,6 +58,13 @@
             <version>${vertx.version}</version>
         </dependency>
 
+        <!-- Hazelcast -->
+        <dependency>
+            <groupId>io.vertx</groupId>
+            <artifactId>vertx-hazelcast</artifactId>
+            <version>${vertx.version}</version>
+        </dependency>
+
         <!-- Guice -->
         <dependency>
             <groupId>com.google.inject</groupId>

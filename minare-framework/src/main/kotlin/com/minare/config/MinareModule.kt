@@ -1,9 +1,6 @@
 package com.minare.config
 
-import com.google.inject.AbstractModule
-import com.google.inject.Injector
-import com.google.inject.Provides
-import com.google.inject.Singleton
+import com.google.inject.*
 import com.google.inject.name.Names
 import com.minare.cache.ConnectionCache
 import com.minare.cache.InMemoryConnectionCache
@@ -12,6 +9,7 @@ import com.minare.core.entity.ReflectionCache
 import com.minare.worker.ChangeStreamWorkerVerticle
 import com.minare.worker.CleanupVerticle
 import com.minare.worker.MutationVerticle
+import com.minare.worker.UpdateVerticle
 import com.minare.core.websocket.CommandMessageHandler
 import com.minare.core.websocket.CommandSocketManager
 import com.minare.core.websocket.UpdateSocketManager
@@ -23,6 +21,7 @@ import io.vertx.core.impl.logging.LoggerFactory
 import io.vertx.core.json.JsonObject
 import io.vertx.ext.mongo.MongoClient
 import io.vertx.kotlin.coroutines.dispatcher
+import io.vertx.spi.cluster.hazelcast.HazelcastClusterManager
 import javax.inject.Named
 import kotlin.coroutines.CoroutineContext
 
@@ -30,7 +29,7 @@ import kotlin.coroutines.CoroutineContext
  * Core framework Guice module that provides default bindings.
  * Applications can override these bindings by using a child injector.
  */
-class MinareModule : AbstractModule() {
+class MinareModule : AbstractModule(), DatabaseNameProvider {
     private val log = LoggerFactory.getLogger(MinareModule::class.java)
 
     override fun configure() {
@@ -50,9 +49,20 @@ class MinareModule : AbstractModule() {
         bind(String::class.java).annotatedWith(Names.named("channels")).toInstance("channels")
         bind(String::class.java).annotatedWith(Names.named("contexts")).toInstance("contexts")
 
+        // Clustering configuration
+        bind(Boolean::class.java)
+            .annotatedWith(Names.named("clusteringEnabled"))
+            .toInstance(false) // Default to false, can be overridden
+
+        // Frame configuration
+        bind(Int::class.java)
+            .annotatedWith(Names.named("frameIntervalMs"))
+            .toInstance(100) // 10 FPS default
+
         // Register the verticles
-        bind(ChangeStreamWorkerVerticle::class.java)
-        bind(MutationVerticle::class.java)
+        bind(ChangeStreamWorkerVerticle::class.java).`in`(Scopes.SINGLETON)
+        bind(MutationVerticle::class.java).`in`(Scopes.SINGLETON)
+        bind(UpdateVerticle::class.java).`in`(Scopes.SINGLETON)
     }
 
     /**
@@ -178,4 +188,12 @@ class MinareModule : AbstractModule() {
             entityStore
         )
     }
+
+    @Provides
+    @Singleton
+    fun provideHazelcastClusterManager(): HazelcastClusterManager {
+        return HazelcastClusterManager()
+    }
+
+    override fun getDatabaseName(): String = "minare"
 }

@@ -7,19 +7,25 @@ import com.minare.worker.ChangeStreamWorkerVerticle
 import com.minare.worker.CommandSocketVerticle
 import com.minare.worker.CleanupVerticle
 import com.minare.worker.MutationVerticle
+import com.minare.worker.UpdateVerticle
 import com.minare.core.websocket.UpdateSocketManager
 import com.minare.persistence.DatabaseInitializer
 import com.minare.worker.MinareVerticleFactory
 import io.vertx.core.DeploymentOptions
+import io.vertx.core.Future
 import io.vertx.core.Vertx
+import io.vertx.core.VertxOptions
 import io.vertx.core.http.HttpServer
 import io.vertx.core.json.JsonObject
 import io.vertx.ext.web.Router
 import io.vertx.ext.web.handler.BodyHandler
 import io.vertx.kotlin.coroutines.CoroutineVerticle
 import io.vertx.kotlin.coroutines.await
+import io.vertx.spi.cluster.hazelcast.HazelcastClusterManager
 import kotlinx.coroutines.runBlocking
 import org.slf4j.LoggerFactory
+import javax.inject.Inject
+import javax.inject.Named
 import kotlin.system.exitProcess
 
 /**
@@ -38,11 +44,15 @@ abstract class MinareApplication : CoroutineVerticle() {
     @Inject
     lateinit var injector: Injector
 
+    @Inject @Named("clusteringEnabled")
+    var clusteringEnabled: Boolean = false
+
     // Track the deployment IDs of our worker verticles
     private var changeStreamWorkerDeploymentId: String? = null
     private var mutationVerticleDeploymentId: String? = null
     private var commandSocketVerticleDeploymentId: String? = null
     private var cleanupVerticleDeploymentId: String? = null
+    private var updateVerticleDeploymentId: String? = null
 
     // Main HTTP server
     private var httpServer: HttpServer? = null
@@ -76,6 +86,19 @@ abstract class MinareApplication : CoroutineVerticle() {
                 commandSocketOptions
             ).await()
             log.info("Command socket verticle deployed with ID: $commandSocketVerticleDeploymentId")
+
+            // Deploy the UpdateVerticle for frame-based update processing
+            val updateVerticleOptions = DeploymentOptions()
+                .setWorker(true)
+                .setWorkerPoolName("update-processor-pool")
+                .setWorkerPoolSize(2)  // Adjust based on needs
+                .setInstances(1)  // Single instance to centralize update processing
+
+            updateVerticleDeploymentId = vertx.deployVerticle(
+                "guice:" + UpdateVerticle::class.java.name,
+                updateVerticleOptions
+            ).await()
+            log.info("Update verticle deployed with ID: $updateVerticleDeploymentId")
 
             // Deploy the change stream worker verticle as a worker verticle
             val changeStreamOptions = DeploymentOptions()
@@ -250,6 +273,16 @@ abstract class MinareApplication : CoroutineVerticle() {
                 }
             }
 
+            // Undeploy the update verticle
+            if (updateVerticleDeploymentId != null) {
+                try {
+                    vertx.undeploy(updateVerticleDeploymentId).await()
+                    log.info("Update verticle undeployed successfully")
+                } catch (e: Exception) {
+                    log.error("Error undeploying update verticle", e)
+                }
+            }
+
             // Undeploy the mutation verticle
             if (mutationVerticleDeploymentId != null) {
                 try {
@@ -336,12 +369,58 @@ abstract class MinareApplication : CoroutineVerticle() {
         }
 
         /**
+         * Check if we should enable clustering
+         */
+        private fun isClusteringEnabled(args: Array<String>): Boolean {
+            return args.contains("--cluster") ||
+                    System.getenv("ENABLE_CLUSTERING")?.equals("true", ignoreCase = true) == true
+        }
+
+        /**
          * Start the application with the given implementation class.
          * This is the main entry point that applications should use.
          */
         fun start(applicationClass: Class<out MinareApplication>, args: Array<String>) {
-            val vertx = Vertx.vertx()
+            // Check if clustering is enabled
+            val clusteringEnabled = isClusteringEnabled(args)
 
+            // Create Vertx options with optional clustering
+            val vertxOptions = VertxOptions()
+
+            if (clusteringEnabled) {
+                log.info("Clustering is enabled")
+
+                // Set up Hazelcast cluster manager
+                val clusterManager = HazelcastClusterManager()
+                vertxOptions.clusterManager = clusterManager
+
+                // Start clustered Vertx instance
+                Vertx.clusteredVertx(vertxOptions).onComplete { ar ->
+                    if (ar.succeeded()) {
+                        val vertx = ar.result()
+                        log.info("Successfully created clustered Vertx instance")
+                        completeStartup(vertx, applicationClass, args, clusteringEnabled)
+                    } else {
+                        log.error("Failed to create clustered Vertx instance", ar.cause())
+                        exitProcess(1)
+                    }
+                }
+            } else {
+                // Start standard Vertx instance
+                val vertx = Vertx.vertx(vertxOptions)
+                completeStartup(vertx, applicationClass, args, false)
+            }
+        }
+
+        /**
+         * Complete the startup process once Vertx is initialized
+         */
+        private fun completeStartup(
+            vertx: Vertx,
+            applicationClass: Class<out MinareApplication>,
+            args: Array<String>,
+            clusteringEnabled: Boolean
+        ) {
             try {
                 // Get application module from the application class
                 val appModule = getApplicationModule(applicationClass)
@@ -367,6 +446,11 @@ abstract class MinareApplication : CoroutineVerticle() {
                 val vertxModule = object : AbstractModule() {
                     override fun configure() {
                         bind(Vertx::class.java).toInstance(vertx)
+
+                        // Bind clustering configuration
+                        bind(Boolean::class.java)
+                            .annotatedWith(Names.named("clusteringEnabled"))
+                            .toInstance(clusteringEnabled)
                     }
                 }
 

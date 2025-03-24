@@ -1,32 +1,34 @@
 package com.minare.worker
 
-import com.minare.core.websocket.UpdateSocketManager
 import com.minare.persistence.ChannelStore
 import com.minare.persistence.ContextStore
 import com.mongodb.ConnectionString
 import com.mongodb.client.MongoClients
 import com.mongodb.client.model.changestream.ChangeStreamDocument
 import com.mongodb.client.model.changestream.FullDocument
-import io.vertx.core.Promise
 import io.vertx.core.json.JsonArray
 import io.vertx.core.json.JsonObject
 import io.vertx.kotlin.coroutines.CoroutineVerticle
 import io.vertx.kotlin.coroutines.await
 import io.vertx.kotlin.coroutines.dispatcher
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.bson.Document
+import org.bson.BsonDocument
 import org.slf4j.LoggerFactory
 import javax.inject.Inject
 import javax.inject.Named
 
+/**
+ * Worker verticle that monitors MongoDB change streams and publishes normalized entity updates
+ * to the event bus.
+ */
 class ChangeStreamWorkerVerticle @Inject constructor(
-    private val contextStore: ContextStore,
-    private val channelStore: ChannelStore,
-    private val updateSocketManager: UpdateSocketManager,
     @Named("databaseName") private val mongoDatabase: String,
     @Named("mongoConnectionString") private val mongoConnectionString: String
 ) : CoroutineVerticle() {
@@ -34,101 +36,29 @@ class ChangeStreamWorkerVerticle @Inject constructor(
     private val log = LoggerFactory.getLogger(ChangeStreamWorkerVerticle::class.java)
     private val collection = "entities"
     private var running = false
+    private var resumeToken: BsonDocument? = null
 
     companion object {
-        const val ADDRESS_STREAM_STARTED = "change.stream.started"
-        const val ADDRESS_STREAM_STOPPED = "change.stream.stopped"
-        const val ADDRESS_ENTITY_UPDATED = "entity.updated"
+        // Event bus addresses
+        const val ADDRESS_STREAM_STARTED = "minare.change.stream.started"
+        const val ADDRESS_STREAM_STOPPED = "minare.change.stream.stopped"
+        const val ADDRESS_ENTITY_UPDATED = "minare.entity.update"
+
+        // Change stream configuration
+        const val CHANGE_BATCH_SIZE = 100
+        const val MAX_WAIT_MS = 200L // Max time to wait before processing a batch
     }
 
     override suspend fun start() {
         try {
             running = true
 
-            // Create dedicated IO Job for blocking MongoDB operations
-            val mongoJob = SupervisorJob()
-            val mongoContext = Dispatchers.IO + mongoJob
-
-            // Launch the change stream watcher
+            // Start the change stream processor in a separate coroutine
             launch {
-                try {
-                    // Connect to MongoDB (this is IO-bound work)
-                    val (nativeMongoClient, entitiesCollection) = withContext(mongoContext) {
-                        // Use the native MongoDB Java driver
-                        val mongoClientSettings = com.mongodb.MongoClientSettings.builder()
-                            .applyConnectionString(ConnectionString(mongoConnectionString))
-                            .build()
-
-                        val client = MongoClients.create(mongoClientSettings)
-                        val database = client.getDatabase(mongoDatabase)
-                        val collection = database.getCollection(collection)
-
-                        Pair(client, collection)
-                    }
-
-                    // Signal that we're started
-                    vertx.eventBus().publish(ADDRESS_STREAM_STARTED, true)
-                    log.info("Change stream listener started for collection: $collection")
-
-                    try {
-                        // The change stream watching happens in the IO context
-                        withContext(mongoContext) {
-                            val changeStream = entitiesCollection.watch()
-                                .fullDocument(FullDocument.UPDATE_LOOKUP)
-
-                            val iterator = changeStream.iterator()
-
-                            while (isActive && running && iterator.hasNext()) {
-                                try {
-                                    // This is a blocking call, but we're in the IO context
-                                    val changeDocument = iterator.next()
-
-                                    // Convert to JsonObject
-                                    val changeEvent = convertChangeDocumentToJsonObject(changeDocument)
-
-                                    // Switch back to Vert.x context for processing
-                                    withContext(vertx.dispatcher()) {
-                                        // Process the event
-                                        processChangeEvent(changeEvent)
-
-                                        // Also publish to event bus
-                                        vertx.eventBus().publish(ADDRESS_ENTITY_UPDATED, changeEvent)
-                                    }
-                                } catch (e: Exception) {
-                                    log.error("Error processing change event", e)
-                                }
-                            }
-                        }
-                    } finally {
-                        // Clean up MongoDB client
-                        withContext(mongoContext) {
-                            try {
-                                nativeMongoClient.close()
-                            } catch (e: Exception) {
-                                log.error("Error closing MongoDB client", e)
-                            }
-                        }
-                    }
-
-                    // If we get here, the change stream has stopped
-                    if (running) {
-                        log.warn("Change stream loop exited unexpectedly, restarting...")
-                        // Restart after a delay
-                        vertx.setTimer(1000) {
-                            launch { start() }
-                        }
-                    }
-                } catch (e: Exception) {
-                    log.error("Error in change stream watcher", e)
-
-                    // Try to restart after a delay
-                    if (running) {
-                        vertx.setTimer(1000) {
-                            launch { start() }
-                        }
-                    }
-                }
+                processChangeStream()
             }
+
+            log.info("ChangeStreamWorkerVerticle started successfully")
         } catch (e: Exception) {
             log.error("Failed to start change stream listener", e)
             throw e
@@ -142,111 +72,212 @@ class ChangeStreamWorkerVerticle @Inject constructor(
     }
 
     /**
-     * Converts a MongoDB ChangeStreamDocument to a Vert.x JsonObject
+     * Main method to process the MongoDB change stream.
+     * Uses the MongoDB driver to watch for changes and publishes normalized events
+     * to the event bus.
      */
-    /**
-     * Converts a MongoDB ChangeStreamDocument to a Vert.x JsonObject
-     */
-    /**
-     * Converts a MongoDB ChangeStreamDocument to a Vert.x JsonObject
-     */
-    private fun convertChangeDocumentToJsonObject(changeDocument: ChangeStreamDocument<Document>): JsonObject {
-        val result = JsonObject()
-
-        // Add operation type
-        result.put("operationType", changeDocument.operationType?.value)
-
-        // Add document key
-        val documentKey = JsonObject()
-        changeDocument.documentKey?.forEach { key, value ->
-            // Handle BSON ObjectId values specially
-            if (value is org.bson.BsonObjectId) {
-                documentKey.put(key, value.getValue().toHexString())
-            } else {
-                documentKey.put(key, value.toString())
-            }
-        }
-        result.put("documentKey", documentKey)
-
-        // Add full document if available
-        changeDocument.fullDocument?.let { document ->
-            val fullDoc = JsonObject()
-            document.forEach { key, value ->
-                when (value) {
-                    is Document -> fullDoc.put(key, JsonObject(value.toJson()))
-                    is Number -> fullDoc.put(key, value)  // Preserve numeric types
-                    is org.bson.types.ObjectId -> fullDoc.put(key, value.toHexString())
-                    else -> fullDoc.put(key, value.toString())
-                }
-            }
-            result.put("fullDocument", fullDoc)
-        }
-
-        return result
-    }
-
-    /**
-     * Processes a single change event from MongoDB
-     * @param event The change event from MongoDB
-     */
-    private suspend fun processChangeEvent(event: JsonObject) {
-        // Extract entity information
-        val operationType = event.getString("operationType")
-        if (operationType != "insert" && operationType != "update" && operationType != "replace") {
-            return // Skip other operations like delete
-        }
-
-        val documentKey = event.getJsonObject("documentKey")
-        val entityId = documentKey?.getString("_id") ?: return
-
-        val fullDocument = event.getJsonObject("fullDocument") ?: return
-
-        // Handle version value that might be a string or a number
-        val version = when (val versionValue = fullDocument.getValue("version")) {
-            is Number -> versionValue.toLong()
-            is String -> try { versionValue.toLong() } catch (e: Exception) { 0L }
-            else -> 0L
-        }
-
-        val state = fullDocument.getJsonObject("state") ?: JsonObject()
+    private suspend fun processChangeStream() {
+        // Create dedicated IO Job for blocking MongoDB operations
+        val mongoJob = SupervisorJob()
+        val mongoContext = Dispatchers.IO + mongoJob
 
         try {
-            // These are suspend calls but we're in the Vert.x coroutine context
-            val channelIds = contextStore.getChannelsByEntityId(entityId)
+            // Connect to MongoDB with the native driver
+            val (nativeMongoClient, entitiesCollection) = withContext(mongoContext) {
+                val mongoClientSettings = com.mongodb.MongoClientSettings.builder()
+                    .applyConnectionString(ConnectionString(mongoConnectionString))
+                    .build()
 
-            if (channelIds.isEmpty()) {
-                return // No channels subscribed to this entity
+                val client = MongoClients.create(mongoClientSettings)
+                val database = client.getDatabase(mongoDatabase)
+                val collection = database.getCollection(collection)
+
+                Pair(client, collection)
             }
 
-            val updateMessage = createUpdateMessage(entityId, version, state)
+            // Use pipeline to filter only relevant changes
+            val pipeline = listOf(
+                Document("\$match",
+                    Document("operationType",
+                        Document("\$in", listOf("insert", "update", "replace"))
+                    )
+                )
+            )
 
-            // Get clients for all channels and broadcast the update
-            val clientIds = channelIds.flatMap { channelId ->
-                channelStore.getClientIds(channelId)
+            vertx.eventBus().publish(ADDRESS_STREAM_STARTED, true)
+            log.info("Change stream listener started for collection: $collection")
+
+            try {
+                // The change stream watching happens in the IO context
+                withContext(mongoContext) {
+                    // Configure the change stream
+                    var changeStreamIterable = entitiesCollection.watch(pipeline)
+                        .fullDocument(FullDocument.UPDATE_LOOKUP)
+
+                    // Use resume token if available
+                    if (resumeToken != null) {
+                        changeStreamIterable = changeStreamIterable.resumeAfter(resumeToken)
+                    }
+
+                    val changeStream = changeStreamIterable.iterator()
+
+                    // For batch processing
+                    val batch = mutableListOf<ChangeStreamDocument<Document>>()
+                    var lastProcessTime = System.currentTimeMillis()
+
+                    while (isActive && running) {
+                        try {
+                            // Try to get the next change or null if none is immediately available
+                            val change = changeStream.tryNext()
+
+                            if (change != null) {
+                                batch.add(change)
+                                // Store resume token
+                                resumeToken = change.resumeToken
+                            }
+
+                            val batchFull = batch.size >= CHANGE_BATCH_SIZE
+                            val timeThresholdExceeded = batch.isNotEmpty() &&
+                                    (System.currentTimeMillis() - lastProcessTime > MAX_WAIT_MS)
+
+                            // Process batch if it's full or we've waited long enough
+                            if (batchFull || timeThresholdExceeded) {
+                                val changesToProcess = ArrayList(batch) // Make a copy
+                                batch.clear()
+
+                                // Switch back to Vert.x context for processing
+                                withContext(vertx.dispatcher()) {
+                                    processBatch(changesToProcess)
+                                }
+
+                                lastProcessTime = System.currentTimeMillis()
+                            } else if (change == null) {
+                                // No new changes, small delay to avoid tight loop
+                                delay(10)
+                            }
+                        } catch (e: Exception) {
+                            if (e is CancellationException) throw e
+                            log.error("Error processing change event", e)
+                            delay(1000) // Delay before retry
+                        }
+                    }
+                }
+            } finally {
+                // Clean up MongoDB client
+                withContext(mongoContext) {
+                    try {
+                        nativeMongoClient.close()
+                    } catch (e: Exception) {
+                        log.error("Error closing MongoDB client", e)
+                    }
+                }
             }
 
-            if (clientIds.isNotEmpty()) {
-                updateSocketManager.broadcastUpdate(clientIds, updateMessage)
+            // If we get here naturally, try to restart
+            if (running) {
+                log.warn("Change stream loop exited unexpectedly, restarting...")
+                delay(1000)
+                processChangeStream() // Recursive restart
             }
+
         } catch (e: Exception) {
-            log.error("Error broadcasting update for entity $entityId", e)
+            if (e is CancellationException) throw e
+            log.error("Error in change stream watcher", e)
+
+            // Try to restart after a delay if we're still running
+            if (running) {
+                delay(5000)
+                processChangeStream() // Recursive restart
+            }
         }
     }
 
     /**
-     * Creates a properly formatted update message
+     * Process a batch of change stream documents
      */
-    private fun createUpdateMessage(entityId: String, version: Long, state: JsonObject): JsonObject {
-        val entityUpdate = JsonObject()
-            .put("id", entityId)
-            .put("version", version)
-            .put("state", state)
+    private suspend fun processBatch(batch: List<ChangeStreamDocument<Document>>) {
+        val startTime = System.currentTimeMillis()
+        log.debug("Processing batch of ${batch.size} changes")
 
-        val entitiesArray = JsonArray().add(entityUpdate)
+        try {
+            // Convert and publish each change
+            for (change in batch) {
+                try {
+                    val entityUpdate = normalizeChangeEvent(change)
+                    if (entityUpdate != null) {
+                        // Publish to event bus for the UpdateVerticle to consume
+                        vertx.eventBus().publish(ADDRESS_ENTITY_UPDATED, entityUpdate)
+                    }
+                } catch (e: Exception) {
+                    log.error("Error processing change: ${e.message}", e)
+                    // Continue with next change
+                }
+            }
 
-        return JsonObject()
-            .put("update", JsonObject()
-                .put("entities", entitiesArray)
-            )
+            val processTime = System.currentTimeMillis() - startTime
+            log.debug("Processed ${batch.size} changes in ${processTime}ms")
+
+        } catch (e: Exception) {
+            log.error("Error processing change batch", e)
+        }
+    }
+
+    /**
+     * Converts a MongoDB change event to a normalized entity update format
+     */
+    private fun normalizeChangeEvent(changeDocument: ChangeStreamDocument<Document>): JsonObject? {
+        try {
+            val operationType = changeDocument.operationType?.value ?: return null
+            if (operationType !in listOf("insert", "update", "replace")) {
+                return null
+            }
+
+            val documentKey = changeDocument.documentKey ?: return null
+            val entityId = getBsonValueAsString(documentKey["_id"]) ?: return null
+
+            val fullDocument = changeDocument.fullDocument ?: return null
+
+            // Extract entity type
+            val type = fullDocument.getString("type") ?: return null
+
+            // Extract version - handle different potential formats
+            val version = when (val versionValue = fullDocument["version"]) {
+                is Int -> versionValue.toLong()
+                is Long -> versionValue
+                is String -> try { versionValue.toLong() } catch (e: Exception) { 1L }
+                else -> 1L
+            }
+
+            // Extract entity state
+            val state = fullDocument.get("state", Document::class.java)
+            if (state == null) {
+                log.warn("Entity $entityId has no state field")
+                return null
+            }
+
+            // Create normalized entity update
+            return JsonObject()
+                .put("type", type)
+                .put("_id", entityId)
+                .put("version", version)
+                .put("operation", operationType)
+                .put("changedAt", System.currentTimeMillis())
+                .put("state", JsonObject(state.toJson()))
+        } catch (e: Exception) {
+            log.error("Error normalizing change event: ${e.message}", e)
+            return null
+        }
+    }
+
+    /**
+     * Helper method to extract string representation from BSON value
+     */
+    private fun getBsonValueAsString(value: Any?): String? {
+        return when (value) {
+            is org.bson.BsonObjectId -> value.value.toHexString()
+            is org.bson.types.ObjectId -> value.toHexString()
+            is String -> value
+            else -> value?.toString()
+        }
     }
 }
