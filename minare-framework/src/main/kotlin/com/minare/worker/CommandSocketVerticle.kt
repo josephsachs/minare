@@ -233,7 +233,7 @@ class CommandSocketVerticle @Inject constructor(
 
         try {
             // Get configuration - use a different port than main server
-            httpServerPort = config.getInteger("httpPort", 8081)
+            httpServerPort = config.getInteger("httpPort", 8080)
             val httpHost = config.getString("httpHost", "0.0.0.0")
 
             log.info("Starting own HTTP server on $httpHost:$httpServerPort")
@@ -333,7 +333,7 @@ class CommandSocketVerticle @Inject constructor(
                         .putHeader("Content-Type", "text/plain")
                         .end("Command WebSocket upgrade failed: ${err.message}")
                 }
-        })
+        }
 
         // Add health check route
         router.get("$BASE_PATH/health").handler { ctx ->
@@ -388,8 +388,866 @@ class CommandSocketVerticle @Inject constructor(
         log.info("Command socket router initialized with routes: /ws, /ws/health, /ws/metrics, /ws-debug")
     }
 
-    // The rest of the class with all handleCommandSocket, handleReconnection, etc.
-    // methods remains the same...
+    /**
+     * Get the router for command socket routes
+     */
+    fun getRouter(): Router {
+        return router
+    }
+
+    /**
+     * Handle a new command socket connection
+     * Enhanced to support reconnection of existing connections
+     */
+    suspend fun handleCommandSocket(websocket: ServerWebSocket) {
+        val remoteAddress = websocket.remoteAddress().toString()
+        log.info("New command socket connection from {}", remoteAddress)
+
+        // Create a trace for this connection
+        val connectionTraceId = vlog.getEventLogger().logWebSocketEvent(
+            "SOCKET_CONNECTED",
+            null,
+            mapOf(
+                "remoteAddress" to remoteAddress,
+                "socketId" to websocket.textHandlerID()
+            )
+        )
+
+        // Set up message handler for connection initialization or reconnect
+        var handshakeCompleted = false
+
+        websocket.textMessageHandler { message ->
+            CoroutineScope(vertx.dispatcher()).launch {
+                try {
+                    // Only process the first message before handshake completes
+                    if (!handshakeCompleted) {
+                        val msg = JsonObject(message)
+                        if (msg.containsKey("reconnect") && msg.containsKey("connectionId")) {
+                            // This is a reconnection attempt
+                            val connectionId = msg.getString("connectionId")
+                            handshakeCompleted = true
+                            handleReconnection(websocket, connectionId)
+                        } else {
+                            // For regular messages after handshake, use the standard handler
+                            val msg = JsonObject(message)
+                            handleMessage(websocket, msg)
+                        }
+                    } else {
+                        // Regular message handling after handshake is complete
+                        val msg = JsonObject(message)
+                        handleMessage(websocket, msg)
+                    }
+                } catch (e: Exception) {
+                    handleError(websocket, e)
+                }
+            }
+        }
+
+        websocket.closeHandler {
+            CoroutineScope(vertx.dispatcher()).launch {
+                handleClose(websocket)
+            }
+        }
+
+        websocket.accept()
+        vlog.getEventLogger().trace("WEBSOCKET_ACCEPTED", mapOf(
+            "socketId" to websocket.textHandlerID()
+        ), connectionTraceId)
+
+        // If no reconnection message is received, create a new connection
+        // Extended handshake timer to account for network latency
+        vertx.setTimer(HANDSHAKE_TIMEOUT_MS) {
+            if (!handshakeCompleted) {
+                vlog.getEventLogger().trace("HANDSHAKE_TIMEOUT", mapOf(
+                    "socketId" to websocket.textHandlerID(),
+                    "timeoutMs" to HANDSHAKE_TIMEOUT_MS
+                ), connectionTraceId)
+
+                handshakeCompleted = true
+                CoroutineScope(vertx.dispatcher()).launch {
+                    try {
+                        initiateConnection(websocket)
+                    } catch (e: Exception) {
+                        vlog.logVerticleError("INITIATE_CONNECTION", e, mapOf(
+                            "socketId" to websocket.textHandlerID()
+                        ))
+                        handleError(websocket, e)
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Handle a reconnection attempt
+     */
+    private suspend fun handleReconnection(websocket: ServerWebSocket, connectionId: String) {
+        // Create a trace for this reconnection
+        val reconnectTraceId = vlog.getEventLogger().trace("RECONNECTION_ATTEMPT", mapOf(
+            "connectionId" to connectionId,
+            "socketId" to websocket.textHandlerID(),
+            "remoteAddress" to websocket.remoteAddress().toString()
+        ))
+
+        try {
+            vlog.logStartupStep("HANDLING_RECONNECTION", mapOf(
+                "connectionId" to connectionId,
+                "traceId" to reconnectTraceId
+            ))
+
+            // Check if connection exists and is reconnectable
+            val exists = connectionStore.exists(connectionId)
+            if (!exists) {
+                vlog.getEventLogger().trace("RECONNECTION_FAILED", mapOf(
+                    "reason" to "Connection not found",
+                    "connectionId" to connectionId
+                ), reconnectTraceId)
+
+                sendReconnectionResponse(websocket, false, "Connection not found")
+                initiateConnection(websocket)  // Fallback to creating a new connection
+                return
+            }
+
+            // Find the connection to check reconnectable flag
+            val connection = connectionStore.find(connectionId)
+
+            if (!connection.reconnectable) {
+                vlog.getEventLogger().trace("RECONNECTION_FAILED", mapOf(
+                    "reason" to "Connection not reconnectable",
+                    "connectionId" to connectionId
+                ), reconnectTraceId)
+
+                sendReconnectionResponse(websocket, false, "Connection not reconnectable")
+                initiateConnection(websocket)  // Fallback to creating a new connection
+                return
+            }
+
+            // Check last activity timestamp to see if within reconnection window
+            val now = System.currentTimeMillis()
+            val inactiveMs = now - connection.lastActivity
+            val reconnectWindowMs = CleanupVerticle.CONNECTION_RECONNECT_WINDOW_MS
+
+            if (inactiveMs > reconnectWindowMs) {
+                vlog.getEventLogger().trace("RECONNECTION_FAILED", mapOf(
+                    "reason" to "Reconnection window expired",
+                    "connectionId" to connectionId,
+                    "inactiveMs" to inactiveMs,
+                    "windowMs" to reconnectWindowMs
+                ), reconnectTraceId)
+
+                sendReconnectionResponse(websocket, false, "Reconnection window expired")
+                initiateConnection(websocket)  // Fallback to creating a new connection
+                return
+            }
+
+            // Close existing command socket if any
+            connectionCache.getCommandSocket(connectionId)?.let { existingSocket ->
+                try {
+                    if (!existingSocket.isClosed()) {
+                        existingSocket.close()
+                        vlog.getEventLogger().logWebSocketEvent("EXISTING_SOCKET_CLOSED", connectionId,
+                            mapOf("socketId" to existingSocket.textHandlerID()), reconnectTraceId)
+                    }
+                } catch (e: Exception) {
+                    vlog.logVerticleError("CLOSE_EXISTING_SOCKET", e, mapOf(
+                        "connectionId" to connectionId
+                    ))
+                }
+            }
+
+            // Associate the new websocket with this connection
+            connectionCache.storeCommandSocket(connectionId, websocket, connection)
+
+            // Update the connection record with new socket ID and activity time
+            val socketId = "cs-${java.util.UUID.randomUUID()}"
+            val updatedConnection = connectionStore.updateSocketIds(
+                connectionId,
+                socketId,
+                connection.updateSocketId
+            )
+
+            vlog.getEventLogger().logStateChange("Connection", "DISCONNECTED", "RECONNECTED",
+                mapOf("connectionId" to connectionId, "socketId" to socketId), reconnectTraceId)
+
+            // Send confirmation to the client
+            sendReconnectionResponse(websocket, true, null)
+
+            // Start heartbeat for this connection
+            startHeartbeat(connectionId)
+
+            // Update the stored trace ID
+            connectionTraces[connectionId] = reconnectTraceId
+
+            // If connection has both sockets again, mark as fully connected
+            if (connectionCache.isFullyConnected(connectionId)) {
+                vlog.getEventLogger().logStateChange("Connection", "RECONNECTED", "FULLY_CONNECTED",
+                    mapOf("connectionId" to connectionId), reconnectTraceId)
+
+                connectionController.onClientFullyConnected(updatedConnection)
+            }
+
+            vlog.getEventLogger().endTrace(reconnectTraceId, "RECONNECTION_COMPLETED",
+                mapOf("connectionId" to connectionId, "success" to true))
+
+        } catch (e: Exception) {
+            vlog.logVerticleError("RECONNECTION", e, mapOf(
+                "connectionId" to connectionId
+            ))
+
+            vlog.getEventLogger().logError("RECONNECTION_ERROR", e,
+                mapOf("connectionId" to connectionId), reconnectTraceId)
+
+            sendReconnectionResponse(websocket, false, "Internal error")
+            initiateConnection(websocket)  // Fallback to creating a new connection
+        }
+    }
+
+    /**
+     * Send a reconnection response to the client
+     */
+    private fun sendReconnectionResponse(websocket: ServerWebSocket, success: Boolean, errorMessage: String?) {
+        val response = JsonObject()
+            .put("type", "reconnect_response")
+            .put("success", success)
+            .put("timestamp", System.currentTimeMillis())
+
+        if (!success && errorMessage != null) {
+            response.put("error", errorMessage)
+        }
+
+        websocket.writeTextMessage(response.encode())
+    }
+
+    /**
+     * Connect to the command socket
+     */
+    private suspend fun initiateConnection(websocket: ServerWebSocket) {
+        // Get any existing trace ID for this websocket
+        val connectionTraceId = vlog.getEventLogger().trace("INITIATE_CONNECTION", mapOf(
+            "remoteAddress" to websocket.remoteAddress().toString(),
+            "socketId" to websocket.textHandlerID()
+        ))
+
+        try {
+            // Log DB operation about to happen
+            vlog.getEventLogger().logDbOperation("CREATE", "connections", emptyMap(), connectionTraceId)
+
+            val startTime = System.currentTimeMillis()
+            val connection = connectionStore.create()
+
+            // Log performance metrics
+            val createTime = System.currentTimeMillis() - startTime
+            vlog.getEventLogger().logPerformance("CREATE_CONNECTION", createTime,
+                mapOf("connectionId" to connection._id), connectionTraceId)
+
+            // Store in cache - separate from the DB operation
+            connectionCache.storeConnection(connection)
+
+            // Store connection trace ID for future use
+            connectionTraces[connection._id] = connectionTraceId
+
+            // Log connection creation event
+            vlog.getEventLogger().logStateChange("Connection", "NONE", "CREATED",
+                mapOf("connectionId" to connection._id), connectionTraceId)
+
+            // Generate a command socket ID
+            val commandSocketId = "cs-${java.util.UUID.randomUUID()}"
+
+            // Log DB operation about to happen
+            vlog.getEventLogger().logDbOperation("UPDATE", "connections",
+                mapOf("connectionId" to connection._id, "action" to "update_socket_ids"), connectionTraceId)
+
+            // Update the connection in the database
+            val updatedConnection = connectionStore.updateSocketIds(
+                connection._id,
+                commandSocketId,
+                null
+            )
+
+            // IMPORTANT: Update the cache with the updated connection to prevent cache/DB inconsistency
+            connectionCache.storeConnection(updatedConnection)
+
+            // Register command socket - now with the updated connection that has the command socket ID
+            connectionCache.storeCommandSocket(connection._id, websocket, updatedConnection)
+
+            // Log successful socket registration
+            vlog.getEventLogger().logWebSocketEvent("SOCKET_REGISTERED", connection._id,
+                mapOf("socketType" to "command", "socketId" to commandSocketId), connectionTraceId)
+
+            sendConnectionConfirmation(websocket, connection._id)
+
+            // Start heartbeat for this connection
+            startHeartbeat(connection._id)
+
+            // Log successful connection completion
+            vlog.getEventLogger().trace("CONNECTION_ESTABLISHED",
+                mapOf("connectionId" to connection._id), connectionTraceId)
+        } catch (e: Exception) {
+            vlog.getEventLogger().logError("CONNECTION_FAILED", e, emptyMap(), connectionTraceId)
+            handleError(websocket, e)
+        }
+    }
+
+    private fun sendConnectionConfirmation(websocket: ServerWebSocket, connectionId: String) {
+        val confirmation = JsonObject()
+            .put("type", "connection_confirm")
+            .put("connectionId", connectionId)
+            .put("timestamp", System.currentTimeMillis())
+
+        websocket.writeTextMessage(confirmation.encode())
+        vlog.getEventLogger().logWebSocketEvent("CONNECTION_CONFIRMED", connectionId,
+            mapOf("timestamp" to System.currentTimeMillis()))
+    }
+
+    private suspend fun handleMessage(websocket: ServerWebSocket, message: JsonObject) {
+        try {
+            val connectionId = connectionCache.getConnectionIdForCommandSocket(websocket)
+            if (connectionId != null) {
+                // Get the trace ID for this connection if available
+                val traceId = connectionTraces[connectionId]
+                val msgTraceId = vlog.getEventLogger().trace("MESSAGE_RECEIVED", mapOf(
+                    "messageType" to message.getString("type", "unknown"),
+                    "connectionId" to connectionId
+                ), traceId)
+
+                // Update last activity timestamp
+                connectionStore.updateLastActivity(connectionId)
+
+                // Check for heartbeat response
+                if (message.getString("type") == "heartbeat_response") {
+                    handleHeartbeatResponse(connectionId, message)
+                } else {
+                    // Process regular message
+                    messageHandler.handle(connectionId, message)
+                }
+
+                vlog.getEventLogger().trace("MESSAGE_PROCESSED", mapOf(
+                    "messageType" to message.getString("type", "unknown"),
+                    "connectionId" to connectionId
+                ), msgTraceId)
+            } else {
+                throw IllegalStateException("No connection found for this websocket")
+            }
+        } catch (e: Exception) {
+            vlog.logVerticleError("MESSAGE_HANDLING", e)
+            handleError(websocket, e)
+        }
+    }
+
+    private suspend fun handleClose(websocket: ServerWebSocket) {
+        val connectionId = connectionCache.getConnectionIdForCommandSocket(websocket)
+
+        try {
+            if (connectionId != null) {
+                val traceId = connectionTraces[connectionId]
+                vlog.getEventLogger().logWebSocketEvent("SOCKET_CLOSED", connectionId,
+                    mapOf("socketType" to "command"), traceId)
+
+                // Stop the heartbeat
+                stopHeartbeat(connectionId)
+
+                // Instead of immediate cleanup, keep connection for potential reconnection
+                // Set it as reconnectable for the reconnection window
+                connectionStore.updateReconnectable(connectionId, true)
+
+                // Remove socket from cache but don't delete connection yet
+                connectionCache.removeCommandSocket(connectionId)
+
+                vlog.getEventLogger().logStateChange("Connection", "CONNECTED", "DISCONNECTED",
+                    mapOf("connectionId" to connectionId), traceId)
+
+                // If reconnection doesn't happen, cleanup verticle will handle it later
+                vlog.getEventLogger().trace("RECONNECTION_WINDOW_STARTED", mapOf(
+                    "connectionId" to connectionId,
+                    "windowMs" to CleanupVerticle.CONNECTION_RECONNECT_WINDOW_MS
+                ), traceId)
+            } else {
+                vlog.getEventLogger().trace("ORPHAN_SOCKET_CLOSED", mapOf(
+                    "remoteAddress" to websocket.remoteAddress().toString()
+                ))
+            }
+        } catch (e: Exception) {
+            if (connectionId != null) {
+                vlog.logVerticleError("WEBSOCKET_CLOSE", e, mapOf("connectionId" to connectionId))
+            } else {
+                vlog.logVerticleError("WEBSOCKET_CLOSE", e)
+            }
+        }
+    }
+
+    private fun handleError(websocket: ServerWebSocket, error: Throwable) {
+        val connectionId = connectionCache.getConnectionIdForCommandSocket(websocket)
+        val traceId = connectionId?.let { connectionTraces[it] }
+
+        vlog.logVerticleError("WEBSOCKET_ERROR", error, mapOf(
+            "connectionId" to (connectionId ?: "unknown"),
+            "remoteAddress" to websocket.remoteAddress().toString()
+        ))
+
+        try {
+            val errorMessage = JsonObject()
+                .put("type", "error")
+                .put("message", error.message)
+                .put("timestamp", System.currentTimeMillis())
+
+            websocket.writeTextMessage(errorMessage.encode())
+        } catch (e: Exception) {
+            vlog.logVerticleError("ERROR_NOTIFICATION", e, mapOf(
+                "connectionId" to (connectionId ?: "unknown")
+            ))
+        } finally {
+            // Don't close the socket here - let the client handle reconnection
+            // Only close if it's a critical error during handshake
+            if (connectionId == null && !websocket.isClosed()) {
+                websocket.close()
+            }
+        }
+    }
+
+    /**
+     * Handle a heartbeat response from client
+     */
+    private fun handleHeartbeatResponse(connectionId: String, message: JsonObject) {
+        try {
+            // Calculate round-trip time
+            val serverTimestamp = message.getLong("timestamp")
+            val clientTimestamp = message.getLong("clientTimestamp", 0L)
+            val now = System.currentTimeMillis()
+            val roundTripTime = now - serverTimestamp
+
+            // Only log occasionally to reduce noise
+            if (Math.random() < 0.1) { // Log roughly 10% of heartbeat responses
+                vlog.getEventLogger().trace("HEARTBEAT_RESPONSE", mapOf(
+                    "connectionId" to connectionId,
+                    "roundTripMs" to roundTripTime,
+                    "clientTimestamp" to clientTimestamp
+                ))
+            }
+        } catch (e: Exception) {
+            vlog.logVerticleError("HEARTBEAT_PROCESSING", e, mapOf(
+                "connectionId" to connectionId
+            ))
+        }
+    }
+
+    /**
+     * Start periodic heartbeat for a connection
+     */
+    private fun startHeartbeat(connectionId: String) {
+        // Stop any existing heartbeat for this connection
+        stopHeartbeat(connectionId)
+
+        // Run heartbeat every 15 seconds
+        val timerId = vertx.setPeriodic(HEARTBEAT_INTERVAL_MS) { _ ->
+            CoroutineScope(vertx.dispatcher()).launch {
+                try {
+                    val commandSocket = connectionCache.getCommandSocket(connectionId)
+                    if (commandSocket == null || commandSocket.isClosed()) {
+                        // Socket is gone, stop heartbeat
+                        stopHeartbeat(connectionId)
+                        return@launch
+                    }
+
+                    // Send heartbeat
+                    val heartbeatMessage = JsonObject()
+                        .put("type", "heartbeat")
+                        .put("timestamp", System.currentTimeMillis())
+
+                    commandSocket.writeTextMessage(heartbeatMessage.encode())
+
+                    // Update last activity
+                    connectionStore.updateLastActivity(connectionId)
+
+                    // Only log occasionally to reduce noise
+                    if (Math.random() < 0.05) { // Log roughly 5% of heartbeats
+                        vlog.getEventLogger().trace("HEARTBEAT_SENT", mapOf(
+                            "connectionId" to connectionId
+                        ))
+                    }
+                } catch (e: Exception) {
+                    vlog.logVerticleError("HEARTBEAT_SEND", e, mapOf(
+                        "connectionId" to connectionId
+                    ))
+
+                    // Stop heartbeat if socket appears to be permanently gone
+                    if (e.message?.contains("Connection was closed") == true) {
+                        stopHeartbeat(connectionId)
+                    }
+                }
+            }
+        }
+
+        // Store timer ID for cancellation
+        heartbeatTimers[connectionId] = timerId
+        vlog.getEventLogger().trace("HEARTBEAT_STARTED", mapOf(
+            "connectionId" to connectionId,
+            "intervalMs" to HEARTBEAT_INTERVAL_MS
+        ))
+    }
+
+    /**
+     * Stop heartbeat for a connection
+     */
+    private fun stopHeartbeat(connectionId: String) {
+        heartbeatTimers.remove(connectionId)?.let { timerId ->
+            vertx.cancelTimer(timerId)
+            vlog.getEventLogger().trace("HEARTBEAT_STOPPED", mapOf(
+                "connectionId" to connectionId
+            ))
+        }
+    }
+
+    /**
+     * Coordinated connection cleanup process
+     */
+    private suspend fun cleanupConnection(connectionId: String): Boolean {
+        val traceId = connectionTraces[connectionId]
+
+        try {
+            vlog.getEventLogger().trace("CONNECTION_CLEANUP_STARTED", mapOf(
+                "connectionId" to connectionId
+            ), traceId)
+
+            // Step 1: Clean up channels
+            val channelCleanupResult = cleanupConnectionChannels(connectionId)
+            if (!channelCleanupResult) {
+                vlog.getEventLogger().trace("CHANNEL_CLEANUP_FAILED", mapOf(
+                    "connectionId" to connectionId
+                ), traceId)
+            }
+
+            // Step 2: Clean up sockets and stop heartbeat
+            stopHeartbeat(connectionId)
+            val updateSocket = connectionCache.getUpdateSocket(connectionId)
+            val socketCleanupResult = cleanupConnectionSockets(connectionId, updateSocket != null)
+            if (!socketCleanupResult) {
+                vlog.getEventLogger().trace("SOCKET_CLEANUP_FAILED", mapOf(
+                    "connectionId" to connectionId
+                ), traceId)
+            }
+
+            // Step 3: Mark connection as not reconnectable
+            try {
+                connectionStore.updateReconnectable(connectionId, false)
+                vlog.getEventLogger().logStateChange("Connection", "DISCONNECTED", "NOT_RECONNECTABLE",
+                    mapOf("connectionId" to connectionId), traceId)
+            } catch (e: Exception) {
+                vlog.logVerticleError("SET_NOT_RECONNECTABLE", e, mapOf(
+                    "connectionId" to connectionId
+                ))
+            }
+
+            // Step 4: Remove the connection from DB and cache
+            try {
+                // Try to delete from the database first
+                connectionStore.delete(connectionId)
+                vlog.getEventLogger().logDbOperation("DELETE", "connections",
+                    mapOf("connectionId" to connectionId), traceId)
+            } catch (e: Exception) {
+                vlog.logVerticleError("DB_CONNECTION_DELETE", e, mapOf(
+                    "connectionId" to connectionId
+                ))
+                // Continue anyway - the connection might already be gone
+            }
+
+            // Final cleanup from cache
+            try {
+                connectionCache.removeConnection(connectionId)
+                connectionTraces.remove(connectionId)
+                vlog.getEventLogger().trace("CACHE_CONNECTION_REMOVED", mapOf(
+                    "connectionId" to connectionId
+                ), traceId)
+            } catch (e: Exception) {
+                vlog.logVerticleError("CACHE_CONNECTION_REMOVE", e, mapOf(
+                    "connectionId" to connectionId
+                ))
+            }
+
+            vlog.getEventLogger().trace("CONNECTION_CLEANUP_COMPLETED", mapOf(
+                "connectionId" to connectionId
+            ), traceId)
+
+            return true
+        } catch (e: Exception) {
+            vlog.logVerticleError("CONNECTION_CLEANUP", e, mapOf(
+                "connectionId" to connectionId
+            ))
+
+            // Do emergency cleanup as a last resort
+            try {
+                connectionCache.removeCommandSocket(connectionId)
+                connectionCache.removeUpdateSocket(connectionId)
+                connectionCache.removeConnection(connectionId)
+                connectionTraces.remove(connectionId)
+                vlog.getEventLogger().trace("EMERGENCY_CLEANUP_COMPLETED", mapOf(
+                    "connectionId" to connectionId
+                ), traceId)
+            } catch (innerEx: Exception) {
+                vlog.logVerticleError("EMERGENCY_CLEANUP", innerEx, mapOf(
+                    "connectionId" to connectionId
+                ))
+            }
+
+            return false
+        }
+    }
+
+    /**
+     * Cleans up channel memberships for a connection
+     */
+    private suspend fun cleanupConnectionChannels(connectionId: String): Boolean {
+        val traceId = connectionTraces[connectionId]
+
+        try {
+            // Get the channels this connection is in
+            val channels = channelStore.getChannelsForClient(connectionId)
+
+            vlog.getEventLogger().trace("CHANNEL_CLEANUP_STARTED", mapOf(
+                "connectionId" to connectionId,
+                "channelCount" to channels.size
+            ), traceId)
+
+            if (channels.isEmpty()) {
+                vlog.getEventLogger().trace("NO_CHANNELS_FOUND", mapOf(
+                    "connectionId" to connectionId
+                ), traceId)
+                return true
+            }
+
+            // Remove the connection from each channel
+            var success = true
+            for (channelId in channels) {
+                try {
+                    val result = channelStore.removeClientFromChannel(channelId, connectionId)
+                    if (!result) {
+                        vlog.getEventLogger().trace("CHANNEL_REMOVAL_FAILED", mapOf(
+                            "connectionId" to connectionId,
+                            "channelId" to channelId
+                        ), traceId)
+                        success = false
+                    } else {
+                        vlog.getEventLogger().trace("CHANNEL_REMOVAL_SUCCEEDED", mapOf(
+                            "connectionId" to connectionId,
+                            "channelId" to channelId
+                        ), traceId)
+                    }
+                } catch (e: Exception) {
+                    vlog.logVerticleError("CHANNEL_REMOVAL", e, mapOf(
+                        "connectionId" to connectionId,
+                        "channelId" to channelId
+                    ))
+                    success = false
+                }
+            }
+
+            vlog.getEventLogger().trace("CHANNEL_CLEANUP_COMPLETED", mapOf(
+                "connectionId" to connectionId,
+                "success" to success
+            ), traceId)
+
+            return success
+        } catch (e: Exception) {
+            vlog.logVerticleError("CHANNEL_CLEANUP", e, mapOf(
+                "connectionId" to connectionId
+            ))
+            return false
+        }
+    }
+
+    /**
+     * Cleans up sockets for a connection
+     */
+    private suspend fun cleanupConnectionSockets(connectionId: String, hasUpdateSocket: Boolean): Boolean {
+        val traceId = connectionTraces[connectionId]
+
+        try {
+            var success = true
+
+            vlog.getEventLogger().trace("SOCKET_CLEANUP_STARTED", mapOf(
+                "connectionId" to connectionId,
+                "hasUpdateSocket" to hasUpdateSocket
+            ), traceId)
+
+            // Clean up command socket
+            try {
+                connectionCache.removeCommandSocket(connectionId)?.let { socket ->
+                    if (!socket.isClosed()) {
+                        try {
+                            socket.close()
+                            vlog.getEventLogger().trace("COMMAND_SOCKET_CLOSED", mapOf(
+                                "connectionId" to connectionId,
+                                "socketId" to socket.textHandlerID()
+                            ), traceId)
+                        } catch (e: Exception) {
+                            vlog.logVerticleError("COMMAND_SOCKET_CLOSE", e, mapOf(
+                                "connectionId" to connectionId
+                            ))
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                vlog.logVerticleError("COMMAND_SOCKET_CLEANUP", e, mapOf(
+                    "connectionId" to connectionId
+                ))
+                success = false
+            }
+
+            // Clean up update socket if it exists
+            if (hasUpdateSocket) {
+                try {
+                    connectionCache.removeUpdateSocket(connectionId)?.let { socket ->
+                        if (!socket.isClosed()) {
+                            try {
+                                socket.close()
+                                vlog.getEventLogger().trace("UPDATE_SOCKET_CLOSED", mapOf(
+                                    "connectionId" to connectionId,
+                                    "socketId" to socket.textHandlerID()
+                                ), traceId)
+                            } catch (e: Exception) {
+                                vlog.logVerticleError("UPDATE_SOCKET_CLOSE", e, mapOf(
+                                    "connectionId" to connectionId
+                                ))
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    vlog.logVerticleError("UPDATE_SOCKET_CLEANUP", e, mapOf(
+                        "connectionId" to connectionId
+                    ))
+                    success = false
+                }
+            }
+
+            vlog.getEventLogger().trace("SOCKET_CLEANUP_COMPLETED", mapOf(
+                "connectionId" to connectionId,
+                "success" to success
+            ), traceId)
+
+            return success
+        } catch (e: Exception) {
+            vlog.logVerticleError("SOCKET_CLEANUP", e, mapOf(
+                "connectionId" to connectionId
+            ))
+            return false
+        }
+    }
+
+    /**
+     * Handle entity-specific sync request
+     */
+    private suspend fun handleEntitySync(connectionId: String, entityId: String): Boolean {
+        val traceId = connectionTraces[connectionId]
+
+        try {
+            vlog.getEventLogger().trace("ENTITY_SYNC_STARTED", mapOf(
+                "entityId" to entityId,
+                "connectionId" to connectionId
+            ), traceId)
+
+            // Check if connection and command socket exist
+            if (!connectionCache.hasConnection(connectionId)) {
+                vlog.getEventLogger().trace("CONNECTION_NOT_FOUND", mapOf(
+                    "connectionId" to connectionId
+                ), traceId)
+                return false
+            }
+
+            val commandSocket = connectionCache.getCommandSocket(connectionId)
+            if (commandSocket == null || commandSocket.isClosed()) {
+                vlog.getEventLogger().trace("COMMAND_SOCKET_UNAVAILABLE", mapOf(
+                    "connectionId" to connectionId
+                ), traceId)
+                return false
+            }
+
+            // Fetch the entity
+            val startTime = System.currentTimeMillis()
+            vlog.getEventLogger().logDbOperation("FIND", "entities",
+                mapOf("entityId" to entityId), traceId)
+
+            val entities = entityStore.findEntitiesByIds(listOf(entityId))
+
+            val queryTime = System.currentTimeMillis() - startTime
+            vlog.getEventLogger().logPerformance("ENTITY_QUERY", queryTime,
+                mapOf("entityId" to entityId), traceId)
+
+            if (entities.isEmpty()) {
+                vlog.getEventLogger().trace("ENTITY_NOT_FOUND", mapOf(
+                    "entityId" to entityId
+                ), traceId)
+                sendSyncErrorToClient(connectionId, "Entity not found")
+                return false
+            }
+
+            val entity = entities[entityId]
+
+            // Create a sync response message
+            val syncData = JsonObject()
+                .put(
+                    "entities", JsonObject()
+                        .put("_id", entity?._id)
+                        .put("type", entity?.type)
+                        .put("version", entity?.version)
+                    // Add more entity fields as needed
+                )
+                .put("timestamp", System.currentTimeMillis())
+
+            val syncMessage = JsonObject()
+                .put("type", "entity_sync")
+                .put("data", syncData)
+
+            // Send the sync message to the client
+            commandSocket.writeTextMessage(syncMessage.encode())
+
+            vlog.getEventLogger().trace("ENTITY_SYNC_DATA_SENT", mapOf(
+                "entityId" to entityId,
+                "connectionId" to connectionId
+            ), traceId)
+
+            // Update last activity
+            connectionStore.updateLastActivity(connectionId)
+
+            vlog.getEventLogger().trace("ENTITY_SYNC_COMPLETED", mapOf(
+                "entityId" to entityId,
+                "connectionId" to connectionId
+            ), traceId)
+
+            return true
+        } catch (e: Exception) {
+            vlog.logVerticleError("ENTITY_SYNC", e, mapOf(
+                "entityId" to entityId,
+                "connectionId" to connectionId
+            ))
+            sendSyncErrorToClient(connectionId, "Sync failed: ${e.message}")
+            return false
+        }
+    }
+
+    /**
+     * Send a sync error message to the client
+     */
+    private fun sendSyncErrorToClient(connectionId: String, errorMessage: String) {
+        val socket = connectionCache.getCommandSocket(connectionId)
+        if (socket != null && !socket.isClosed()) {
+            try {
+                val errorResponse = JsonObject()
+                    .put("type", "sync_error")
+                    .put("error", errorMessage)
+                    .put("timestamp", System.currentTimeMillis())
+
+                socket.writeTextMessage(errorResponse.encode())
+
+                vlog.getEventLogger().trace("SYNC_ERROR_SENT", mapOf(
+                    "connectionId" to connectionId,
+                    "error" to errorMessage
+                ))
+            } catch (e: Exception) {
+                vlog.logVerticleError("SYNC_ERROR_SEND", e, mapOf(
+                    "connectionId" to connectionId
+                ))
+            }
+        }
+    }
 
     override suspend fun stop() {
         vlog.logStartupStep("STOPPING")
@@ -412,5 +1270,25 @@ class CommandSocketVerticle @Inject constructor(
         heartbeatTimers.clear()
 
         vlog.logUndeployment()
+    }
+
+    /**
+     * Undeploy our dedicated HTTP server verticle
+     */
+    private suspend fun undeployOwnHttpServer() {
+        httpServerVerticleId?.let { id ->
+            vlog.logStartupStep("UNDEPLOYING_HTTP_SERVER", mapOf(
+                "deploymentId" to id
+            ))
+
+            try {
+                vertx.undeploy(id).await()
+                vlog.logStartupStep("HTTP_SERVER_UNDEPLOYED")
+                httpServerVerticleId = null
+            } catch (e: Exception) {
+                vlog.logVerticleError("UNDEPLOY_HTTP_SERVER", e)
+                log.error("Failed to undeploy HTTP server verticle", e)
+            }
+        }
     }
 }
