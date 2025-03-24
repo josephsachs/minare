@@ -11,7 +11,6 @@ import com.minare.worker.CleanupVerticle
 import com.minare.worker.MutationVerticle
 import com.minare.worker.UpdateVerticle
 import com.minare.core.websocket.CommandMessageHandler
-import com.minare.core.websocket.CommandSocketManager
 import com.minare.core.websocket.UpdateSocketManager
 import com.minare.worker.MinareVerticleFactory
 import com.minare.persistence.*
@@ -38,7 +37,10 @@ class MinareModule : AbstractModule(), DatabaseNameProvider {
         bind(ConnectionStore::class.java).to(MongoConnectionStore::class.java)
         bind(ChannelStore::class.java).to(MongoChannelStore::class.java)
         bind(ContextStore::class.java).to(MongoContextStore::class.java)
+
+        // Caches
         bind(ConnectionCache::class.java).to(InMemoryConnectionCache::class.java).`in`(Singleton::class.java)
+        bind(ReflectionCache::class.java).`in`(Singleton::class.java)
 
         // Core configuration
         bind(String::class.java)
@@ -60,9 +62,10 @@ class MinareModule : AbstractModule(), DatabaseNameProvider {
             .toInstance(100) // 10 FPS default
 
         // Register the verticles
-        bind(ChangeStreamWorkerVerticle::class.java).`in`(Scopes.SINGLETON)
-        bind(MutationVerticle::class.java).`in`(Scopes.SINGLETON)
-        bind(UpdateVerticle::class.java).`in`(Scopes.SINGLETON)
+        bind(ChangeStreamWorkerVerticle::class.java)
+        bind(MutationVerticle::class.java)
+        bind(UpdateVerticle::class.java)
+        bind(CommandSocketVerticle::class.java)
     }
 
     /**
@@ -124,17 +127,6 @@ class MinareModule : AbstractModule(), DatabaseNameProvider {
 
     @Provides
     @Singleton
-    fun provideCommandSocketManager(
-        connectionStore: ConnectionStore,
-        connectionController: ConnectionController,
-        messageHandler: CommandMessageHandler,
-        coroutineContext: CoroutineContext
-    ): CommandSocketManager {
-        return CommandSocketManager(connectionStore, connectionController, messageHandler, coroutineContext)
-    }
-
-    @Provides
-    @Singleton
     fun provideUpdateSocketManager(
         connectionStore: ConnectionStore,
         connectionController: ConnectionController,
@@ -162,30 +154,6 @@ class MinareModule : AbstractModule(), DatabaseNameProvider {
             connectionStore,
             connectionCache,
             connectionController
-        )
-    }
-
-    @Provides
-    @Singleton
-    fun provideCommandSocketVerticle(
-        connectionStore: ConnectionStore,
-        connectionCache: ConnectionCache,
-        connectionController: ConnectionController,
-        channelStore: ChannelStore,
-        contextStore: ContextStore,
-        messageHandler: CommandMessageHandler,
-        reflectionCache: ReflectionCache,
-        entityStore: EntityStore
-    ): CommandSocketVerticle {
-        return CommandSocketVerticle(
-            connectionStore,
-            connectionCache,
-            connectionController,
-            channelStore,
-            contextStore,
-            messageHandler,
-            reflectionCache,
-            entityStore
         )
     }
 

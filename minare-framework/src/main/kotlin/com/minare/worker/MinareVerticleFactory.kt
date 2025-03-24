@@ -13,30 +13,27 @@ import java.util.concurrent.Callable
  */
 public final class MinareVerticleFactory(private val injector: Injector) : VerticleFactory {
     private val log = LoggerFactory.getLogger(MinareVerticleFactory::class.java)
-
-    // Prefix for verticles that will be instantiated by this factory
     override fun prefix(): String = "guice"
 
     /**
-     * Creates a verticle instance using Guice dependency injection
+     * Creates a verticle instance using Guice dependency injection.
+     * Important: We use the injector to create a fresh instance even for classes
+     * that might be bound as singletons.
      */
     override fun createVerticle(verticleName: String, classLoader: ClassLoader, promise: Promise<Callable<Verticle>>) {
         try {
-            // Remove the prefix from the verticle name
             val className = VerticleFactory.removePrefix(verticleName)
             log.debug("Creating verticle instance for: {}", className)
+            val verticleClass = classLoader.loadClass(className) as Class<out Verticle>
 
-            // Load the verticle class
-            val verticleClass = classLoader.loadClass(className)
-
-            // Create a callable that will return a Guice-managed verticle when called
             val verticleCallable = Callable<Verticle> {
-                val verticle = injector.getInstance(verticleClass) as Verticle
-                log.debug("Instantiated Guice-managed verticle: {}", verticle::class.java.name)
+                // Use the injector to get a Provider for the verticle type
+                // Provider.get() will create a new instance even for singleton-bound classes
+                val verticle = injector.getInstance(verticleClass)
+                log.debug("Instantiated verticle: {}", verticle::class.java.name)
                 verticle
             }
 
-            // Complete the promise with the callable
             promise.complete(verticleCallable)
         } catch (e: Exception) {
             log.error("Failed to create verticle: {}", verticleName, e)

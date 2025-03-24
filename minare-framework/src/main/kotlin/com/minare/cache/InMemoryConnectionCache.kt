@@ -35,7 +35,6 @@ class InMemoryConnectionCache @Inject constructor(
     }
 
     override suspend fun getConnection(connectionId: String): Connection? {
-        // First check in the local cache map
         val cachedConnection = connections[connectionId]
 
         if (cachedConnection != null) {
@@ -44,13 +43,11 @@ class InMemoryConnectionCache @Inject constructor(
             return cachedConnection
         }
 
-        // Not in cache, look up in database
         try {
             val connection = connectionStore.find(connectionId)
             log.info("[TRACE] Retrieved connection from database: {} with commandSocketId={}, updateSocketId={}",
                 connection._id, connection.commandSocketId, connection.updateSocketId)
 
-            // Store in cache for future use
             connections[connectionId] = connection
             return connection
         } catch (e: Exception) {
@@ -68,23 +65,17 @@ class InMemoryConnectionCache @Inject constructor(
     }
 
     override fun storeCommandSocket(connectionId: String, socket: ServerWebSocket, connection: Connection) {
-        // Remove old socket mapping if exists
         commandSockets[connectionId]?.let { oldSocket ->
             commandSocketToConnection.remove(oldSocket)
         }
-
-        // Store new socket
         commandSockets[connectionId] = socket
         commandSocketToConnection[socket] = connection
     }
 
     override fun storeUpdateSocket(connectionId: String, socket: ServerWebSocket, connection: Connection) {
-        // Remove old socket mapping if exists
         updateSockets[connectionId]?.let { oldSocket ->
             updateSocketToConnection.remove(oldSocket)
         }
-
-        // Store new socket
         updateSockets[connectionId] = socket
         updateSocketToConnection[socket] = connection
     }

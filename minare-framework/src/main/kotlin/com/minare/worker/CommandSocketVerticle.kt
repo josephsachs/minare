@@ -8,8 +8,11 @@ import com.minare.persistence.ConnectionStore
 import com.minare.persistence.ChannelStore
 import com.minare.persistence.ContextStore
 import com.minare.persistence.EntityStore
+import io.vertx.core.Handler
+import io.vertx.core.http.HttpServer
 import io.vertx.core.http.ServerWebSocket
 import io.vertx.core.json.JsonObject
+import io.vertx.ext.web.Router
 import io.vertx.kotlin.coroutines.CoroutineVerticle
 import io.vertx.kotlin.coroutines.await
 import io.vertx.kotlin.coroutines.dispatcher
@@ -45,6 +48,7 @@ class CommandSocketVerticle @Inject constructor(
         const val ADDRESS_CHANNEL_CLEANUP = "minare.channel.cleanup"
         const val ADDRESS_SOCKET_CLEANUP = "minare.socket.cleanup"
         const val ADDRESS_ENTITY_SYNC = "minare.entity.sync"
+        const val ADDRESS_REGISTER_WEBSOCKET_HANDLER = "minare.register.websocket.handler"
 
         // Extended handshake timeout from 500ms to 3000ms (3 seconds)
         const val HANDSHAKE_TIMEOUT_MS = 3000L
@@ -56,16 +60,27 @@ class CommandSocketVerticle @Inject constructor(
     override suspend fun start() {
         log.info("Starting CommandSocketVerticle")
 
-        // Register event bus consumers for socket events
-        vertx.eventBus().consumer<JsonObject>(ADDRESS_COMMAND_SOCKET_HANDLE) { message ->
-            val socketId = message.body().getString("socketId")
-            log.debug("Received command socket handle request for socket: {}", socketId)
+        // Register handler for adding WebSocket handler to a router
+        vertx.eventBus().consumer<JsonObject>(ADDRESS_REGISTER_WEBSOCKET_HANDLER) { message ->
+            val routerId = message.body().getString("routerId")
+            if (routerId == null) {
+                message.fail(400, "Missing routerId parameter")
+                return@consumer
+            }
 
-            // This is a placeholder - we'll integrate with actual socket handling later
+            // Get the router from shared data
+            val router = vertx.sharedData().getLocalMap<String, Router>("routers").get(routerId)
+            if (router == null) {
+                message.fail(404, "Router not found for ID: $routerId")
+                return@consumer
+            }
+
+            // Set up the WebSocket route
+            setupCommandSocketRoute(router)
             message.reply(JsonObject().put("success", true))
         }
 
-        // Register entity sync handler
+        // Register event bus handler for entity sync
         vertx.eventBus().consumer<JsonObject>(ADDRESS_ENTITY_SYNC) { message ->
             val connectionId = message.body().getString("connectionId")
             val entityId = message.body().getString("entityId")
@@ -77,7 +92,7 @@ class CommandSocketVerticle @Inject constructor(
                     message.reply(JsonObject().put("success", result))
                 } catch (e: Exception) {
                     log.error("Error handling entity sync", e)
-                    message.reply(JsonObject().put("success", false).put("error", e.message))
+                    message.fail(500, e.message ?: "Error handling entity sync")
                 }
             }
         }
@@ -93,7 +108,7 @@ class CommandSocketVerticle @Inject constructor(
                     message.reply(JsonObject().put("success", result))
                 } catch (e: Exception) {
                     log.error("Error during connection cleanup", e)
-                    message.reply(JsonObject().put("success", false).put("error", e.message))
+                    message.fail(500, e.message ?: "Error during connection cleanup")
                 }
             }
         }
@@ -108,7 +123,7 @@ class CommandSocketVerticle @Inject constructor(
                     message.reply(JsonObject().put("success", result))
                 } catch (e: Exception) {
                     log.error("Error during channel cleanup", e)
-                    message.reply(JsonObject().put("success", false).put("error", e.message))
+                    message.fail(500, e.message ?: "Error during channel cleanup")
                 }
             }
         }
@@ -124,12 +139,46 @@ class CommandSocketVerticle @Inject constructor(
                     message.reply(JsonObject().put("success", result))
                 } catch (e: Exception) {
                     log.error("Error during socket cleanup", e)
-                    message.reply(JsonObject().put("success", false).put("error", e.message))
+                    message.fail(500, e.message ?: "Error during socket cleanup")
                 }
             }
         }
 
         log.info("CommandSocketVerticle started successfully")
+    }
+
+    /**
+     * Set up the command socket route on the provided router
+     */
+    private fun setupCommandSocketRoute(router: Router) {
+        router.route("/ws").handler { context ->
+            context.request().toWebSocket()
+                .onSuccess { socket ->
+                    // Handle the WebSocket directly in this verticle
+                    launch {
+                        try {
+                            handleCommandSocket(socket)
+                        } catch (e: Exception) {
+                            log.error("Error handling command socket", e)
+                            try {
+                                if (!socket.isClosed()) {
+                                    socket.close()
+                                }
+                            } catch (closeEx: Exception) {
+                                log.warn("Error closing websocket after handler error", closeEx)
+                            }
+                        }
+                    }
+                }
+                .onFailure { err ->
+                    log.error("Command WebSocket upgrade failed", err)
+                    context.response()
+                        .setStatusCode(400)
+                        .end("Command WebSocket upgrade failed")
+                }
+        }
+
+        log.info("Command socket route registered successfully")
     }
 
     /**

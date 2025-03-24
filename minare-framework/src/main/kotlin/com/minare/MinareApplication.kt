@@ -12,7 +12,6 @@ import com.minare.core.websocket.UpdateSocketManager
 import com.minare.persistence.DatabaseInitializer
 import com.minare.worker.MinareVerticleFactory
 import io.vertx.core.DeploymentOptions
-import io.vertx.core.Future
 import io.vertx.core.Vertx
 import io.vertx.core.VertxOptions
 import io.vertx.core.http.HttpServer
@@ -44,9 +43,6 @@ abstract class MinareApplication : CoroutineVerticle() {
     @Inject
     lateinit var injector: Injector
 
-    @Inject @Named("clusteringEnabled")
-    var clusteringEnabled: Boolean = false
-
     // Track the deployment IDs of our worker verticles
     private var changeStreamWorkerDeploymentId: String? = null
     private var mutationVerticleDeploymentId: String? = null
@@ -73,6 +69,9 @@ abstract class MinareApplication : CoroutineVerticle() {
             // Register the Guice Verticle Factory
             vertx.registerVerticleFactory(MinareVerticleFactory(injector))
             log.info("Registered MinareVerticleFactory")
+
+            // Create shared data map for routers
+            vertx.sharedData().getLocalMap<String, Router>("routers")
 
             // Deploy the command socket verticle first
             val commandSocketOptions = DeploymentOptions()
@@ -159,8 +158,19 @@ abstract class MinareApplication : CoroutineVerticle() {
             val router = Router.router(vertx)
             router.route().handler(BodyHandler.create())
 
-            // Set up WebSocket routes
-            setupCoreRoutes(router)
+            // Store router in shared data for access by CommandSocketVerticle
+            val routerId = "main-router-${java.util.UUID.randomUUID()}"
+            vertx.sharedData().getLocalMap<String, Router>("routers").put(routerId, router)
+
+            // Tell the CommandSocketVerticle to set up its routes on our router
+            vertx.eventBus().request<JsonObject>(
+                CommandSocketVerticle.ADDRESS_REGISTER_WEBSOCKET_HANDLER,
+                JsonObject().put("routerId", routerId)
+            ).await()
+            log.info("Registered command socket handler with router")
+
+            // Set up WebSocket route for updates
+            setupUpdateSocketRoute(router)
 
             // Let implementing class add custom routes
             setupApplicationRoutes(router)
@@ -184,44 +194,9 @@ abstract class MinareApplication : CoroutineVerticle() {
     }
 
     /**
-     * Setup core WebSocket routes for command and update sockets.
+     * Setup update socket route
      */
-    private fun setupCoreRoutes(router: Router) {
-        // Command socket route for client requests
-        // Now delegate to the CommandSocketVerticle via the event bus
-        router.route("/ws").handler { context ->
-            context.request().toWebSocket()
-                .onSuccess { socket ->
-                    // Send to the CommandSocketVerticle to handle
-                    val socketId = "ws-" + java.util.UUID.randomUUID().toString()
-
-                    // Get a reference to the CommandSocketVerticle
-                    val commandSocketVerticle = injector.getInstance(CommandSocketVerticle::class.java)
-
-                    // Directly handle the socket
-                    vertx.executeBlocking<Unit>({ promise ->
-                        try {
-                            runBlocking {
-                                commandSocketVerticle.handleCommandSocket(socket)
-                            }
-                            promise.complete()
-                        } catch (e: Exception) {
-                            promise.fail(e)
-                        }
-                    }, { result ->
-                        if (result.failed()) {
-                            log.error("Failed to handle command socket", result.cause())
-                        }
-                    })
-                }
-                .onFailure { err ->
-                    log.error("Command WebSocket upgrade failed", err)
-                    context.response()
-                        .setStatusCode(400)
-                        .end("Command WebSocket upgrade failed")
-                }
-        }
-
+    private fun setupUpdateSocketRoute(router: Router) {
         // Update socket route for server updates
         router.route("/ws/updates").handler { context ->
             context.request().toWebSocket()

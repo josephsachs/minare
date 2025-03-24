@@ -1,5 +1,6 @@
 package com.minare.example
 
+import com.minare.example.ExampleApplication
 import com.minare.MinareApplication
 import org.slf4j.LoggerFactory
 
