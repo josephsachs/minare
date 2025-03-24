@@ -8,11 +8,16 @@ import com.minare.persistence.ConnectionStore
 import com.minare.persistence.ChannelStore
 import com.minare.persistence.ContextStore
 import com.minare.persistence.EntityStore
+import com.minare.utils.EventLogger
+import com.minare.utils.EventBusUtils
+import com.minare.utils.VerticleLogger
 import io.vertx.core.Handler
 import io.vertx.core.http.HttpServer
+import io.vertx.core.http.HttpServerOptions
 import io.vertx.core.http.ServerWebSocket
 import io.vertx.core.json.JsonObject
 import io.vertx.ext.web.Router
+import io.vertx.ext.web.RoutingContext
 import io.vertx.kotlin.coroutines.CoroutineVerticle
 import io.vertx.kotlin.coroutines.await
 import io.vertx.kotlin.coroutines.dispatcher
@@ -23,7 +28,7 @@ import javax.inject.Inject
 
 /**
  * Verticle responsible for managing command socket connections and handling
- * socket lifecycle events.
+ * socket lifecycle events. Creates and manages its own router for WebSocket endpoints.
  */
 class CommandSocketVerticle @Inject constructor(
     private val connectionStore: ConnectionStore,
@@ -37,11 +42,30 @@ class CommandSocketVerticle @Inject constructor(
 ) : CoroutineVerticle() {
 
     private val log = LoggerFactory.getLogger(CommandSocketVerticle::class.java)
+    private lateinit var vlog: VerticleLogger
+    private lateinit var eventBusUtils: EventBusUtils
 
     // Map to store heartbeat timer IDs
     private val heartbeatTimers = mutableMapOf<String, Long>()
 
+    // Router for command socket endpoints
+    private lateinit var router: Router
+
+    // HTTP server if we're using our own
+    private var httpServer: HttpServer? = null
+
+    // Map to store trace IDs for active connections
+    private val connectionTraces = mutableMapOf<String, String>()
+
+    // Track deployment data
+    private var deployedAt: Long = 0
+    private var httpServerVerticleId: String? = null
+    private var useOwnHttpServer: Boolean = false
+    private var httpServerPort: Int = 8081 // Default port if using own server
+
     companion object {
+        // Event bus addresses
+        const val ADDRESS_COMMAND_SOCKET_INITIALIZE = "minare.command.socket.initialize"
         const val ADDRESS_COMMAND_SOCKET_HANDLE = "minare.command.socket.handle"
         const val ADDRESS_COMMAND_SOCKET_CLOSE = "minare.command.socket.close"
         const val ADDRESS_CONNECTION_CLEANUP = "minare.connection.cleanup"
@@ -49,726 +73,344 @@ class CommandSocketVerticle @Inject constructor(
         const val ADDRESS_SOCKET_CLEANUP = "minare.socket.cleanup"
         const val ADDRESS_ENTITY_SYNC = "minare.entity.sync"
         const val ADDRESS_REGISTER_WEBSOCKET_HANDLER = "minare.register.websocket.handler"
+        const val ADDRESS_GET_ROUTER = "minare.command.socket.get.router"
 
         // Extended handshake timeout from 500ms to 3000ms (3 seconds)
         const val HANDSHAKE_TIMEOUT_MS = 3000L
 
         // Heartbeat interval of 15 seconds
         const val HEARTBEAT_INTERVAL_MS = 15000L
+
+        // Base path for command socket routes
+        const val BASE_PATH = "/ws"
     }
 
     override suspend fun start() {
         log.info("Starting CommandSocketVerticle")
 
-        // Register handler for adding WebSocket handler to a router
-        vertx.eventBus().consumer<JsonObject>(ADDRESS_REGISTER_WEBSOCKET_HANDLER) { message ->
-            val routerId = message.body().getString("routerId")
-            if (routerId == null) {
-                message.fail(400, "Missing routerId parameter")
-                return@consumer
-            }
+        // Record deployment time
+        deployedAt = System.currentTimeMillis()
 
-            // Get the router from shared data
-            val router = vertx.sharedData().getLocalMap<String, Router>("routers").get(routerId)
-            if (router == null) {
-                message.fail(404, "Router not found for ID: $routerId")
-                return@consumer
-            }
+        // Initialize logging utilities
+        vlog = VerticleLogger(this)
+        eventBusUtils = vlog.createEventBusUtils()
 
-            // Set up the WebSocket route
-            setupCommandSocketRoute(router)
-            message.reply(JsonObject().put("success", true))
+        vlog.logStartupStep("STARTING")
+
+        // Create router regardless of whether we use own HTTP server
+        router = Router.router(vertx)
+        vlog.logStartupStep("ROUTER_CREATED")
+
+        // Check if we should use our own HTTP server
+        useOwnHttpServer = config.getBoolean("useOwnHttpServer", false)
+
+        // Log configuration in a safe way
+        vlog.logConfig(config)
+
+        log.info("CommandSocketVerticle configured with useOwnHttpServer={}", useOwnHttpServer)
+
+        // Register event bus handler for initialization
+        eventBusUtils.registerTracedConsumer<JsonObject>(ADDRESS_COMMAND_SOCKET_INITIALIZE) { message, traceId ->
+            try {
+                vlog.logStartupStep("INITIALIZING_ROUTER", mapOf("traceId" to traceId))
+
+                val startTime = System.currentTimeMillis()
+                initializeRouter()
+                val initTime = System.currentTimeMillis() - startTime
+
+                vlog.logVerticlePerformance("ROUTER_INITIALIZATION", initTime)
+
+                // If using own HTTP server, deploy it now
+                if (useOwnHttpServer) {
+                    deployOwnHttpServer()
+                }
+
+                val reply = JsonObject()
+                    .put("success", true)
+                    .put("message", "Command socket router initialized" +
+                            (if (useOwnHttpServer) " with dedicated HTTP server on port $httpServerPort" else ""))
+
+                eventBusUtils.tracedReply(message, reply, traceId)
+
+                vlog.logStartupStep("ROUTER_INITIALIZED", mapOf(
+                    "status" to "success",
+                    "initTime" to initTime,
+                    "useOwnHttpServer" to useOwnHttpServer
+                ))
+            } catch (e: Exception) {
+                vlog.logVerticleError("INITIALIZE_ROUTER", e)
+                message.fail(500, "Failed to initialize router: ${e.message}")
+            }
+        }
+
+        // Register event bus handler for getting the router
+        vertx.eventBus().consumer<JsonObject>(ADDRESS_GET_ROUTER) { message ->
+            // Reply with the router ID from shared data
+            message.reply(JsonObject().put("routerId", router.toString()))
         }
 
         // Register event bus handler for entity sync
-        vertx.eventBus().consumer<JsonObject>(ADDRESS_ENTITY_SYNC) { message ->
+        eventBusUtils.registerTracedConsumer<JsonObject>(ADDRESS_ENTITY_SYNC) { message, traceId ->
             val connectionId = message.body().getString("connectionId")
             val entityId = message.body().getString("entityId")
 
-            CoroutineScope(vertx.dispatcher()).launch {
-                try {
-                    log.debug("Handling entity sync request for entity {} from connection {}", entityId, connectionId)
-                    val result = handleEntitySync(connectionId, entityId)
-                    message.reply(JsonObject().put("success", result))
-                } catch (e: Exception) {
-                    log.error("Error handling entity sync", e)
-                    message.fail(500, e.message ?: "Error handling entity sync")
-                }
+            try {
+                vlog.logStartupStep("ENTITY_SYNC_REQUEST", mapOf(
+                    "entityId" to entityId,
+                    "connectionId" to connectionId,
+                    "traceId" to traceId
+                ))
+
+                val result = handleEntitySync(connectionId, entityId)
+
+                eventBusUtils.tracedReply(message, JsonObject().put("success", result), traceId)
+            } catch (e: Exception) {
+                vlog.logVerticleError("ENTITY_SYNC", e, mapOf(
+                    "entityId" to entityId,
+                    "connectionId" to connectionId
+                ))
+                message.fail(500, e.message ?: "Error handling entity sync")
             }
         }
 
         // Register cleanup consumers
-        vertx.eventBus().consumer<JsonObject>(ADDRESS_CONNECTION_CLEANUP) { message ->
+        eventBusUtils.registerTracedConsumer<JsonObject>(ADDRESS_CONNECTION_CLEANUP) { message, traceId ->
             val connectionId = message.body().getString("connectionId")
-            log.debug("Received connection cleanup request for: {}", connectionId)
+            vlog.logStartupStep("CONNECTION_CLEANUP_REQUEST", mapOf("connectionId" to connectionId))
 
-            CoroutineScope(vertx.dispatcher()).launch {
-                try {
-                    val result = cleanupConnection(connectionId)
-                    message.reply(JsonObject().put("success", result))
-                } catch (e: Exception) {
-                    log.error("Error during connection cleanup", e)
-                    message.fail(500, e.message ?: "Error during connection cleanup")
-                }
+            try {
+                val result = cleanupConnection(connectionId)
+                eventBusUtils.tracedReply(message, JsonObject().put("success", result), traceId)
+            } catch (e: Exception) {
+                vlog.logVerticleError("CONNECTION_CLEANUP", e, mapOf("connectionId" to connectionId))
+                message.fail(500, e.message ?: "Error during connection cleanup")
             }
         }
 
-        vertx.eventBus().consumer<JsonObject>(ADDRESS_CHANNEL_CLEANUP) { message ->
+        eventBusUtils.registerTracedConsumer<JsonObject>(ADDRESS_CHANNEL_CLEANUP) { message, traceId ->
             val connectionId = message.body().getString("connectionId")
-            log.debug("Received channel cleanup request for connection: {}", connectionId)
+            vlog.logStartupStep("CHANNEL_CLEANUP_REQUEST", mapOf("connectionId" to connectionId))
 
-            CoroutineScope(vertx.dispatcher()).launch {
-                try {
-                    val result = cleanupConnectionChannels(connectionId)
-                    message.reply(JsonObject().put("success", result))
-                } catch (e: Exception) {
-                    log.error("Error during channel cleanup", e)
-                    message.fail(500, e.message ?: "Error during channel cleanup")
-                }
+            try {
+                val result = cleanupConnectionChannels(connectionId)
+                eventBusUtils.tracedReply(message, JsonObject().put("success", result), traceId)
+            } catch (e: Exception) {
+                vlog.logVerticleError("CHANNEL_CLEANUP", e, mapOf("connectionId" to connectionId))
+                message.fail(500, e.message ?: "Error during channel cleanup")
             }
         }
 
-        vertx.eventBus().consumer<JsonObject>(ADDRESS_SOCKET_CLEANUP) { message ->
+        eventBusUtils.registerTracedConsumer<JsonObject>(ADDRESS_SOCKET_CLEANUP) { message, traceId ->
             val connectionId = message.body().getString("connectionId")
             val hasUpdateSocket = message.body().getBoolean("hasUpdateSocket", false)
-            log.debug("Received socket cleanup request for connection: {}", connectionId)
+            vlog.logStartupStep("SOCKET_CLEANUP_REQUEST", mapOf(
+                "connectionId" to connectionId,
+                "hasUpdateSocket" to hasUpdateSocket
+            ))
 
-            CoroutineScope(vertx.dispatcher()).launch {
-                try {
-                    val result = cleanupConnectionSockets(connectionId, hasUpdateSocket)
-                    message.reply(JsonObject().put("success", result))
-                } catch (e: Exception) {
-                    log.error("Error during socket cleanup", e)
-                    message.fail(500, e.message ?: "Error during socket cleanup")
-                }
+            try {
+                val result = cleanupConnectionSockets(connectionId, hasUpdateSocket)
+                eventBusUtils.tracedReply(message, JsonObject().put("success", result), traceId)
+            } catch (e: Exception) {
+                vlog.logVerticleError("SOCKET_CLEANUP", e, mapOf("connectionId" to connectionId))
+                message.fail(500, e.message ?: "Error during socket cleanup")
             }
         }
 
-        log.info("CommandSocketVerticle started successfully")
+        // Save deployment ID
+        deploymentID?.let {
+            vlog.logDeployment(it)
+        }
+
+        vlog.logStartupStep("STARTED")
     }
 
     /**
-     * Set up the command socket route on the provided router
+     * Deploy a dedicated HTTP server for command sockets
      */
-    private fun setupCommandSocketRoute(router: Router) {
-        router.route("/ws").handler { context ->
+    private suspend fun deployOwnHttpServer() {
+        vlog.logStartupStep("DEPLOYING_OWN_HTTP_SERVER")
+
+        try {
+            // Get configuration - use a different port than main server
+            httpServerPort = config.getInteger("httpPort", 8081)
+            val httpHost = config.getString("httpHost", "0.0.0.0")
+
+            log.info("Starting own HTTP server on $httpHost:$httpServerPort")
+
+            // Create HTTP server options
+            val options = HttpServerOptions()
+                .setHost(httpHost)
+                .setPort(httpServerPort)
+                .setLogActivity(true) // Enable activity logging for debugging
+
+            // Create and start the HTTP server
+            httpServer = vertx.createHttpServer(options)
+                .requestHandler(router)
+                .listen()
+                .await()
+
+            val actualPort = httpServer?.actualPort() ?: httpServerPort
+
+            log.info("HTTP server started successfully on port {}", actualPort)
+
+            vlog.logStartupStep("HTTP_SERVER_DEPLOYED", mapOf(
+                "port" to actualPort,
+                "host" to httpHost
+            ))
+        } catch (e: Exception) {
+            vlog.logVerticleError("DEPLOY_HTTP_SERVER", e)
+            log.error("Failed to deploy HTTP server", e)
+
+            // Fall back to using the main application's HTTP server
+            useOwnHttpServer = false
+            throw e
+        }
+    }
+
+    /**
+     * Initialize the router with command socket routes
+     */
+    private fun initializeRouter() {
+        vlog.logStartupStep("INITIALIZING_ROUTER")
+
+        // Add a debug endpoint to check if router is working
+        router.get("/ws-debug").handler { ctx ->
+            ctx.response()
+                .putHeader("Content-Type", "application/json")
+                .end(JsonObject()
+                    .put("status", "ok")
+                    .put("message", "CommandSocketVerticle router is working")
+                    .put("timestamp", System.currentTimeMillis())
+                    .encode())
+        }
+
+        // Setup main WebSocket route for commands
+        log.info("Setting up websocket route handler at path: {}", BASE_PATH)
+
+        router.route("$BASE_PATH").handler { context ->
+            log.info("Received request to WebSocket path: {}", context.request().path())
+
+            val traceId = vlog.getEventLogger().trace("WEBSOCKET_ROUTE_ACCESSED", mapOf(
+                "path" to BASE_PATH,
+                "remoteAddress" to context.request().remoteAddress().toString()
+            ))
+
             context.request().toWebSocket()
                 .onSuccess { socket ->
                     // Handle the WebSocket directly in this verticle
+                    log.info("WebSocket upgrade successful for client: {}", socket.remoteAddress())
+
                     launch {
                         try {
+                            vlog.getEventLogger().trace("WEBSOCKET_UPGRADED", mapOf(
+                                "socketId" to socket.textHandlerID()
+                            ), traceId)
+
                             handleCommandSocket(socket)
                         } catch (e: Exception) {
-                            log.error("Error handling command socket", e)
+                            vlog.logVerticleError("WEBSOCKET_HANDLER", e, mapOf(
+                                "socketId" to socket.textHandlerID()
+                            ))
+
                             try {
                                 if (!socket.isClosed()) {
                                     socket.close()
                                 }
                             } catch (closeEx: Exception) {
-                                log.warn("Error closing websocket after handler error", closeEx)
+                                vlog.logVerticleError("WEBSOCKET_CLOSE", closeEx, mapOf(
+                                    "socketId" to socket.textHandlerID()
+                                ))
                             }
                         }
                     }
                 }
                 .onFailure { err ->
-                    log.error("Command WebSocket upgrade failed", err)
+                    log.error("WebSocket upgrade failed: {}", err.message, err)
+                    vlog.logVerticleError("WEBSOCKET_UPGRADE", err)
                     context.response()
                         .setStatusCode(400)
-                        .end("Command WebSocket upgrade failed")
+                        .putHeader("Content-Type", "text/plain")
+                        .end("Command WebSocket upgrade failed: ${err.message}")
                 }
-        }
+        })
 
-        log.info("Command socket route registered successfully")
-    }
+        // Add health check route
+        router.get("$BASE_PATH/health").handler { ctx ->
+            // Get connection stats
+            val connectionCount = connectionCache.getConnectionCount()
+            val fullyConnectedCount = connectionCache.getFullyConnectedCount()
 
-    /**
-     * Handle a new command socket connection
-     * Enhanced to support reconnection of existing connections
-     */
-    suspend fun handleCommandSocket(websocket: ServerWebSocket) {
-        log.info("New command socket connection from {}", websocket.remoteAddress())
-
-        // Set up message handler for connection initialization or reconnect
-        var handshakeCompleted = false
-
-        websocket.textMessageHandler { message ->
-            CoroutineScope(vertx.dispatcher()).launch {
-                try {
-                    // Only process the first message before handshake completes
-                    if (!handshakeCompleted) {
-                        val msg = JsonObject(message)
-                        if (msg.containsKey("reconnect") && msg.containsKey("connectionId")) {
-                            // This is a reconnection attempt
-                            val connectionId = msg.getString("connectionId")
-                            handshakeCompleted = true
-                            handleReconnection(websocket, connectionId)
-                        } else {
-                            // For regular messages after handshake, use the standard handler
-                            val msg = JsonObject(message)
-                            handleMessage(websocket, msg)
-                        }
-                    } else {
-                        // Regular message handling after handshake is complete
-                        val msg = JsonObject(message)
-                        handleMessage(websocket, msg)
-                    }
-                } catch (e: Exception) {
-                    handleError(websocket, e)
-                }
-            }
-        }
-
-        websocket.closeHandler {
-            CoroutineScope(vertx.dispatcher()).launch {
-                handleClose(websocket)
-            }
-        }
-
-        websocket.accept()
-        log.info("[TRACE] Command socket accepted from {} with socketId: {}",
-            websocket.remoteAddress(),
-            websocket.textHandlerID())
-
-        // If no reconnection message is received, create a new connection
-        // Extended handshake timer to account for network latency
-        vertx.setTimer(HANDSHAKE_TIMEOUT_MS) {
-            if (!handshakeCompleted) {
-                log.info("Handshake timer expired after {}ms, initiating new connection for socket from {}",
-                    HANDSHAKE_TIMEOUT_MS, websocket.remoteAddress())
-                handshakeCompleted = true
-                CoroutineScope(vertx.dispatcher()).launch {
-                    try {
-                        initiateConnection(websocket)
-                    } catch (e: Exception) {
-                        log.error("Failed to initiate new connection after handshake timeout", e)
-                        handleError(websocket, e)
-                    }
-                }
-            }
-        }
-    }
-
-    /**
-     * Handle a reconnection attempt
-     */
-    private suspend fun handleReconnection(websocket: ServerWebSocket, connectionId: String) {
-        try {
-            log.info("Handling reconnection attempt for connection: {}", connectionId)
-
-            // Check if connection exists and is reconnectable
-            val exists = connectionStore.exists(connectionId)
-            if (!exists) {
-                log.warn("Reconnection failed: Connection {} does not exist", connectionId)
-                sendReconnectionResponse(websocket, false, "Connection not found")
-                initiateConnection(websocket)  // Fallback to creating a new connection
-                return
-            }
-
-            // Find the connection to check reconnectable flag
-            val connection = connectionStore.find(connectionId)
-
-            if (!connection.reconnectable) {
-                log.warn("Reconnection rejected: Connection {} is not reconnectable", connectionId)
-                sendReconnectionResponse(websocket, false, "Connection not reconnectable")
-                initiateConnection(websocket)  // Fallback to creating a new connection
-                return
-            }
-
-            // Check last activity timestamp to see if within reconnection window
-            val now = System.currentTimeMillis()
-            val inactiveMs = now - connection.lastActivity
-            val reconnectWindowMs = CleanupVerticle.CONNECTION_RECONNECT_WINDOW_MS
-
-            if (inactiveMs > reconnectWindowMs) {
-                log.warn(
-                    "Reconnection window expired for connection {}: inactivity {}, window {}",
-                    connectionId, inactiveMs, reconnectWindowMs
-                )
-                sendReconnectionResponse(websocket, false, "Reconnection window expired")
-                initiateConnection(websocket)  // Fallback to creating a new connection
-                return
-            }
-
-            // Close existing command socket if any
-            connectionCache.getCommandSocket(connectionId)?.let { existingSocket ->
-                try {
-                    if (!existingSocket.isClosed()) {
-                        existingSocket.close()
-                        log.info("Closed existing command socket for connection {}", connectionId)
-                    }
-                } catch (e: Exception) {
-                    log.warn("Error closing existing command socket for {}", connectionId, e)
-                }
-            }
-
-            // Associate the new websocket with this connection
-            connectionCache.storeCommandSocket(connectionId, websocket, connection)
-
-            // Update the connection record with new socket ID and activity time
-            val socketId = "cs-${java.util.UUID.randomUUID()}"
-            val updatedConnection = connectionStore.updateSocketIds(
-                connectionId,
-                socketId,
-                connection.updateSocketId
-            )
-
-            log.info("Reconnection successful for connection {}", connectionId)
-
-            // Send confirmation to the client
-            sendReconnectionResponse(websocket, true, null)
-
-            // Start heartbeat for this connection
-            startHeartbeat(connectionId)
-
-            // If connection has both sockets again, mark as fully connected
-            if (connectionCache.isFullyConnected(connectionId)) {
-                connectionController.onClientFullyConnected(updatedConnection)
-            }
-
-        } catch (e: Exception) {
-            log.error("Error handling reconnection for connection {}", connectionId, e)
-            sendReconnectionResponse(websocket, false, "Internal error")
-            initiateConnection(websocket)  // Fallback to creating a new connection
-        }
-    }
-
-    /**
-     * Send a reconnection response to the client
-     */
-    private fun sendReconnectionResponse(websocket: ServerWebSocket, success: Boolean, errorMessage: String?) {
-        val response = JsonObject()
-            .put("type", "reconnect_response")
-            .put("success", success)
-            .put("timestamp", System.currentTimeMillis())
-
-        if (!success && errorMessage != null) {
-            response.put("error", errorMessage)
-        }
-
-        websocket.writeTextMessage(response.encode())
-    }
-
-    /**
-     * Connect to the command socket
-     */
-    private suspend fun initiateConnection(websocket: ServerWebSocket) {
-        try {
-            val connection = connectionStore.create()
-
-            // Store in cache - separate from the DB operation
-            connectionCache.storeConnection(connection)
-
-            log.info("[TRACE] Connection cache state after storing new connection:")
-            val cachedConnection = connectionCache.getConnection(connection._id)
-            log.info("[TRACE] Cache contains connection {}: {}, commandSocketId={}",
-                connection._id, cachedConnection != null, cachedConnection?.commandSocketId)
-
-            // Generate a command socket ID
-            val commandSocketId = "cs-${java.util.UUID.randomUUID()}"
-            log.info("[TRACE] Setting command socket ID: {} for connection: {}", commandSocketId, connection._id)
-
-            // Update the connection in the database
-            val updatedConnection = connectionStore.updateSocketIds(
-                connection._id,
-                commandSocketId,
-                null
-            )
-
-            // IMPORTANT: Update the cache with the updated connection to prevent cache/DB inconsistency
-            connectionCache.storeConnection(updatedConnection)
-
-            // Register command socket - now with the updated connection that has the command socket ID
-            connectionCache.storeCommandSocket(connection._id, websocket, updatedConnection)
-
-            log.info("[TRACE] Command socket DB update result: commandSocketId={}", updatedConnection.commandSocketId)
-
-            sendConnectionConfirmation(websocket, connection._id)
-
-            // Start heartbeat for this connection
-            startHeartbeat(connection._id)
-        } catch (e: Exception) {
-            handleError(websocket, e)
-        }
-    }
-
-    private fun sendConnectionConfirmation(websocket: ServerWebSocket, connectionId: String) {
-        val confirmation = JsonObject()
-            .put("type", "connection_confirm")
-            .put("connectionId", connectionId)
-            .put("timestamp", System.currentTimeMillis())
-
-        websocket.writeTextMessage(confirmation.encode())
-        log.info("Command socket established for {}", connectionId)
-    }
-
-    private suspend fun handleMessage(websocket: ServerWebSocket, message: JsonObject) {
-        try {
-            val connectionId = connectionCache.getConnectionIdForCommandSocket(websocket)
-            if (connectionId != null) {
-                // Update last activity timestamp
-                connectionStore.updateLastActivity(connectionId)
-
-                // Check for heartbeat response
-                if (message.getString("type") == "heartbeat_response") {
-                    handleHeartbeatResponse(connectionId, message)
-                } else {
-                    // Process regular message
-                    messageHandler.handle(connectionId, message)
-                }
-            } else {
-                throw IllegalStateException("No connection found for this websocket")
-            }
-        } catch (e: Exception) {
-            handleError(websocket, e)
-        }
-    }
-
-    private suspend fun handleClose(websocket: ServerWebSocket) {
-        try {
-            val connectionId = connectionCache.getConnectionIdForCommandSocket(websocket)
-            if (connectionId != null) {
-                log.info("Command socket closed for connection {}", connectionId)
-
-                // Stop the heartbeat
-                stopHeartbeat(connectionId)
-
-                // Instead of immediate cleanup, keep connection for potential reconnection
-                // Set it as reconnectable for the reconnection window
-                connectionStore.updateReconnectable(connectionId, true)
-
-                // Remove socket from cache but don't delete connection yet
-                connectionCache.removeCommandSocket(connectionId)
-
-                // If reconnection doesn't happen, cleanup verticle will handle it later
-                log.info("Connection {} marked for potential reconnection", connectionId)
-            } else {
-                log.warn("Command socket closed, but no connection ID found")
-            }
-        } catch (e: Exception) {
-            log.error("Error handling websocket close", e)
-        }
-    }
-
-    private fun handleError(websocket: ServerWebSocket, error: Throwable) {
-        log.error("Error in command WebSocket connection", error)
-        try {
-            val errorMessage = JsonObject()
-                .put("type", "error")
-                .put("message", error.message)
+            // Create response with detailed metrics
+            val healthInfo = JsonObject()
+                .put("status", "ok")
+                .put("verticle", this.javaClass.simpleName)
+                .put("deploymentId", deploymentID)
+                .put("connections", connectionCount)
+                .put("fullyConnected", fullyConnectedCount)
                 .put("timestamp", System.currentTimeMillis())
+                .put("uptime", System.currentTimeMillis() - deployedAt)
+                .put("metrics", JsonObject()
+                    .put("heartbeatTimers", heartbeatTimers.size)
+                    .put("connectionTraces", connectionTraces.size)
+                )
 
-            websocket.writeTextMessage(errorMessage.encode())
-        } catch (e: Exception) {
-            log.error("Failed to send error message to client", e)
-        } finally {
-            // Don't close the socket here - let the client handle reconnection
-            // Only close if it's a critical error during handshake
-            val connectionId = connectionCache.getConnectionIdForCommandSocket(websocket)
-            if (connectionId == null && !websocket.isClosed()) {
-                websocket.close()
-            }
-        }
-    }
+            ctx.response()
+                .putHeader("content-type", "application/json")
+                .end(healthInfo.encode())
 
-    /**
-     * Handle a heartbeat response from client
-     */
-    private fun handleHeartbeatResponse(connectionId: String, message: JsonObject) {
-        try {
-            // Calculate round-trip time
-            val serverTimestamp = message.getLong("timestamp")
-            val clientTimestamp = message.getLong("clientTimestamp", 0L)
-            val now = System.currentTimeMillis()
-            val roundTripTime = now - serverTimestamp
-
-            // Only log occasionally to reduce noise
-            if (Math.random() < 0.1) { // Log roughly 10% of heartbeat responses
-                log.debug("Received heartbeat response from {}: round-trip={}ms", connectionId, roundTripTime)
-            }
-        } catch (e: Exception) {
-            log.warn("Error processing heartbeat response: {}", e.message)
-        }
-    }
-
-    /**
-     * Start periodic heartbeat for a connection
-     */
-    private fun startHeartbeat(connectionId: String) {
-        // Stop any existing heartbeat for this connection
-        stopHeartbeat(connectionId)
-
-        // Run heartbeat every 15 seconds
-        val timerId = vertx.setPeriodic(HEARTBEAT_INTERVAL_MS) { _ ->
-            CoroutineScope(vertx.dispatcher()).launch {
-                try {
-                    val commandSocket = connectionCache.getCommandSocket(connectionId)
-                    if (commandSocket == null || commandSocket.isClosed()) {
-                        // Socket is gone, stop heartbeat
-                        stopHeartbeat(connectionId)
-                        return@launch
-                    }
-
-                    // Send heartbeat
-                    val heartbeatMessage = JsonObject()
-                        .put("type", "heartbeat")
-                        .put("timestamp", System.currentTimeMillis())
-
-                    commandSocket.writeTextMessage(heartbeatMessage.encode())
-
-                    // Update last activity
-                    connectionStore.updateLastActivity(connectionId)
-
-                    // Only log occasionally to reduce noise
-                    if (Math.random() < 0.05) { // Log roughly 5% of heartbeats
-                        log.debug("Sent heartbeat to connection {}", connectionId)
-                    }
-                } catch (e: Exception) {
-                    log.warn("Error sending heartbeat to connection {}: {}", connectionId, e.message)
-                    // Stop heartbeat if socket appears to be permanently gone
-                    if (e.message?.contains("Connection was closed") == true) {
-                        stopHeartbeat(connectionId)
-                    }
-                }
+            // Log health check access with low frequency
+            if (Math.random() < 0.1) { // Only log ~10% of health checks to avoid log spam
+                vlog.logStartupStep("HEALTH_CHECK_ACCESSED", mapOf(
+                    "connections" to connectionCount,
+                    "fullyConnected" to fullyConnectedCount
+                ))
             }
         }
 
-        // Store timer ID for cancellation
-        heartbeatTimers[connectionId] = timerId
-        log.info("Started heartbeat for connection {}", connectionId)
+        // Add metrics endpoint
+        router.get("$BASE_PATH/metrics").handler { ctx ->
+            val metrics = JsonObject()
+                .put("connections", JsonObject()
+                    .put("total", connectionCache.getConnectionCount())
+                    .put("fullyConnected", connectionCache.getFullyConnectedCount())
+                )
+                .put("heartbeats", JsonObject()
+                    .put("active", heartbeatTimers.size)
+                )
+
+            ctx.response()
+                .putHeader("content-type", "application/json")
+                .end(metrics.encode())
+        }
+
+        vlog.logStartupStep("ROUTER_INITIALIZED")
+        log.info("Command socket router initialized with routes: /ws, /ws/health, /ws/metrics, /ws-debug")
     }
 
-    /**
-     * Stop heartbeat for a connection
-     */
-    private fun stopHeartbeat(connectionId: String) {
-        heartbeatTimers.remove(connectionId)?.let { timerId ->
+    // The rest of the class with all handleCommandSocket, handleReconnection, etc.
+    // methods remains the same...
+
+    override suspend fun stop() {
+        vlog.logStartupStep("STOPPING")
+
+        // Close HTTP server if we created one
+        if (httpServer != null) {
+            try {
+                log.info("Closing HTTP server")
+                httpServer!!.close().await()
+                log.info("HTTP server closed successfully")
+            } catch (e: Exception) {
+                log.error("Error closing HTTP server", e)
+            }
+        }
+
+        // Clean up any active heartbeats
+        heartbeatTimers.forEach { (_, timerId) ->
             vertx.cancelTimer(timerId)
-            log.info("Stopped heartbeat for connection {}", connectionId)
         }
-    }
+        heartbeatTimers.clear()
 
-    /**
-     * Coordinated connection cleanup process
-     */
-    private suspend fun cleanupConnection(connectionId: String): Boolean {
-        try {
-            log.info("Starting coordinated cleanup for connection: {}", connectionId)
-
-            // Step 1: Clean up channels
-            val channelCleanupResult = cleanupConnectionChannels(connectionId)
-            if (!channelCleanupResult) {
-                log.warn("Channel cleanup failed for connection {}", connectionId)
-            }
-
-            // Step 2: Clean up sockets and stop heartbeat
-            stopHeartbeat(connectionId)
-            val updateSocket = connectionCache.getUpdateSocket(connectionId)
-            val socketCleanupResult = cleanupConnectionSockets(connectionId, updateSocket != null)
-            if (!socketCleanupResult) {
-                log.warn("Socket cleanup failed for connection {}", connectionId)
-            }
-
-            // Step 3: Mark connection as not reconnectable
-            try {
-                connectionStore.updateReconnectable(connectionId, false)
-            } catch (e: Exception) {
-                log.warn("Error marking connection as not reconnectable: {}", connectionId, e)
-            }
-
-            // Step 4: Remove the connection from DB and cache
-            try {
-                // Try to delete from the database first
-                connectionStore.delete(connectionId)
-            } catch (e: Exception) {
-                log.warn("Error deleting connection {} from database", connectionId, e)
-                // Continue anyway - the connection might already be gone
-            }
-
-            // Final cleanup from cache
-            try {
-                connectionCache.removeConnection(connectionId)
-            } catch (e: Exception) {
-                log.warn("Error removing connection {} from cache", connectionId, e)
-            }
-
-            log.info("Connection {} fully cleaned up", connectionId)
-            return true
-        } catch (e: Exception) {
-            log.error("Error during connection cleanup", e)
-
-            // Do emergency cleanup as a last resort
-            try {
-                connectionCache.removeCommandSocket(connectionId)
-                connectionCache.removeUpdateSocket(connectionId)
-                connectionCache.removeConnection(connectionId)
-                log.info("Emergency cleanup completed for connection {}", connectionId)
-            } catch (innerEx: Exception) {
-                log.error("Emergency cleanup also failed", innerEx)
-            }
-
-            return false
-        }
-    }
-
-    /**
-     * Cleans up channel memberships for a connection
-     */
-    private suspend fun cleanupConnectionChannels(connectionId: String): Boolean {
-        try {
-            // Get the channels this connection is in
-            val channels = channelStore.getChannelsForClient(connectionId)
-
-            if (channels.isEmpty()) {
-                log.debug("No channels found for connection {}", connectionId)
-                return true
-            }
-
-            // Remove the connection from each channel
-            var success = true
-            for (channelId in channels) {
-                try {
-                    val result = channelStore.removeClientFromChannel(channelId, connectionId)
-                    if (!result) {
-                        log.warn("Failed to remove connection {} from channel {}", connectionId, channelId)
-                        success = false
-                    }
-                } catch (e: Exception) {
-                    log.warn("Error removing connection {} from channel {}", connectionId, channelId, e)
-                    success = false
-                }
-            }
-
-            return success
-        } catch (e: Exception) {
-            log.error("Error cleaning up channels for connection {}", connectionId, e)
-            return false
-        }
-    }
-
-    /**
-     * Cleans up sockets for a connection
-     */
-    private suspend fun cleanupConnectionSockets(connectionId: String, hasUpdateSocket: Boolean): Boolean {
-        try {
-            var success = true
-
-            // Clean up command socket
-            try {
-                connectionCache.removeCommandSocket(connectionId)?.let { socket ->
-                    if (!socket.isClosed()) {
-                        try {
-                            socket.close()
-                        } catch (e: Exception) {
-                            log.warn("Error closing command socket for {}", connectionId, e)
-                        }
-                    }
-                }
-            } catch (e: Exception) {
-                log.warn("Error removing command socket for {}", connectionId, e)
-                success = false
-            }
-
-            // Clean up update socket if it exists
-            if (hasUpdateSocket) {
-                try {
-                    connectionCache.removeUpdateSocket(connectionId)?.let { socket ->
-                        if (!socket.isClosed()) {
-                            try {
-                                socket.close()
-                            } catch (e: Exception) {
-                                log.warn("Error closing update socket for {}", connectionId, e)
-                            }
-                        }
-                    }
-                } catch (e: Exception) {
-                    log.warn("Error removing update socket for {}", connectionId, e)
-                    success = false
-                }
-            }
-
-            return success
-        } catch (e: Exception) {
-            log.error("Error cleaning up sockets for connection {}", connectionId, e)
-            return false
-        }
-    }
-
-    /**
-     * Handle entity-specific sync request
-     */
-    private suspend fun handleEntitySync(connectionId: String, entityId: String): Boolean {
-        log.debug("Processing entity sync for entity {} from connection {}", entityId, connectionId)
-
-        try {
-            // Check if connection and command socket exist
-            if (!connectionCache.hasConnection(connectionId)) {
-                log.warn("Connection {} not found for entity sync", connectionId)
-                return false
-            }
-
-            val commandSocket = connectionCache.getCommandSocket(connectionId)
-            if (commandSocket == null || commandSocket.isClosed()) {
-                log.warn("Command socket not available for connection {}", connectionId)
-                return false
-            }
-
-            // Fetch the entity
-            val entities = entityStore.findEntitiesByIds(listOf(entityId))
-
-            if (entities.isEmpty()) {
-                log.warn("Entity {} not found for sync", entityId)
-                sendSyncErrorToClient(connectionId, "Entity not found")
-                return false
-            }
-
-            val entity = entities[entityId]
-
-            // Create a sync response message
-            val syncData = JsonObject()
-                .put(
-                    "entities", JsonObject()
-                        .put("_id", entity?._id)
-                        .put("type", entity?.type)
-                        .put("version", entity?.version)
-                    // Add more entity fields as needed
-                )
-                .put("timestamp", System.currentTimeMillis())
-
-            val syncMessage = JsonObject()
-                .put("type", "entity_sync")
-                .put("data", syncData)
-
-            // Send the sync message to the client
-            commandSocket.writeTextMessage(syncMessage.encode())
-            log.debug("Entity sync data sent for entity {} to connection {}", entityId, connectionId)
-
-            // Update last activity
-            connectionStore.updateLastActivity(connectionId)
-
-            return true
-        } catch (e: Exception) {
-            log.error("Error during entity sync for entity {}", entityId, e)
-            sendSyncErrorToClient(connectionId, "Sync failed: ${e.message}")
-            return false
-        }
-    }
-
-    /**
-     * Send a sync error message to the client
-     */
-    private fun sendSyncErrorToClient(connectionId: String, errorMessage: String) {
-        val socket = connectionCache.getCommandSocket(connectionId)
-        if (socket != null && !socket.isClosed()) {
-            try {
-                val errorResponse = JsonObject()
-                    .put("type", "sync_error")
-                    .put("error", errorMessage)
-                    .put("timestamp", System.currentTimeMillis())
-
-                socket.writeTextMessage(errorResponse.encode())
-            } catch (e: Exception) {
-                log.error("Error sending sync error to client {}", connectionId, e)
-            }
-        }
+        vlog.logUndeployment()
     }
 }

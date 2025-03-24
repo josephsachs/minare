@@ -4,8 +4,10 @@ import com.minare.cache.ConnectionCache
 import com.minare.core.FrameController
 import com.minare.persistence.ChannelStore
 import com.minare.persistence.ContextStore
+import com.minare.utils.VerticleLogger
 import io.vertx.core.eventbus.Message
 import io.vertx.core.json.JsonObject
+import io.vertx.ext.web.Router
 import io.vertx.kotlin.coroutines.CoroutineVerticle
 import io.vertx.kotlin.coroutines.dispatcher
 import kotlinx.coroutines.launch
@@ -24,6 +26,7 @@ class UpdateVerticle @Inject constructor(
 ) : CoroutineVerticle() {
 
     private val log = LoggerFactory.getLogger(UpdateVerticle::class.java)
+    private lateinit var vlog: VerticleLogger
 
     // Update frame controller
     private lateinit var frameController: UpdateFrameController
@@ -43,6 +46,7 @@ class UpdateVerticle @Inject constructor(
         const val ADDRESS_CONNECTION_UPDATES = "minare.connection.updates"
         const val ADDRESS_CONNECTION_ESTABLISHED = "minare.connection.established"
         const val ADDRESS_CONNECTION_CLOSED = "minare.connection.closed"
+        const val ADDRESS_INITIALIZE = "minare.update.initialize"
 
         // Cache TTL in milliseconds
         const val CACHE_TTL_MS = 10000L // 10 seconds
@@ -53,120 +57,170 @@ class UpdateVerticle @Inject constructor(
 
     override suspend fun start() {
         try {
+            // Initialize logger
+            vlog = VerticleLogger(this)
+            vlog.logStartupStep("STARTING")
+
+            // Log config
+            vlog.logConfig(config)
+
             // Initialize frame controller
             frameController = UpdateFrameController()
             frameController.start(DEFAULT_FRAME_INTERVAL_MS)
+            vlog.logStartupStep("FRAME_CONTROLLER_STARTED", mapOf(
+                "frameInterval" to DEFAULT_FRAME_INTERVAL_MS
+            ))
 
             // Register event bus consumers
-            vertx.eventBus().consumer<JsonObject>(ADDRESS_ENTITY_UPDATED, this::handleEntityUpdate)
-            vertx.eventBus().consumer<JsonObject>(ADDRESS_CONNECTION_ESTABLISHED, this::handleConnectionEstablished)
-            vertx.eventBus().consumer<JsonObject>(ADDRESS_CONNECTION_CLOSED, this::handleConnectionClosed)
+            registerEventBusConsumers()
+            vlog.logStartupStep("EVENT_BUS_HANDLERS_REGISTERED")
 
+            // Record deployment ID
+            deploymentID?.let {
+                vlog.logDeployment(it)
+            }
+
+            vlog.logStartupStep("STARTED")
             log.info("UpdateVerticle started with frame interval: {}ms", DEFAULT_FRAME_INTERVAL_MS)
         } catch (e: Exception) {
+            vlog.logVerticleError("STARTUP_FAILED", e)
             log.error("Failed to start UpdateVerticle", e)
             throw e
         }
     }
 
-    override suspend fun stop() {
-        frameController.stop()
-        log.info("UpdateVerticle stopped")
+    /**
+     * Register all event bus consumers
+     */
+    private fun registerEventBusConsumers() {
+        // Create an event bus utils instance for traced messages
+        val eventBusUtils = vlog.createEventBusUtils()
+
+        // Register handler for entity updates
+        eventBusUtils.registerTracedConsumer<JsonObject>(ADDRESS_ENTITY_UPDATED) { message, traceId ->
+            handleEntityUpdate(message, traceId)
+        }
+        vlog.logHandlerRegistration(ADDRESS_ENTITY_UPDATED)
+
+        // Register handler for connection established events
+        eventBusUtils.registerTracedConsumer<JsonObject>(ADDRESS_CONNECTION_ESTABLISHED) { message, traceId ->
+            val connectionId = message.body().getString("connectionId")
+            if (connectionId != null) {
+                // Initialize empty update queue for this connection
+                connectionPendingUpdates[connectionId] = ConcurrentHashMap()
+                vlog.getEventLogger().trace("CONNECTION_TRACKING_INITIALIZED", mapOf(
+                    "connectionId" to connectionId
+                ), traceId)
+            } else {
+                vlog.getEventLogger().trace("CONNECTION_ID_MISSING", emptyMap(), traceId)
+            }
+        }
+        vlog.logHandlerRegistration(ADDRESS_CONNECTION_ESTABLISHED)
+
+        // Register handler for connection closed events
+        eventBusUtils.registerTracedConsumer<JsonObject>(ADDRESS_CONNECTION_CLOSED) { message, traceId ->
+            val connectionId = message.body().getString("connectionId")
+            if (connectionId != null) {
+                // Clean up any pending updates for this connection
+                connectionPendingUpdates.remove(connectionId)
+
+                // Invalidate any channel cache entries containing this connection
+                for ((channelId, entry) in channelConnectionCache) {
+                    val (connections, _) = entry
+                    if (connectionId in connections) {
+                        channelConnectionCache.remove(channelId)
+                    }
+                }
+
+                vlog.getEventLogger().trace("CONNECTION_TRACKING_REMOVED", mapOf(
+                    "connectionId" to connectionId
+                ), traceId)
+            }
+        }
+        vlog.logHandlerRegistration(ADDRESS_CONNECTION_CLOSED)
+
+        // Register handler for initialization
+        eventBusUtils.registerTracedConsumer<JsonObject>(ADDRESS_INITIALIZE) { message, traceId ->
+            // Nothing specific needed here for now
+            val reply = JsonObject().put("success", true)
+                .put("status", "UpdateVerticle initialized")
+            eventBusUtils.tracedReply(message, reply, traceId)
+        }
+        vlog.logHandlerRegistration(ADDRESS_INITIALIZE)
     }
 
     /**
      * Handle an entity update from the change stream.
      */
-    private fun handleEntityUpdate(message: Message<JsonObject>) {
-        launch(vertx.dispatcher()) {
-            try {
-                val entityUpdate = message.body()
-                val entityId = entityUpdate.getString("_id")
+    private suspend fun handleEntityUpdate(message: Message<JsonObject>, traceId: String) {
+        try {
+            val entityUpdate = message.body()
+            val entityId = entityUpdate.getString("_id")
 
-                if (entityId == null) {
-                    log.warn("Received entity update without ID: {}", entityUpdate.encode())
-                    return@launch
-                }
+            if (entityId == null) {
+                vlog.getEventLogger().trace("ENTITY_UPDATE_MISSING_ID", mapOf(
+                    "update" to entityUpdate.encode()
+                ), traceId)
+                return
+            }
 
-                // Get channels for this entity (from cache or database)
-                val channels = getChannelsForEntity(entityId)
+            // Get channels for this entity (from cache or database)
+            val startTime = System.currentTimeMillis()
+            val channels = getChannelsForEntity(entityId)
+            val lookupTime = System.currentTimeMillis() - startTime
 
-                if (channels.isEmpty()) {
-                    // No channels, no need to process further
-                    return@launch
-                }
+            if (lookupTime > 50) {
+                vlog.getEventLogger().logPerformance("CHANNEL_LOOKUP", lookupTime, mapOf(
+                    "entityId" to entityId,
+                    "channelCount" to channels.size
+                ), traceId)
+            }
 
-                // For each channel, get all connections and queue the update
-                val processedConnections = mutableSetOf<String>()
+            if (channels.isEmpty()) {
+                // No channels, no need to process further
+                vlog.getEventLogger().trace("ENTITY_NO_CHANNELS", mapOf(
+                    "entityId" to entityId
+                ), traceId)
+                return
+            }
 
-                for (channelId in channels) {
-                    val connections = getConnectionsForChannel(channelId)
+            // For each channel, get all connections and queue the update
+            val processedConnections = mutableSetOf<String>()
 
-                    for (connectionId in connections) {
-                        // Avoid processing the same connection multiple times
-                        if (connectionId in processedConnections) {
-                            continue
-                        }
+            for (channelId in channels) {
+                val connections = getConnectionsForChannel(channelId)
 
-                        processedConnections.add(connectionId)
-
-                        // Queue update for this connection
-                        queueUpdateForConnection(connectionId, entityId, entityUpdate)
+                for (connectionId in connections) {
+                    // Avoid processing the same connection multiple times
+                    if (connectionId in processedConnections) {
+                        continue
                     }
-                }
 
-                if (processedConnections.isNotEmpty()) {
-                    log.debug("Queued update for entity {} to {} connections",
-                        entityId, processedConnections.size)
+                    processedConnections.add(connectionId)
+
+                    // Queue update for this connection
+                    queueUpdateForConnection(connectionId, entityId, entityUpdate)
                 }
-            } catch (e: Exception) {
-                log.error("Error handling entity update: {}", e.message, e)
             }
+
+            if (processedConnections.isNotEmpty()) {
+                vlog.getEventLogger().trace("UPDATE_QUEUED", mapOf(
+                    "entityId" to entityId,
+                    "connectionCount" to processedConnections.size
+                ), traceId)
+            }
+        } catch (e: Exception) {
+            vlog.logVerticleError("ENTITY_UPDATE_PROCESSING", e, mapOf(
+                "traceId" to traceId
+            ))
         }
     }
 
-    /**
-     * Handle a new connection being established.
-     */
-    private fun handleConnectionEstablished(message: Message<JsonObject>) {
-        val connectionInfo = message.body()
-        val connectionId = connectionInfo.getString("connectionId")
-
-        if (connectionId == null) {
-            log.warn("Received connection established event without connection ID")
-            return
-        }
-
-        // Initialize empty update queue for this connection
-        connectionPendingUpdates[connectionId] = ConcurrentHashMap()
-
-        log.info("Initialized update tracking for new connection: {}", connectionId)
-    }
-
-    /**
-     * Handle a connection being closed.
-     */
-    private fun handleConnectionClosed(message: Message<JsonObject>) {
-        val connectionInfo = message.body()
-        val connectionId = connectionInfo.getString("connectionId")
-
-        if (connectionId == null) {
-            log.warn("Received connection closed event without connection ID")
-            return
-        }
-
-        // Clean up any pending updates for this connection
-        connectionPendingUpdates.remove(connectionId)
-
-        // Invalidate any channel cache entries containing this connection
-        for ((channelId, entry) in channelConnectionCache) {
-            val (connections, _) = entry
-            if (connectionId in connections) {
-                channelConnectionCache.remove(channelId)
-            }
-        }
-
-        log.info("Cleaned up update tracking for closed connection: {}", connectionId)
+    override suspend fun stop() {
+        vlog.logStartupStep("STOPPING")
+        frameController.stop()
+        vlog.logUndeployment()
+        log.info("UpdateVerticle stopped")
     }
 
     /**
@@ -217,7 +271,9 @@ class UpdateVerticle @Inject constructor(
         val channels = try {
             contextStore.getChannelsByEntityId(entityId).toSet()
         } catch (e: Exception) {
-            log.error("Error fetching channels for entity {}: {}", entityId, e.message, e)
+            vlog.logVerticleError("CHANNEL_LOOKUP", e, mapOf(
+                "entityId" to entityId
+            ))
             emptySet()
         }
 
@@ -250,7 +306,9 @@ class UpdateVerticle @Inject constructor(
         val connections = try {
             channelStore.getClientIds(channelId).toSet()
         } catch (e: Exception) {
-            log.error("Error fetching clients for channel {}: {}", channelId, e.message, e)
+            vlog.logVerticleError("CLIENT_LOOKUP", e, mapOf(
+                "channelId" to channelId
+            ))
             emptySet()
         }
 
@@ -268,7 +326,7 @@ class UpdateVerticle @Inject constructor(
             try {
                 processAndSendUpdates()
             } catch (e: Exception) {
-                log.error("Error in update frame processing: {}", e.message, e)
+                vlog.logVerticleError("FRAME_PROCESSING", e)
             }
         }
 
@@ -320,8 +378,10 @@ class UpdateVerticle @Inject constructor(
                                 processingTime > getFrameIntervalMs() / 2 ||
                                 frameCount % 100 == 0L
                         )) {
-                log.info("Frame update: processed {} updates for {} connections in {}ms",
-                    totalUpdatesProcessed, totalConnectionsProcessed, processingTime)
+                vlog.logVerticlePerformance("FRAME_UPDATE", processingTime, mapOf(
+                    "updatesProcessed" to totalUpdatesProcessed,
+                    "connectionsProcessed" to totalConnectionsProcessed
+                ))
             }
         }
     }

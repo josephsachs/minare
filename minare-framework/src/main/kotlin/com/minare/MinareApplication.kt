@@ -70,15 +70,14 @@ abstract class MinareApplication : CoroutineVerticle() {
             vertx.registerVerticleFactory(MinareVerticleFactory(injector))
             log.info("Registered MinareVerticleFactory")
 
-            // Create shared data map for routers
-            vertx.sharedData().getLocalMap<String, Router>("routers")
-
-            // Deploy the command socket verticle first
+            // Deploy the command socket verticle first with configuration
+            // to use its own HTTP server
             val commandSocketOptions = DeploymentOptions()
                 .setWorker(true)
                 .setWorkerPoolName("command-socket-pool")
                 .setWorkerPoolSize(2)  // Adjust based on needs
                 .setInstances(1)  // Only one instance to manage connections centrally
+                .setConfig(JsonObject().put("useOwnHttpServer", true))
 
             commandSocketVerticleDeploymentId = vertx.deployVerticle(
                 "guice:" + CommandSocketVerticle::class.java.name,
@@ -154,35 +153,37 @@ abstract class MinareApplication : CoroutineVerticle() {
                 log.debug("Received entity update notification: ${message.body()}")
             }
 
-            // Set up HTTP server and routes
-            val router = Router.router(vertx)
-            router.route().handler(BodyHandler.create())
-
-            // Store router in shared data for access by CommandSocketVerticle
-            val routerId = "main-router-${java.util.UUID.randomUUID()}"
-            vertx.sharedData().getLocalMap<String, Router>("routers").put(routerId, router)
-
-            // Tell the CommandSocketVerticle to set up its routes on our router
-            vertx.eventBus().request<JsonObject>(
-                CommandSocketVerticle.ADDRESS_REGISTER_WEBSOCKET_HANDLER,
-                JsonObject().put("routerId", routerId)
+            // Initialize the CommandSocketVerticle router
+            val initResult = vertx.eventBus().request<JsonObject>(
+                CommandSocketVerticle.ADDRESS_COMMAND_SOCKET_INITIALIZE,
+                JsonObject()
             ).await()
-            log.info("Registered command socket handler with router")
+
+            if (initResult.body().getBoolean("success", false)) {
+                log.info("CommandSocketVerticle router initialized: {}",
+                    initResult.body().getString("message"))
+            } else {
+                log.error("Failed to initialize CommandSocketVerticle router")
+            }
+
+            // Set up main app HTTP server and routes
+            val mainRouter = Router.router(vertx)
+            mainRouter.route().handler(BodyHandler.create())
 
             // Set up WebSocket route for updates
-            setupUpdateSocketRoute(router)
+            setupUpdateSocketRoute(mainRouter)
 
             // Let implementing class add custom routes
-            setupApplicationRoutes(router)
+            setupApplicationRoutes(mainRouter)
 
-            // Start HTTP server
+            // Start HTTP server for main application routes
             val serverPort = getServerPort()
             httpServer = vertx.createHttpServer()
-                .requestHandler(router)
+                .requestHandler(mainRouter)
                 .listen(serverPort)
                 .await()
 
-            log.info("Server started on port {}", serverPort)
+            log.info("Main application HTTP server started on port {}", serverPort)
 
             // Call application-specific initialization
             onApplicationStart()
@@ -194,7 +195,7 @@ abstract class MinareApplication : CoroutineVerticle() {
     }
 
     /**
-     * Setup update socket route
+     * Setup update socket route directly on the main router
      */
     private fun setupUpdateSocketRoute(router: Router) {
         // Update socket route for server updates
