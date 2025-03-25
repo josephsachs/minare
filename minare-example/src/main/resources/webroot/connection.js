@@ -63,7 +63,7 @@ const createWebSocket = (url, onMessage, options = {}) => {
 export const connectCommandSocket = async (isReconnect = false) => {
   // Get WebSocket base URL
   const baseUrl = config.websocket.getBaseUrl();
-  const url = `${baseUrl}${config.websocket.commandEndpoint}`;
+  const url = `${baseUrl}:{config.websocket.updatePort}${config.websocket.commandEndpoint}`;
 
   logger.info(isReconnect ? 'Reconnecting command socket...' : 'Connecting command socket...');
 
@@ -123,7 +123,7 @@ export const connectUpdateSocket = async () => {
 
   // Get WebSocket base URL
   const baseUrl = config.websocket.getBaseUrl();
-  const url = `${baseUrl}${config.websocket.updateEndpoint}`;
+  const url = `${baseUrl}:{config.websocket.updatePort}${config.websocket.updateEndpoint}`;
 
   logger.info('Connecting update socket...');
 
@@ -336,9 +336,11 @@ export const reconnectConfig = {
       return `${wsProtocol}//${window.location.host}`;
     },
     // Command socket endpoint
-    commandEndpoint: '/ws',
+    commandEndpoint: '/',
+    commandPort: 4225,
     // Update socket endpoint
-    updateEndpoint: '/ws/updates',
+    updateEndpoint: '/',
+    updatePort: 4226,
     // Reconnection settings
     reconnect: {
       enabled: true,

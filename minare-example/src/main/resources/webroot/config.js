@@ -10,9 +10,11 @@ export const config = {
       return `${wsProtocol}//${window.location.host}`;
     },
     // Command socket endpoint
-    commandEndpoint: '/ws',
+    commandEndpoint: '/',
+    commandPort: "4225",
     // Update socket endpoint
-    updateEndpoint: '/ws/updates',
+    updateEndpoint: '/',
+    updatePort: "4226",
     // Reconnection settings
     reconnect: {
       enabled: false,

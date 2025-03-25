@@ -61,10 +61,9 @@ class CommandSocketVerticle @Inject constructor(
     private var deployedAt: Long = 0
     private var httpServerVerticleId: String? = null
     private var useOwnHttpServer: Boolean = false
-    private var httpServerPort: Int = 8080 // Default port if using own server
+    private var httpServerPort: Int = 4225
 
     companion object {
-        // Event bus addresses
         const val ADDRESS_COMMAND_SOCKET_INITIALIZE = "minare.command.socket.initialize"
         const val ADDRESS_COMMAND_SOCKET_HANDLE = "minare.command.socket.handle"
         const val ADDRESS_COMMAND_SOCKET_CLOSE = "minare.command.socket.close"
@@ -77,8 +76,6 @@ class CommandSocketVerticle @Inject constructor(
 
         // Extended handshake timeout from 500ms to 3000ms (3 seconds)
         const val HANDSHAKE_TIMEOUT_MS = 3000L
-
-        // Heartbeat interval of 15 seconds
         const val HEARTBEAT_INTERVAL_MS = 15000L
 
         // Base path for command socket routes
@@ -98,7 +95,7 @@ class CommandSocketVerticle @Inject constructor(
         router = Router.router(vertx)
         vlog.logStartupStep("ROUTER_CREATED")
 
-        useOwnHttpServer = config.getBoolean("useOwnHttpServer", false)
+        useOwnHttpServer = config.getBoolean("useOwnHttpServer", true)
 
         log.info("CommandSocketVerticle configured with useOwnHttpServer={}", useOwnHttpServer)
 
@@ -224,7 +221,7 @@ class CommandSocketVerticle @Inject constructor(
 
         try {
             // Get configuration - use a different port than main server
-            httpServerPort = config.getInteger("httpPort", 8080)
+            httpServerPort = config.getInteger("httpPort", 4225)
             val httpHost = config.getString("httpHost", "0.0.0.0")
 
             log.info("Starting own HTTP server on $httpHost:$httpServerPort")

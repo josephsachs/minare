@@ -49,8 +49,8 @@ class UpdateVerticle @Inject constructor(
     // Track deployment data
     private var deployedAt: Long = 0
     private var httpServerVerticleId: String? = null
-    private var useOwnHttpServer: Boolean = false
-    private var httpServerPort: Int = 8080
+    private var useOwnHttpServer: Boolean = true
+    private var httpServerPort: Int = 4226
 
     companion object {
         // Event bus addresses
