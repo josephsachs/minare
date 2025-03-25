@@ -53,7 +53,7 @@ class CommandVerticle @Inject constructor(
 
     // Track deployment data
     private var deployedAt: Long = 0
-    private var useOwnHttpServer: Boolean = false
+    private var useOwnHttpServer: Boolean = true
     private var httpServerPort: Int = 4225
     private var httpServerHost: String = "0.0.0.0"
 
@@ -68,11 +68,9 @@ class CommandVerticle @Inject constructor(
         const val ADDRESS_REGISTER_WEBSOCKET_HANDLER = "minare.register.websocket.handler"
         const val ADDRESS_GET_ROUTER = "minare.command.socket.get.router"
 
-        // Extended handshake timeout from 500ms to 3000ms (3 seconds)
         const val HANDSHAKE_TIMEOUT_MS = 3000L
         const val HEARTBEAT_INTERVAL_MS = 15000L
 
-        // Base path for command socket routes
         const val BASE_PATH = "/command"
     }
 

@@ -100,23 +100,22 @@ export const handleCommandSocketMessage = (event) => {
       logger.command(`Received command message type: ${message.type}`);
     }
 
-    if (message.type === 'connection_confirm') {
-      // Store connection ID
-      store.setConnectionId(message.connectionId);
-      logger.info(`Connection established with ID: ${message.connectionId}`);
+    switch (message.type)
+      case 'connection_confirm':
+          store.setConnectionId(message.connectionId);
+          logger.info(`Connection established with ID: ${message.connectionId}`);
+          connectUpdateSocket();
+          break;
 
-      // Connect the update socket now that we have a connection ID
-      connectUpdateSocket();
-    } else if (message.type === 'reconnect_response') {
-      // Handle reconnection response
+    case 'reconnect_response':
       if (message.success) {
         logger.info(`Reconnection successful with ID: ${store.getConnectionId()}`);
       } else {
         logger.error(`Reconnection failed: ${message.error || 'Unknown error'}`);
-        // The server should have already created a new connection for us
       }
-    } else if (message.type === 'heartbeat') {
-      // Handle heartbeat from server - send heartbeat response
+      break;
+
+    case 'heartbeat':
       const response = {
         type: 'heartbeat_response',
         timestamp: message.timestamp,
@@ -126,39 +125,40 @@ export const handleCommandSocketMessage = (event) => {
       const commandSocket = store.getCommandSocket();
       if (commandSocket && commandSocket.readyState === WebSocket.OPEN) {
         commandSocket.send(JSON.stringify(response));
-
-        // Only log occasionally to reduce noise
         if (Math.random() < 0.05) { // Log roughly 5% of heartbeats
           logger.debug(`Received server heartbeat, responded with timestamp ${response.clientTimestamp}`);
         }
       }
 
-      // Update last activity time
       store.updateLastActivity();
-    } else if (message.type === 'initial_sync_complete') {
+      break;
+
+    case 'initial_sync_complete':
       logger.info('Initial sync complete');
-    } else if (message.type === 'sync') {
-      // Process entity updates from sync message efficiently
+      break;
+
+    case 'sync':
       if (message.data && message.data.entities) {
         logger.info(`Queueing ${message.data.entities.length} entity updates from command sync`);
         queueEntityUpdates(message.data.entities, true);
       }
-    } else if (message.type === 'mutation_response' || message.type === 'mutation_success') {
-      // Process mutation response efficiently
-      logger.info(`Received mutation response for entity: ${message.entity?._id}`);
+      break;
 
-      // Only queue if we have an entity
+    case 'mutation_response':
+    case 'mutation_success':
+      logger.info(`Received mutation response for entity: ${message.entity?._id}`);
       if (message.entity) {
         queueEntityUpdates([message.entity], true);
       }
-    } else if (message.type === 'pong' || message.type === 'ping_response') {
-      // Handle ping responses
-      logger.info(`Received ping response: ${message.timestamp ? `latency=${Date.now() - message.timestamp}ms` : 'no timestamp'}`);
-    } else if (message.type === 'reconnect_update_socket') {
-      // Handle server request to reconnect update socket
-      logger.info(`Server requested update socket reconnection at ${message.timestamp}`);
+      break;
 
-      // Close the existing update socket if it exists
+    case 'pong':
+    case 'ping_response':
+      logger.info(`Received ping response: ${message.timestamp ? `latency=${Date.now() - message.timestamp}ms` : 'no timestamp'}`);
+      break;
+
+    case 'reconnect_update_socket':
+      logger.info(`Server requested update socket reconnection at ${message.timestamp}`);
       const updateSocket = store.getUpdateSocket();
       if (updateSocket) {
         try {
@@ -177,9 +177,14 @@ export const handleCommandSocketMessage = (event) => {
       connectUpdateSocket()
         .then(() => logger.info('Update socket reconnected successfully'))
         .catch(err => logger.error(`Failed to reconnect update socket: ${err.message}`));
-    } else {
+
+      break;
+
+    default:
       logger.info(`Unhandled command message type: ${message.type}`);
+      break;
     }
+
   } catch (error) {
     logger.error(`Error processing command message: ${error.message}`);
   }
