@@ -100,89 +100,89 @@ export const handleCommandSocketMessage = (event) => {
       logger.command(`Received command message type: ${message.type}`);
     }
 
-    switch (message.type)
+    switch (message.type) {
       case 'connection_confirm':
           store.setConnectionId(message.connectionId);
           logger.info(`Connection established with ID: ${message.connectionId}`);
           connectUpdateSocket();
           break;
 
-    case 'reconnect_response':
-      if (message.success) {
-        logger.info(`Reconnection successful with ID: ${store.getConnectionId()}`);
-      } else {
-        logger.error(`Reconnection failed: ${message.error || 'Unknown error'}`);
-      }
-      break;
-
-    case 'heartbeat':
-      const response = {
-        type: 'heartbeat_response',
-        timestamp: message.timestamp,
-        clientTimestamp: Date.now()
-      };
-
-      const commandSocket = store.getCommandSocket();
-      if (commandSocket && commandSocket.readyState === WebSocket.OPEN) {
-        commandSocket.send(JSON.stringify(response));
-        if (Math.random() < 0.05) { // Log roughly 5% of heartbeats
-          logger.debug(`Received server heartbeat, responded with timestamp ${response.clientTimestamp}`);
-        }
-      }
-
-      store.updateLastActivity();
-      break;
-
-    case 'initial_sync_complete':
-      logger.info('Initial sync complete');
-      break;
-
-    case 'sync':
-      if (message.data && message.data.entities) {
-        logger.info(`Queueing ${message.data.entities.length} entity updates from command sync`);
-        queueEntityUpdates(message.data.entities, true);
-      }
-      break;
-
-    case 'mutation_response':
-    case 'mutation_success':
-      logger.info(`Received mutation response for entity: ${message.entity?._id}`);
-      if (message.entity) {
-        queueEntityUpdates([message.entity], true);
-      }
-      break;
-
-    case 'pong':
-    case 'ping_response':
-      logger.info(`Received ping response: ${message.timestamp ? `latency=${Date.now() - message.timestamp}ms` : 'no timestamp'}`);
-      break;
-
-    case 'reconnect_update_socket':
-      logger.info(`Server requested update socket reconnection at ${message.timestamp}`);
-      const updateSocket = store.getUpdateSocket();
-      if (updateSocket) {
-        try {
-          if (updateSocket.readyState === WebSocket.OPEN ||
-              updateSocket.readyState === WebSocket.CONNECTING) {
-            logger.info('Closing existing update socket before reconnection');
-            updateSocket.close();
+        case 'reconnect_response':
+          if (message.success) {
+            logger.info(`Reconnection successful with ID: ${store.getConnectionId()}`);
+          } else {
+            logger.error(`Reconnection failed: ${message.error || 'Unknown error'}`);
           }
-          store.setUpdateSocket(null);
-        } catch (e) {
-          logger.error(`Error closing existing update socket: ${e.message}`);
-        }
-      }
+          break;
 
-      // Reconnect the update socket
-      connectUpdateSocket()
-        .then(() => logger.info('Update socket reconnected successfully'))
-        .catch(err => logger.error(`Failed to reconnect update socket: ${err.message}`));
+        case 'heartbeat':
+          const response = {
+            type: 'heartbeat_response',
+            timestamp: message.timestamp,
+            clientTimestamp: Date.now()
+          };
 
-      break;
+          const commandSocket = store.getCommandSocket();
+          if (commandSocket && commandSocket.readyState === WebSocket.OPEN) {
+            commandSocket.send(JSON.stringify(response));
+            if (Math.random() < 0.05) { // Log roughly 5% of heartbeats
+              logger.debug(`Received server heartbeat, responded with timestamp ${response.clientTimestamp}`);
+            }
+          }
 
-    default:
-      logger.info(`Unhandled command message type: ${message.type}`);
-      break;
+          store.updateLastActivity();
+          break;
+
+        case 'initial_sync_complete':
+          logger.info('Initial sync complete');
+          break;
+
+        case 'sync':
+          if (message.data && message.data.entities) {
+            logger.info(`Queueing ${message.data.entities.length} entity updates from command sync`);
+            queueEntityUpdates(message.data.entities, true);
+          }
+          break;
+
+        case 'mutation_response':
+        case 'mutation_success':
+          logger.info(`Received mutation response for entity: ${message.entity?._id}`);
+          if (message.entity) {
+            queueEntityUpdates([message.entity], true);
+          }
+          break;
+
+        case 'pong':
+        case 'ping_response':
+          logger.info(`Received ping response: ${message.timestamp ? `latency=${Date.now() - message.timestamp}ms` : 'no timestamp'}`);
+          break;
+
+        case 'reconnect_update_socket':
+          logger.info(`Server requested update socket reconnection at ${message.timestamp}`);
+          const updateSocket = store.getUpdateSocket();
+          if (updateSocket) {
+            try {
+              if (updateSocket.readyState === WebSocket.OPEN ||
+                  updateSocket.readyState === WebSocket.CONNECTING) {
+                logger.info('Closing existing update socket before reconnection');
+                updateSocket.close();
+              }
+              store.setUpdateSocket(null);
+            } catch (e) {
+              logger.error(`Error closing existing update socket: ${e.message}`);
+            }
+          }
+
+          // Reconnect the update socket
+          connectUpdateSocket()
+            .then(() => logger.info('Update socket reconnected successfully'))
+            .catch(err => logger.error(`Failed to reconnect update socket: ${err.message}`));
+
+          break;
+
+        default:
+          logger.info(`Unhandled command message type: ${message.type}`);
+          break;
     }
 
   } catch (error) {
