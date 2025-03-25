@@ -411,7 +411,6 @@ class CommandVerticle @Inject constructor(
                 )
             )
 
-            // Check if connection exists and is reconnectable
             val exists = connectionStore.exists(connectionId)
             if (!exists) {
                 vlog.getEventLogger().trace(
@@ -426,7 +425,7 @@ class CommandVerticle @Inject constructor(
                 return
             }
 
-            // Find the connection to check reconnectable flag
+            // We might be trying to connect the not-reconnectable
             val connection = connectionStore.find(connectionId)
 
             if (!connection.reconnectable) {
@@ -442,7 +441,6 @@ class CommandVerticle @Inject constructor(
                 return
             }
 
-            // Check last activity timestamp to see if within reconnection window
             val now = System.currentTimeMillis()
             val inactiveMs = now - connection.lastActivity
             val reconnectWindowMs = CleanupVerticle.CONNECTION_RECONNECT_WINDOW_MS
@@ -485,8 +483,10 @@ class CommandVerticle @Inject constructor(
             connectionCache.storeCommandSocket(connectionId, websocket, connection)
             connectionTracker.registerConnection(connectionId, reconnectTraceId, websocket)
 
-            // Update the connection record with new socket ID and activity time
+            // Create the actual update socket ID
             val socketId = "cs-${java.util.UUID.randomUUID()}"
+
+            // We arrived, update the database with our new socket ID
             val updatedConnection = connectionStore.updateSocketIds(
                 connectionId,
                 socketId,
@@ -498,13 +498,9 @@ class CommandVerticle @Inject constructor(
                 mapOf("connectionId" to connectionId, "socketId" to socketId), reconnectTraceId
             )
 
-            // Send confirmation to the client
             sendReconnectionResponse(websocket, true, null)
-
-            // Start heartbeat for this connection
             heartbeatManager.startHeartbeat(connectionId, websocket)
 
-            // If connection has both sockets again, mark as fully connected
             if (connectionCache.isFullyConnected(connectionId)) {
                 vlog.getEventLogger().logStateChange(
                     "Connection", "RECONNECTED", "FULLY_CONNECTED",
@@ -557,7 +553,6 @@ class CommandVerticle @Inject constructor(
      */
     private suspend fun initiateConnection(websocket: ServerWebSocket, traceId: String) {
         try {
-            // Log DB operation about to happen
             vlog.getEventLogger().logDbOperation("CREATE", "connections", emptyMap(), traceId)
 
             val startTime = System.currentTimeMillis()
@@ -570,11 +565,9 @@ class CommandVerticle @Inject constructor(
                 mapOf("connectionId" to connection._id), traceId
             )
 
-            // Store in cache
             connectionCache.storeConnection(connection)
             connectionTracker.registerConnection(connection._id, traceId, websocket)
 
-            // Log connection creation event
             vlog.getEventLogger().logStateChange(
                 "Connection", "NONE", "CREATED",
                 mapOf("connectionId" to connection._id), traceId
@@ -583,13 +576,11 @@ class CommandVerticle @Inject constructor(
             // Generate a command socket ID
             val commandSocketId = "cs-${java.util.UUID.randomUUID()}"
 
-            // Log DB operation about to happen
             vlog.getEventLogger().logDbOperation(
                 "UPDATE", "connections",
                 mapOf("connectionId" to connection._id, "action" to "update_socket_ids"), traceId
             )
 
-            // Update the connection in the database
             val updatedConnection = connectionStore.updateSocketIds(
                 connection._id,
                 commandSocketId,
@@ -598,22 +589,16 @@ class CommandVerticle @Inject constructor(
 
             // IMPORTANT: Update the cache with the updated connection
             connectionCache.storeConnection(updatedConnection)
-
-            // Register command socket
             connectionCache.storeCommandSocket(connection._id, websocket, updatedConnection)
 
-            // Log successful socket registration
             vlog.getEventLogger().logWebSocketEvent(
                 "SOCKET_REGISTERED", connection._id,
                 mapOf("socketType" to "command", "socketId" to commandSocketId), traceId
             )
 
             WebSocketUtils.sendConfirmation(websocket, "connection_confirm", connection._id)
-
-            // Start heartbeat for this connection
             heartbeatManager.startHeartbeat(connection._id, websocket)
 
-            // Log successful connection completion
             vlog.getEventLogger().trace(
                 "CONNECTION_ESTABLISHED",
                 mapOf("connectionId" to connection._id), traceId
@@ -646,14 +631,11 @@ class CommandVerticle @Inject constructor(
         )
 
         try {
-            // Update last activity timestamp
             connectionStore.updateLastActivity(connectionId)
 
-            // Check for heartbeat response
             if (message.getString("type") == "heartbeat_response") {
                 heartbeatManager.handleHeartbeatResponse(connectionId, message)
             } else {
-                // Process regular message
                 messageHandler.handle(connectionId, message)
             }
 
@@ -673,16 +655,11 @@ class CommandVerticle @Inject constructor(
      * Handle a socket being closed
      */
     private suspend fun handleClose(websocket: ServerWebSocket) {
-        val connectionId = connectionTracker.getConnectionId(websocket)
-        if (connectionId == null) return
-
+        val connectionId = connectionTracker.getConnectionId(websocket) ?: return
         val traceId = connectionTracker.getTraceId(connectionId)
 
         try {
-            // Stop the heartbeat
             heartbeatManager.stopHeartbeat(connectionId)
-
-            // Set it as reconnectable for the reconnection window
             connectionStore.updateReconnectable(connectionId, true)
 
             // Remove socket from cache but don't delete connection yet

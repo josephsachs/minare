@@ -37,36 +37,24 @@ class UpdateVerticle @Inject constructor(
     private lateinit var vlog: VerticleLogger
     private lateinit var eventBusUtils: EventBusUtils
 
-    // Router for update socket endpoints
     private lateinit var router: Router
 
-    // Core utility managers
     private lateinit var heartbeatManager: HeartbeatManager
     private lateinit var connectionTracker: ConnectionTracker
 
-    // HTTP server
     private var httpServer: HttpServer? = null
 
-    // Update frame controller
     private lateinit var frameController: UpdateFrameController
-
-    // Cache of entity to channel mappings with TTL (entity ID -> channel IDs)
     private val entityChannelCache = ConcurrentHashMap<String, Pair<Set<String>, Long>>()
-
-    // Cache of channel to connection mappings with TTL (channel ID -> connection IDs)
     private val channelConnectionCache = ConcurrentHashMap<String, Pair<Set<String>, Long>>()
-
-    // Accumulated updates for each connection (connection ID -> entity updates)
     private val connectionPendingUpdates = ConcurrentHashMap<String, MutableMap<String, JsonObject>>()
 
-    // Track deployment data
     private var deployedAt: Long = 0
     private var useOwnHttpServer: Boolean = true
     private var httpServerPort: Int = 4226
     private var httpServerHost: String = "0.0.0.0"
 
     companion object {
-        // Event bus addresses
         const val ADDRESS_ENTITY_UPDATED = "minare.entity.update"
         const val ADDRESS_CONNECTION_ESTABLISHED = "minare.connection.established"
         const val ADDRESS_CONNECTION_CLOSED = "minare.connection.closed"
@@ -74,12 +62,8 @@ class UpdateVerticle @Inject constructor(
         const val ADDRESS_UPDATE_SOCKET_CLOSE = "minare.update.socket.close"
         const val ADDRESS_INITIALIZE = "minare.update.initialize"
 
-        // Cache TTL in milliseconds
         const val CACHE_TTL_MS = 10000L // 10 seconds
-
         const val HEARTBEAT_INTERVAL_MS = 15000L
-
-        // Default frame interval
         const val DEFAULT_FRAME_INTERVAL_MS = 100 // 10 frames per second
     }
 
@@ -88,9 +72,9 @@ class UpdateVerticle @Inject constructor(
             deployedAt = System.currentTimeMillis()
             log.info("Starting UpdateVerticle at {$deployedAt}")
 
-            // Initialize logging and utility managers
             vlog = VerticleLogger(this)
             eventBusUtils = vlog.createEventBusUtils()
+
             connectionTracker = ConnectionTracker("UpdateSocket", vlog)
             heartbeatManager = HeartbeatManager(vertx, vlog, connectionStore, CoroutineScope(vertx.dispatcher()))
             heartbeatManager.setHeartbeatInterval(CommandVerticle.HEARTBEAT_INTERVAL_MS)
@@ -98,15 +82,11 @@ class UpdateVerticle @Inject constructor(
             vlog.logStartupStep("STARTING")
             vlog.logConfig(config)
 
-            // Get config
             useOwnHttpServer = config.getBoolean("useOwnHttpServer", true)
             httpServerPort = config.getInteger("httpPort", 4226)
             httpServerHost = config.getString("httpHost", "0.0.0.0")
-
-            // Initialize the router
             initializeRouter()
 
-            // Initialize frame controller
             frameController = UpdateFrameController()
             frameController.start(DEFAULT_FRAME_INTERVAL_MS)
             log.info("Started FrameController at {${System.currentTimeMillis()}}")
@@ -117,7 +97,6 @@ class UpdateVerticle @Inject constructor(
             registerEventBusConsumers()
             vlog.logStartupStep("EVENT_BUS_HANDLERS_REGISTERED")
 
-            // Deploy HTTP server if configured to use own server
             if (useOwnHttpServer) {
                 deployOwnHttpServer()
             }
@@ -140,7 +119,6 @@ class UpdateVerticle @Inject constructor(
      * Initialize the router with update socket routes
      */
     private fun initializeRouter() {
-        // Create the router using the utility
         router = HttpServerUtils.createWebSocketRouter(
             vertx = vertx,
             verticleName = "UpdateVerticle",
@@ -172,7 +150,6 @@ class UpdateVerticle @Inject constructor(
         vlog.logStartupStep("DEPLOYING_OWN_HTTP_SERVER")
 
         try {
-            // Use the utility to create and start the server
             httpServer = HttpServerUtils.createAndStartHttpServer(
                 vertx = vertx,
                 router = router,
@@ -189,7 +166,6 @@ class UpdateVerticle @Inject constructor(
             vlog.logVerticleError("DEPLOY_HTTP_SERVER", e)
             log.error("Failed to deploy HTTP server", e)
 
-            // Fall back to using the main application's HTTP server
             useOwnHttpServer = false
             throw e
         }
@@ -209,8 +185,8 @@ class UpdateVerticle @Inject constructor(
         eventBusUtils.registerTracedConsumer<JsonObject>(ADDRESS_CONNECTION_ESTABLISHED) { message, traceId ->
             val connectionId = message.body().getString("connectionId")
             if (connectionId != null) {
-                // Only initialize if not initialized yet
                 connectionPendingUpdates.computeIfAbsent(connectionId) { ConcurrentHashMap() }
+
                 vlog.getEventLogger().trace("CONNECTION_TRACKING_INITIALIZED", mapOf(
                     "connectionId" to connectionId
                 ), traceId)
@@ -222,10 +198,7 @@ class UpdateVerticle @Inject constructor(
         eventBusUtils.registerTracedConsumer<JsonObject>(ADDRESS_CONNECTION_CLOSED) { message, traceId ->
             val connectionId = message.body().getString("connectionId")
             if (connectionId != null) {
-                // Clean up any pending updates for this connection
                 connectionPendingUpdates.remove(connectionId)
-
-                // Invalidate any channel cache entries containing this connection
                 invalidateChannelCacheForConnection(connectionId)
 
                 vlog.getEventLogger().trace("CONNECTION_TRACKING_REMOVED", mapOf(
@@ -234,8 +207,6 @@ class UpdateVerticle @Inject constructor(
             }
         }
         vlog.logHandlerRegistration(ADDRESS_CONNECTION_CLOSED)
-
-        // Additional event bus handlers...
     }
 
     /**
@@ -256,7 +227,6 @@ class UpdateVerticle @Inject constructor(
     private suspend fun handleUpdateSocket(websocket: ServerWebSocket, traceId: String) {
         log.info("New update socket connection from {}", websocket.remoteAddress())
 
-        // Set up text message handler to process the connectionId association
         websocket.textMessageHandler { message ->
             CoroutineScope(vertx.dispatcher()).launch {
                 try {
@@ -279,7 +249,6 @@ class UpdateVerticle @Inject constructor(
             }
         }
 
-        // Set up close handler
         websocket.closeHandler {
             CoroutineScope(vertx.dispatcher()).launch {
                 handleSocketClose(websocket)
