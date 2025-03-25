@@ -7,7 +7,9 @@ import com.minare.example.core.models.NodeGraphBuilder
 import io.vertx.core.buffer.Buffer
 import io.vertx.core.http.HttpHeaders
 import io.vertx.ext.web.Router
+import io.vertx.ext.web.handler.BodyHandler
 import io.vertx.ext.web.handler.StaticHandler
+import io.vertx.kotlin.coroutines.await
 import org.slf4j.LoggerFactory
 import javax.inject.Inject
 
@@ -47,7 +49,20 @@ class ExampleApplication : MinareApplication() {
     }
 
     // This is the single implementation of the route setup method
-    override fun setupApplicationRoutes(router: Router) {
+    override suspend fun setupApplicationRoutes() {
+        // Set up main app HTTP server and routes
+        val router = Router.router(vertx)
+        router.route().handler(BodyHandler.create())
+
+        // Start HTTP server for main application routes
+        val serverPort = 8080
+        httpServer = vertx.createHttpServer()
+            .requestHandler(router)
+            .listen(serverPort)
+            .await()
+
+        log.info("Main application HTTP server started on port {}", serverPort)
+
         val staticHandler = StaticHandler.create()
             .setCachingEnabled(false)  // Disable caching during development
             .setDefaultContentEncoding("UTF-8")

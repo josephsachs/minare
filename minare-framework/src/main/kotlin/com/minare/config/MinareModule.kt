@@ -14,7 +14,7 @@ import com.minare.core.websocket.CommandMessageHandler
 import com.minare.core.websocket.UpdateSocketManager
 import com.minare.worker.MinareVerticleFactory
 import com.minare.persistence.*
-import com.minare.worker.CommandSocketVerticle
+import com.minare.worker.CommandVerticle
 import io.vertx.core.Vertx
 import io.vertx.core.impl.logging.LoggerFactory
 import io.vertx.core.json.JsonObject
@@ -65,7 +65,7 @@ class MinareModule : AbstractModule(), DatabaseNameProvider {
         bind(ChangeStreamWorkerVerticle::class.java)
         bind(MutationVerticle::class.java)
         bind(UpdateVerticle::class.java)
-        bind(CommandSocketVerticle::class.java)
+        bind(CommandVerticle::class.java)
     }
 
     /**

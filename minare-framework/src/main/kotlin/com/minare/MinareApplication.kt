@@ -4,27 +4,26 @@ import com.google.inject.*
 import com.google.inject.name.Names
 import com.minare.config.*
 import com.minare.worker.ChangeStreamWorkerVerticle
-import com.minare.worker.CommandSocketVerticle
+import com.minare.worker.CommandVerticle
 import com.minare.worker.CleanupVerticle
 import com.minare.worker.MutationVerticle
 import com.minare.worker.UpdateVerticle
 import com.minare.core.websocket.UpdateSocketManager
 import com.minare.persistence.DatabaseInitializer
+import com.minare.utils.EventBusUtils
+import com.minare.utils.VerticleLogger
 import com.minare.worker.MinareVerticleFactory
 import io.vertx.core.DeploymentOptions
 import io.vertx.core.Vertx
 import io.vertx.core.VertxOptions
 import io.vertx.core.http.HttpServer
 import io.vertx.core.json.JsonObject
-import io.vertx.ext.web.Router
-import io.vertx.ext.web.handler.BodyHandler
 import io.vertx.kotlin.coroutines.CoroutineVerticle
 import io.vertx.kotlin.coroutines.await
 import io.vertx.spi.cluster.hazelcast.HazelcastClusterManager
 import kotlinx.coroutines.runBlocking
 import org.slf4j.LoggerFactory
 import javax.inject.Inject
-import javax.inject.Named
 import kotlin.system.exitProcess
 
 /**
@@ -33,9 +32,8 @@ import kotlin.system.exitProcess
  */
 abstract class MinareApplication : CoroutineVerticle() {
     private val log = LoggerFactory.getLogger(MinareApplication::class.java)
-
-    @Inject
-    lateinit var updateSocketManager: UpdateSocketManager
+    private lateinit var vlog: VerticleLogger
+    private lateinit var eventBusUtils: EventBusUtils
 
     @Inject
     lateinit var databaseInitializer: DatabaseInitializer
@@ -46,12 +44,12 @@ abstract class MinareApplication : CoroutineVerticle() {
     // Track the deployment IDs of our worker verticles
     private var changeStreamWorkerDeploymentId: String? = null
     private var mutationVerticleDeploymentId: String? = null
-    private var commandSocketVerticleDeploymentId: String? = null
+    private var commandVerticleDeploymentId: String? = null
     private var cleanupVerticleDeploymentId: String? = null
     private var updateVerticleDeploymentId: String? = null
 
     // Main HTTP server
-    private var httpServer: HttpServer? = null
+    var httpServer: HttpServer? = null
 
     /**
      * Main startup method. Initializes the dependency injection,
@@ -59,19 +57,14 @@ abstract class MinareApplication : CoroutineVerticle() {
      */
     override suspend fun start() {
         try {
-            // Initialize database
             databaseInitializer.initialize()
             log.info("Database initialized successfully")
 
-            // Deploy verticles with multiple instances based on core count
             val processorCount = Runtime.getRuntime().availableProcessors()
 
-            // Register the Guice Verticle Factory
             vertx.registerVerticleFactory(MinareVerticleFactory(injector))
             log.info("Registered MinareVerticleFactory")
 
-            // Deploy the command socket verticle first with configuration
-            // to use its own HTTP server
             val commandSocketOptions = DeploymentOptions()
                 .setWorker(true)
                 .setWorkerPoolName("command-socket-pool")
@@ -79,11 +72,11 @@ abstract class MinareApplication : CoroutineVerticle() {
                 .setInstances(1) // Only one instance to manage connections centrally
                 .setConfig(JsonObject().put("useOwnHttpServer", true))
 
-            commandSocketVerticleDeploymentId = vertx.deployVerticle(
-                "guice:" + CommandSocketVerticle::class.java.name,
+            commandVerticleDeploymentId = vertx.deployVerticle(
+                "guice:" + CommandVerticle::class.java.name,
                 commandSocketOptions
             ).await()
-            log.info("Command socket verticle deployed with ID: $commandSocketVerticleDeploymentId")
+            log.info("Command socket verticle deployed with ID: $commandVerticleDeploymentId")
 
             // Deploy the UpdateVerticle for frame-based update processing
             val updateVerticleOptions = DeploymentOptions()
@@ -155,7 +148,7 @@ abstract class MinareApplication : CoroutineVerticle() {
 
             // Initialize the CommandSocketVerticle router
             val initResult = vertx.eventBus().request<JsonObject>(
-                CommandSocketVerticle.ADDRESS_COMMAND_SOCKET_INITIALIZE,
+                CommandVerticle.ADDRESS_COMMAND_SOCKET_INITIALIZE,
                 JsonObject()
             ).await()
 
@@ -166,24 +159,8 @@ abstract class MinareApplication : CoroutineVerticle() {
                 log.error("Failed to initialize CommandSocketVerticle router")
             }
 
-            // Set up main app HTTP server and routes
-            val mainRouter = Router.router(vertx)
-            mainRouter.route().handler(BodyHandler.create())
-
-            // Set up WebSocket route for updates
-            setupUpdateSocketRoute(mainRouter)
-
             // Let implementing class add custom routes
-            setupApplicationRoutes(mainRouter)
-
-            // Start HTTP server for main application routes
-            val serverPort = getServerPort()
-            httpServer = vertx.createHttpServer()
-                .requestHandler(mainRouter)
-                .listen(serverPort)
-                .await()
-
-            log.info("Main application HTTP server started on port {}", serverPort)
+            setupApplicationRoutes()
 
             // Call application-specific initialization
             onApplicationStart()
@@ -195,35 +172,10 @@ abstract class MinareApplication : CoroutineVerticle() {
     }
 
     /**
-     * Setup update socket route directly on the main router
-     */
-    private fun setupUpdateSocketRoute(router: Router) {
-        // Update socket route for server updates
-        router.route("/ws/updates").handler { context ->
-            context.request().toWebSocket()
-                .onSuccess(updateSocketManager)
-                .onFailure { err ->
-                    log.error("Update WebSocket upgrade failed", err)
-                    context.response()
-                        .setStatusCode(400)
-                        .end("Update WebSocket upgrade failed")
-                }
-        }
-    }
-
-    /**
      * Override to add application-specific HTTP routes.
      */
-    protected open fun setupApplicationRoutes(router: Router) {
+    protected open suspend fun setupApplicationRoutes() {
         // Default implementation does nothing
-    }
-
-    /**
-     * Override to customize the server port.
-     * Default is 8080.
-     */
-    protected open fun getServerPort(): Int {
-        return 8080
     }
 
     /**
@@ -240,9 +192,9 @@ abstract class MinareApplication : CoroutineVerticle() {
     override suspend fun stop() {
         try {
             // Undeploy the command socket verticle
-            if (commandSocketVerticleDeploymentId != null) {
+            if (commandVerticleDeploymentId != null) {
                 try {
-                    vertx.undeploy(commandSocketVerticleDeploymentId).await()
+                    vertx.undeploy(commandVerticleDeploymentId).await()
                     log.info("Command socket verticle undeployed successfully")
                 } catch (e: Exception) {
                     log.error("Error undeploying command socket verticle", e)

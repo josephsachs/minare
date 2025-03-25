@@ -198,7 +198,7 @@ class CleanupVerticle @Inject constructor(
 
             // Then use the controller to clean up
             val result = vertx.eventBus().request<JsonObject>(
-                CommandSocketVerticle.ADDRESS_CONNECTION_CLEANUP,
+                CommandVerticle.ADDRESS_CONNECTION_CLEANUP,
                 JsonObject().put("connectionId", connectionId)
             ).await().body().getBoolean("success", false)
 

@@ -3,13 +3,9 @@ package com.minare.controller
 import com.minare.cache.ConnectionCache
 import com.minare.core.models.Connection
 import com.minare.utils.EntityGraph
-import com.minare.worker.CommandSocketVerticle
+import com.minare.worker.CommandVerticle
 import io.vertx.core.http.ServerWebSocket
 import io.vertx.core.json.JsonObject
-import io.vertx.kotlin.coroutines.await
-import io.vertx.kotlin.coroutines.dispatcher
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.launch
 import org.slf4j.LoggerFactory
 import com.minare.core.entity.ReflectionCache
 import com.minare.persistence.*
@@ -237,9 +233,9 @@ open class ConnectionController @Inject constructor(
      * Get the CommandSocketVerticle for advanced socket handling
      * This uses the internal injector to access the verticle directly
      */
-    fun getCommandSocketVerticle(): CommandSocketVerticle? {
+    fun getCommandSocketVerticle(): CommandVerticle? {
         return try {
-            InternalInjectorHolder.getInstance<CommandSocketVerticle>()
+            InternalInjectorHolder.getInstance<CommandVerticle>()
         } catch (e: Exception) {
             log.warn("Failed to get CommandSocketVerticle instance: {}", e.message)
             null

@@ -2,14 +2,12 @@ package com.minare.worker
 
 import com.minare.cache.ConnectionCache
 import com.minare.core.FrameController
-import com.minare.core.websocket.UpdateSocketManager
 import com.minare.persistence.ChannelStore
+import com.minare.persistence.ConnectionStore
 import com.minare.persistence.ContextStore
-import com.minare.utils.EventBusUtils
-import com.minare.utils.VerticleLogger
-import io.vertx.core.eventbus.Message
+import com.minare.utils.*
+import com.minare.worker.CommandVerticle.Companion
 import io.vertx.core.http.HttpServer
-import io.vertx.core.http.HttpServerOptions
 import io.vertx.core.http.ServerWebSocket
 import io.vertx.core.json.JsonObject
 import io.vertx.ext.web.Router
@@ -31,6 +29,7 @@ import javax.inject.Inject
 class UpdateVerticle @Inject constructor(
     private val contextStore: ContextStore,
     private val channelStore: ChannelStore,
+    private val connectionStore: ConnectionStore,
     private val connectionCache: ConnectionCache
 ) : CoroutineVerticle() {
 
@@ -40,6 +39,10 @@ class UpdateVerticle @Inject constructor(
 
     // Router for update socket endpoints
     private lateinit var router: Router
+
+    // Core utility managers
+    private lateinit var heartbeatManager: HeartbeatManager
+    private lateinit var connectionTracker: ConnectionTracker
 
     // HTTP server
     private var httpServer: HttpServer? = null
@@ -55,12 +58,6 @@ class UpdateVerticle @Inject constructor(
 
     // Accumulated updates for each connection (connection ID -> entity updates)
     private val connectionPendingUpdates = ConcurrentHashMap<String, MutableMap<String, JsonObject>>()
-
-    // WebSocket connections for each client (connection ID -> WebSocket)
-    private val updateSockets = ConcurrentHashMap<String, ServerWebSocket>()
-
-    // Track connectionId by WebSocket
-    private val socketToConnectionId = ConcurrentHashMap<ServerWebSocket, String>()
 
     // Track deployment data
     private var deployedAt: Long = 0
@@ -80,10 +77,10 @@ class UpdateVerticle @Inject constructor(
         // Cache TTL in milliseconds
         const val CACHE_TTL_MS = 10000L // 10 seconds
 
+        const val HEARTBEAT_INTERVAL_MS = 15000L
+
         // Default frame interval
         const val DEFAULT_FRAME_INTERVAL_MS = 100 // 10 frames per second
-
-        const val BASE_PATH = "/update"
     }
 
     override suspend fun start() {
@@ -91,8 +88,13 @@ class UpdateVerticle @Inject constructor(
             deployedAt = System.currentTimeMillis()
             log.info("Starting UpdateVerticle at {$deployedAt}")
 
+            // Initialize logging and utility managers
             vlog = VerticleLogger(this)
             eventBusUtils = vlog.createEventBusUtils()
+            connectionTracker = ConnectionTracker("UpdateSocket", vlog)
+            heartbeatManager = HeartbeatManager(vertx, vlog, connectionStore, CoroutineScope(vertx.dispatcher()))
+            heartbeatManager.setHeartbeatInterval(CommandVerticle.HEARTBEAT_INTERVAL_MS)
+
             vlog.logStartupStep("STARTING")
             vlog.logConfig(config)
 
@@ -101,11 +103,7 @@ class UpdateVerticle @Inject constructor(
             httpServerPort = config.getInteger("httpPort", 4226)
             httpServerHost = config.getString("httpHost", "0.0.0.0")
 
-            // Initialize router
-            router = Router.router(vertx)
-            vlog.logStartupStep("ROUTER_CREATED")
-
-            // Initialize the router with update socket routes
+            // Initialize the router
             initializeRouter()
 
             // Initialize frame controller
@@ -124,6 +122,7 @@ class UpdateVerticle @Inject constructor(
                 deployOwnHttpServer()
             }
 
+            // Save deployment ID
             deploymentID?.let {
                 vlog.logDeployment(it)
             }
@@ -138,30 +137,50 @@ class UpdateVerticle @Inject constructor(
     }
 
     /**
+     * Initialize the router with update socket routes
+     */
+    private fun initializeRouter() {
+        // Create the router using the utility
+        router = HttpServerUtils.createWebSocketRouter(
+            vertx = vertx,
+            verticleName = "UpdateVerticle",
+            verticleLogger = vlog,
+            wsPath = "/update",
+            healthPath = "/health",
+            debugPath = "/debug",
+            deploymentId = deploymentID,
+            deployedAt = deployedAt,
+            wsHandler = this::handleUpdateSocket,
+            coroutineContext = vertx.dispatcher(),
+            metricsSupplier = {
+                JsonObject()
+                    .put("connections", connectionTracker.getMetrics())
+                    .put("heartbeats", heartbeatManager.getMetrics())
+                    .put("pendingUpdateQueues", connectionPendingUpdates.size)
+                    .put("caches", JsonObject()
+                        .put("entityChannel", entityChannelCache.size)
+                        .put("channelConnection", channelConnectionCache.size)
+                    )
+            }
+        )
+    }
+
+    /**
      * Deploy a dedicated HTTP server for update sockets
      */
     private suspend fun deployOwnHttpServer() {
         vlog.logStartupStep("DEPLOYING_OWN_HTTP_SERVER")
 
         try {
-            log.info("Starting own HTTP server on $httpServerHost:$httpServerPort")
-
-            // Create HTTP server options
-            val options = HttpServerOptions()
-                .setHost(httpServerHost)
-                .setPort(httpServerPort)
-                .setLogActivity(true) // Enable activity logging for debugging
-
-            // Create and start the HTTP server
-            httpServer = vertx.createHttpServer(options)
-                .requestHandler(router)
-                .listen()
-                .await()
+            // Use the utility to create and start the server
+            httpServer = HttpServerUtils.createAndStartHttpServer(
+                vertx = vertx,
+                router = router,
+                host = httpServerHost,
+                port = httpServerPort
+            ).await()
 
             val actualPort = httpServer?.actualPort() ?: httpServerPort
-
-            log.info("HTTP server started successfully on port {}", actualPort)
-
             vlog.logStartupStep("HTTP_SERVER_DEPLOYED", mapOf(
                 "port" to actualPort,
                 "host" to httpServerHost
@@ -177,118 +196,65 @@ class UpdateVerticle @Inject constructor(
     }
 
     /**
-     * Initialize the router with update socket routes
+     * Register all event bus consumers
      */
-    private fun initializeRouter() {
-        vlog.logStartupStep("INITIALIZING_ROUTER")
-
-        // Add a debug endpoint to check if router is working
-        router.get("$BASE_PATH/debug").handler { ctx ->
-            ctx.response()
-                .putHeader("Content-Type", "application/json")
-                .end(JsonObject()
-                    .put("status", "ok")
-                    .put("message", "UpdateVerticle router is working")
-                    .put("timestamp", System.currentTimeMillis())
-                    .encode())
+    private fun registerEventBusConsumers() {
+        // Register handler for entity updates from ChangeStreamWorkerVerticle
+        eventBusUtils.registerTracedConsumer<JsonObject>(ADDRESS_ENTITY_UPDATED) { message, traceId ->
+            handleEntityUpdate(message.body(), traceId)
         }
+        vlog.logHandlerRegistration(ADDRESS_ENTITY_UPDATED)
 
-        // Setup main WebSocket route for updates
-        log.info("Setting up update websocket route handler at path: /")
-
-        router.route("$BASE_PATH").handler { context ->
-            val traceId = vlog.getEventLogger().trace("WEBSOCKET_ROUTE_ACCESSED", mapOf(
-                "path" to "/",
-                "remoteAddress" to context.request().remoteAddress().toString()
-            ))
-
-            context.request().toWebSocket()
-                .onSuccess { socket ->
-                    log.info("Update WebSocket upgrade successful from: {}", socket.remoteAddress())
-
-                    launch {
-                        try {
-                            vlog.getEventLogger().trace("WEBSOCKET_UPGRADED", mapOf(
-                                "socketId" to socket.textHandlerID()
-                            ), traceId)
-
-                            handleUpdateSocket(socket)
-                        } catch (e: Exception) {
-                            vlog.logVerticleError("WEBSOCKET_HANDLER", e, mapOf(
-                                "socketId" to socket.textHandlerID()
-                            ))
-
-                            try {
-                                if (!socket.isClosed()) {
-                                    socket.close()
-                                }
-                            } catch (closeEx: Exception) {
-                                vlog.logVerticleError("WEBSOCKET_CLOSE", closeEx, mapOf(
-                                    "socketId" to socket.textHandlerID()
-                                ))
-                            }
-                        }
-                    }
-                }
-                .onFailure { err ->
-                    log.error("WebSocket upgrade failed: {}", err.message, err)
-                    vlog.logVerticleError("WEBSOCKET_UPGRADE", err)
-                    context.response()
-                        .setStatusCode(400)
-                        .putHeader("Content-Type", "text/plain")
-                        .end("Update WebSocket upgrade failed: ${err.message}")
-                }
-        }
-
-        // Add health check route
-        router.get("$BASE_PATH/health").handler { ctx ->
-            // Get connection stats
-            val connectionCount = updateSockets.size
-
-            // Create response with detailed metrics
-            val healthInfo = JsonObject()
-                .put("status", "ok")
-                .put("verticle", this.javaClass.simpleName)
-                .put("deploymentId", deploymentID)
-                .put("updateConnections", connectionCount)
-                .put("timestamp", System.currentTimeMillis())
-                .put("uptime", System.currentTimeMillis() - deployedAt)
-                .put("metrics", JsonObject()
-                    .put("pendingUpdateQueues", connectionPendingUpdates.size)
-                )
-
-            ctx.response()
-                .putHeader("content-type", "application/json")
-                .end(healthInfo.encode())
-
-            // Log health check access with low frequency
-            if (Math.random() < 0.1) { // Only log ~10% of health checks to avoid log spam
-                vlog.logStartupStep("HEALTH_CHECK_ACCESSED", mapOf(
-                    "updateConnections" to connectionCount
-                ))
+        // Register handler for connection established events
+        eventBusUtils.registerTracedConsumer<JsonObject>(ADDRESS_CONNECTION_ESTABLISHED) { message, traceId ->
+            val connectionId = message.body().getString("connectionId")
+            if (connectionId != null) {
+                // Only initialize if not initialized yet
+                connectionPendingUpdates.computeIfAbsent(connectionId) { ConcurrentHashMap() }
+                vlog.getEventLogger().trace("CONNECTION_TRACKING_INITIALIZED", mapOf(
+                    "connectionId" to connectionId
+                ), traceId)
             }
         }
+        vlog.logHandlerRegistration(ADDRESS_CONNECTION_ESTABLISHED)
 
-        vlog.logStartupStep("ROUTER_INITIALIZED")
-        log.info("Update socket router initialized with routes: /, /health, /debug")
+        // Register handler for connection closed events
+        eventBusUtils.registerTracedConsumer<JsonObject>(ADDRESS_CONNECTION_CLOSED) { message, traceId ->
+            val connectionId = message.body().getString("connectionId")
+            if (connectionId != null) {
+                // Clean up any pending updates for this connection
+                connectionPendingUpdates.remove(connectionId)
+
+                // Invalidate any channel cache entries containing this connection
+                invalidateChannelCacheForConnection(connectionId)
+
+                vlog.getEventLogger().trace("CONNECTION_TRACKING_REMOVED", mapOf(
+                    "connectionId" to connectionId
+                ), traceId)
+            }
+        }
+        vlog.logHandlerRegistration(ADDRESS_CONNECTION_CLOSED)
+
+        // Additional event bus handlers...
+    }
+
+    /**
+     * Invalidate any channel cache entries containing this connection
+     */
+    private fun invalidateChannelCacheForConnection(connectionId: String) {
+        for ((channelId, entry) in channelConnectionCache) {
+            val (connections, _) = entry
+            if (connectionId in connections) {
+                channelConnectionCache.remove(channelId)
+            }
+        }
     }
 
     /**
      * Handle a new update socket connection
      */
-    private suspend fun handleUpdateSocket(websocket: ServerWebSocket) {
-        val remoteAddress = websocket.remoteAddress().toString()
-        log.info("New update socket connection from {}", remoteAddress)
-
-        // Create a trace for this connection
-        val socketTraceId = vlog.getEventLogger().logWebSocketEvent(
-            "UPDATE_SOCKET_CONNECTED",
-            null,
-            mapOf(
-                "remoteAddress" to remoteAddress,
-                "socketId" to websocket.textHandlerID()
-            )
-        )
+    private suspend fun handleUpdateSocket(websocket: ServerWebSocket, traceId: String) {
+        log.info("New update socket connection from {}", websocket.remoteAddress())
 
         // Set up text message handler to process the connectionId association
         websocket.textMessageHandler { message ->
@@ -298,12 +264,17 @@ class UpdateVerticle @Inject constructor(
                     val connectionId = msg.getString("connectionId")
 
                     if (connectionId != null) {
-                        associateUpdateSocket(connectionId, websocket, socketTraceId)
+                        associateUpdateSocket(connectionId, websocket, traceId)
                     } else {
-                        handleError(websocket, IllegalArgumentException("No connectionId provided"))
+                        WebSocketUtils.sendErrorResponse(
+                            websocket,
+                            IllegalArgumentException("No connectionId provided"),
+                            null,
+                            vlog
+                        )
                     }
                 } catch (e: Exception) {
-                    handleError(websocket, e)
+                    WebSocketUtils.sendErrorResponse(websocket, e, null, vlog)
                 }
             }
         }
@@ -314,12 +285,6 @@ class UpdateVerticle @Inject constructor(
                 handleSocketClose(websocket)
             }
         }
-
-        // Accept the websocket connection
-        websocket.accept()
-        vlog.getEventLogger().trace("UPDATE_WEBSOCKET_ACCEPTED", mapOf(
-            "socketId" to websocket.textHandlerID()
-        ), socketTraceId)
     }
 
     /**
@@ -338,34 +303,24 @@ class UpdateVerticle @Inject constructor(
                 vlog.getEventLogger().trace("CONNECTION_NOT_FOUND", mapOf(
                     "connectionId" to connectionId
                 ), traceId)
-                handleError(websocket, IllegalArgumentException("Connection not found: $connectionId"))
+                WebSocketUtils.sendErrorResponse(
+                    websocket,
+                    IllegalArgumentException("Connection not found: $connectionId"),
+                    null,
+                    vlog
+                )
                 return
             }
 
             // Close any existing socket for this connection
-            updateSockets[connectionId]?.let { existingSocket ->
-                try {
-                    if (!existingSocket.isClosed()) {
-                        existingSocket.close()
-                        vlog.getEventLogger().logWebSocketEvent("EXISTING_SOCKET_CLOSED", connectionId,
-                            mapOf("socketId" to existingSocket.textHandlerID()), traceId)
-                    }
-                } catch (e: Exception) {
-                    vlog.logVerticleError("CLOSE_EXISTING_SOCKET", e, mapOf(
-                        "connectionId" to connectionId
-                    ))
-                }
-            }
+            closeExistingUpdateSocket(connectionId, traceId)
 
-            // Store the socket
-            updateSockets[connectionId] = websocket
-            socketToConnectionId[websocket] = connectionId
-
-            // Register update socket in the connection cache
+            // Register the new socket
+            connectionTracker.registerConnection(connectionId, traceId, websocket)
             connectionCache.storeUpdateSocket(connectionId, websocket, connection)
 
             // Send confirmation
-            sendUpdateSocketConfirmation(websocket, connectionId)
+            WebSocketUtils.sendConfirmation(websocket, "update_socket_confirm", connectionId)
 
             vlog.getEventLogger().logStateChange("UpdateSocket", "CONNECTED", "REGISTERED",
                 mapOf("connectionId" to connectionId), traceId)
@@ -387,172 +342,63 @@ class UpdateVerticle @Inject constructor(
             vlog.logVerticleError("ASSOCIATE_UPDATE_SOCKET", e, mapOf(
                 "connectionId" to connectionId
             ))
-            handleError(websocket, e)
-        }
-    }
-
-    private fun sendUpdateSocketConfirmation(websocket: ServerWebSocket, connectionId: String) {
-        val confirmation = JsonObject()
-            .put("type", "update_socket_confirm")
-            .put("connectionId", connectionId)
-            .put("timestamp", System.currentTimeMillis())
-
-        websocket.writeTextMessage(confirmation.encode())
-        vlog.getEventLogger().logWebSocketEvent("UPDATE_SOCKET_CONFIRMED", connectionId,
-            mapOf("timestamp" to System.currentTimeMillis()))
-    }
-
-    private suspend fun handleSocketClose(websocket: ServerWebSocket) {
-        val connectionId = socketToConnectionId[websocket]
-        val traceId = vlog.getEventLogger().trace("UPDATE_SOCKET_CLOSED", mapOf(
-            "socketId" to websocket.textHandlerID(),
-            "connectionId" to (connectionId ?: "unknown")
-        ))
-
-        try {
-            if (connectionId != null) {
-                // Remove from caches
-                updateSockets.remove(connectionId)
-                socketToConnectionId.remove(websocket)
-
-                // Remove from connection cache
-                connectionCache.removeUpdateSocket(connectionId)
-
-                // Notify about connection closed
-                vertx.eventBus().publish(ADDRESS_CONNECTION_CLOSED, JsonObject()
-                    .put("connectionId", connectionId)
-                    .put("socketType", "update")
-                )
-
-                vlog.getEventLogger().logStateChange("UpdateSocket", "REGISTERED", "DISCONNECTED",
-                    mapOf("connectionId" to connectionId), traceId)
-            } else {
-                vlog.getEventLogger().trace("UNKNOWN_SOCKET_CLOSED", mapOf(
-                    "socketId" to websocket.textHandlerID()
-                ))
-            }
-        } catch (e: Exception) {
-            vlog.logVerticleError("UPDATE_SOCKET_CLOSE", e, mapOf(
-                "connectionId" to (connectionId ?: "unknown")
-            ))
-        }
-    }
-
-    private fun handleError(websocket: ServerWebSocket, error: Throwable) {
-        val connectionId = socketToConnectionId[websocket]
-
-        vlog.logVerticleError("UPDATE_SOCKET_ERROR", error, mapOf(
-            "connectionId" to (connectionId ?: "unknown"),
-            "remoteAddress" to websocket.remoteAddress().toString()
-        ))
-
-        try {
-            val errorMessage = JsonObject()
-                .put("type", "error")
-                .put("message", error.message)
-                .put("timestamp", System.currentTimeMillis())
-
-            websocket.writeTextMessage(errorMessage.encode())
-        } catch (e: Exception) {
-            vlog.logVerticleError("ERROR_NOTIFICATION", e, mapOf(
-                "connectionId" to (connectionId ?: "unknown")
-            ))
-        } finally {
-            if (!websocket.isClosed()) {
-                websocket.close()
-            }
+            WebSocketUtils.sendErrorResponse(websocket, e, connectionId, vlog)
         }
     }
 
     /**
-     * Register all event bus consumers
+     * Close any existing update socket for a connection
      */
-    private fun registerEventBusConsumers() {
-        // Register handler for entity updates from ChangeStreamWorkerVerticle
-        eventBusUtils.registerTracedConsumer<JsonObject>(ADDRESS_ENTITY_UPDATED) { message, traceId ->
-            handleEntityUpdate(message, traceId)
-        }
-        vlog.logHandlerRegistration(ADDRESS_ENTITY_UPDATED)
+    private fun closeExistingUpdateSocket(connectionId: String, traceId: String) {
+        val existingSocket = connectionTracker.getSocket(connectionId) ?: return
 
-        // Register handler for connection established events
-        eventBusUtils.registerTracedConsumer<JsonObject>(ADDRESS_CONNECTION_ESTABLISHED) { message, traceId ->
-            val connectionId = message.body().getString("connectionId")
-            if (connectionId != null) {
-                // Only initialize if not initialized yet
-                connectionPendingUpdates.computeIfAbsent(connectionId) { ConcurrentHashMap() }
-                vlog.getEventLogger().trace("CONNECTION_TRACKING_INITIALIZED", mapOf(
-                    "connectionId" to connectionId
-                ), traceId)
-            } else {
-                vlog.getEventLogger().trace("CONNECTION_ID_MISSING", emptyMap(), traceId)
+        try {
+            if (!existingSocket.isClosed()) {
+                existingSocket.close()
+                vlog.getEventLogger().logWebSocketEvent("EXISTING_SOCKET_CLOSED", connectionId,
+                    mapOf("socketId" to existingSocket.textHandlerID()), traceId)
             }
+        } catch (e: Exception) {
+            vlog.logVerticleError("CLOSE_EXISTING_SOCKET", e, mapOf(
+                "connectionId" to connectionId
+            ))
         }
-        vlog.logHandlerRegistration(ADDRESS_CONNECTION_ESTABLISHED)
+    }
 
-        // Register handler for connection closed events
-        eventBusUtils.registerTracedConsumer<JsonObject>(ADDRESS_CONNECTION_CLOSED) { message, traceId ->
-            val connectionId = message.body().getString("connectionId")
-            if (connectionId != null) {
-                // Clean up any pending updates for this connection
-                connectionPendingUpdates.remove(connectionId)
+    /**
+     * Handle a socket being closed
+     */
+    private suspend fun handleSocketClose(websocket: ServerWebSocket) {
+        val connectionId = connectionTracker.getConnectionId(websocket) ?: return
+        val traceId = connectionTracker.getTraceId(connectionId)
 
-                // Invalidate any channel cache entries containing this connection
-                for ((channelId, entry) in channelConnectionCache) {
-                    val (connections, _) = entry
-                    if (connectionId in connections) {
-                        channelConnectionCache.remove(channelId)
-                    }
-                }
+        try {
+            // Remove from tracking
+            connectionTracker.handleSocketClosed(websocket)
 
-                vlog.getEventLogger().trace("CONNECTION_TRACKING_REMOVED", mapOf(
-                    "connectionId" to connectionId
-                ), traceId)
-            }
+            // Remove from connection cache
+            connectionCache.removeUpdateSocket(connectionId)
+
+            // Notify about connection closed
+            vertx.eventBus().publish(ADDRESS_CONNECTION_CLOSED, JsonObject()
+                .put("connectionId", connectionId)
+                .put("socketType", "update")
+            )
+
+            vlog.getEventLogger().logStateChange("UpdateSocket", "REGISTERED", "DISCONNECTED",
+                mapOf("connectionId" to connectionId), traceId)
+        } catch (e: Exception) {
+            vlog.logVerticleError("UPDATE_SOCKET_CLOSE", e, mapOf(
+                "connectionId" to connectionId
+            ))
         }
-        vlog.logHandlerRegistration(ADDRESS_CONNECTION_CLOSED)
-
-        // Register handler for initialization
-        eventBusUtils.registerTracedConsumer<JsonObject>(ADDRESS_INITIALIZE) { message, traceId ->
-            // Nothing specific needed here for now
-            val reply = JsonObject().put("success", true)
-                .put("status", "UpdateVerticle initialized")
-            eventBusUtils.tracedReply(message, reply, traceId)
-        }
-        vlog.logHandlerRegistration(ADDRESS_INITIALIZE)
-
-        // Register handler for manual update socket closure
-        eventBusUtils.registerTracedConsumer<JsonObject>(ADDRESS_UPDATE_SOCKET_CLOSE) { message, traceId ->
-            val connectionId = message.body().getString("connectionId")
-            if (connectionId != null) {
-                try {
-                    val socket = updateSockets[connectionId]
-                    if (socket != null && !socket.isClosed()) {
-                        socket.close()
-                        vlog.getEventLogger().trace("SOCKET_CLOSED_MANUALLY", mapOf(
-                            "connectionId" to connectionId
-                        ), traceId)
-                    }
-                    updateSockets.remove(connectionId)
-                    eventBusUtils.tracedReply(message, JsonObject().put("success", true), traceId)
-                } catch (e: Exception) {
-                    vlog.logVerticleError("MANUAL_SOCKET_CLOSE", e, mapOf(
-                        "connectionId" to connectionId
-                    ))
-                    message.fail(500, "Error closing socket: ${e.message}")
-                }
-            } else {
-                message.fail(400, "Missing connectionId")
-            }
-        }
-        vlog.logHandlerRegistration(ADDRESS_UPDATE_SOCKET_CLOSE)
     }
 
     /**
      * Handle an entity update from the change stream.
      */
-    private suspend fun handleEntityUpdate(message: Message<JsonObject>, traceId: String) {
+    private suspend fun handleEntityUpdate(entityUpdate: JsonObject, traceId: String) {
         try {
-            val entityUpdate = message.body()
             val entityId = entityUpdate.getString("_id")
 
             if (entityId == null) {
@@ -686,10 +532,8 @@ class UpdateVerticle @Inject constructor(
         if (cachedEntry != null) {
             val (connections, expiry) = cachedEntry
             if (now < expiry) {
-                // Cache entry is still valid
                 return connections
             }
-            // Cache entry expired, remove it
             channelConnectionCache.remove(channelId)
         }
 
@@ -713,7 +557,7 @@ class UpdateVerticle @Inject constructor(
      * Send an update directly to a client's WebSocket
      */
     private fun sendUpdate(connectionId: String, update: JsonObject): Boolean {
-        val socket = updateSockets[connectionId]
+        val socket = connectionTracker.getSocket(connectionId)
 
         return if (socket != null && !socket.isClosed()) {
             try {
@@ -746,10 +590,23 @@ class UpdateVerticle @Inject constructor(
             }
         }
 
-        // Close all open WebSockets
-        updateSockets.forEach { (connectionId, socket) ->
+        // Clean up all websockets
+        closeAllSockets()
+
+        vlog.logUndeployment()
+        log.info("UpdateVerticle stopped")
+    }
+
+    /**
+     * Close all websockets
+     */
+    private fun closeAllSockets() {
+        val connectionIds = connectionTracker.getAllConnectionIds().toList()
+
+        for (connectionId in connectionIds) {
             try {
-                if (!socket.isClosed()) {
+                val socket = connectionTracker.getSocket(connectionId)
+                if (socket != null && !socket.isClosed()) {
                     socket.close()
                     log.debug("Closed update socket for connection: {}", connectionId)
                 }
@@ -757,11 +614,6 @@ class UpdateVerticle @Inject constructor(
                 log.error("Error closing socket for connection: {}", connectionId, e)
             }
         }
-        updateSockets.clear()
-        socketToConnectionId.clear()
-
-        vlog.logUndeployment()
-        log.info("UpdateVerticle stopped")
     }
 
     /**
@@ -811,7 +663,7 @@ class UpdateVerticle @Inject constructor(
                         }
                     })
 
-                // Send directly to the client's WebSocket instead of using event bus
+                // Send directly to the client's WebSocket
                 sendUpdate(connectionId, updateMessage)
             }
 

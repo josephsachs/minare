@@ -1,8 +1,8 @@
 const WebSocket = require('ws');
 
-console.log('Attempting to connect to ws://localhost:8080/ws');
+console.log('Attempting to connect to ws://localhost:4225/command');
 
-const socket = new WebSocket('ws://localhost:8080/ws');
+const socket = new WebSocket('ws://localhost:4225/command');
 
 socket.on('open', () => {
   console.log('Connected to WebSocket');
@@ -18,7 +18,7 @@ socket.on('message', (data) => {
 
       // Now try to connect to the update socket
       console.log(`Connecting to update socket with connection ID: ${message.connectionId}`);
-      const updateSocket = new WebSocket(`ws://localhost:8080/ws/updates?connection_id=${message.connectionId}`);
+      const updateSocket = new WebSocket(`ws://localhost:4226/update?connection_id=${message.connectionId}`);
 
       updateSocket.on('open', () => {
         console.log('Update socket connected');

@@ -4,7 +4,7 @@ console.log('Starting Minare WebSocket connection test');
 
 // Connect to command socket
 console.log('Connecting to command socket...');
-const commandSocket = new WebSocket('ws://localhost:8080/ws');
+const commandSocket = new WebSocket('ws://localhost:4225/command');
 
 commandSocket.on('open', () => {
   console.log('Command socket connected');
@@ -68,7 +68,7 @@ commandSocket.on('close', (code, reason) => {
 
 function connectUpdateSocket() {
   console.log(`Connecting to update socket...`);
-  updateSocket = new WebSocket('ws://localhost:8080/ws/updates');
+  updateSocket = new WebSocket('ws://localhost:4226/update');
 
   updateSocket.on('open', () => {
     console.log('Update socket connected, sending connection ID');

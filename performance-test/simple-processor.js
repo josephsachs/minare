@@ -22,7 +22,7 @@ function connectCommandSocket(context, events, done) {
   console.log(`[${userId}] Connecting to command socket...`);
 
   // Create WebSocket connection
-  const ws = new WebSocket('ws://localhost:8080/ws');
+  const ws = new WebSocket('ws://localhost:4225/command');
 
   // Set a timeout to detect connection issues
   const connectionTimeout = setTimeout(() => {
@@ -125,7 +125,7 @@ function connectUpdateSocket(context, events, done) {
 
   // Create update socket connection
   // Note: No longer using query parameter, will send ID in first message
-  const updateSocket = new WebSocket('ws://localhost:8080/ws/updates');
+  const updateSocket = new WebSocket('ws://localhost:4226/update');
 
   // Set a timeout to detect connection issues
   const connectionTimeout = setTimeout(() => {

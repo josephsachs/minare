@@ -3,17 +3,13 @@ package com.minare.core.websocket
 import com.minare.cache.ConnectionCache
 import com.minare.controller.ConnectionController
 import com.minare.core.entity.ReflectionCache
-import com.minare.core.models.Entity
 import com.minare.worker.MutationVerticle
 import com.minare.persistence.EntityStore
-import com.minare.worker.CommandSocketVerticle
+import com.minare.worker.CommandVerticle
 import io.vertx.kotlin.coroutines.await
 import io.vertx.core.Vertx
 import io.vertx.core.eventbus.ReplyException
 import io.vertx.core.json.JsonObject
-import io.vertx.kotlin.coroutines.await
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.launch
 import org.slf4j.LoggerFactory
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -188,7 +184,7 @@ open class CommandMessageHandler @Inject constructor(
 
             // Send sync request to verticle
             vertx.eventBus().request<JsonObject>(
-                CommandSocketVerticle.ADDRESS_ENTITY_SYNC,
+                CommandVerticle.ADDRESS_ENTITY_SYNC,
                 syncCommand
             ).await()
 
