@@ -4,12 +4,8 @@
 export const config = {
   // WebSocket connection settings
   websocket: {
-    // Base URL for WebSockets (derived from current location)
-    getBaseUrl: () => {
-      const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      return `${wsProtocol}//${window.location.host}`;
-    },
-    // Command socket endpoint
+    wsProtocol: 'ws://',
+    host: 'localhost',
     commandEndpoint: '/',
     commandPort: "4225",
     // Update socket endpoint
