@@ -6,10 +6,10 @@ export const config = {
   websocket: {
     wsProtocol: 'ws://',
     host: 'localhost',
-    commandEndpoint: '/',
+    commandEndpoint: '/command',
     commandPort: "4225",
     // Update socket endpoint
-    updateEndpoint: '/',
+    updateEndpoint: '/update',
     updatePort: "4226",
     // Reconnection settings
     reconnect: {

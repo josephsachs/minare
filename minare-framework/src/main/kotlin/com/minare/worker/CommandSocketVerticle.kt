@@ -79,7 +79,7 @@ class CommandSocketVerticle @Inject constructor(
         const val HEARTBEAT_INTERVAL_MS = 15000L
 
         // Base path for command socket routes
-        const val BASE_PATH = "/ws"
+        const val BASE_PATH = "/command"
     }
 
     override suspend fun start() {

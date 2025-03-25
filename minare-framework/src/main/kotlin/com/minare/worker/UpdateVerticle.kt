@@ -82,6 +82,8 @@ class UpdateVerticle @Inject constructor(
 
         // Default frame interval
         const val DEFAULT_FRAME_INTERVAL_MS = 100 // 10 frames per second
+
+        const val BASE_PATH = "/update"
     }
 
     override suspend fun start() {
@@ -181,7 +183,7 @@ class UpdateVerticle @Inject constructor(
         vlog.logStartupStep("INITIALIZING_ROUTER")
 
         // Add a debug endpoint to check if router is working
-        router.get("/debug").handler { ctx ->
+        router.get("$BASE_PATH/debug").handler { ctx ->
             ctx.response()
                 .putHeader("Content-Type", "application/json")
                 .end(JsonObject()
@@ -194,7 +196,7 @@ class UpdateVerticle @Inject constructor(
         // Setup main WebSocket route for updates
         log.info("Setting up update websocket route handler at path: /")
 
-        router.route("/").handler { context ->
+        router.route("$BASE_PATH").handler { context ->
             val traceId = vlog.getEventLogger().trace("WEBSOCKET_ROUTE_ACCESSED", mapOf(
                 "path" to "/",
                 "remoteAddress" to context.request().remoteAddress().toString()
@@ -239,7 +241,7 @@ class UpdateVerticle @Inject constructor(
         }
 
         // Add health check route
-        router.get("/health").handler { ctx ->
+        router.get("$BASE_PATH/health").handler { ctx ->
             // Get connection stats
             val connectionCount = updateSockets.size
 
