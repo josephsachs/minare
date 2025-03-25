@@ -61,7 +61,7 @@ class CommandSocketVerticle @Inject constructor(
     private var deployedAt: Long = 0
     private var httpServerVerticleId: String? = null
     private var useOwnHttpServer: Boolean = false
-    private var httpServerPort: Int = 8081 // Default port if using own server
+    private var httpServerPort: Int = 8080 // Default port if using own server
 
     companion object {
         // Event bus addresses
@@ -86,30 +86,22 @@ class CommandSocketVerticle @Inject constructor(
     }
 
     override suspend fun start() {
-        log.info("Starting CommandSocketVerticle")
-
-        // Record deployment time
         deployedAt = System.currentTimeMillis()
+        log.info("Starting CommandSocketVerticle at {$deployedAt}")
 
-        // Initialize logging utilities
         vlog = VerticleLogger(this)
         eventBusUtils = vlog.createEventBusUtils()
 
         vlog.logStartupStep("STARTING")
+        vlog.logConfig(config)
 
-        // Create router regardless of whether we use own HTTP server
         router = Router.router(vertx)
         vlog.logStartupStep("ROUTER_CREATED")
 
-        // Check if we should use our own HTTP server
         useOwnHttpServer = config.getBoolean("useOwnHttpServer", false)
-
-        // Log configuration in a safe way
-        vlog.logConfig(config)
 
         log.info("CommandSocketVerticle configured with useOwnHttpServer={}", useOwnHttpServer)
 
-        // Register event bus handler for initialization
         eventBusUtils.registerTracedConsumer<JsonObject>(ADDRESS_COMMAND_SOCKET_INITIALIZE) { message, traceId ->
             try {
                 vlog.logStartupStep("INITIALIZING_ROUTER", mapOf("traceId" to traceId))
@@ -120,7 +112,6 @@ class CommandSocketVerticle @Inject constructor(
 
                 vlog.logVerticlePerformance("ROUTER_INITIALIZATION", initTime)
 
-                // If using own HTTP server, deploy it now
                 if (useOwnHttpServer) {
                     deployOwnHttpServer()
                 }

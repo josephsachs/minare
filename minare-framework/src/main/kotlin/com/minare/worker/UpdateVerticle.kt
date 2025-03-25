@@ -12,6 +12,9 @@ import io.vertx.kotlin.coroutines.CoroutineVerticle
 import io.vertx.kotlin.coroutines.dispatcher
 import kotlinx.coroutines.launch
 import org.slf4j.LoggerFactory
+import java.security.Timestamp
+import java.sql.Date
+import java.sql.Time
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 
@@ -28,6 +31,9 @@ class UpdateVerticle @Inject constructor(
     private val log = LoggerFactory.getLogger(UpdateVerticle::class.java)
     private lateinit var vlog: VerticleLogger
 
+    // Router for command socket endpoints
+    private lateinit var router: Router
+
     // Update frame controller
     private lateinit var frameController: UpdateFrameController
 
@@ -39,6 +45,12 @@ class UpdateVerticle @Inject constructor(
 
     // Accumulated updates for each connection (connection ID -> entity updates)
     private val connectionPendingUpdates = ConcurrentHashMap<String, MutableMap<String, JsonObject>>()
+
+    // Track deployment data
+    private var deployedAt: Long = 0
+    private var httpServerVerticleId: String? = null
+    private var useOwnHttpServer: Boolean = false
+    private var httpServerPort: Int = 8080
 
     companion object {
         // Event bus addresses
@@ -53,29 +65,33 @@ class UpdateVerticle @Inject constructor(
 
         // Default frame interval
         const val DEFAULT_FRAME_INTERVAL_MS = 100 // 10 frames per second
+
+        const val BASE_PATH = "/update"
     }
 
     override suspend fun start() {
         try {
-            // Initialize logger
+            deployedAt = System.currentTimeMillis()
+            log.info("Starting UpdateVerticle at {$deployedAt}")
+
             vlog = VerticleLogger(this)
             vlog.logStartupStep("STARTING")
-
-            // Log config
             vlog.logConfig(config)
+
+            router = Router.router(vertx)
+            vlog.logStartupStep("ROUTER_CREATED")
 
             // Initialize frame controller
             frameController = UpdateFrameController()
             frameController.start(DEFAULT_FRAME_INTERVAL_MS)
+            log.info("Started FrameController at {${deployedAt}}")
             vlog.logStartupStep("FRAME_CONTROLLER_STARTED", mapOf(
                 "frameInterval" to DEFAULT_FRAME_INTERVAL_MS
             ))
 
-            // Register event bus consumers
             registerEventBusConsumers()
             vlog.logStartupStep("EVENT_BUS_HANDLERS_REGISTERED")
 
-            // Record deployment ID
             deploymentID?.let {
                 vlog.logDeployment(it)
             }
@@ -93,10 +109,7 @@ class UpdateVerticle @Inject constructor(
      * Register all event bus consumers
      */
     private fun registerEventBusConsumers() {
-        // Create an event bus utils instance for traced messages
         val eventBusUtils = vlog.createEventBusUtils()
-
-        // Register handler for entity updates
         eventBusUtils.registerTracedConsumer<JsonObject>(ADDRESS_ENTITY_UPDATED) { message, traceId ->
             handleEntityUpdate(message, traceId)
         }
@@ -106,7 +119,6 @@ class UpdateVerticle @Inject constructor(
         eventBusUtils.registerTracedConsumer<JsonObject>(ADDRESS_CONNECTION_ESTABLISHED) { message, traceId ->
             val connectionId = message.body().getString("connectionId")
             if (connectionId != null) {
-                // Initialize empty update queue for this connection
                 connectionPendingUpdates[connectionId] = ConcurrentHashMap()
                 vlog.getEventLogger().trace("CONNECTION_TRACKING_INITIALIZED", mapOf(
                     "connectionId" to connectionId

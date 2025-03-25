@@ -22,9 +22,6 @@ class ExampleApplication : MinareApplication() {
     lateinit var channelController: ExampleChannelController
 
     @Inject
-    lateinit var entityFactory: ExampleEntityFactory
-
-    @Inject
     lateinit var nodeGraphBuilder: NodeGraphBuilder
 
     /**

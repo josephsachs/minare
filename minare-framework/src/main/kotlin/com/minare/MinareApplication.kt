@@ -75,8 +75,8 @@ abstract class MinareApplication : CoroutineVerticle() {
             val commandSocketOptions = DeploymentOptions()
                 .setWorker(true)
                 .setWorkerPoolName("command-socket-pool")
-                .setWorkerPoolSize(2)  // Adjust based on needs
-                .setInstances(1)  // Only one instance to manage connections centrally
+                .setWorkerPoolSize(2)  // Adjust
+                .setInstances(1) // Only one instance to manage connections centrally
                 .setConfig(JsonObject().put("useOwnHttpServer", true))
 
             commandSocketVerticleDeploymentId = vertx.deployVerticle(

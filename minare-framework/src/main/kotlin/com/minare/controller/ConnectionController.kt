@@ -332,7 +332,6 @@ open class ConnectionController @Inject constructor(
      */
     suspend fun removeCommandSocket(connectionId: String) {
         try {
-            // Close and remove socket from cache
             connectionCache.removeCommandSocket(connectionId)?.let { socket ->
                 try {
                     if (!socket.isClosed()) {
@@ -343,20 +342,14 @@ open class ConnectionController @Inject constructor(
                 }
             }
 
-            // Command socket is required so clean up the update socket too
             removeUpdateSocket(connectionId)
 
-            // Update database first (source of truth)
             try {
                 connectionStore.delete(connectionId)
                 log.info("Connection {} deleted from database", connectionId)
             } catch (e: Exception) {
                 log.error("Failed to delete connection {} from database: {}", connectionId, e.message)
-                // Continue with cleanup regardless of database deletion result
-                // because we want to ensure cache is consistent
             }
-
-            // Then remove from cache
             connectionCache.removeConnection(connectionId)
             log.info("Connection {} removed from cache", connectionId)
 
@@ -514,8 +507,6 @@ open class ConnectionController @Inject constructor(
     suspend fun syncChannelToConnection(channelId: String, connectionId: String) {
         try {
             log.debug("Syncing channel {} to connection {}", channelId, connectionId)
-
-            // Get all entity IDs in this channel
             val entityIds = contextStore.getEntityIdsByChannel(channelId)
 
             if (entityIds.isEmpty()) {
@@ -523,17 +514,14 @@ open class ConnectionController @Inject constructor(
                 return
             }
 
-            // Build the document graph - works directly with MongoDB documents
             val documentGraph = entityStore.buildDocumentGraph(entityIds)
 
             // Convert the document graph to JSON format suitable for client consumption
             val syncData = EntityGraph.documentGraphToJson(documentGraph)
 
-            // Add metadata
             syncData.put("channelId", channelId)
             syncData.put("timestamp", System.currentTimeMillis())
 
-            // Create the sync message
             val syncMessage = JsonObject()
                 .put("type", "sync")
                 .put("data", syncData)
@@ -559,20 +547,15 @@ open class ConnectionController @Inject constructor(
     suspend fun cleanupConnection(connectionId: String) {
         log.info("Cleaning up connection {}", connectionId)
 
-        // Step 1: Remove the connection from all channels
-        // This is the most important part and should happen regardless of whether
-        // the connection exists in the database or not
         try {
             val removedCount = channelStore.removeClientFromAllChannels(connectionId)
             log.info("Removed connection {} from {} channels", connectionId, removedCount)
         } catch (e: Exception) {
             log.error("Error removing connection {} from channels: {}", connectionId, e.message)
-            // Even if channel cleanup fails, we continue with other cleanup steps
         }
 
-        // Step 2: Clean up cache entries - this is in-memory and should be reliable
+        // Clean up sockets and cache
         try {
-            // Close any open sockets
             connectionCache.getCommandSocket(connectionId)?.let { socket ->
                 try {
                     if (!socket.isClosed()) socket.close()
@@ -589,7 +572,6 @@ open class ConnectionController @Inject constructor(
                 }
             }
 
-            // Remove from cache
             connectionCache.removeCommandSocket(connectionId)
             connectionCache.removeUpdateSocket(connectionId)
             connectionCache.removeConnection(connectionId)
@@ -597,7 +579,6 @@ open class ConnectionController @Inject constructor(
             log.info("Connection {} removed from cache", connectionId)
         } catch (e: Exception) {
             log.error("Error cleaning up connection {} cache entries: {}", connectionId, e.message)
-            // Continue even if cache cleanup fails
         }
 
         // Step 3: Finally try to delete the connection from the database
@@ -608,7 +589,7 @@ open class ConnectionController @Inject constructor(
             log.info("Connection {} deleted from database", connectionId)
         } catch (e: Exception) {
             log.debug(
-                "Error deleting connection {} from database - it may already be deleted: {}",
+                "Could not delete connection {} from database - it may already be deleted: {}",
                 connectionId, e.message
             )
             // This is expected in some cases and not an error
