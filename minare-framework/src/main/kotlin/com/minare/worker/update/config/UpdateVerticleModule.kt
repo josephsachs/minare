@@ -14,7 +14,6 @@ import com.minare.worker.update.UpdateVerticle
 import io.vertx.core.Vertx
 import io.vertx.ext.web.Router
 import kotlinx.coroutines.CoroutineScope
-import com.minare.worker.command.ConnectionLifecycle
 import com.minare.worker.update.UpdateVerticleCache
 import com.minare.worker.update.events.EntityUpdatedEvent
 import com.minare.worker.update.events.UpdateConnectionClosedEvent
@@ -23,13 +22,13 @@ import com.minare.worker.update.handlers.EntityUpdateHandler
 import kotlin.coroutines.CoroutineContext
 
 /**
- * Specialized Guice module for CommandVerticle and its dependencies.
+ * Specialized Guice module for UpdateVerticle and its dependencies.
  * This module provides all the necessary components within the UpdateVerticle's scope.
  */
 class UpdateVerticleModule : PrivateModule() {
 
     override fun configure() {
-        // Bind command verticle itself
+        // Bind update verticle itself
         bind(UpdateVerticle::class.java)
 
         // Bind all event handlers
@@ -46,7 +45,7 @@ class UpdateVerticleModule : PrivateModule() {
         requireBinding(ConnectionCache::class.java)
         requireBinding(ChannelStore::class.java)
 
-        // Expose CommandVerticle to the parent injector
+        // Expose UpdateVerticle to the parent injector
         expose(UpdateVerticle::class.java)
     }
 
@@ -74,7 +73,7 @@ class UpdateVerticleModule : PrivateModule() {
     @Provides
     @Singleton
     fun provideEventBusUtils(vertx: Vertx, coroutineContext: CoroutineContext): EventBusUtils {
-        return EventBusUtils(vertx, coroutineContext, "CommandVerticle")
+        return EventBusUtils(vertx, coroutineContext, "UpdateVerticle")
     }
 
     /**

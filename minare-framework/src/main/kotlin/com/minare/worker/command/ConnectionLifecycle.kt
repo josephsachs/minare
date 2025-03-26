@@ -73,7 +73,7 @@ class ConnectionLifecycle @Inject constructor(
             )
 
             WebSocketUtils.sendConfirmation(websocket, "connection_confirm", connection._id)
-            heartbeatManager.startHeartbeat(connection._id, websocket)
+            heartbeatManager.startHeartbeat(commandSocketId, connection._id, websocket)
 
             vlog.getEventLogger().trace(
                 "CONNECTION_ESTABLISHED",

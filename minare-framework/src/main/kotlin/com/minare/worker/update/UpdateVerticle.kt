@@ -56,7 +56,6 @@ class UpdateVerticle @Inject constructor(
     private lateinit var frameController: UpdateFrameController
 
     private var deployedAt: Long = 0
-    private var useOwnHttpServer: Boolean = true
     private var httpServerPort: Int = 4226
     private var httpServerHost: String = "0.0.0.0"
 
@@ -87,7 +86,6 @@ class UpdateVerticle @Inject constructor(
             vlog.logStartupStep("STARTING")
             vlog.logConfig(config)
 
-            useOwnHttpServer = config.getBoolean("useOwnHttpServer", true)
             httpServerPort = config.getInteger("httpPort", 4226)
             httpServerHost = config.getString("httpHost", "0.0.0.0")
             initializeRouter()
@@ -102,9 +100,7 @@ class UpdateVerticle @Inject constructor(
             registerEventBusConsumers()
             vlog.logStartupStep("EVENT_BUS_HANDLERS_REGISTERED")
 
-            if (useOwnHttpServer) {
-                deployHttpServer()
-            }
+            deployHttpServer()
 
             // Save deployment ID
             deploymentID?.let {
@@ -170,8 +166,6 @@ class UpdateVerticle @Inject constructor(
         } catch (e: Exception) {
             vlog.logVerticleError("DEPLOY_HTTP_SERVER", e)
             log.error("Failed to deploy HTTP server", e)
-
-            useOwnHttpServer = false
             throw e
         }
     }
@@ -218,15 +212,25 @@ class UpdateVerticle @Inject constructor(
                 handleSocketClose(websocket)
             }
         }
+
+        websocket.accept()
     }
 
     /**
      * Associate an update socket with a connection ID
      */
     private suspend fun associateUpdateSocket(connectionId: String, websocket: ServerWebSocket, traceId: String) {
+        log.info("WebSocket details: class={}, isNull={}, isClosed={}",
+            websocket.javaClass.name,
+            false,
+            websocket.isClosed())
+
+        val socketId = websocket.textHandlerID()
+        log.info("Socket ID: {}", socketId)
+
         vlog.getEventLogger().trace("ASSOCIATING_SOCKET", mapOf(
             "connectionId" to connectionId,
-            "socketId" to websocket.textHandlerID()
+            "socketId" to socketId
         ), traceId)
 
         try {
@@ -251,6 +255,7 @@ class UpdateVerticle @Inject constructor(
             // Register the new socket
             connectionTracker.registerConnection(connectionId, traceId, websocket)
             connectionCache.storeUpdateSocket(connectionId, websocket, connection)
+            heartbeatManager.startHeartbeat(socketId, connectionId, websocket)
 
             // Send confirmation
             WebSocketUtils.sendConfirmation(websocket, "update_socket_confirm", connectionId)
@@ -270,7 +275,7 @@ class UpdateVerticle @Inject constructor(
 
             vlog.getEventLogger().trace("UPDATE_SOCKET_ASSOCIATED", mapOf(
                 "connectionId" to connectionId,
-                "socketId" to websocket.textHandlerID()
+                "socketId" to socketId
             ), traceId)
 
             // Publish for the Update Socket

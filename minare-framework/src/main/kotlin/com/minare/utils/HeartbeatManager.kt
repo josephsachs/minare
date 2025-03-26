@@ -21,7 +21,7 @@ class HeartbeatManager(
 ) {
     private val log = LoggerFactory.getLogger(HeartbeatManager::class.java)
 
-    // Map to store heartbeat timer IDs
+    // Map to store heartbeat timer IDs - changed to use socketId as key
     private val heartbeatTimers = ConcurrentHashMap<String, Long>()
 
     // Default heartbeat interval
@@ -38,14 +38,15 @@ class HeartbeatManager(
     }
 
     /**
-     * Start heartbeat for a connection
+     * Start heartbeat for a socket
      *
-     * @param connectionId Connection ID
+     * @param socketId WebSocket ID
+     * @param connectionId Associated connection ID (for activity updates)
      * @param socket WebSocket to send heartbeats on
      */
-    fun startHeartbeat(connectionId: String, socket: ServerWebSocket) {
-        // Stop any existing heartbeat for this connection
-        stopHeartbeat(connectionId)
+    fun startHeartbeat(socketId: String, connectionId: String, socket: ServerWebSocket) {
+        // Stop any existing heartbeat for this socket
+        stopHeartbeat(socketId)
 
         // Run heartbeat at the configured interval
         val timerId = vertx.setPeriodic(heartbeatIntervalMs) { _ ->
@@ -53,7 +54,7 @@ class HeartbeatManager(
                 try {
                     if (socket.isClosed()) {
                         // Socket is gone, stop heartbeat
-                        stopHeartbeat(connectionId)
+                        stopHeartbeat(socketId)
                         return@launch
                     }
 
@@ -74,40 +75,43 @@ class HeartbeatManager(
                     // Only log occasionally to reduce noise
                     if (Math.random() < 0.05) { // Log roughly 5% of heartbeats
                         logger.getEventLogger().trace("HEARTBEAT_SENT", mapOf(
+                            "socketId" to socketId,
                             "connectionId" to connectionId
                         ))
                     }
                 } catch (e: Exception) {
                     logger.logVerticleError("HEARTBEAT_SEND", e, mapOf(
+                        "socketId" to socketId,
                         "connectionId" to connectionId
                     ))
 
                     // Stop heartbeat if socket appears to be permanently gone
                     if (e.message?.contains("Connection was closed") == true) {
-                        stopHeartbeat(connectionId)
+                        stopHeartbeat(socketId)
                     }
                 }
             }
         }
 
         // Store timer ID for cancellation
-        heartbeatTimers[connectionId] = timerId
+        heartbeatTimers[socketId] = timerId
         logger.getEventLogger().trace("HEARTBEAT_STARTED", mapOf(
+            "socketId" to socketId,
             "connectionId" to connectionId,
             "intervalMs" to heartbeatIntervalMs
         ))
     }
 
     /**
-     * Stop heartbeat for a connection
+     * Stop heartbeat for a socket
      *
-     * @param connectionId Connection ID
+     * @param socketId Socket ID
      */
-    fun stopHeartbeat(connectionId: String) {
-        heartbeatTimers.remove(connectionId)?.let { timerId ->
+    fun stopHeartbeat(socketId: String) {
+        heartbeatTimers.remove(socketId)?.let { timerId ->
             vertx.cancelTimer(timerId)
             logger.getEventLogger().trace("HEARTBEAT_STOPPED", mapOf(
-                "connectionId" to connectionId
+                "socketId" to socketId
             ))
         }
     }
@@ -145,9 +149,9 @@ class HeartbeatManager(
      * Stop all heartbeats
      */
     fun stopAll() {
-        heartbeatTimers.forEach { (connectionId, timerId) ->
+        heartbeatTimers.forEach { (socketId, timerId) ->
             vertx.cancelTimer(timerId)
-            log.debug("Stopped heartbeat for connection $connectionId")
+            log.debug("Stopped heartbeat for socket $socketId")
         }
         heartbeatTimers.clear()
         log.info("Stopped all heartbeats")

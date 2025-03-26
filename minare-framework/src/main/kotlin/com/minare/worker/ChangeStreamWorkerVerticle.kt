@@ -2,6 +2,7 @@ package com.minare.worker
 
 import com.minare.persistence.ChannelStore
 import com.minare.persistence.ContextStore
+import com.minare.utils.VerticleLogger
 import com.mongodb.ConnectionString
 import com.mongodb.client.MongoClients
 import com.mongodb.client.model.changestream.ChangeStreamDocument
@@ -30,7 +31,8 @@ import javax.inject.Named
  */
 class ChangeStreamWorkerVerticle @Inject constructor(
     @Named("databaseName") private val mongoDatabase: String,
-    @Named("mongoConnectionString") private val mongoConnectionString: String
+    @Named("mongoConnectionString") private val mongoConnectionString: String,
+    private val vlog: VerticleLogger
 ) : CoroutineVerticle() {
 
     private val log = LoggerFactory.getLogger(ChangeStreamWorkerVerticle::class.java)

@@ -140,7 +140,7 @@ class ReconnectionHandler @Inject constructor(
             )
 
             sendReconnectionResponse(websocket, true, null)
-            heartbeatManager.startHeartbeat(connectionId, websocket)
+            heartbeatManager.startHeartbeat(socketId, connectionId, websocket)
 
             if (connectionCache.isFullyConnected(connectionId)) {
                 vlog.getEventLogger().logStateChange(
