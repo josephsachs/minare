@@ -5,7 +5,7 @@ import com.minare.controller.ConnectionController
 import com.minare.core.entity.ReflectionCache
 import com.minare.worker.MutationVerticle
 import com.minare.persistence.EntityStore
-import com.minare.worker.CommandVerticle
+import com.minare.worker.command.CommandVerticle
 import io.vertx.kotlin.coroutines.await
 import io.vertx.core.Vertx
 import io.vertx.core.eventbus.ReplyException

@@ -14,7 +14,7 @@ import com.minare.core.websocket.CommandMessageHandler
 import com.minare.core.websocket.UpdateSocketManager
 import com.minare.worker.MinareVerticleFactory
 import com.minare.persistence.*
-import com.minare.worker.CommandVerticle
+import com.minare.worker.command.CommandVerticle
 import io.vertx.core.Vertx
 import io.vertx.core.impl.logging.LoggerFactory
 import io.vertx.core.json.JsonObject

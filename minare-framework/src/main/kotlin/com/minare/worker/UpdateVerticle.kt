@@ -6,7 +6,6 @@ import com.minare.persistence.ChannelStore
 import com.minare.persistence.ConnectionStore
 import com.minare.persistence.ContextStore
 import com.minare.utils.*
-import com.minare.worker.CommandVerticle.Companion
 import io.vertx.core.http.HttpServer
 import io.vertx.core.http.ServerWebSocket
 import io.vertx.core.json.JsonObject
@@ -19,6 +18,7 @@ import kotlinx.coroutines.launch
 import org.slf4j.LoggerFactory
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
+import com.minare.worker.command.CommandVerticle
 
 /**
  * Verticle responsible for accumulating entity updates and distributing them

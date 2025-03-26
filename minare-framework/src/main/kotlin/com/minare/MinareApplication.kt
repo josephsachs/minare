@@ -4,11 +4,10 @@ import com.google.inject.*
 import com.google.inject.name.Names
 import com.minare.config.*
 import com.minare.worker.ChangeStreamWorkerVerticle
-import com.minare.worker.CommandVerticle
+import com.minare.worker.command.CommandVerticle
 import com.minare.worker.CleanupVerticle
 import com.minare.worker.MutationVerticle
 import com.minare.worker.UpdateVerticle
-import com.minare.core.websocket.UpdateSocketManager
 import com.minare.persistence.DatabaseInitializer
 import com.minare.utils.EventBusUtils
 import com.minare.utils.VerticleLogger

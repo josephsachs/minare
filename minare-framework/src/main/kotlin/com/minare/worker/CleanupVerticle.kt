@@ -11,6 +11,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import org.slf4j.LoggerFactory
 import javax.inject.Inject
+import com.minare.worker.command.CommandVerticle
 
 /**
  * Verticle that handles periodic cleaning of stale connections and data.
