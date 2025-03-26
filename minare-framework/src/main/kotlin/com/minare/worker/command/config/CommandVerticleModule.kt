@@ -1,6 +1,6 @@
 package com.minare.worker.command.config
 
-import com.google.inject.AbstractModule
+import com.google.inject.PrivateModule
 import com.google.inject.Provides
 import com.google.inject.Singleton
 import com.minare.cache.ConnectionCache
@@ -26,13 +26,9 @@ import com.minare.worker.command.handlers.MessageHandler
 import com.minare.worker.command.handlers.ReconnectionHandler
 import kotlin.coroutines.CoroutineContext
 
-/**
- * Specialized Guice module for CommandVerticle and its dependencies.
- * This module provides all the necessary components within the CommandVerticle's scope.
- */
-class CommandVerticleModule : AbstractModule() {
-
+class CommandVerticleModule : PrivateModule() {
     override fun configure() {
+        // Bind all the handlers
         bind(EntitySyncEvent::class.java).`in`(Singleton::class.java)
         bind(ConnectionCleanupEvent::class.java).`in`(Singleton::class.java)
         bind(ChannelCleanupEvent::class.java).`in`(Singleton::class.java)
@@ -42,54 +38,38 @@ class CommandVerticleModule : AbstractModule() {
         bind(CloseHandler::class.java).`in`(Singleton::class.java)
         bind(MessageHandler::class.java).`in`(Singleton::class.java)
         bind(ReconnectionHandler::class.java).`in`(Singleton::class.java)
+
+        expose(CommandVerticle::class.java)
     }
 
-    /**
-     * Provides a Router instance specifically for CommandVerticle
-     */
     @Provides
     @Singleton
-    fun provideRouter(vertx: Vertx): Router {
-        return Router.router(vertx)
+    fun provideRouter(): Router {
+        return Router.router(Vertx.vertx())
     }
 
-    /**
-     * Provides a CoroutineContext using the Vertx dispatcher
-     */
     @Provides
     @Singleton
-    fun provideCoroutineContext(vertx: Vertx): CoroutineContext {
-        return vertx.dispatcher()
+    fun provideVerticleLogger(): VerticleLogger {
+        return VerticleLogger()
     }
 
-    /**
-     * Provides a CoroutineScope using the Vertx dispatcher
-     */
     @Provides
     @Singleton
-    fun provideCoroutineScope(vertx: Vertx): CoroutineScope {
-        return CoroutineScope(vertx.dispatcher())
+    fun provideCoroutineContext(): CoroutineContext {
+        return Vertx.vertx().dispatcher()
     }
 
-    /**
-     * Provides a properly initialized VerticleLogger for CommandVerticle
-     * Note: We can't initialize it with the actual verticle instance yet
-     * because the verticle hasn't been created. We'll need to initialize
-     * it within the verticle's start method.
-     */
     @Provides
     @Singleton
-    fun provideVerticleLogger(context: CommandVerticle): VerticleLogger {
-        return VerticleLogger(context)
+    fun provideCoroutineScope(coroutineContext: CoroutineContext): CoroutineScope {
+        return CoroutineScope(coroutineContext)
     }
 
-    /**
-     * Provides EventBusUtils for CommandVerticle
-     */
     @Provides
     @Singleton
-    fun provideEventBusUtils(vertx: Vertx, coroutineContext: CoroutineContext): EventBusUtils {
-        return EventBusUtils(vertx, coroutineContext, "CommandVerticle")
+    fun provideEventBusUtils(coroutineContext: CoroutineContext): EventBusUtils {
+        return provideVerticleLogger().createEventBusUtils()
     }
 
     /**

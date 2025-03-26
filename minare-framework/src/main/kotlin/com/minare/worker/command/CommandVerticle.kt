@@ -17,7 +17,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import org.slf4j.LoggerFactory
 import javax.inject.Inject
-import com.minare.worker.command.ConnectionLifecycle
 import com.minare.worker.command.handlers.CloseHandler
 import com.minare.worker.command.handlers.MessageHandler
 import com.minare.worker.command.handlers.ReconnectionHandler
@@ -27,10 +26,9 @@ import com.minare.worker.command.handlers.ReconnectionHandler
  * socket lifecycle events. Creates and manages its own router for WebSocket endpoints.
  */
 class CommandVerticle @Inject constructor(
-    private var vlog: VerticleLogger,
-    private var eventBusUtils: EventBusUtils,
-    private var heartbeatManager: HeartbeatManager,
-    private var connectionTracker: ConnectionTracker,
+    private val vlog: VerticleLogger,
+    private val heartbeatManager: HeartbeatManager,
+    private val connectionTracker: ConnectionTracker,
     private val reconnectionHandler: ReconnectionHandler,
     private val messageHandler: MessageHandler,
     private val closeHandler: CloseHandler,
@@ -38,13 +36,8 @@ class CommandVerticle @Inject constructor(
 ) : CoroutineVerticle() {
 
     private val log = LoggerFactory.getLogger(CommandVerticle::class.java)
-
     private var deployedAt: Long = 0
-
-    // HTTP server if we're using our own
     private var httpServer: HttpServer? = null
-
-    // Router for command socket endpoints
     lateinit var router: Router
 
     companion object {
@@ -67,8 +60,7 @@ class CommandVerticle @Inject constructor(
         deployedAt = System.currentTimeMillis()
         log.info("Starting CommandSocketVerticle at {$deployedAt}")
 
-        vlog = VerticleLogger(this)
-        eventBusUtils = vlog.createEventBusUtils()
+        vlog.setVerticle(this)
 
         vlog.logStartupStep("STARTING")
         vlog.logConfig(config)

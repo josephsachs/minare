@@ -41,7 +41,8 @@ class HttpServerVerticle : CoroutineVerticle() {
         log.info("Starting HttpServerVerticle")
 
         // Initialize logging utils
-        vlog = VerticleLogger(this)
+        vlog = VerticleLogger()
+        vlog.setVerticle(this)
 
         // Log configuration
         vlog.logConfig(config)

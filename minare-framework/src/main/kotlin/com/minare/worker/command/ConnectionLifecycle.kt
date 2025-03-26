@@ -1,6 +1,7 @@
 package com.minare.worker.command
 
 import com.google.inject.Inject
+import com.google.inject.Singleton
 import com.minare.cache.ConnectionCache
 import com.minare.persistence.ChannelStore
 import com.minare.persistence.ConnectionStore
@@ -10,6 +11,7 @@ import com.minare.utils.VerticleLogger
 import com.minare.utils.WebSocketUtils
 import io.vertx.core.http.ServerWebSocket
 
+@Singleton
 class ConnectionLifecycle @Inject constructor(
     private val vlog: VerticleLogger,
     private val connectionStore: ConnectionStore,

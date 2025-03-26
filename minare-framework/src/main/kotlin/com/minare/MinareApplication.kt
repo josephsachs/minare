@@ -12,6 +12,7 @@ import com.minare.persistence.DatabaseInitializer
 import com.minare.utils.EventBusUtils
 import com.minare.utils.VerticleLogger
 import com.minare.worker.MinareVerticleFactory
+import com.minare.worker.command.config.CommandVerticleModule
 import io.vertx.core.DeploymentOptions
 import io.vertx.core.Vertx
 import io.vertx.core.VertxOptions
@@ -359,6 +360,7 @@ abstract class MinareApplication : CoroutineVerticle() {
 
                 // Create the framework module
                 val frameworkModule = MinareModule()
+                val commandVerticleModule = CommandVerticleModule()
 
                 // Create a module for database name binding
                 val dbNameModule = object : AbstractModule() {
@@ -387,6 +389,7 @@ abstract class MinareApplication : CoroutineVerticle() {
                         // Install modules in correct order:
                         // 1. First framework (provides defaults)
                         install(frameworkModule)
+                        install(commandVerticleModule)
                         // 2. Then app module (overrides framework if needed)
                         install(appModule)
                         // 3. Then vertx and database modules

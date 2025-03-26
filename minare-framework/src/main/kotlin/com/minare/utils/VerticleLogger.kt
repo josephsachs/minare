@@ -10,16 +10,22 @@ import org.slf4j.LoggerFactory
  * Extension of EventLogger specifically for use with Verticles.
  * Provides verticle-specific logging patterns and lifecycle tracking.
  */
-class VerticleLogger(val verticle: CoroutineVerticle) {
+class VerticleLogger() {
     private val verticleName = verticle.javaClass.simpleName
     private val log: Logger = LoggerFactory.getLogger(verticle.javaClass)
     private val eventLog = EventLogger.forClass(verticle.javaClass)
+
+    private lateinit var verticle: CoroutineVerticle
 
     // Store deployment ID when available
     private var deploymentId: String? = null
 
     // Store state changes
     private var currentState = "INITIALIZING"
+
+    public fun setVerticle(verticle: CoroutineVerticle) {
+        this.verticle = verticle
+    }
 
     /**
      * Log verticle deployment

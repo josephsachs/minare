@@ -72,7 +72,9 @@ class UpdateVerticle @Inject constructor(
             deployedAt = System.currentTimeMillis()
             log.info("Starting UpdateVerticle at {$deployedAt}")
 
-            vlog = VerticleLogger(this)
+            vlog = VerticleLogger()
+            vlog.setVerticle(this)
+
             eventBusUtils = vlog.createEventBusUtils()
 
             connectionTracker = ConnectionTracker("UpdateSocket", vlog)
