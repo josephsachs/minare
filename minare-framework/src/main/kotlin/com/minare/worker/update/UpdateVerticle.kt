@@ -56,8 +56,6 @@ class UpdateVerticle @Inject constructor(
     private lateinit var frameController: UpdateFrameController
 
     private var deployedAt: Long = 0
-    private var httpServerPort: Int = 4226
-    private var httpServerHost: String = "0.0.0.0"
 
     companion object {
         const val ADDRESS_UPDATE_SOCKET_INITIALIZED = "minare.update.socket.initialized"
@@ -67,6 +65,10 @@ class UpdateVerticle @Inject constructor(
         const val CACHE_TTL_MS = 10000L // 10 seconds
         const val HEARTBEAT_INTERVAL_MS = 15000L
         const val DEFAULT_FRAME_INTERVAL_MS = 100 // 10 frames per second
+
+        const val BASE_PATH = "/update"
+        const val HTTP_SERVER_HOST = "0.0.0.0"
+        const val HTTP_SERVER_PORT = 4226
     }
 
     override suspend fun start() {
@@ -78,6 +80,7 @@ class UpdateVerticle @Inject constructor(
             vlog.setVerticle(this)
 
             eventBusUtils = vlog.createEventBusUtils()
+            registerEventBusConsumers()
 
             connectionTracker = ConnectionTracker("UpdateSocket", vlog)
             heartbeatManager = HeartbeatManager(vertx, vlog, connectionStore, CoroutineScope(vertx.dispatcher()))
@@ -86,8 +89,6 @@ class UpdateVerticle @Inject constructor(
             vlog.logStartupStep("STARTING")
             vlog.logConfig(config)
 
-            httpServerPort = config.getInteger("httpPort", 4226)
-            httpServerHost = config.getString("httpHost", "0.0.0.0")
             initializeRouter()
 
             frameController = UpdateFrameController()
@@ -97,7 +98,6 @@ class UpdateVerticle @Inject constructor(
                 "frameInterval" to DEFAULT_FRAME_INTERVAL_MS
             ))
 
-            registerEventBusConsumers()
             vlog.logStartupStep("EVENT_BUS_HANDLERS_REGISTERED")
 
             deployHttpServer()
@@ -154,14 +154,14 @@ class UpdateVerticle @Inject constructor(
             httpServer = HttpServerUtils.createAndStartHttpServer(
                 vertx = vertx,
                 router = router,
-                host = httpServerHost,
-                port = httpServerPort
+                host = HTTP_SERVER_HOST,
+                port = HTTP_SERVER_PORT
             ).await()
 
-            val actualPort = httpServer?.actualPort() ?: httpServerPort
+            val actualPort = httpServer?.actualPort() ?: HTTP_SERVER_PORT
             vlog.logStartupStep("HTTP_SERVER_DEPLOYED", mapOf(
                 "port" to actualPort,
-                "host" to httpServerHost
+                "host" to HTTP_SERVER_HOST
             ))
         } catch (e: Exception) {
             vlog.logVerticleError("DEPLOY_HTTP_SERVER", e)
@@ -220,17 +220,8 @@ class UpdateVerticle @Inject constructor(
      * Associate an update socket with a connection ID
      */
     private suspend fun associateUpdateSocket(connectionId: String, websocket: ServerWebSocket, traceId: String) {
-        log.info("WebSocket details: class={}, isNull={}, isClosed={}",
-            websocket.javaClass.name,
-            false,
-            websocket.isClosed())
-
-        val socketId = websocket.textHandlerID()
-        log.info("Socket ID: {}", socketId)
-
         vlog.getEventLogger().trace("ASSOCIATING_SOCKET", mapOf(
-            "connectionId" to connectionId,
-            "socketId" to socketId
+            "connectionId" to connectionId
         ), traceId)
 
         try {
@@ -252,8 +243,19 @@ class UpdateVerticle @Inject constructor(
             // Close any existing socket for this connection
             closeExistingUpdateSocket(connectionId, traceId)
 
+            // Generate a custom socket ID instead of using textHandlerID()
+            val socketId = "us-${java.util.UUID.randomUUID()}"
+
             // Register the new socket
             connectionTracker.registerConnection(connectionId, traceId, websocket)
+
+            // Update the database with this ID
+            connectionStore.updateSocketIds(
+                connectionId,
+                connection.commandSocketId,  // Preserve existing command socket ID
+                socketId
+            )
+
             connectionCache.storeUpdateSocket(connectionId, websocket, connection)
             heartbeatManager.startHeartbeat(socketId, connectionId, websocket)
 
@@ -261,7 +263,7 @@ class UpdateVerticle @Inject constructor(
             WebSocketUtils.sendConfirmation(websocket, "update_socket_confirm", connectionId)
 
             vlog.getEventLogger().logStateChange("UpdateSocket", "CONNECTED", "REGISTERED",
-                mapOf("connectionId" to connectionId), traceId)
+                mapOf("connectionId" to connectionId, "socketId" to socketId), traceId)
 
             // Initialize pending updates for this connection if not already present
             updateVerticleCache.connectionPendingUpdates.computeIfAbsent(connectionId) { ConcurrentHashMap() }
@@ -269,20 +271,17 @@ class UpdateVerticle @Inject constructor(
             // Notify about connection established
             vertx.eventBus().publish(
                 ADDRESS_CONNECTION_ESTABLISHED, JsonObject()
-                .put("connectionId", connectionId)
-                .put("socketType", "update")
+                    .put("connectionId", connectionId)
+                    .put("socketId", socketId)  // Include the socket ID in the event
+                    .put("socketType", "update")
             )
 
-            vlog.getEventLogger().trace("UPDATE_SOCKET_ASSOCIATED", mapOf(
-                "connectionId" to connectionId,
-                "socketId" to socketId
-            ), traceId)
-
-            // Publish for the Update Socket
+            // Publish for the Update Socket (consistent with CommandVerticle)
             vertx.eventBus().publish(
                 MinareApplication.ConnectionEvents.ADDRESS_UPDATE_SOCKET_CONNECTED,
                 JsonObject()
                     .put("connectionId", connection._id)
+                    .put("socketId", socketId)
                     .put("traceId", traceId)
             )
         } catch (e: Exception) {
