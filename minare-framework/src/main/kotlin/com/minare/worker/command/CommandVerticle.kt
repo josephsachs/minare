@@ -5,7 +5,6 @@ import com.minare.utils.HeartbeatManager
 import com.minare.utils.ConnectionTracker
 import com.minare.utils.HttpServerUtils
 import com.minare.utils.WebSocketUtils
-import com.minare.worker.CleanupVerticle
 import com.minare.worker.command.events.*
 import io.vertx.core.http.HttpServer
 import io.vertx.core.http.ServerWebSocket
@@ -38,7 +37,7 @@ class CommandVerticle @Inject constructor(
     private val commandGetRouterEvent: CommandGetRouterEvent,
     private val commandSocketCleanupEvent: CommandSocketCleanupEvent,
     private val commandSocketInitEvent: CommandSocketInitEvent,
-    private val connectionCleanupEvent: ChannelCleanupEvent,
+    private val connectionCleanupEvent: ConnectionCleanupEvent,
     private val entitySyncEvent: EntitySyncEvent
 ) : CoroutineVerticle() {
 
@@ -78,6 +77,8 @@ class CommandVerticle @Inject constructor(
 
         registerEventBusConsumers()
         vlog.logStartupStep("EVENT_BUS_HANDLERS_REGISTERED")
+
+        deployHttpServer()
 
         // Save deployment ID
         deploymentID?.let {
@@ -127,10 +128,10 @@ class CommandVerticle @Inject constructor(
      * Register all event bus consumers
      */
     private suspend fun registerEventBusConsumers() {
-        channelCleanupEvent.register()
+        commandSocketInitEvent.register()
         commandGetRouterEvent.register(router)
+        channelCleanupEvent.register()
         commandSocketCleanupEvent.register()
-        commandSocketInitEvent.register(this)
         connectionCleanupEvent.register()
         entitySyncEvent.register()
     }
@@ -232,7 +233,7 @@ class CommandVerticle @Inject constructor(
     /**
      * Deploy a dedicated HTTP server for command sockets
      */
-    suspend fun deployOwnHttpServer() {
+    suspend fun deployHttpServer() {
         vlog.logStartupStep("DEPLOYING_OWN_HTTP_SERVER")
 
         try {

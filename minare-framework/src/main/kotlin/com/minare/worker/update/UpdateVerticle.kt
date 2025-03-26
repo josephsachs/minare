@@ -1,4 +1,4 @@
-package com.minare.worker
+package com.minare.worker.update
 
 import com.minare.cache.ConnectionCache
 import com.minare.core.FrameController
@@ -19,6 +19,9 @@ import org.slf4j.LoggerFactory
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import com.minare.worker.command.CommandVerticle
+import com.minare.worker.update.UpdateVerticleCache
+import com.minare.worker.update.events.UpdateConnectionClosedEvent.Companion.ADDRESS_CONNECTION_CLOSED
+import com.minare.worker.update.events.UpdateConnectionEstablishedEvent.Companion.ADDRESS_CONNECTION_ESTABLISHED
 
 /**
  * Verticle responsible for accumulating entity updates and distributing them
@@ -27,10 +30,9 @@ import com.minare.worker.command.CommandVerticle
  * This verticle hosts its own HTTP server for direct WebSocket connections.
  */
 class UpdateVerticle @Inject constructor(
-    private val contextStore: ContextStore,
-    private val channelStore: ChannelStore,
     private val connectionStore: ConnectionStore,
-    private val connectionCache: ConnectionCache
+    private val connectionCache: ConnectionCache,
+    private val updateVerticleCache: UpdateVerticleCache
 ) : CoroutineVerticle() {
 
     private val log = LoggerFactory.getLogger(UpdateVerticle::class.java)
@@ -45,9 +47,6 @@ class UpdateVerticle @Inject constructor(
     private var httpServer: HttpServer? = null
 
     private lateinit var frameController: UpdateFrameController
-    private val entityChannelCache = ConcurrentHashMap<String, Pair<Set<String>, Long>>()
-    private val channelConnectionCache = ConcurrentHashMap<String, Pair<Set<String>, Long>>()
-    private val connectionPendingUpdates = ConcurrentHashMap<String, MutableMap<String, JsonObject>>()
 
     private var deployedAt: Long = 0
     private var useOwnHttpServer: Boolean = true
@@ -55,9 +54,6 @@ class UpdateVerticle @Inject constructor(
     private var httpServerHost: String = "0.0.0.0"
 
     companion object {
-        const val ADDRESS_ENTITY_UPDATED = "minare.entity.update"
-        const val ADDRESS_CONNECTION_ESTABLISHED = "minare.connection.established"
-        const val ADDRESS_CONNECTION_CLOSED = "minare.connection.closed"
         const val ADDRESS_UPDATE_SOCKET_INITIALIZED = "minare.update.socket.initialized"
         const val ADDRESS_UPDATE_SOCKET_CLOSE = "minare.update.socket.close"
         const val ADDRESS_INITIALIZE = "minare.update.initialize"
@@ -100,7 +96,7 @@ class UpdateVerticle @Inject constructor(
             vlog.logStartupStep("EVENT_BUS_HANDLERS_REGISTERED")
 
             if (useOwnHttpServer) {
-                deployOwnHttpServer()
+                deployHttpServer()
             }
 
             // Save deployment ID
@@ -136,10 +132,10 @@ class UpdateVerticle @Inject constructor(
                 JsonObject()
                     .put("connections", connectionTracker.getMetrics())
                     .put("heartbeats", heartbeatManager.getMetrics())
-                    .put("pendingUpdateQueues", connectionPendingUpdates.size)
+                    .put("pendingUpdateQueues", updateVerticleCache.connectionPendingUpdates.size)
                     .put("caches", JsonObject()
-                        .put("entityChannel", entityChannelCache.size)
-                        .put("channelConnection", channelConnectionCache.size)
+                        .put("entityChannel", updateVerticleCache.entityChannelCache.size)
+                        .put("channelConnection", updateVerticleCache.channelConnectionCache.size)
                     )
             }
         )
@@ -148,7 +144,7 @@ class UpdateVerticle @Inject constructor(
     /**
      * Deploy a dedicated HTTP server for update sockets
      */
-    private suspend fun deployOwnHttpServer() {
+    private suspend fun deployHttpServer() {
         vlog.logStartupStep("DEPLOYING_OWN_HTTP_SERVER")
 
         try {
@@ -177,51 +173,12 @@ class UpdateVerticle @Inject constructor(
      * Register all event bus consumers
      */
     private fun registerEventBusConsumers() {
-        // Register handler for entity updates from ChangeStreamWorkerVerticle
-        eventBusUtils.registerTracedConsumer<JsonObject>(ADDRESS_ENTITY_UPDATED) { message, traceId ->
-            handleEntityUpdate(message.body(), traceId)
-        }
-        vlog.logHandlerRegistration(ADDRESS_ENTITY_UPDATED)
 
-        // Register handler for connection established events
-        eventBusUtils.registerTracedConsumer<JsonObject>(ADDRESS_CONNECTION_ESTABLISHED) { message, traceId ->
-            val connectionId = message.body().getString("connectionId")
-            if (connectionId != null) {
-                connectionPendingUpdates.computeIfAbsent(connectionId) { ConcurrentHashMap() }
 
-                vlog.getEventLogger().trace("CONNECTION_TRACKING_INITIALIZED", mapOf(
-                    "connectionId" to connectionId
-                ), traceId)
-            }
-        }
-        vlog.logHandlerRegistration(ADDRESS_CONNECTION_ESTABLISHED)
 
-        // Register handler for connection closed events
-        eventBusUtils.registerTracedConsumer<JsonObject>(ADDRESS_CONNECTION_CLOSED) { message, traceId ->
-            val connectionId = message.body().getString("connectionId")
-            if (connectionId != null) {
-                connectionPendingUpdates.remove(connectionId)
-                invalidateChannelCacheForConnection(connectionId)
-
-                vlog.getEventLogger().trace("CONNECTION_TRACKING_REMOVED", mapOf(
-                    "connectionId" to connectionId
-                ), traceId)
-            }
-        }
-        vlog.logHandlerRegistration(ADDRESS_CONNECTION_CLOSED)
     }
 
-    /**
-     * Invalidate any channel cache entries containing this connection
-     */
-    private fun invalidateChannelCacheForConnection(connectionId: String) {
-        for ((channelId, entry) in channelConnectionCache) {
-            val (connections, _) = entry
-            if (connectionId in connections) {
-                channelConnectionCache.remove(channelId)
-            }
-        }
-    }
+
 
     /**
      * Handle a new update socket connection
@@ -297,10 +254,11 @@ class UpdateVerticle @Inject constructor(
                 mapOf("connectionId" to connectionId), traceId)
 
             // Initialize pending updates for this connection if not already present
-            connectionPendingUpdates.computeIfAbsent(connectionId) { ConcurrentHashMap() }
+            updateVerticleCache.connectionPendingUpdates.computeIfAbsent(connectionId) { ConcurrentHashMap() }
 
             // Notify about connection established
-            vertx.eventBus().publish(ADDRESS_CONNECTION_ESTABLISHED, JsonObject()
+            vertx.eventBus().publish(
+                ADDRESS_CONNECTION_ESTABLISHED, JsonObject()
                 .put("connectionId", connectionId)
                 .put("socketType", "update")
             )
@@ -351,7 +309,8 @@ class UpdateVerticle @Inject constructor(
             connectionCache.removeUpdateSocket(connectionId)
 
             // Notify about connection closed
-            vertx.eventBus().publish(ADDRESS_CONNECTION_CLOSED, JsonObject()
+            vertx.eventBus().publish(
+                ADDRESS_CONNECTION_CLOSED, JsonObject()
                 .put("connectionId", connectionId)
                 .put("socketType", "update")
             )
@@ -365,164 +324,7 @@ class UpdateVerticle @Inject constructor(
         }
     }
 
-    /**
-     * Handle an entity update from the change stream.
-     */
-    private suspend fun handleEntityUpdate(entityUpdate: JsonObject, traceId: String) {
-        try {
-            val entityId = entityUpdate.getString("_id")
 
-            if (entityId == null) {
-                vlog.getEventLogger().trace("ENTITY_UPDATE_MISSING_ID", mapOf(
-                    "update" to entityUpdate.encode()
-                ), traceId)
-                return
-            }
-
-            // Get channels for this entity (from cache or database)
-            val startTime = System.currentTimeMillis()
-            val channels = getChannelsForEntity(entityId)
-            val lookupTime = System.currentTimeMillis() - startTime
-
-            if (lookupTime > 50) {
-                vlog.getEventLogger().logPerformance("CHANNEL_LOOKUP", lookupTime, mapOf(
-                    "entityId" to entityId,
-                    "channelCount" to channels.size
-                ), traceId)
-            }
-
-            if (channels.isEmpty()) {
-                // No channels, no need to process further
-                vlog.getEventLogger().trace("ENTITY_NO_CHANNELS", mapOf(
-                    "entityId" to entityId
-                ), traceId)
-                return
-            }
-
-            // For each channel, get all connections and queue the update
-            val processedConnections = mutableSetOf<String>()
-
-            for (channelId in channels) {
-                val connections = getConnectionsForChannel(channelId)
-
-                for (connectionId in connections) {
-                    // Avoid processing the same connection multiple times
-                    if (connectionId in processedConnections) {
-                        continue
-                    }
-
-                    processedConnections.add(connectionId)
-
-                    // Queue update for this connection
-                    queueUpdateForConnection(connectionId, entityId, entityUpdate)
-                }
-            }
-
-            if (processedConnections.isNotEmpty()) {
-                vlog.getEventLogger().trace("UPDATE_QUEUED", mapOf(
-                    "entityId" to entityId,
-                    "connectionCount" to processedConnections.size
-                ), traceId)
-            }
-        } catch (e: Exception) {
-            vlog.logVerticleError("ENTITY_UPDATE_PROCESSING", e, mapOf(
-                "traceId" to traceId
-            ))
-        }
-    }
-
-    /**
-     * Queue an entity update for a specific connection.
-     * If the entity already has a pending update, it will be replaced with the newer version.
-     */
-    private fun queueUpdateForConnection(connectionId: String, entityId: String, entityUpdate: JsonObject) {
-        val updates = connectionPendingUpdates.computeIfAbsent(connectionId) { ConcurrentHashMap() }
-
-        // Check if we already have an update for this entity
-        val existingUpdate = updates[entityId]
-
-        if (existingUpdate != null) {
-            // Compare versions and only replace if newer
-            val existingVersion = existingUpdate.getLong("version", 0)
-            val newVersion = entityUpdate.getLong("version", 0)
-
-            if (newVersion > existingVersion) {
-                // New version is higher, replace the pending update
-                updates[entityId] = entityUpdate
-            }
-        } else {
-            // No existing update, add this one
-            updates[entityId] = entityUpdate
-        }
-    }
-
-    /**
-     * Get all channels that contain a specific entity.
-     * Uses a cache with TTL to reduce database queries.
-     */
-    private suspend fun getChannelsForEntity(entityId: String): Set<String> {
-        val now = System.currentTimeMillis()
-
-        // Check cache first
-        val cachedEntry = entityChannelCache[entityId]
-        if (cachedEntry != null) {
-            val (channels, expiry) = cachedEntry
-            if (now < expiry) {
-                // Cache entry is still valid
-                return channels
-            }
-            // Cache entry expired, remove it
-            entityChannelCache.remove(entityId)
-        }
-
-        // Query database
-        val channels = try {
-            contextStore.getChannelsByEntityId(entityId).toSet()
-        } catch (e: Exception) {
-            vlog.logVerticleError("CHANNEL_LOOKUP", e, mapOf(
-                "entityId" to entityId
-            ))
-            emptySet()
-        }
-
-        // Cache the result with expiry
-        entityChannelCache[entityId] = Pair(channels, now + CACHE_TTL_MS)
-
-        return channels
-    }
-
-    /**
-     * Get all connections subscribed to a specific channel.
-     * Uses a cache with TTL to reduce database queries.
-     */
-    private suspend fun getConnectionsForChannel(channelId: String): Set<String> {
-        val now = System.currentTimeMillis()
-
-        // Check cache first
-        val cachedEntry = channelConnectionCache[channelId]
-        if (cachedEntry != null) {
-            val (connections, expiry) = cachedEntry
-            if (now < expiry) {
-                return connections
-            }
-            channelConnectionCache.remove(channelId)
-        }
-
-        // Query database
-        val connections = try {
-            channelStore.getClientIds(channelId).toSet()
-        } catch (e: Exception) {
-            vlog.logVerticleError("CLIENT_LOOKUP", e, mapOf(
-                "channelId" to channelId
-            ))
-            emptySet()
-        }
-
-        // Cache the result with expiry
-        channelConnectionCache[channelId] = Pair(connections, now + CACHE_TTL_MS)
-
-        return connections
-    }
 
     /**
      * Send an update directly to a client's WebSocket
@@ -608,7 +410,7 @@ class UpdateVerticle @Inject constructor(
             var totalUpdatesProcessed = 0
 
             // Iterate through all connections with pending updates
-            for ((connectionId, updates) in connectionPendingUpdates) {
+            for ((connectionId, updates) in updateVerticleCache.connectionPendingUpdates) {
                 if (updates.isEmpty()) {
                     continue
                 }

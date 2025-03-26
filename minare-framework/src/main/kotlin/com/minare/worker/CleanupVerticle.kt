@@ -19,8 +19,7 @@ import com.minare.worker.command.CommandVerticle
  */
 class CleanupVerticle @Inject constructor(
     private val connectionStore: ConnectionStore,
-    private val connectionCache: ConnectionCache,
-    private val connectionController: ConnectionController
+    private val connectionCache: ConnectionCache
 ) : CoroutineVerticle() {
 
     private val log = LoggerFactory.getLogger(CleanupVerticle::class.java)

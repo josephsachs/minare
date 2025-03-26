@@ -9,12 +9,12 @@ import com.minare.core.entity.ReflectionCache
 import com.minare.worker.ChangeStreamWorkerVerticle
 import com.minare.worker.CleanupVerticle
 import com.minare.worker.MutationVerticle
-import com.minare.worker.UpdateVerticle
+import com.minare.worker.update.UpdateVerticle
 import com.minare.core.websocket.CommandMessageHandler
 import com.minare.core.websocket.UpdateSocketManager
 import com.minare.worker.MinareVerticleFactory
 import com.minare.persistence.*
-import com.minare.worker.command.CommandVerticle
+import com.minare.utils.VerticleLogger
 import io.vertx.core.Vertx
 import io.vertx.core.impl.logging.LoggerFactory
 import io.vertx.core.json.JsonObject
@@ -61,10 +61,11 @@ class MinareModule : AbstractModule(), DatabaseNameProvider {
             .annotatedWith(Names.named("frameIntervalMs"))
             .toInstance(100) // 10 FPS default
 
+        bind(VerticleLogger::class.java).`in`(Singleton::class.java)
+
         // Register the verticles (excluding CommandVerticle which is provided by CommandVerticleModule)
         bind(ChangeStreamWorkerVerticle::class.java)
         bind(MutationVerticle::class.java)
-        bind(UpdateVerticle::class.java)
         bind(CleanupVerticle::class.java)
     }
 

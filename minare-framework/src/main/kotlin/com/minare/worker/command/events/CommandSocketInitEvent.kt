@@ -11,7 +11,7 @@ class CommandSocketInitEvent @Inject constructor(
     private val eventBusUtils: EventBusUtils,
     private val vlog: VerticleLogger
 ) {
-    public suspend fun register(context: CommandVerticle) {
+    public suspend fun register() {
         eventBusUtils.registerTracedConsumer<JsonObject>(ADDRESS_COMMAND_SOCKET_INITIALIZE) { message, traceId ->
             try {
                 vlog.logStartupStep("INITIALIZING_ROUTER", mapOf("traceId" to traceId))
@@ -21,7 +21,6 @@ class CommandSocketInitEvent @Inject constructor(
                 val initTime = System.currentTimeMillis() - startTime
 
                 vlog.logVerticlePerformance("ROUTER_INITIALIZATION", initTime)
-                context.deployOwnHttpServer()
 
                 val reply = JsonObject()
                     .put("success", true)

@@ -7,12 +7,13 @@ import com.minare.worker.ChangeStreamWorkerVerticle
 import com.minare.worker.command.CommandVerticle
 import com.minare.worker.CleanupVerticle
 import com.minare.worker.MutationVerticle
-import com.minare.worker.UpdateVerticle
+import com.minare.worker.update.UpdateVerticle
 import com.minare.persistence.DatabaseInitializer
 import com.minare.utils.EventBusUtils
 import com.minare.utils.VerticleLogger
 import com.minare.worker.MinareVerticleFactory
 import com.minare.worker.command.config.CommandVerticleModule
+import com.minare.worker.command.config.UpdateVerticleModule
 import io.vertx.core.DeploymentOptions
 import io.vertx.core.Vertx
 import io.vertx.core.VertxOptions
@@ -361,6 +362,7 @@ abstract class MinareApplication : CoroutineVerticle() {
                 // Create the framework module
                 val frameworkModule = MinareModule()
                 val commandVerticleModule = CommandVerticleModule()
+                val updateVerticleModule = UpdateVerticleModule()
 
                 // Create a module for database name binding
                 val dbNameModule = object : AbstractModule() {
@@ -390,6 +392,7 @@ abstract class MinareApplication : CoroutineVerticle() {
                         // 1. First framework (provides defaults)
                         install(frameworkModule)
                         install(commandVerticleModule)
+                        install(updateVerticleModule)
                         // 2. Then app module (overrides framework if needed)
                         install(appModule)
                         // 3. Then vertx and database modules

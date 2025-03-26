@@ -14,7 +14,7 @@ class ConnectionCleanupEvent @Inject constructor(
     private val connectionLifecycle: ConnectionLifecycle
 ) {
 
-    suspend fun register(context: CommandVerticle) {
+    suspend fun register() {
         eventBusUtils.registerTracedConsumer<JsonObject>(ADDRESS_CONNECTION_CLEANUP) { message, traceId ->
             val connectionId = message.body().getString("connectionId")
             vlog.logStartupStep("CONNECTION_CLEANUP_REQUEST", mapOf("connectionId" to connectionId))
