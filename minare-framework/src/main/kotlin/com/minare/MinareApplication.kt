@@ -78,8 +78,6 @@ abstract class MinareApplication : CoroutineVerticle() {
             databaseInitializer.initialize()
             log.info("Database initialized successfully")
 
-            registerConnectionEventHandlers()
-
             val processorCount = Runtime.getRuntime().availableProcessors()
 
             vertx.registerVerticleFactory(MinareVerticleFactory(injector))
@@ -178,6 +176,9 @@ abstract class MinareApplication : CoroutineVerticle() {
             } else {
                 log.error("Failed to initialize CommandSocketVerticle router")
             }
+
+            // Register application connection events
+            registerConnectionEventHandlers()
 
             // Let implementing class add custom routes
             setupApplicationRoutes()
@@ -284,6 +285,8 @@ abstract class MinareApplication : CoroutineVerticle() {
             val connectionId = message.body().getString("connectionId")
             val traceId = message.body().getString("traceId")
 
+            Companion.log.info("MinareApplication acknowledges command socket for ${connectionId}")
+
             if (connectionId != null) {
                 CoroutineScope(vertx.dispatcher()).launch {
                     handleCommandSocketConnected(connectionId, traceId)
@@ -295,6 +298,8 @@ abstract class MinareApplication : CoroutineVerticle() {
         vertx.eventBus().consumer<JsonObject>(ConnectionEvents.ADDRESS_UPDATE_SOCKET_CONNECTED) { message ->
             val connectionId = message.body().getString("connectionId")
             val traceId = message.body().getString("traceId")
+
+            Companion.log.info("MinareApplication acknowledges update socket for ${connectionId}")
 
             if (connectionId != null) {
                 CoroutineScope(vertx.dispatcher()).launch {

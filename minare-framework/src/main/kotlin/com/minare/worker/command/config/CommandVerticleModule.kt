@@ -116,6 +116,7 @@ class CommandVerticleModule : PrivateModule() {
     @Provides
     @Singleton
     fun provideConnectionLifecycle(
+        vertx: Vertx,
         vlog: VerticleLogger,
         connectionStore: ConnectionStore,
         connectionCache: ConnectionCache,
@@ -124,6 +125,7 @@ class CommandVerticleModule : PrivateModule() {
         heartbeatManager: HeartbeatManager
     ): ConnectionLifecycle {
         return ConnectionLifecycle(
+            vertx,
             vlog,
             connectionStore,
             connectionCache,

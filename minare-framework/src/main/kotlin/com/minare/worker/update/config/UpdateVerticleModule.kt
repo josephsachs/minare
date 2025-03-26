@@ -24,7 +24,7 @@ import kotlin.coroutines.CoroutineContext
 
 /**
  * Specialized Guice module for CommandVerticle and its dependencies.
- * This module provides all the necessary components within the CommandVerticle's scope.
+ * This module provides all the necessary components within the UpdateVerticle's scope.
  */
 class UpdateVerticleModule : PrivateModule() {
 
@@ -51,7 +51,7 @@ class UpdateVerticleModule : PrivateModule() {
     }
 
     /**
-     * Provides a Router instance specifically for CommandVerticle
+     * Provides a Router instance specifically for UpdateVerticle
      */
     @Provides
     @Singleton
@@ -69,7 +69,7 @@ class UpdateVerticleModule : PrivateModule() {
     }
 
     /**
-     * Provides EventBusUtils for CommandVerticle
+     * Provides EventBusUtils for UpdateVerticle
      */
     @Provides
     @Singleton
@@ -78,16 +78,7 @@ class UpdateVerticleModule : PrivateModule() {
     }
 
     /**
-     * Provides ConnectionTracker for CommandVerticle
-     */
-    @Provides
-    @Singleton
-    fun provideConnectionTracker(verticleLogger: VerticleLogger): ConnectionTracker {
-        return ConnectionTracker("CommandSocket", verticleLogger)
-    }
-
-    /**
-     * Provides HeartbeatManager for CommandVerticle
+     * Provides HeartbeatManager for UpdateVerticle
      */
     @Provides
     @Singleton
@@ -100,28 +91,5 @@ class UpdateVerticleModule : PrivateModule() {
         val heartbeatManager = HeartbeatManager(vertx, verticleLogger, connectionStore, coroutineScope)
         heartbeatManager.setHeartbeatInterval(UpdateVerticle.HEARTBEAT_INTERVAL_MS)
         return heartbeatManager
-    }
-
-    /**
-     * Provides ConnectionLifecycle for CommandVerticle
-     */
-    @Provides
-    @Singleton
-    fun provideConnectionLifecycle(
-        vlog: VerticleLogger,
-        connectionStore: ConnectionStore,
-        connectionCache: ConnectionCache,
-        channelStore: ChannelStore,
-        connectionTracker: ConnectionTracker,
-        heartbeatManager: HeartbeatManager
-    ): ConnectionLifecycle {
-        return ConnectionLifecycle(
-            vlog,
-            connectionStore,
-            connectionCache,
-            channelStore,
-            connectionTracker,
-            heartbeatManager
-        )
     }
 }

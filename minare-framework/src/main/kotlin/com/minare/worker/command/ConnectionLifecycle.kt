@@ -2,6 +2,7 @@ package com.minare.worker.command
 
 import com.google.inject.Inject
 import com.google.inject.Singleton
+import com.minare.MinareApplication
 import com.minare.cache.ConnectionCache
 import com.minare.persistence.ChannelStore
 import com.minare.persistence.ConnectionStore
@@ -9,10 +10,13 @@ import com.minare.utils.ConnectionTracker
 import com.minare.utils.HeartbeatManager
 import com.minare.utils.VerticleLogger
 import com.minare.utils.WebSocketUtils
+import io.vertx.core.Vertx
 import io.vertx.core.http.ServerWebSocket
+import io.vertx.core.json.JsonObject
 
 @Singleton
 class ConnectionLifecycle @Inject constructor(
+    private val vertx: Vertx,
     private val vlog: VerticleLogger,
     private val connectionStore: ConnectionStore,
     private val connectionCache: ConnectionCache,
@@ -74,6 +78,13 @@ class ConnectionLifecycle @Inject constructor(
             vlog.getEventLogger().trace(
                 "CONNECTION_ESTABLISHED",
                 mapOf("connectionId" to connection._id), traceId
+            )
+
+            vertx.eventBus().publish(
+                MinareApplication.ConnectionEvents.ADDRESS_COMMAND_SOCKET_CONNECTED,
+                JsonObject()
+                    .put("connectionId", connection._id)
+                    .put("traceId", traceId)
             )
         } catch (e: Exception) {
             vlog.getEventLogger().logError("CONNECTION_FAILED", e, emptyMap(), traceId)
