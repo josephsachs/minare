@@ -1,6 +1,7 @@
 package com.minare.worker.command.handlers
 
 import com.google.inject.Inject
+import com.minare.MinareApplication
 import com.minare.cache.ConnectionCache
 import com.minare.persistence.ConnectionStore
 import com.minare.utils.ConnectionTracker
@@ -10,8 +11,10 @@ import com.minare.worker.CleanupVerticle
 import io.vertx.core.http.ServerWebSocket
 import io.vertx.core.json.JsonObject
 import com.minare.worker.command.ConnectionLifecycle
+import io.vertx.core.Vertx
 
 class ReconnectionHandler @Inject constructor(
+    private val vertx: Vertx,
     private val vlog: VerticleLogger,
     private val connectionStore: ConnectionStore,
     private val connectionCache: ConnectionCache,
@@ -121,6 +124,14 @@ class ReconnectionHandler @Inject constructor(
                 connectionId,
                 socketId,
                 connection.updateSocketId
+            )
+
+            // Publish the event for Command Socket
+            vertx.eventBus().publish(
+                MinareApplication.ConnectionEvents.ADDRESS_COMMAND_SOCKET_CONNECTED,
+                JsonObject()
+                    .put("connectionId", connection._id)
+                    .put("traceId", traceId)
             )
 
             vlog.getEventLogger().logStateChange(

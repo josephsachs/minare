@@ -1,5 +1,6 @@
 package com.minare.worker.update
 
+import com.minare.MinareApplication
 import com.minare.cache.ConnectionCache
 import com.minare.core.FrameController
 import com.minare.persistence.ChannelStore
@@ -20,7 +21,10 @@ import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import com.minare.worker.command.CommandVerticle
 import com.minare.worker.update.UpdateVerticleCache
+import com.minare.worker.update.events.EntityUpdatedEvent
+import com.minare.worker.update.events.UpdateConnectionClosedEvent
 import com.minare.worker.update.events.UpdateConnectionClosedEvent.Companion.ADDRESS_CONNECTION_CLOSED
+import com.minare.worker.update.events.UpdateConnectionEstablishedEvent
 import com.minare.worker.update.events.UpdateConnectionEstablishedEvent.Companion.ADDRESS_CONNECTION_ESTABLISHED
 
 /**
@@ -32,7 +36,10 @@ import com.minare.worker.update.events.UpdateConnectionEstablishedEvent.Companio
 class UpdateVerticle @Inject constructor(
     private val connectionStore: ConnectionStore,
     private val connectionCache: ConnectionCache,
-    private val updateVerticleCache: UpdateVerticleCache
+    private val updateVerticleCache: UpdateVerticleCache,
+    private val entityUpdatedEvent: EntityUpdatedEvent,
+    private val updateConnectionClosedEvent: UpdateConnectionClosedEvent,
+    private val updateConnectionEstablishedEvent: UpdateConnectionEstablishedEvent
 ) : CoroutineVerticle() {
 
     private val log = LoggerFactory.getLogger(UpdateVerticle::class.java)
@@ -172,13 +179,11 @@ class UpdateVerticle @Inject constructor(
     /**
      * Register all event bus consumers
      */
-    private fun registerEventBusConsumers() {
-
-
-
+    private suspend fun registerEventBusConsumers() {
+        entityUpdatedEvent.register()
+        updateConnectionEstablishedEvent.register()
+        updateConnectionClosedEvent.register()
     }
-
-
 
     /**
      * Handle a new update socket connection
@@ -267,6 +272,14 @@ class UpdateVerticle @Inject constructor(
                 "connectionId" to connectionId,
                 "socketId" to websocket.textHandlerID()
             ), traceId)
+
+            // Publish for the Update Socket
+            vertx.eventBus().publish(
+                MinareApplication.ConnectionEvents.ADDRESS_UPDATE_SOCKET_CONNECTED,
+                JsonObject()
+                    .put("connectionId", connection._id)
+                    .put("traceId", traceId)
+            )
         } catch (e: Exception) {
             vlog.logVerticleError("ASSOCIATE_UPDATE_SOCKET", e, mapOf(
                 "connectionId" to connectionId

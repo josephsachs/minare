@@ -3,6 +3,7 @@ package com.minare
 import com.google.inject.*
 import com.google.inject.name.Names
 import com.minare.config.*
+import com.minare.controller.ConnectionController
 import com.minare.worker.ChangeStreamWorkerVerticle
 import com.minare.worker.command.CommandVerticle
 import com.minare.worker.CleanupVerticle
@@ -21,9 +22,13 @@ import io.vertx.core.http.HttpServer
 import io.vertx.core.json.JsonObject
 import io.vertx.kotlin.coroutines.CoroutineVerticle
 import io.vertx.kotlin.coroutines.await
+import io.vertx.kotlin.coroutines.dispatcher
 import io.vertx.spi.cluster.hazelcast.HazelcastClusterManager
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.slf4j.LoggerFactory
+import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import kotlin.system.exitProcess
 
@@ -33,12 +38,10 @@ import kotlin.system.exitProcess
  */
 abstract class MinareApplication : CoroutineVerticle() {
     private val log = LoggerFactory.getLogger(MinareApplication::class.java)
-    private lateinit var vlog: VerticleLogger
-    private lateinit var eventBusUtils: EventBusUtils
-
+    @Inject
+    private lateinit var connectionController: ConnectionController
     @Inject
     lateinit var databaseInitializer: DatabaseInitializer
-
     @Inject
     lateinit var injector: Injector
 
@@ -49,8 +52,22 @@ abstract class MinareApplication : CoroutineVerticle() {
     private var cleanupVerticleDeploymentId: String? = null
     private var updateVerticleDeploymentId: String? = null
 
+    private val pendingConnections = ConcurrentHashMap<String, ConnectionState>()
+
+    private class ConnectionState {
+        var commandSocketConnected = false
+        var updateSocketConnected = false
+        var traceId: String? = null
+    }
+
     // Main HTTP server
     var httpServer: HttpServer? = null
+
+    object ConnectionEvents {
+        const val ADDRESS_COMMAND_SOCKET_CONNECTED = "minare.connection.command.connected"
+        const val ADDRESS_UPDATE_SOCKET_CONNECTED = "minare.connection.update.connected"
+        const val ADDRESS_CONNECTION_COMPLETE = "minare.connection.complete"
+    }
 
     /**
      * Main startup method. Initializes the dependency injection,
@@ -60,6 +77,8 @@ abstract class MinareApplication : CoroutineVerticle() {
         try {
             databaseInitializer.initialize()
             log.info("Database initialized successfully")
+
+            registerConnectionEventHandlers()
 
             val processorCount = Runtime.getRuntime().availableProcessors()
 
@@ -256,6 +275,80 @@ abstract class MinareApplication : CoroutineVerticle() {
         } catch (e: Exception) {
             log.error("Error during application shutdown", e)
             throw e
+        }
+    }
+
+    private fun registerConnectionEventHandlers() {
+        // Listen for command socket connections
+        vertx.eventBus().consumer<JsonObject>(ConnectionEvents.ADDRESS_COMMAND_SOCKET_CONNECTED) { message ->
+            val connectionId = message.body().getString("connectionId")
+            val traceId = message.body().getString("traceId")
+
+            if (connectionId != null) {
+                CoroutineScope(vertx.dispatcher()).launch {
+                    handleCommandSocketConnected(connectionId, traceId)
+                }
+            }
+        }
+
+        // Listen for update socket connections
+        vertx.eventBus().consumer<JsonObject>(ConnectionEvents.ADDRESS_UPDATE_SOCKET_CONNECTED) { message ->
+            val connectionId = message.body().getString("connectionId")
+            val traceId = message.body().getString("traceId")
+
+            if (connectionId != null) {
+                CoroutineScope(vertx.dispatcher()).launch {
+                    handleUpdateSocketConnected(connectionId, traceId)
+                }
+            }
+        }
+
+        Companion.log.info("Connection event handlers registered")
+    }
+
+    private suspend fun handleCommandSocketConnected(connectionId: String, traceId: String?) {
+        val state = pendingConnections.computeIfAbsent(connectionId) { ConnectionState() }
+        state.commandSocketConnected = true
+        if (traceId != null) state.traceId = traceId
+
+        checkConnectionComplete(connectionId)
+    }
+
+    private suspend fun handleUpdateSocketConnected(connectionId: String, traceId: String?) {
+        val state = pendingConnections.computeIfAbsent(connectionId) { ConnectionState() }
+        state.updateSocketConnected = true
+        if (traceId != null) state.traceId = traceId
+
+        checkConnectionComplete(connectionId)
+    }
+
+    private suspend fun checkConnectionComplete(connectionId: String) {
+        val state = pendingConnections[connectionId] ?: return
+
+        if (state.commandSocketConnected && state.updateSocketConnected) {
+            // Connection is complete
+            Companion.log.info("Connection $connectionId is now fully established")
+
+            try {
+                // Get the connection object
+                val connection = connectionController.getConnection(connectionId)
+
+                // Trigger the application-specific handler
+                connectionController.onClientFullyConnected(connection)
+
+                // Notify others that might be interested
+                vertx.eventBus().publish(
+                    ConnectionEvents.ADDRESS_CONNECTION_COMPLETE,
+                    JsonObject()
+                        .put("connectionId", connectionId)
+                        .put("traceId", state.traceId)
+                )
+
+                // Remove from pending connections
+                pendingConnections.remove(connectionId)
+            } catch (e: Exception) {
+                Companion.log.error("Error handling connection completion for $connectionId", e)
+            }
         }
     }
 
