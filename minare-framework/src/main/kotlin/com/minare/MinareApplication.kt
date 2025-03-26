@@ -14,7 +14,7 @@ import com.minare.utils.EventBusUtils
 import com.minare.utils.VerticleLogger
 import com.minare.worker.MinareVerticleFactory
 import com.minare.worker.command.config.CommandVerticleModule
-import com.minare.worker.command.config.UpdateVerticleModule
+import com.minare.worker.update.config.UpdateVerticleModule
 import io.vertx.core.DeploymentOptions
 import io.vertx.core.Vertx
 import io.vertx.core.VertxOptions

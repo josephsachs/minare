@@ -1,4 +1,4 @@
-package com.minare.worker.command.config
+package com.minare.worker.update.config
 
 import com.google.inject.PrivateModule
 import com.google.inject.Provides
@@ -6,6 +6,7 @@ import com.google.inject.Singleton
 import com.minare.cache.ConnectionCache
 import com.minare.persistence.ChannelStore
 import com.minare.persistence.ConnectionStore
+import com.minare.persistence.ContextStore
 import com.minare.utils.ConnectionTracker
 import com.minare.utils.EventBusUtils
 import com.minare.utils.HeartbeatManager
@@ -39,11 +40,14 @@ class UpdateVerticleModule : PrivateModule() {
         // Bind connection handlers
         bind(EntityUpdateHandler::class.java).`in`(Singleton::class.java)
 
+        bind(UpdateVerticleCache::class.java).`in`(Singleton::class.java)
+
         // Request external dependencies that should be provided by parent injector
         requireBinding(Vertx::class.java)
         requireBinding(ConnectionStore::class.java)
         requireBinding(ConnectionCache::class.java)
         requireBinding(ChannelStore::class.java)
+        requireBinding(ContextStore::class.java)
 
         // Expose UpdateVerticle to the parent injector
         expose(UpdateVerticle::class.java)

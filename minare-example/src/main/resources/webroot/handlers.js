@@ -20,7 +20,7 @@ const PROCESS_INTERVAL = 100; // ms
  */
 function queueEntityUpdates(entities, needsTransform = true) {
   // Don't queue if we have no entities
-  if (!entities || entities.length === 0) return;
+  if (!entities || entities.length ===.0) return;
 
   // Add to queue with transform flag
   pendingEntities.push({
@@ -60,7 +60,7 @@ function processEntityQueue() {
       if (needsTransform) {
         // Transform entities all at once
         const transformed = entities.map(entity => ({
-          id: entity._id,
+          id: entity._id || entity.id, // Handle both formats
           version: entity.version,
           state: entity.state,
           type: entity.type
@@ -195,46 +195,71 @@ export const handleCommandSocketMessage = (event) => {
  * @param {MessageEvent} event - WebSocket message event
  */
 export const handleUpdateSocketMessage = (event) => {
-  // Avoid try/catch in the hot path for better performance
-  const message = JSON.parse(event.data);
+  try {
+    const message = JSON.parse(event.data);
 
-  // Fast path for common message types to minimize processing overhead
-  if (message.type === 'sync' && message.data?.entities) {
-    // Skip logging for high-frequency updates except occasionally
-    const shouldLog = config.logging?.verbose ||
-                     (message.data.entities.length > 10 && Math.random() < 0.01); // Log ~1% of large updates
+    // Update last activity time
+    store.updateLastActivity();
 
-    if (shouldLog) {
-      logger.info(`Queueing ${message.data.entities.length} entity updates from update socket`);
+    // Handle the new update_batch format
+    if (message.type === 'update_batch' && message.updates) {
+      // Convert the updates object (map of ID -> entity) to an array of entities
+      const entityArray = Object.values(message.updates);
+
+      if (entityArray.length > 0) {
+        const shouldLog = config.logging?.verbose ||
+                         (entityArray.length > 10 && Math.random() < 0.01); // Log ~1% of large updates
+
+        if (shouldLog) {
+          logger.info(`Received batch update with ${entityArray.length} entities`);
+        }
+
+        queueEntityUpdates(entityArray, true);
+      }
+      return;
     }
 
-    // Queue updates instead of processing immediately
-    queueEntityUpdates(message.data.entities, true);
-    return;
-  }
+    // Legacy handlers for backward compatibility
 
-  // Fast path for legacy format
-  if (message.update?.entities) {
-    // Queue updates with transform flag based on format
-    const needsTransform = message.update.entities[0] &&
-                          message.update.entities[0]._id &&
-                          !message.update.entities[0].id;
+    // Handle legacy sync message format
+    if (message.type === 'sync' && message.data?.entities) {
+      if (config.logging?.verbose) {
+        logger.info(`Queueing ${message.data.entities.length} entity updates from sync`);
+      }
+      queueEntityUpdates(message.data.entities, true);
+      return;
+    }
 
-    queueEntityUpdates(message.update.entities, needsTransform);
-    return;
-  }
+    // Handle legacy update format
+    if (message.update?.entities) {
+      // Queue updates with transform flag based on format
+      const needsTransform = message.update.entities[0] &&
+                           message.update.entities[0]._id &&
+                           !message.update.entities[0].id;
 
-  // Handle less common message types
-  try {
-    if (message.type === 'update_socket_confirm') {
-      // Update socket confirmed, we're fully connected
-      store.setConnected(true);
-      logger.info('Fully connected to server');
+      queueEntityUpdates(message.update.entities, needsTransform);
+      return;
+    }
 
-      // Update last activity time
-      store.updateLastActivity();
-    } else {
-      logger.info(`Unhandled update message type: ${message.type}`);
+    // Handle direct entity updates
+    if (message._id && message.state) {
+      queueEntityUpdates([message], true);
+      return;
+    }
+
+    // Other message types
+    switch (message.type) {
+      case 'update_socket_confirm':
+        // Update socket confirmed, we're fully connected
+        store.setConnected(true);
+        logger.info('Fully connected to server');
+        break;
+
+      default:
+        if (message.type !== 'heartbeat' && message.type !== 'heartbeat_response') {
+          logger.info(`Unhandled update message type: ${message.type}`);
+        }
+        break;
     }
   } catch (error) {
     logger.error(`Error processing update message: ${error.message}`);
