@@ -1,5 +1,6 @@
 package com.minare.utils
 
+import com.google.inject.Inject
 import io.vertx.core.http.ServerWebSocket
 import io.vertx.core.json.JsonObject
 import org.slf4j.LoggerFactory
@@ -9,7 +10,7 @@ import java.util.concurrent.ConcurrentHashMap
  * Tracks WebSocket connections and their associated trace IDs.
  * Provides centralized connection tracking and state management for verticles.
  */
-class ConnectionTracker(
+class ConnectionTracker @Inject constructor(
     private val componentName: String,
     private val logger: VerticleLogger
 ) {

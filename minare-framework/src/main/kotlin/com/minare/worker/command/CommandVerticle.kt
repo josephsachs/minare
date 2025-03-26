@@ -1,6 +1,5 @@
 package com.minare.worker.command
 
-import com.minare.utils.EventBusUtils
 import com.minare.utils.VerticleLogger
 import com.minare.utils.HeartbeatManager
 import com.minare.utils.ConnectionTracker
@@ -57,10 +56,10 @@ class CommandVerticle @Inject constructor(
     }
 
     override suspend fun start() {
+        vlog.setVerticle(this)
+
         deployedAt = System.currentTimeMillis()
         log.info("Starting CommandSocketVerticle at {$deployedAt}")
-
-        vlog.setVerticle(this)
 
         vlog.logStartupStep("STARTING")
         vlog.logConfig(config)

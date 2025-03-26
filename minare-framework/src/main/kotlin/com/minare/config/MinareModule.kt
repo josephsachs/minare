@@ -33,10 +33,10 @@ class MinareModule : AbstractModule(), DatabaseNameProvider {
 
     override fun configure() {
         // Store bindings
-        bind(EntityStore::class.java).to(MongoEntityStore::class.java)
-        bind(ConnectionStore::class.java).to(MongoConnectionStore::class.java)
-        bind(ChannelStore::class.java).to(MongoChannelStore::class.java)
-        bind(ContextStore::class.java).to(MongoContextStore::class.java)
+        bind(EntityStore::class.java).to(MongoEntityStore::class.java).`in`(Singleton::class.java)
+        bind(ConnectionStore::class.java).to(MongoConnectionStore::class.java).`in`(Singleton::class.java)
+        bind(ChannelStore::class.java).to(MongoChannelStore::class.java).`in`(Singleton::class.java)
+        bind(ContextStore::class.java).to(MongoContextStore::class.java).`in`(Singleton::class.java)
 
         // Caches
         bind(ConnectionCache::class.java).to(InMemoryConnectionCache::class.java).`in`(Singleton::class.java)
@@ -61,11 +61,11 @@ class MinareModule : AbstractModule(), DatabaseNameProvider {
             .annotatedWith(Names.named("frameIntervalMs"))
             .toInstance(100) // 10 FPS default
 
-        // Register the verticles
-        bind(ChangeStreamWorkerVerticle::class.java)
-        bind(MutationVerticle::class.java)
-        bind(UpdateVerticle::class.java)
-        bind(CommandVerticle::class.java)
+        // Register the verticles (excluding CommandVerticle which is provided by CommandVerticleModule)
+        bind(ChangeStreamWorkerVerticle::class.java).`in`(Singleton::class.java)
+        bind(MutationVerticle::class.java).`in`(Singleton::class.java)
+        bind(UpdateVerticle::class.java).`in`(Singleton::class.java)
+        bind(CleanupVerticle::class.java).`in`(Singleton::class.java)
     }
 
     /**
@@ -140,20 +140,6 @@ class MinareModule : AbstractModule(), DatabaseNameProvider {
             coroutineContext,
             connectionCache,
             vertx
-        )
-    }
-
-    @Provides
-    @Singleton
-    fun provideCleanupVerticle(
-        connectionStore: ConnectionStore,
-        connectionCache: ConnectionCache,
-        connectionController: ConnectionController
-    ): CleanupVerticle {
-        return CleanupVerticle(
-            connectionStore,
-            connectionCache,
-            connectionController
         )
     }
 
