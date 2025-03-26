@@ -5,7 +5,6 @@ import com.google.inject.Singleton
 import com.minare.utils.EventBusUtils
 import com.minare.utils.VerticleLogger
 import io.vertx.core.json.JsonObject
-import com.minare.worker.command.CommandVerticle
 import com.minare.worker.command.CommandVerticle.Companion.ADDRESS_SOCKET_CLEANUP
 import com.minare.worker.command.ConnectionLifecycle
 
@@ -15,7 +14,7 @@ class CommandSocketCleanupEvent @Inject constructor(
     private val vlog: VerticleLogger,
     private val connectionLifecycle: ConnectionLifecycle
 ) {
-    suspend fun register(context: CommandVerticle) {
+    suspend fun register() {
         eventBusUtils.registerTracedConsumer<JsonObject>(ADDRESS_SOCKET_CLEANUP) { message, traceId ->
             val connectionId = message.body().getString("connectionId")
             val hasUpdateSocket = message.body().getBoolean("hasUpdateSocket", false)

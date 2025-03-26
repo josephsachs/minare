@@ -5,6 +5,8 @@ import com.minare.utils.HeartbeatManager
 import com.minare.utils.ConnectionTracker
 import com.minare.utils.HttpServerUtils
 import com.minare.utils.WebSocketUtils
+import com.minare.worker.CleanupVerticle
+import com.minare.worker.command.events.*
 import io.vertx.core.http.HttpServer
 import io.vertx.core.http.ServerWebSocket
 import io.vertx.core.json.JsonObject
@@ -31,7 +33,13 @@ class CommandVerticle @Inject constructor(
     private val reconnectionHandler: ReconnectionHandler,
     private val messageHandler: MessageHandler,
     private val closeHandler: CloseHandler,
-    private val connectionLifecycle: ConnectionLifecycle
+    private val connectionLifecycle: ConnectionLifecycle,
+    private val channelCleanupEvent: ChannelCleanupEvent,
+    private val commandGetRouterEvent: CommandGetRouterEvent,
+    private val commandSocketCleanupEvent: CommandSocketCleanupEvent,
+    private val commandSocketInitEvent: CommandSocketInitEvent,
+    private val connectionCleanupEvent: ChannelCleanupEvent,
+    private val entitySyncEvent: EntitySyncEvent
 ) : CoroutineVerticle() {
 
     private val log = LoggerFactory.getLogger(CommandVerticle::class.java)
@@ -119,7 +127,12 @@ class CommandVerticle @Inject constructor(
      * Register all event bus consumers
      */
     private suspend fun registerEventBusConsumers() {
-
+        channelCleanupEvent.register()
+        commandGetRouterEvent.register(router)
+        commandSocketCleanupEvent.register()
+        commandSocketInitEvent.register(this)
+        connectionCleanupEvent.register()
+        entitySyncEvent.register()
     }
 
     /**

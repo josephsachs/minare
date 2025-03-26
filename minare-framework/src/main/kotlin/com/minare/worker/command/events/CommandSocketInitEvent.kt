@@ -2,17 +2,10 @@ package com.minare.worker.command.events
 
 import com.google.inject.Inject
 import com.minare.utils.EventBusUtils
-import com.minare.utils.HttpServerUtils
 import com.minare.utils.VerticleLogger
-import io.vertx.core.Vertx
-import io.vertx.core.http.HttpServer
 import io.vertx.core.json.JsonObject
-import io.vertx.ext.web.Router
-import io.vertx.kotlin.coroutines.await
-import org.slf4j.LoggerFactory
 import com.minare.worker.command.CommandVerticle
 import com.minare.worker.command.CommandVerticle.Companion.HTTP_SERVER_HOST
-import com.minare.worker.command.CommandVerticle.Companion.HTTP_SERVER_PORT
 
 class CommandSocketInitEvent @Inject constructor(
     private val eventBusUtils: EventBusUtils,

@@ -34,7 +34,7 @@ class CommandVerticleModule : PrivateModule() {
 
     override fun configure() {
         // Bind command verticle itself
-        bind(CommandVerticle::class.java).`in`(Singleton::class.java)
+        bind(CommandVerticle::class.java)
 
         // Bind all event handlers
         bind(EntitySyncEvent::class.java).`in`(Singleton::class.java)

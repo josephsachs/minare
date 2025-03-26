@@ -2,7 +2,6 @@ package com.minare.worker.command.handlers
 
 import com.google.inject.Inject
 import com.minare.cache.ConnectionCache
-import com.minare.persistence.ChannelStore
 import com.minare.persistence.ConnectionStore
 import com.minare.utils.ConnectionTracker
 import com.minare.utils.HeartbeatManager

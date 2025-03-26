@@ -12,9 +12,9 @@ import com.minare.worker.command.CommandVerticle.Companion.ADDRESS_GET_ROUTER
 class CommandGetRouterEvent @Inject constructor(
     private val vertx: Vertx
 ) {
-    suspend fun register(context: CommandVerticle) {
+    suspend fun register(router: Router) {
         vertx.eventBus().consumer<JsonObject>(ADDRESS_GET_ROUTER) { message ->
-            message.reply(JsonObject().put("routerId", context.router.toString()))
+            message.reply(JsonObject().put("routerId", router.toString()))
         }
     }
 }

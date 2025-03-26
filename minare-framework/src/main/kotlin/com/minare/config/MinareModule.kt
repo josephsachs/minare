@@ -62,10 +62,10 @@ class MinareModule : AbstractModule(), DatabaseNameProvider {
             .toInstance(100) // 10 FPS default
 
         // Register the verticles (excluding CommandVerticle which is provided by CommandVerticleModule)
-        bind(ChangeStreamWorkerVerticle::class.java).`in`(Singleton::class.java)
-        bind(MutationVerticle::class.java).`in`(Singleton::class.java)
-        bind(UpdateVerticle::class.java).`in`(Singleton::class.java)
-        bind(CleanupVerticle::class.java).`in`(Singleton::class.java)
+        bind(ChangeStreamWorkerVerticle::class.java)
+        bind(MutationVerticle::class.java)
+        bind(UpdateVerticle::class.java)
+        bind(CleanupVerticle::class.java)
     }
 
     /**
