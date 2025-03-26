@@ -1,6 +1,7 @@
 package com.minare.worker.command.handlers
 
 import com.google.inject.Inject
+import com.minare.core.websocket.CommandMessageHandler
 import com.minare.persistence.ConnectionStore
 import com.minare.utils.ConnectionTracker
 import com.minare.utils.HeartbeatManager
@@ -13,7 +14,8 @@ class MessageHandler @Inject constructor(
     private val vlog: VerticleLogger,
     private val connectionStore: ConnectionStore,
     private val connectionTracker: ConnectionTracker,
-    private val heartbeatManager: HeartbeatManager
+    private val heartbeatManager: HeartbeatManager,
+    private val commandMessageHandler: CommandMessageHandler
 ) {
     /**
      * Handle an incoming message from a client
@@ -42,8 +44,7 @@ class MessageHandler @Inject constructor(
             if (message.getString("type") == "heartbeat_response") {
                 heartbeatManager.handleHeartbeatResponse(connectionId, message)
             } else {
-                //messageHandler.handle(connectionId, message)
-                // What are we supposed to do here??
+                commandMessageHandler.handle(connectionId, message)
             }
 
             vlog.getEventLogger().trace(
