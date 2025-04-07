@@ -10,8 +10,6 @@ import com.minare.worker.CleanupVerticle
 import com.minare.worker.MutationVerticle
 import com.minare.worker.update.UpdateVerticle
 import com.minare.persistence.DatabaseInitializer
-import com.minare.utils.EventBusUtils
-import com.minare.utils.VerticleLogger
 import com.minare.worker.MinareVerticleFactory
 import com.minare.worker.command.config.CommandVerticleModule
 import com.minare.worker.update.config.UpdateVerticleModule
@@ -45,7 +43,6 @@ abstract class MinareApplication : CoroutineVerticle() {
     @Inject
     lateinit var injector: Injector
 
-    // Track the deployment IDs of our worker verticles
     private var changeStreamWorkerDeploymentId: String? = null
     private var mutationVerticleDeploymentId: String? = null
     private var commandVerticleDeploymentId: String? = null
@@ -60,7 +57,6 @@ abstract class MinareApplication : CoroutineVerticle() {
         var traceId: String? = null
     }
 
-    // Main HTTP server
     var httpServer: HttpServer? = null
 
     object ConnectionEvents {
@@ -96,12 +92,11 @@ abstract class MinareApplication : CoroutineVerticle() {
             ).await()
             log.info("Command socket verticle deployed with ID: $commandVerticleDeploymentId")
 
-            // Deploy the UpdateVerticle for frame-based update processing
             val updateVerticleOptions = DeploymentOptions()
                 .setWorker(true)
                 .setWorkerPoolName("update-processor-pool")
-                .setWorkerPoolSize(7)  // Adjust based on needs
-                .setInstances(7)  // Single instance to centralize update processing
+                .setWorkerPoolSize(7)
+                .setInstances(7)
 
             updateVerticleDeploymentId = vertx.deployVerticle(
                 "guice:" + UpdateVerticle::class.java.name,
@@ -109,7 +104,6 @@ abstract class MinareApplication : CoroutineVerticle() {
             ).await()
             log.info("Update verticle deployed with ID: $updateVerticleDeploymentId")
 
-            // Deploy the change stream worker verticle as a worker verticle
             val changeStreamOptions = DeploymentOptions()
                 .setWorker(true)
                 .setWorkerPoolName("change-stream-pool")
@@ -117,7 +111,6 @@ abstract class MinareApplication : CoroutineVerticle() {
                 .setInstances(2)
                 .setMaxWorkerExecuteTime(Long.MAX_VALUE)  // Allow long-running tasks
 
-            // Deploy using the GuiceVerticleFactory
             changeStreamWorkerDeploymentId = vertx.deployVerticle(
                 "guice:" + ChangeStreamWorkerVerticle::class.java.name,
                 changeStreamOptions
@@ -130,19 +123,17 @@ abstract class MinareApplication : CoroutineVerticle() {
                 .setWorkerPoolSize(2)
                 .setInstances(1)
 
-            // Deploy using the GuiceVerticleFactory
             mutationVerticleDeploymentId = vertx.deployVerticle(
                 "guice:" + MutationVerticle::class.java.name,
                 mutationOptions
             ).await()
             log.info("Mutation verticle deployed with ID: $mutationVerticleDeploymentId")
 
-            // Deploy the cleanup verticle
             val cleanupOptions = DeploymentOptions()
                 .setWorker(true)
                 .setWorkerPoolName("cleanup-pool")
-                .setWorkerPoolSize(1)  // Only need one worker
-                .setInstances(1)
+                .setWorkerPoolSize(1)
+                .setInstances(1)  // Only need one
 
             cleanupVerticleDeploymentId = vertx.deployVerticle(
                 "guice:" + CleanupVerticle::class.java.name,
@@ -150,7 +141,6 @@ abstract class MinareApplication : CoroutineVerticle() {
             ).await()
             log.info("Cleanup verticle deployed with ID: $cleanupVerticleDeploymentId")
 
-            // Register event bus handlers for change stream events
             vertx.eventBus().consumer<Boolean>(ChangeStreamWorkerVerticle.ADDRESS_STREAM_STARTED) {
                 log.info("Received stream started notification")
             }
@@ -163,7 +153,6 @@ abstract class MinareApplication : CoroutineVerticle() {
                 log.debug("Received entity update notification: ${message.body()}")
             }
 
-            // Initialize the CommandSocketVerticle router
             val initResult = vertx.eventBus().request<JsonObject>(
                 CommandVerticle.ADDRESS_COMMAND_SOCKET_INITIALIZE,
                 JsonObject()
@@ -176,13 +165,10 @@ abstract class MinareApplication : CoroutineVerticle() {
                 log.error("Failed to initialize CommandSocketVerticle router")
             }
 
-            // Register application connection events
             registerConnectionEventHandlers()
 
-            // Let implementing class add custom routes
             setupApplicationRoutes()
 
-            // Call application-specific initialization
             onApplicationStart()
 
         } catch (e: Exception) {
@@ -330,17 +316,13 @@ abstract class MinareApplication : CoroutineVerticle() {
         val state = pendingConnections[connectionId] ?: return
 
         if (state.commandSocketConnected && state.updateSocketConnected) {
-            // Connection is complete
             Companion.log.info("Connection $connectionId is now fully established")
 
             try {
-                // Get the connection object
                 val connection = connectionController.getConnection(connectionId)
 
-                // Trigger the application-specific handler
                 connectionController.onClientFullyConnected(connection)
 
-                // Notify others that might be interested
                 vertx.eventBus().publish(
                     ConnectionEvents.ADDRESS_CONNECTION_COMPLETE,
                     JsonObject()
@@ -348,7 +330,6 @@ abstract class MinareApplication : CoroutineVerticle() {
                         .put("traceId", state.traceId)
                 )
 
-                // Remove from pending connections
                 pendingConnections.remove(connectionId)
             } catch (e: Exception) {
                 Companion.log.error("Error handling connection completion for $connectionId", e)
@@ -390,7 +371,7 @@ abstract class MinareApplication : CoroutineVerticle() {
                 dbName
             } else {
                 log.info("Module doesn't implement DatabaseNameProvider, using default database name")
-                "minare" // Default database name
+                "minare" // Default
             }
         }
 
@@ -407,20 +388,16 @@ abstract class MinareApplication : CoroutineVerticle() {
          * This is the main entry point that applications should use.
          */
         fun start(applicationClass: Class<out MinareApplication>, args: Array<String>) {
-            // Check if clustering is enabled
             val clusteringEnabled = isClusteringEnabled(args)
 
-            // Create Vertx options with optional clustering
             val vertxOptions = VertxOptions()
 
             if (clusteringEnabled) {
                 log.info("Clustering is enabled")
 
-                // Set up Hazelcast cluster manager
                 val clusterManager = HazelcastClusterManager()
                 vertxOptions.clusterManager = clusterManager
 
-                // Start clustered Vertx instance
                 Vertx.clusteredVertx(vertxOptions).onComplete { ar ->
                     if (ar.succeeded()) {
                         val vertx = ar.result()
@@ -432,7 +409,6 @@ abstract class MinareApplication : CoroutineVerticle() {
                     }
                 }
             } else {
-                // Start standard Vertx instance
                 val vertx = Vertx.vertx(vertxOptions)
                 completeStartup(vertx, applicationClass, args, false)
             }
@@ -448,20 +424,16 @@ abstract class MinareApplication : CoroutineVerticle() {
             clusteringEnabled: Boolean
         ) {
             try {
-                // Get application module from the application class
                 val appModule = getApplicationModule(applicationClass)
                 log.info("Loaded application module: ${appModule.javaClass.name}")
 
-                // Get database name from the application module
                 val dbName = getDatabaseNameFromModule(appModule)
                 log.info("Using database name: $dbName")
 
-                // Create the framework module
                 val frameworkModule = MinareModule()
                 val commandVerticleModule = CommandVerticleModule()
                 val updateVerticleModule = UpdateVerticleModule()
 
-                // Create a module for database name binding
                 val dbNameModule = object : AbstractModule() {
                     override fun configure() {
                         bind(String::class.java)
@@ -470,39 +442,34 @@ abstract class MinareApplication : CoroutineVerticle() {
                     }
                 }
 
-                // Create a module that binds Vertx
                 val vertxModule = object : AbstractModule() {
                     override fun configure() {
                         bind(Vertx::class.java).toInstance(vertx)
-
-                        // Bind clustering configuration
                         bind(Boolean::class.java)
                             .annotatedWith(Names.named("clusteringEnabled"))
                             .toInstance(clusteringEnabled)
                     }
                 }
 
-                // Create a single combined module to avoid binding conflicts
                 val combinedModule = object : AbstractModule() {
                     override fun configure() {
-                        // Install modules in correct order:
-                        // 1. First framework (provides defaults)
+                        // Correct order is required:
+                        // framework (provides defaults)
                         install(frameworkModule)
                         install(commandVerticleModule)
                         install(updateVerticleModule)
-                        // 2. Then app module (overrides framework if needed)
+                        // ]Then app module (overrides framework if needed)
                         install(appModule)
-                        // 3. Then vertx and database modules
+                        // ]Then vertx and database modules
                         install(vertxModule)
                         install(dbNameModule)
                     }
                 }
 
-                val injector = Guice.createInjector(combinedModule) // Create injector with combined module
-                val app = injector.getInstance(applicationClass) // Get a properly instantiated application instance with all dependencies
-                InternalInjectorHolder.setInjector(injector) // Store injector reference in a static field if needed
+                val injector = Guice.createInjector(combinedModule)
+                val app = injector.getInstance(applicationClass)
+                InternalInjectorHolder.setInjector(injector)
 
-                // Deploy the verticle with proper coroutine context
                 vertx.deployVerticle(app)
                     .onSuccess { deploymentId ->
                         log.info("Application deployed successfully with ID: $deploymentId")
@@ -513,13 +480,10 @@ abstract class MinareApplication : CoroutineVerticle() {
                         exitProcess(1)
                     }
 
-                // Add shutdown hook for clean termination
                 Runtime.getRuntime().addShutdownHook(Thread {
                     log.info("Shutting down application...")
-                    // Use runBlocking to properly wait for coroutines to complete during shutdown
                     runBlocking {
                         try {
-                            // Signal the verticle to stop
                             vertx.undeploy(app.deploymentID)
                                 .onComplete {
                                     vertx.close()
