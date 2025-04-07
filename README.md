@@ -60,4 +60,4 @@ Create the artifact bucket in your AWS account. Place your application `jar`. Us
 
 \* **Footnote on statelessness:** This is a problem I will solve later. For now, aiming for thread-safe and able to leverage clustering.
 
-\** **Footnote on unit tests:** Thus far Entity behavior has been the sole subject of unit tests. This is not because there are not unit tests to be written elsewhere. The Entity system is where I have the clearest vision of the product and therefore the most clarity when defining the cases. Entity is also a high impact area where complexity and I/O combine to produce risk. 
+\** **Footnote on unit tests:** I'm focusing on Entity as this is where most of the complexity lives. We could use mocks to cover the DBAL, socket management and so on, but integration tests will do during early development. 
