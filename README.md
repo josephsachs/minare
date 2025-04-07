@@ -1,9 +1,7 @@
 # Minare Framework
 ### **NOTE: Minare is currently unreleased. Core systems require improvement and many planned changes await.**
 
-Minare is a scalable, real-time state synchronization framework for applications requiring consistent object graphs across multiple clients. Built with Vert.x, Kotlin, and MongoDB.
-
-The extension application defines an object graph. Minare handles persistence, consistency, events and eventually frames. The data flow is unidirectional. 
+Minare is a scalable, real-time state synchronization framework for applications requiring eventually consistent object graphs across many clients. Built with Vert.x, Kotlin, and MongoDB.
 
 The implementer hooks into the framework by defining Entity types and extending MinareApplication. They may also use their own Guice module to override framework services as needed.
 
@@ -42,10 +40,9 @@ This stuff is used in the development of the framework and is as subject to chan
 
 ## Testing Methodology
 
-The framework uses JUnit 5 with Vert.x extensions and Mockito for testing:
+The framework uses JUnit 5 with Vert.x extensions and Mockito for testing entity functions and version bubbling**
 
-- Unit tests for entity operations and version bubbling**
-- Artillery used for integration and performance testing
+Artillery used for integration and performance testing
 
 ## Getting Started
 
