@@ -40,9 +40,9 @@ This stuff is used in the development of the framework and is as subject to chan
 
 ## Testing Methodology
 
-The framework uses JUnit 5 with Vert.x extensions and Mockito for testing entity functions and version bubbling**
+The framework uses JUnit 5 with Vert.x extensions and Mockito for unit tests. I'm focusing on Entity as this is where most of the complexity lives. We could use mocks to cover the DBAL, socket management and so on, but integration tests will do during early development. 
 
-Artillery used for integration and performance testing
+Artillery used for integration and performance testing.
 
 ## Getting Started
 
@@ -55,7 +55,4 @@ Setup the IntelliJ project/module. The module source root should be `main`.
 **Deployment**
 
 Create the artifact bucket in your AWS account. Place your application `jar`. Use `minare-infrastructure.yaml` to create a CloudFormation stack.
-
-## Endnotes
-
-\** I'm focusing on Entity as this is where most of the complexity lives. We could use mocks to cover the DBAL, socket management and so on, but integration tests will do during early development. 
+ 
