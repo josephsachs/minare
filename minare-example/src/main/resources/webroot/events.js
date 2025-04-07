@@ -18,7 +18,7 @@ const createEventEmitter = () => {
 
       listeners.get(event).add(callback);
 
-      // Return unsubscribe function
+
       return () => {
         const eventListeners = listeners.get(event);
         if (eventListeners) {

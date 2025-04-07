@@ -9,10 +9,10 @@ data class Connection(
     val _id: String,
     val createdAt: Long,
     val lastUpdated: Long,
-    val lastActivity: Long = System.currentTimeMillis(), // New field to track last activity
+    val lastActivity: Long = System.currentTimeMillis(),
     val commandSocketId: String? = null,
     val commandDeploymentId: String? = null,
     val updateSocketId: String? = null,
     val updateDeploymentId: String? = null,
-    val reconnectable: Boolean = true // Flag to control if connection can be reconnected
+    val reconnectable: Boolean = true
 )

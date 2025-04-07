@@ -4,7 +4,7 @@ import com.google.inject.Injector
 
 class EntityTestFixtures {
     fun createTestFixture(injector: Injector): Region {
-        // Use the injector to create properly initialized entities
+
 
         var regionObj = injector.getInstance(Region::class.java).apply {
             _id = "507f1f77bcf86cd799439011"
@@ -52,7 +52,7 @@ class EntityTestFixtures {
                 x = 150.0
                 y = 100.0
             }
-            statuses = HashSet()  // empty set
+            statuses = HashSet()
         }
         barracks.position.parentEntity = barracks
 
@@ -79,7 +79,7 @@ class EntityTestFixtures {
         val medic = injector.getInstance(MapUnit::class.java).apply {
             _id = "507f1f77bcf86cd799439017"
             name = "Field Medic"
-            zone = zone2  // in safe zone
+            zone = zone2
             position = injector.getInstance(MapVector2::class.java).apply {
                 _id = "507f1f77bcf86cd799439021"
                 x = 200.0
@@ -95,7 +95,7 @@ class EntityTestFixtures {
         }
         medic.position.parentEntity = medic
 
-        // Wire up all the references
+
         zone1.buildings.add(hq)
         zone1.buildings.add(barracks)
         zone1.units.add(soldier)
@@ -106,11 +106,11 @@ class EntityTestFixtures {
         return regionObj
     }
 
-    // The expected serialized form (would be generated from actual output)
+
     fun createTestJson(): JsonArray {
         val documents = JsonArray()
 
-        // Root Region
+
         documents.add(
             JsonObject()
                 .put("_id", "507f1f77bcf86cd799439011")
@@ -135,7 +135,7 @@ class EntityTestFixtures {
                 )
         )
 
-        // Safe Zone
+
         documents.add(
             JsonObject()
                 .put("_id", "507f1f77bcf86cd799439013")
@@ -161,7 +161,7 @@ class EntityTestFixtures {
                 )
         )
 
-        // Field Medic
+
         documents.add(
             JsonObject()
                 .put("_id", "507f1f77bcf86cd799439017")
@@ -191,7 +191,7 @@ class EntityTestFixtures {
                 )
         )
 
-        // Medic Position Vector
+
         documents.add(
             JsonObject()
                 .put("_id", "507f1f77bcf86cd799439021")
@@ -209,7 +209,7 @@ class EntityTestFixtures {
                 )
         )
 
-        // Combat Zone
+
         documents.add(
             JsonObject()
                 .put("_id", "507f1f77bcf86cd799439012")
@@ -247,7 +247,7 @@ class EntityTestFixtures {
                 )
         )
 
-        // Barracks
+
         documents.add(
             JsonObject()
                 .put("_id", "507f1f77bcf86cd799439015")
@@ -270,7 +270,7 @@ class EntityTestFixtures {
                 )
         )
 
-        // Barracks position vector
+
         documents.add(
             JsonObject()
                 .put("_id", "507f1f77bcf86cd799439019")
@@ -288,7 +288,7 @@ class EntityTestFixtures {
                 )
         )
 
-        // Headquarters
+
         documents.add(
             JsonObject()
                 .put("_id", "507f1f77bcf86cd799439014")
@@ -315,7 +315,7 @@ class EntityTestFixtures {
                 )
         )
 
-        // HQ position vector
+
         documents.add(
             JsonObject()
                 .put("_id", "507f1f77bcf86cd799439018")
@@ -333,7 +333,7 @@ class EntityTestFixtures {
                 )
         )
 
-        // Elite Soldier
+
         documents.add(
             JsonObject()
                 .put("_id", "507f1f77bcf86cd799439016")
@@ -367,7 +367,7 @@ class EntityTestFixtures {
                 )
         )
 
-        // Soldier Position Vector
+
         documents.add(
             JsonObject()
                 .put("_id", "507f1f77bcf86cd799439020")
@@ -389,7 +389,7 @@ class EntityTestFixtures {
     }
 
     fun createMockAggregationResults(): JsonArray {
-        // This represents the results of a MongoDB $graphLookup aggregation
+        $graphLookup aggregation
         // starting from the soldier's position vector and finding all ancestors
         return JsonArray().add(
             JsonObject()

@@ -16,10 +16,10 @@ class VerticleLogger @Inject constructor() {
     private var log: Logger? = null
     private var eventLog: EventLogger? = null
 
-    // Store deployment ID when available
+
     private var deploymentId: String? = null
 
-    // Store state changes
+
     private var currentState = "INITIALIZING"
 
     /**

@@ -150,7 +150,7 @@ object WebSocketUtils {
             .put("connectionId", connectionId)
             .put("timestamp", System.currentTimeMillis())
 
-        // Add any extra fields
+
         extraFields.forEach { (key, value) ->
             if (value != null) {
                 confirmation.put(key, value)

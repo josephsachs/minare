@@ -25,7 +25,6 @@ class EntityUpdateHandler @Inject constructor(
                 return
             }
 
-            // Get channels for this entity (from cache or database)
             val startTime = System.currentTimeMillis()
             val channels = updateVerticleCache.getChannelsForEntity(entityId)
             val lookupTime = System.currentTimeMillis() - startTime
@@ -38,14 +37,12 @@ class EntityUpdateHandler @Inject constructor(
             }
 
             if (channels.isEmpty()) {
-                // No channels, no need to process further
                 vlog.getEventLogger().trace("ENTITY_NO_CHANNELS", mapOf(
                     "entityId" to entityId
                 ), traceId)
                 return
             }
 
-            // For each channel, get all connections and queue the update
             val processedConnections = mutableSetOf<String>()
             var hasOwnedConnections = false  // Add this flag
 
@@ -53,17 +50,21 @@ class EntityUpdateHandler @Inject constructor(
                 val connections = updateVerticleCache.getConnectionsForChannel(channelId)
 
                 for (connectionId in connections) {
-                    // Avoid processing the same connection multiple times
                     if (connectionId in processedConnections) {
                         continue
                     }
 
-                    // Skip if this verticle doesn't own the connection
+                    /**
+                     *  FEATURE INCOMPLETE
+                     *  We must determine whether our connection is in-context
+                     *  and move on if it isn't.
+                     *
+                     **/
                     if (!Vertx.currentContext().isLocal(connectionId)) {
                         continue
                     }
 
-                    hasOwnedConnections = true  // Set flag when we find an owned connection
+                    hasOwnedConnections = true
                     processedConnections.add(connectionId)
 
                     // Queue update for this connection

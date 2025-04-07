@@ -67,7 +67,7 @@ class EntityGraph(root: Entity) {
         visited.add(root)
         graph.addVertex(root)
 
-        // Get all @State annotated fields
+        @State annotated fields
         for (field in root.javaClass.declaredFields) {
             if (field.isAnnotationPresent(State::class.java)) {
                 field.isAccessible = true
@@ -175,7 +175,7 @@ class EntityGraph(root: Entity) {
                                 stateJson.put(field.name, value)
                             }
                         } catch (e: Exception) {
-                            // Skip fields that can't be accessed
+                            't be accessed
                         }
                     }
                 }
@@ -189,7 +189,7 @@ class EntityGraph(root: Entity) {
                 entitiesArray.add(entityJson)
             }
 
-            // Add edges information
+
             val edges = JsonArray()
             for (edge in graph.edgeSet()) {
                 val source = graph.getEdgeSource(edge)
@@ -227,7 +227,7 @@ class EntityGraph(root: Entity) {
                     val entityClass = entity.javaClass
 
                     val stateFields = reflectionCache?.getFieldsWithAnnotation<State>(entityClass.kotlin)
-                        ?: // Otherwise use direct reflection
+                        ?:
                         entityClass.declaredFields.filter {
                             it.isAnnotationPresent(State::class.java)
                         }
@@ -240,7 +240,7 @@ class EntityGraph(root: Entity) {
                                 stateJson.put(field.name, value)
                             }
                         } catch (e: Exception) {
-                            // Skip fields that can't be accessed
+                            't be accessed
                         }
                     }
                 }

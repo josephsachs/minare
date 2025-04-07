@@ -64,7 +64,7 @@ class HeartbeatManager(
                         log.warn("Failed to update last activity for connection $connectionId", e)
                     }
 
-                    if (Math.random() < 0.05) { // Log roughly 5% of heartbeats
+                    if (Math.random() < 0.05) { % of heartbeats
                         logger.getEventLogger().trace("HEARTBEAT_SENT", mapOf(
                             "socketId" to socketId,
                             "connectionId" to connectionId
@@ -83,7 +83,7 @@ class HeartbeatManager(
             }
         }
 
-        // Store timer ID for cancellation
+
         heartbeatTimers[socketId] = timerId
         logger.getEventLogger().trace("HEARTBEAT_STARTED", mapOf(
             "socketId" to socketId,
@@ -114,13 +114,13 @@ class HeartbeatManager(
      */
     fun handleHeartbeatResponse(connectionId: String, message: JsonObject) {
         try {
-            // Calculate round-trip time
+
             val serverTimestamp = message.getLong("timestamp")
             val clientTimestamp = message.getLong("clientTimestamp", 0L)
             val now = System.currentTimeMillis()
             val roundTripTime = now - serverTimestamp
 
-            if (Math.random() < 0.1) { // Log roughly 10% of heartbeat responses
+            if (Math.random() < 0.1) { % of heartbeat responses
                 logger.getEventLogger().trace("HEARTBEAT_RESPONSE", mapOf(
                     "connectionId" to connectionId,
                     "roundTripMs" to roundTripTime,

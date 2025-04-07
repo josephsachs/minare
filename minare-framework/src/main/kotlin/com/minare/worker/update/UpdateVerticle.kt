@@ -3,10 +3,7 @@ package com.minare.worker.update
 import com.minare.MinareApplication
 import com.minare.cache.ConnectionCache
 import com.minare.core.FrameController
-import com.minare.core.models.Connection
-import com.minare.persistence.ChannelStore
 import com.minare.persistence.ConnectionStore
-import com.minare.persistence.ContextStore
 import com.minare.utils.*
 import io.vertx.core.http.HttpServer
 import io.vertx.core.http.ServerWebSocket
@@ -21,7 +18,6 @@ import org.slf4j.LoggerFactory
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import com.minare.worker.command.CommandVerticle
-import com.minare.worker.update.UpdateVerticleCache
 import com.minare.worker.update.events.EntityUpdatedEvent
 import com.minare.worker.update.events.UpdateConnectionClosedEvent
 import com.minare.worker.update.events.UpdateConnectionClosedEvent.Companion.ADDRESS_CONNECTION_CLOSED
@@ -104,7 +100,6 @@ class UpdateVerticle @Inject constructor(
 
             deployHttpServer()
 
-            // Save deployment ID
             deploymentID?.let {
                 vlog.logDeployment(it)
             }
@@ -227,7 +222,6 @@ class UpdateVerticle @Inject constructor(
         ), traceId)
 
         try {
-            // Verify the connection exists
             val connection = connectionCache.getConnection(connectionId)
             if (connection == null) {
                 vlog.getEventLogger().trace("CONNECTION_NOT_FOUND", mapOf(
@@ -242,17 +236,12 @@ class UpdateVerticle @Inject constructor(
                 return
             }
 
-            // Close any existing socket for this connection
             closeExistingUpdateSocket(connectionId, traceId)
-
-            // Generate a custom socket ID instead of using textHandlerID()
             val socketId = "us-${java.util.UUID.randomUUID()}"
 
-            // Register the new socket
             localSockets[connectionId] = websocket
             connectionTracker.registerConnection(connectionId, traceId, websocket)
 
-            // Update the database with this ID
             connectionStore.updateSocketIds(
                 connectionId,
                 connection.commandSocketId,  // Preserve existing command socket ID
@@ -262,13 +251,11 @@ class UpdateVerticle @Inject constructor(
             connectionCache.storeUpdateSocket(connectionId, websocket, connection)
             heartbeatManager.startHeartbeat(socketId, connectionId, websocket)
 
-            // Send confirmation
             WebSocketUtils.sendConfirmation(websocket, "update_socket_confirm", connectionId)
 
             vlog.getEventLogger().logStateChange("UpdateSocket", "CONNECTED", "REGISTERED",
                 mapOf("connectionId" to connectionId, "socketId" to socketId), traceId)
 
-            // Initialize pending updates for this connection if not already present
             updateVerticleCache.connectionPendingUpdates.computeIfAbsent(connectionId) { ConcurrentHashMap() }
 
             // Notify about connection established
@@ -279,7 +266,6 @@ class UpdateVerticle @Inject constructor(
                     .put("socketType", "update")
             )
 
-            // Publish for the Update Socket (consistent with CommandVerticle)
             vertx.eventBus().publish(
                 MinareApplication.ConnectionEvents.ADDRESS_UPDATE_SOCKET_CONNECTED,
                 JsonObject()

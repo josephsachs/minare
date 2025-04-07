@@ -47,7 +47,7 @@ class EventBusUtils(
                 mapOf("address" to address, "status" to "success"), traceId)
 
             if (parentTraceId == null) {
-                // Only end trace if we started it
+
                 eventLog.endTrace(traceId, "EVENTBUS_COMPLETE",
                     mapOf("address" to address, "status" to "success"))
             }
@@ -90,7 +90,7 @@ class EventBusUtils(
                     eventLog.logError("CONSUMER_HANDLER_FAILED", e,
                         mapOf("address" to address), traceId)
 
-                    // Send error back to caller
+
                     message.fail(500, e.message ?: "Error processing message")
                 }
             }

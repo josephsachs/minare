@@ -9,7 +9,7 @@ import store from './store.js';
 import logger from './logger.js';
 import { connect, disconnect, sendCommand } from './connection.js';
 import { GridVisualizer } from './grid-visualizer.js';
-// import { D3GraphVisualizer } from './d3-visualizer.js'; // Replaced with Vis.js visualizer
+{ D3GraphVisualizer } from './d3-visualizer.js';
 import { VisNetworkVisualizer } from './vis-visualizer.js';
 
 /**
@@ -17,7 +17,7 @@ import { VisNetworkVisualizer } from './vis-visualizer.js';
  */
 class App {
   constructor() {
-    // DOM elements
+
     this.elements = {
       connectBtn: null,
       disconnectBtn: null,
@@ -30,15 +30,15 @@ class App {
       simulationPanelHeader: null
     };
 
-    // Active visualizer instance
+
     this.visualizer = null;
 
-    // Visualization update debouncing
+
     this.visualizationUpdateTimer = null;
     this.visualizationUpdatePending = false;
-    this.VISUALIZATION_DEBOUNCE_MS = 250; // 250ms debounce for visualization updates
+    this.VISUALIZATION_DEBOUNCE_MS = 250;
 
-    // Initialize the application when DOM is ready
+
     window.addEventListener('load', () => this.init());
   }
 
@@ -46,7 +46,7 @@ class App {
    * Initialize the application
    */
   init() {
-    // Get DOM elements
+
     this.elements.connectBtn = document.getElementById('connectBtn');
     this.elements.disconnectBtn = document.getElementById('disconnectBtn');
     this.elements.connectionStatus = document.getElementById('connectionStatus');
@@ -57,27 +57,27 @@ class App {
     this.elements.simulationPanel = document.querySelector('.simulation-panel');
     this.elements.simulationPanelHeader = document.querySelector('.simulation-panel h2');
 
-    // Initialize logger
+
     logger.init(this.elements.logEntries);
     logger.info('Application initialized');
 
-    // Check that vis.js is loaded - will fail loudly if not
+
     if (typeof vis === 'undefined' || typeof vis.Network !== 'function') {
       throw new Error('Vis.js Network library not loaded properly');
     }
 
     logger.info('Vis.js Network library detected');
 
-    // Set up event listeners
+
     this.setupEventListeners();
 
-    // Initialize visualization
+
     this.initVisualization(config.visualization?.defaultType || 'grid');
 
-    // Initialize simulation controls
+
     this.initSimulationControls();
 
-    // Set up store subscriptions
+
     this.setupStoreSubscriptions();
 
     logger.info('Minare Example Client ready');
@@ -87,14 +87,14 @@ class App {
    * Set up event listeners
    */
   setupEventListeners() {
-    // Connect/disconnect buttons
+
     this.elements.connectBtn.addEventListener('click', () => this.handleConnect());
     this.elements.disconnectBtn.addEventListener('click', () => this.handleDisconnect());
 
-    // Toggle visualization button
+
     this.elements.toggleVisBtn.addEventListener('click', () => this.toggleVisualization());
 
-    // Toggle simulation panel
+
     this.elements.simulationPanelHeader.addEventListener('click', () => this.toggleSimulationPanel());
 
     logger.info('Event listeners set up');
@@ -111,17 +111,17 @@ class App {
    * Set up store subscriptions
    */
   setupStoreSubscriptions() {
-    // Connection status changes
+
     store.on('connection.status.changed', (connected) => {
       this.updateConnectionStatus(connected);
     });
 
-    // Entity updates - now with throttling/debouncing
+
     store.on('entities.updated', () => {
       this.scheduleVisualizationUpdate();
     });
 
-    // Connection health warnings
+
     store.on('connection.health.warning', (healthInfo) => {
       logger.warn(`Connection may be unhealthy: No messages for ${(healthInfo.timeSinceLastMessage/1000).toFixed(1)}s`);
     });
@@ -149,7 +149,7 @@ class App {
    * @param {string} type - Visualization type ('grid' or 'vis')
    */
   initVisualization(type) {
-    // Clean up existing visualizer if any
+
     if (this.visualizer) {
       this.visualizer.destroy();
       this.visualizer = null;

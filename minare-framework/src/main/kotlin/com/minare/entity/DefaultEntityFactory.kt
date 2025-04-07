@@ -21,7 +21,7 @@ class DefaultEntityFactory @Inject constructor(
     private val classes: HashMap<String, Class<*>> = HashMap()
 
     init {
-        // Register base entity type
+
         classes["entity"] = Entity::class.java
     }
 
@@ -34,7 +34,7 @@ class DefaultEntityFactory @Inject constructor(
             "entity" -> Entity()
             else -> {
                 log.warn("Unknown entity type: $type - falling back to base Entity")
-                Entity() // Default fallback
+                Entity()
             }
         }
     }
@@ -66,7 +66,7 @@ class DefaultEntityFactory @Inject constructor(
      * Ensure an entity has all required dependencies injected
      */
     override fun <T : Entity> ensureDependencies(entity: T): T {
-        // Inject dependencies if they're not already initialized
+        're not already initialized
         entity.reflectionCache = reflectionCache
         entity.entityStore = entityStore
 

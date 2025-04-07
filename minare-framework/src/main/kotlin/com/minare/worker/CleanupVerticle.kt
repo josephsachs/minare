@@ -27,8 +27,8 @@ class CleanupVerticle @Inject constructor(
     companion object {
         const val ADDRESS_TRIGGER_CLEANUP = "minare.trigger.cleanup"
 
-        // Cleanup configuration
-        private const val CLEANUP_INTERVAL_MS = 60000L // 1 minute
+
+        private const val CLEANUP_INTERVAL_MS = 60000L
 
         // Connection reconnection window - how long to keep connections available for reconnect after disconnect
         const val CONNECTION_RECONNECT_WINDOW_MS = 60000L

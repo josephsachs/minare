@@ -31,7 +31,7 @@ class HttpServerVerticle : CoroutineVerticle() {
         const val DEFAULT_PORT = 8080
         const val DEFAULT_HOST = "0.0.0.0"
 
-        // Event bus addresses
+
         const val ADDRESS_REGISTER_ROUTER = "minare.http.server.register.router"
         const val ADDRESS_SERVER_STARTED = "minare.http.server.started"
         const val ADDRESS_SERVER_STOPPED = "minare.http.server.stopped"

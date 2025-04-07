@@ -90,7 +90,7 @@ open class Entity {
                 }
 
                 try {
-                        // Perform the mutation and await the result
+
                         val result = entityStore.mutateState(entityId, allowedChanges)
 
                         // After mutation is complete, bubble versions

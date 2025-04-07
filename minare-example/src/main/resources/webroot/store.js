@@ -5,38 +5,38 @@
  * Enhanced with activity tracking
  */
 
-// Import event emitter functionality
+
 import createEventEmitter from './events.js';
 import config from './config.js';
 
-// Create a state store with event emission
+
 const createStore = () => {
-  // Private state object
+
   const _state = {
-    // Connection state
+
     connection: {
       id: null,
       connected: false,
       commandSocket: null,
       updateSocket: null,
-      lastActivity: Date.now() // Track last activity for heartbeat monitoring
+      lastActivity: Date.now()
     },
 
-    // Entities received from server
+
     entities: {},
 
-    // Visualization state
+
     visualization: {
       type: 'grid',  // 'grid' or 'd3'
       instance: null
     },
 
-    // Simulation state
+
     simulation: {
       lurkers: []
     },
 
-    // Performance metrics
+
     performance: {
       lastUpdateTime: 0,
       updateCount: 0,
@@ -44,19 +44,19 @@ const createStore = () => {
     }
   };
 
-  // Create event emitter
+
   const events = createEventEmitter();
 
-  // Update emission throttling
-  let updateThrottleTimer = null;
-  const UPDATE_THROTTLE_INTERVAL = 150; // ms
 
-  // Methods to interact with the store
+  let updateThrottleTimer = null;
+  const UPDATE_THROTTLE_INTERVAL = 150;
+
+
   return {
-    // Get entire state (for debugging)
+
     getState: () => ({..._state}),
 
-    // Connection state methods
+
     getConnectionId: () => _state.connection.id,
     setConnectionId: (id) => {
       _state.connection.id = id;
@@ -83,13 +83,13 @@ const createStore = () => {
       _state.connection.lastActivity = Date.now();
     },
 
-    // Track last activity time for heartbeat monitoring
+
     getLastActivity: () => _state.connection.lastActivity,
     updateLastActivity: () => {
       _state.connection.lastActivity = Date.now();
     },
 
-    // Check if socket connection is stale (no activity for over 40 seconds)
+
     isConnectionStale: () => {
       const now = Date.now();
       const staleThreshold = 40000; // 40 seconds

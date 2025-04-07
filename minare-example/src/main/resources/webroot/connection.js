@@ -36,16 +36,16 @@ const createWebSocket = (url, onMessage, options = {}) => {
         if (options.onClose) options.onClose(event);
       };
 
-      // Setup a timeout in case the connection takes too long
+
       const timeout = setTimeout(() => {
         if (socket.readyState !== WebSocket.OPEN) {
           logger.error(`WebSocket connection timeout to ${url}`);
           socket.close();
           reject(new Error('Connection timeout'));
         }
-      }, 10000); // 10 second timeout
+      }, 10000);
 
-      // Clear timeout when connected
+
       socket.addEventListener('open', () => clearTimeout(timeout));
 
     } catch (error) {
@@ -61,7 +61,7 @@ const createWebSocket = (url, onMessage, options = {}) => {
  * @returns {Promise<WebSocket>} Command socket instance
  */
 export const connectCommandSocket = async (isReconnect = false) => {
-  // Get WebSocket base URL
+
   const url = `${config.websocket.wsProtocol}${config.websocket.host}:${config.websocket.commandPort}${config.websocket.commandEndpoint}`;
 
   logger.info(isReconnect ? 'Reconnecting command socket...' : 'Connecting command socket...');
@@ -72,13 +72,13 @@ export const connectCommandSocket = async (isReconnect = false) => {
       handleCommandSocketMessage,
       {
         onClose: (event) => {
-          // Handle command socket disconnection
+
           if (store.isConnected()) {
-            // If unexpected close and reconnection is enabled
+
             if (event.code !== 1000 && config.websocket.reconnect.enabled) {
               handleCommandSocketDisconnect();
             } else {
-              // Otherwise just disconnect fully
+
               disconnect();
             }
           }
@@ -89,7 +89,7 @@ export const connectCommandSocket = async (isReconnect = false) => {
     store.setCommandSocket(socket);
     logger.command('Command socket connected');
 
-    // If this is a reconnection attempt, send reconnection message
+
     if (isReconnect) {
       const connectionId = store.getConnectionId();
       if (connectionId) {
@@ -120,7 +120,7 @@ export const connectUpdateSocket = async () => {
     throw new Error('No connection ID available');
   }
 
-  // Get WebSocket base URL
+
   const url = `${config.websocket.wsProtocol}${config.websocket.host}:${config.websocket.updatePort}${config.websocket.updateEndpoint}`;
 
   logger.info('Connecting update socket...');
@@ -131,7 +131,7 @@ export const connectUpdateSocket = async () => {
       handleUpdateSocketMessage,
       {
         onClose: () => {
-          // Only handle update socket disconnection if we're still connected
+          're still connected
           if (store.isConnected()) {
             handleUpdateSocketDisconnect();
           }
@@ -142,7 +142,7 @@ export const connectUpdateSocket = async () => {
     store.setUpdateSocket(socket);
     logger.update('Update socket connected');
 
-    // Send connection ID to associate the update socket
+
     const associationMessage = {
       connectionId: connectionId
     };
@@ -162,10 +162,10 @@ export const connectUpdateSocket = async () => {
  */
 export const connect = async (isReconnect = false) => {
   try {
-    // Connect command socket first
+
     await connectCommandSocket(isReconnect);
 
-    // Update socket will be connected after receiving connection ID
+
     return true;
   } catch (error) {
     logger.error(`Connection failed: ${error.message}`);
@@ -189,7 +189,7 @@ export const disconnect = () => {
     store.setCommandSocket(null);
   }
 
-  // Reset state
+
   store.setConnectionId(null);
   store.setConnected(false);
   store.clearEntities();
@@ -204,7 +204,7 @@ const handleCommandSocketDisconnect = () => {
   logger.warn('Command socket disconnected unexpectedly, attempting reconnect...');
   store.setConnected(false);
 
-  // Clear the command socket reference
+
   store.setCommandSocket(null);
 
   // Don't clear connectionId - needed for reconnection

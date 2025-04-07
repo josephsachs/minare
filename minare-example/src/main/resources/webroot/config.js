@@ -2,16 +2,16 @@
  * Configuration settings for the Minare client
  */
 export const config = {
-  // WebSocket connection settings
+
   websocket: {
     wsProtocol: 'ws://',
     host: 'localhost',
     commandEndpoint: '/command',
     commandPort: "4225",
-    // Update socket endpoint
+
     updateEndpoint: '/update',
     updatePort: "4226",
-    // Reconnection settings
+
     reconnect: {
       enabled: false,
       maxAttempts: 3,
@@ -19,11 +19,11 @@ export const config = {
     }
   },
 
-  // Logging settings
+
   logging: {
-    // Whether to log messages to the browser console
+
     console: true,
-    // Maximum number of log entries to keep in the UI
+
     maxEntries: 20,
     // Whether to log verbose messages (like all updates and commands)
     verbose: false,

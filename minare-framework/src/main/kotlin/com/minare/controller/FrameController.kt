@@ -15,12 +15,12 @@ abstract class FrameController @Inject constructor(
 ) {
     private val log = LoggerFactory.getLogger(this::class.java)
 
-    // Frame timing and control
-    private var frameIntervalMs = 100 // Default: 10 frames per second
+
+    private var frameIntervalMs = 100 : 10 frames per second
     private var frameTimerId: Long? = null
     private val isRunning = AtomicBoolean(false)
 
-    // Performance metrics
+
     protected var lastFrameTimeMs = 0L
     protected var frameCount = 0L
     protected var totalProcessingTimeMs = 0L
@@ -73,13 +73,13 @@ abstract class FrameController @Inject constructor(
                 lastFrameTimeMs = System.currentTimeMillis() - startTime
                 totalProcessingTimeMs += lastFrameTimeMs
 
-                // Log warnings if frames are taking too long
+
                 if (lastFrameTimeMs > frameIntervalMs * 0.8) {
                     log.warn("Frame processing took {}ms ({}% of frame budget)",
                         lastFrameTimeMs, (lastFrameTimeMs * 100 / frameIntervalMs))
                 }
 
-                // Log periodic stats
+
                 if (frameCount % 100 == 0L) {
                     val avgFrameTime = if (frameCount > 0) totalProcessingTimeMs / frameCount else 0
                     log.info("Frame stats: count={}, avg={}ms, last={}ms",
@@ -117,7 +117,7 @@ abstract class FrameController @Inject constructor(
         if (intervalMs != this.frameIntervalMs) {
             this.frameIntervalMs = intervalMs
 
-            // Restart the timer if we're running
+            're running
             if (isRunning.get()) {
                 frameTimerId?.let { vertx.cancelTimer(it) }
                 startFrameLoop()

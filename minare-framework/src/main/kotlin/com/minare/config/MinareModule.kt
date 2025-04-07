@@ -42,7 +42,7 @@ class MinareModule : AbstractModule(), DatabaseNameProvider {
             .annotatedWith(Names.named("mongoConnectionString"))
             .toInstance(uri)
 
-        // Collection names
+
         bind(String::class.java).annotatedWith(Names.named("channels")).toInstance("channels")
         bind(String::class.java).annotatedWith(Names.named("contexts")).toInstance("contexts")
         bind(String::class.java).annotatedWith(Names.named("entities")).toInstance("entities")
@@ -50,16 +50,16 @@ class MinareModule : AbstractModule(), DatabaseNameProvider {
 
         bind(Boolean::class.java)
             .annotatedWith(Names.named("clusteringEnabled"))
-            .toInstance(false) // Default to false, can be overridden
+            .toInstance(false)
 
-        // Frame configuration
+
         bind(Int::class.java)
             .annotatedWith(Names.named("frameIntervalMs"))
-            .toInstance(100) // 10 FPS default
+            .toInstance(100)
 
         bind(VerticleLogger::class.java).`in`(Singleton::class.java)
 
-        // Register the verticles (excluding Command and Update, which have their own modules)
+
         bind(ChangeStreamWorkerVerticle::class.java)
         bind(MutationVerticle::class.java)
         bind(CleanupVerticle::class.java)

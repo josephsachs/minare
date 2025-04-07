@@ -8,10 +8,10 @@ import logger from './logger.js';
 import { connectUpdateSocket } from './connection.js';
 import config from './config.js';
 
-// Global update queue with throttling
+
 let pendingEntities = [];
 let processingQueued = false;
-const PROCESS_INTERVAL = 100; // ms
+const PROCESS_INTERVAL = 100;
 
 /**
  * Queue entity updates for batched processing
@@ -19,16 +19,16 @@ const PROCESS_INTERVAL = 100; // ms
  * @param {boolean} needsTransform - Whether entities need transformation
  */
 function queueEntityUpdates(entities, needsTransform = true) {
-  // Don't queue if we have no entities
+  't queue if we have no entities
   if (!entities || entities.length ===.0) return;
 
-  // Add to queue with transform flag
+
   pendingEntities.push({
     entities,
     needsTransform
   });
 
-  // Schedule processing if not already scheduled
+
   if (!processingQueued) {
     processingQueued = true;
     setTimeout(processEntityQueue, PROCESS_INTERVAL);
@@ -40,44 +40,44 @@ function queueEntityUpdates(entities, needsTransform = true) {
  */
 function processEntityQueue() {
   if (pendingEntities.length > 0) {
-    // Find total entity count for logging
+
     let totalEntityCount = 0;
     pendingEntities.forEach(batch => {
       totalEntityCount += batch.entities.length;
     });
 
-    // Only log if we have entities to process
+
     if (totalEntityCount > 0 && config.logging?.verbose) {
       logger.info(`Processing batch of ${totalEntityCount} entity updates`);
     }
 
-    // Process each batch
+
     const allProcessedEntities = [];
 
     for (const batch of pendingEntities) {
       const { entities, needsTransform } = batch;
 
       if (needsTransform) {
-        // Transform entities all at once
+
         const transformed = entities.map(entity => ({
-          id: entity._id || entity.id, // Handle both formats
+          id: entity._id || entity.id,
           version: entity.version,
           state: entity.state,
           type: entity.type
         }));
         allProcessedEntities.push(...transformed);
       } else {
-        // No transformation needed
+
         allProcessedEntities.push(...entities);
       }
     }
 
-    // Update store once with all entities
+
     if (allProcessedEntities.length > 0) {
       store.updateEntities(allProcessedEntities);
     }
 
-    // Clear queue
+
     pendingEntities = [];
   }
 

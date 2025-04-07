@@ -19,7 +19,7 @@ class ReflectionCache {
      */
     fun getFields(entityClass: KClass<*>): List<Field> {
         return fieldsByClass.computeIfAbsent(entityClass) { clazz ->
-            // Collect all fields from the class hierarchy
+
             val fields = mutableListOf<Field>()
             var currentClass: Class<*>? = clazz.java
 
@@ -57,7 +57,7 @@ class ReflectionCache {
     fun registerFromEntityFactory(entityFactory: EntityFactory) {
         val entityTypeNames = entityFactory.getTypeNames()
 
-        // Register each type using its class
+
         entityTypeNames.forEach { typeName ->
             entityFactory.useClass(typeName)?.let { javaClass ->
                 val kClass = javaClass.kotlin
@@ -75,7 +75,7 @@ class ReflectionCache {
         entityClasses.forEach { entityClass ->
             getFields(entityClass)
 
-            // Cache by type name if available
+
             entityClass.findAnnotation<EntityType>()?.let { annotation ->
                 classesByType[annotation.value] = entityClass
             }
@@ -102,7 +102,7 @@ class ReflectionCache {
      * This will be implemented later to load cached reflection data from Redis
      */
     fun loadFromCache(typeName: String): Boolean {
-        // Placeholder for future Redis implementation
+
         return false
     }
 }

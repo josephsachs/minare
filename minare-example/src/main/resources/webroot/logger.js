@@ -10,15 +10,15 @@ class Logger {
     this.logContainer = null;
     this.events = createEventEmitter();
     this.logCount = 0;
-    this.maxEntries = 1000; // Default, will be updated from config
+    this.maxEntries = 1000;
 
-    // Buffering and rate limiting
+
     this.logBuffer = [];
     this.flushInterval = null;
-    this.flushIntervalMs = 500; // Flush buffer every 500ms
-    this.maxBufferSize = 100;  // Maximum number of messages to buffer
+    this.flushIntervalMs = 500;
+    this.maxBufferSize = 100;
 
-    // Counters for message types (for summarization)
+
     this.updateMessageCount = 0;
     this.commandMessageCount = 0;
     this.infoMessageCount = 0;
@@ -33,13 +33,13 @@ class Logger {
   init(container) {
     this.logContainer = container;
 
-    // Update from config if available
+
     if (config.logging) {
       if (config.logging.maxEntries) {
         this.maxEntries = config.logging.maxEntries;
       }
 
-      // Add configurable buffer settings if defined
+
       if (config.logging.flushIntervalMs) {
         this.flushIntervalMs = config.logging.flushIntervalMs;
       }
@@ -48,7 +48,7 @@ class Logger {
       }
     }
 
-    // Start the flush interval
+
     this.startBufferFlush();
 
     return this;
@@ -58,12 +58,12 @@ class Logger {
    * Start the buffer flush interval
    */
   startBufferFlush() {
-    // Clear any existing interval
+
     if (this.flushInterval) {
       clearInterval(this.flushInterval);
     }
 
-    // Set up interval to flush the buffer
+
     this.flushInterval = setInterval(() => {
       this.flushBuffer();
     }, this.flushIntervalMs);
@@ -73,21 +73,21 @@ class Logger {
    * Flush the log buffer to the UI
    */
   flushBuffer() {
-    // Skip if buffer is empty
+
     if (this.logBuffer.length === 0) {
       return;
     }
 
-    // Calculate time since last flush
+
     const now = Date.now();
     const elapsed = now - this.lastFlushTime;
     this.lastFlushTime = now;
 
-    // Check if any message types have accumulated enough to summarize
+
     const shouldSummarizeUpdates = this.updateMessageCount > 10;
     const shouldSummarizeCommands = this.commandMessageCount > 10;
 
-    // Create a fragment to efficiently add multiple entries
+
     const fragment = document.createDocumentFragment();
 
     // Add summarized messages if necessary

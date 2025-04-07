@@ -28,7 +28,7 @@ class Zone : Entity() {
     @State
     @JsonProperty("region")
     @Parent
-    lateinit var region: Region  // back-reference
+    lateinit var region: Region
 
     @JsonProperty("units")
     @State
@@ -52,7 +52,7 @@ class Building : Entity() {
     @JsonProperty("zone")
     @State
     @Parent
-    lateinit var zone: Zone  // back-reference
+    lateinit var zone: Zone
 
     @JsonProperty("position")
     @State
@@ -74,7 +74,7 @@ class MapUnit : Entity() {
     @JsonProperty("zone")
     @State
     @Parent
-    lateinit var zone: Zone  // back-reference
+    lateinit var zone: Zone
 
     @JsonProperty("position")
     @State
@@ -88,7 +88,7 @@ class MapUnit : Entity() {
 
     @JsonProperty("offense")
     @State
-    lateinit var offense: JsonObject  // contains burn, AP, melee booleans and int array
+    lateinit var offense: JsonObject
 }
 
 @JsonTypeName("MapVector2")
@@ -107,14 +107,14 @@ class MapVector2 : Entity() {
     @JsonProperty("parentEntity")
     @State
     @Parent
-    lateinit var parentEntity: Entity  // back-reference to either Building or MapUnit
+    lateinit var parentEntity: Entity
 }
 
 class TestEntityFactory : EntityFactory {
     private val classes: HashMap<String, Class<*>> = HashMap()
 
     init {
-        // Register our base types
+
         classes.put("region", Region::class.java)
         classes.put("zone", Zone::class.java)
         classes.put("building", Building::class.java)
@@ -151,7 +151,7 @@ class TestEntityFactory : EntityFactory {
             }
         }
 
-        // Inject dependencies
+
         return ensureDependencies(entity)
     }
 
@@ -176,7 +176,7 @@ class TestEntityFactory : EntityFactory {
      * Ensure an entity has all required dependencies injected
      */
     override fun <T : Entity> ensureDependencies(entity: T): T {
-        // These will be mocked
+
         return entity
     }
 }

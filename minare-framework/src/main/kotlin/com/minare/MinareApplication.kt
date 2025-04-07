@@ -109,7 +109,7 @@ abstract class MinareApplication : CoroutineVerticle() {
                 .setWorkerPoolName("change-stream-pool")
                 .setWorkerPoolSize(2)
                 .setInstances(2)
-                .setMaxWorkerExecuteTime(Long.MAX_VALUE)  // Allow long-running tasks
+                .setMaxWorkerExecuteTime(Long.MAX_VALUE)
 
             changeStreamWorkerDeploymentId = vertx.deployVerticle(
                 "guice:" + ChangeStreamWorkerVerticle::class.java.name,
@@ -133,7 +133,7 @@ abstract class MinareApplication : CoroutineVerticle() {
                 .setWorker(true)
                 .setWorkerPoolName("cleanup-pool")
                 .setWorkerPoolSize(1)
-                .setInstances(1)  // Only need one
+                .setInstances(1)
 
             cleanupVerticleDeploymentId = vertx.deployVerticle(
                 "guice:" + CleanupVerticle::class.java.name,
@@ -181,7 +181,7 @@ abstract class MinareApplication : CoroutineVerticle() {
      * Override to add application-specific HTTP routes.
      */
     protected open suspend fun setupApplicationRoutes() {
-        // Default implementation does nothing
+
     }
 
     /**
@@ -189,7 +189,7 @@ abstract class MinareApplication : CoroutineVerticle() {
      * Called after the server has started successfully.
      */
     protected open suspend fun onApplicationStart() {
-        // Default implementation does nothing
+
     }
 
     /**
@@ -197,7 +197,7 @@ abstract class MinareApplication : CoroutineVerticle() {
      */
     override suspend fun stop() {
         try {
-            // Undeploy the command socket verticle
+
             if (commandVerticleDeploymentId != null) {
                 try {
                     vertx.undeploy(commandVerticleDeploymentId).await()
@@ -207,7 +207,7 @@ abstract class MinareApplication : CoroutineVerticle() {
                 }
             }
 
-            // Undeploy the update verticle
+
             if (updateVerticleDeploymentId != null) {
                 try {
                     vertx.undeploy(updateVerticleDeploymentId).await()
@@ -217,7 +217,7 @@ abstract class MinareApplication : CoroutineVerticle() {
                 }
             }
 
-            // Undeploy the mutation verticle
+
             if (mutationVerticleDeploymentId != null) {
                 try {
                     vertx.undeploy(mutationVerticleDeploymentId).await()
@@ -227,7 +227,7 @@ abstract class MinareApplication : CoroutineVerticle() {
                 }
             }
 
-            // Undeploy the change stream worker verticle
+
             if (changeStreamWorkerDeploymentId != null) {
                 try {
                     vertx.undeploy(changeStreamWorkerDeploymentId).await()
@@ -237,7 +237,7 @@ abstract class MinareApplication : CoroutineVerticle() {
                 }
             }
 
-            // Undeploy the cleanup verticle
+
             if (cleanupVerticleDeploymentId != null) {
                 try {
                     vertx.undeploy(cleanupVerticleDeploymentId).await()
@@ -247,7 +247,7 @@ abstract class MinareApplication : CoroutineVerticle() {
                 }
             }
 
-            // Close HTTP server
+
             if (httpServer != null) {
                 try {
                     httpServer?.close()?.await()
@@ -265,7 +265,7 @@ abstract class MinareApplication : CoroutineVerticle() {
     }
 
     private fun registerConnectionEventHandlers() {
-        // Listen for command socket connections
+
         vertx.eventBus().consumer<JsonObject>(ConnectionEvents.ADDRESS_COMMAND_SOCKET_CONNECTED) { message ->
             val connectionId = message.body().getString("connectionId")
             val traceId = message.body().getString("traceId")
@@ -279,7 +279,7 @@ abstract class MinareApplication : CoroutineVerticle() {
             }
         }
 
-        // Listen for update socket connections
+
         vertx.eventBus().consumer<JsonObject>(ConnectionEvents.ADDRESS_UPDATE_SOCKET_CONNECTED) { message ->
             val connectionId = message.body().getString("connectionId")
             val traceId = message.body().getString("traceId")
@@ -348,13 +348,13 @@ abstract class MinareApplication : CoroutineVerticle() {
          * Get the application module for a specific application class
          */
         private fun getApplicationModule(applicationClass: Class<out MinareApplication>): Module {
-            // First check if the class has a static getModule method
+
             try {
                 val getModuleMethod = applicationClass.getDeclaredMethod("getModule")
                 getModuleMethod.isAccessible = true
                 return getModuleMethod.invoke(null) as Module
             } catch (e: Exception) {
-                // Fallback to a default empty module
+
                 log.warn("No getModule() method found in application class ${applicationClass.name}. Using empty module.")
                 return Module { /* Empty module */ }
             }
@@ -371,7 +371,7 @@ abstract class MinareApplication : CoroutineVerticle() {
                 dbName
             } else {
                 log.info("Module doesn't implement DatabaseNameProvider, using default database name")
-                "minare" // Default
+                "minare"
             }
         }
 
@@ -453,8 +453,8 @@ abstract class MinareApplication : CoroutineVerticle() {
 
                 val combinedModule = object : AbstractModule() {
                     override fun configure() {
-                        // Correct order is required:
-                        // framework (provides defaults)
+                        :
+
                         install(frameworkModule)
                         install(commandVerticleModule)
                         install(updateVerticleModule)

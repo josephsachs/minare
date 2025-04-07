@@ -49,13 +49,13 @@ class EntityTest {
         vertx = Vertx.vertx()
         MockitoAnnotations.openMocks(this)
 
-        // Create our test ReflectionCache first
+
         reflectionCache = ReflectionCache()
 
-        // Setup test entity factory behavior
+
         setupEntityFactoryMocks()
 
-        // Register entity classes with reflection cache
+
         reflectionCache.registerEntityClasses(
             listOf(
                 Region::class,
@@ -66,24 +66,24 @@ class EntityTest {
             )
         )
 
-        // Now create the Guice injector with initialized mocks
+
         testInjector = Guice.createInjector(object : AbstractModule() {
             override fun configure() {
                 bind(ReflectionCache::class.java).toInstance(reflectionCache)
                 bind(MongoClient::class.java).toInstance(mongoClient)
                 bind(EntityFactory::class.java).toInstance(entityFactory)
 
-                // Bind the interface to the implementation
+
                 bind(EntityStore::class.java).to(MongoEntityStore::class.java)
 
-                // Bind the collection name
+
                 bind(String::class.java)
                     .annotatedWith(Names.named("entityCollection"))
                     .toInstance(entityCollection)
             }
         })
 
-        // Get our service instances from Guice
+
         mongoEntityStore = testInjector.getInstance(MongoEntityStore::class.java)
 
         testContext.completeNow()
@@ -93,7 +93,7 @@ class EntityTest {
      * Helper method to set up entity factory behavior
      */
     private fun setupEntityFactoryMocks() {
-        // Configure mock to return appropriate entity types
+
         Mockito.`when`(entityFactory.useClass("MapVector2")).thenReturn(MapVector2::class.java)
         Mockito.`when`(entityFactory.useClass("MapUnit")).thenReturn(MapUnit::class.java)
         Mockito.`when`(entityFactory.useClass("Zone")).thenReturn(Zone::class.java)
@@ -106,7 +106,7 @@ class EntityTest {
      */
     @Test
     fun testSerialize_success(testContext: VertxTestContext) {
-        // Create the region using the test fixture with proper dependency injection
+
         val region = testFixtures.createTestFixture(testInjector)
 
         val expected = testFixtures.createTestJson()
@@ -117,7 +117,7 @@ class EntityTest {
                 val serialized = region.serialize()
                 val actualHash = hashJsonObject(serialized)
 
-                // Print hashes for debugging
+
                 println("Expected hash: $expectedHash")
                 println("Actual hash: $actualHash")
 

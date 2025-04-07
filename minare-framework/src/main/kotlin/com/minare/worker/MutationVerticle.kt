@@ -26,7 +26,7 @@ class MutationVerticle @Inject constructor(
     }
 
     override suspend fun start() {
-        // Register consumer for mutation commands
+
         vertx.eventBus().consumer<JsonObject>(ADDRESS_MUTATION).handler { message ->
             launch(vertx.dispatcher()) {
                 try {

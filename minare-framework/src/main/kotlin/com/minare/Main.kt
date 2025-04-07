@@ -22,7 +22,7 @@ class Main {
             try {
                 log.info("Deploying Minare application: ${applicationClass.simpleName}")
 
-                // Deploy the application verticle
+
                 vertx.deployVerticle(applicationClass.getDeclaredConstructor().newInstance())
                     .onSuccess { id ->
                         log.info("Successfully deployed application with ID: {}", id)
@@ -33,7 +33,7 @@ class Main {
                         System.exit(1)
                     }
 
-                // Add shutdown hook for graceful termination
+
                 Runtime.getRuntime().addShutdownHook(Thread {
                     log.info("Shutting down Minare application")
                     vertx.close()

@@ -11,7 +11,7 @@ export class D3GraphVisualizer {
    * @param {string} containerId - ID of container element
    */
   constructor(containerId) {
-    // Check if D3 is available
+
     if (typeof d3 === 'undefined') {
       throw new Error('D3 library is not loaded');
     }
@@ -25,36 +25,36 @@ export class D3GraphVisualizer {
 
     this.container = d3.select(`#${containerId}`);
 
-    // Clear any previous content
+
     this.container.html('');
 
-    // Get dimensions
+
     const rect = containerElement.getBoundingClientRect();
     this.width = rect.width;
-    this.height = rect.height || 500; // Use container height or fallback to 500px
+    this.height = rect.height || 500;
 
-    // Data structures - using Maps for O(1) lookups
+
     this.nodes = [];
     this.links = [];
-    this.nodeMap = new Map(); // For efficient node lookup
-    this.linkMap = new Map(); // For efficient link lookup
+    this.nodeMap = new Map();
+    this.linkMap = new Map();
 
-    // Static layout grid parameters
+
     this.gridColumns = 5;
     this.nodeSpacing = 120;
     this.nodeRadius = 30;
 
-    // Draw elements
+
     this.svg = null;
     this.graphContainer = null;
     this.tooltip = null;
     this.linkElements = null;
     this.nodeElements = null;
 
-    // Initialize the visualization
+
     this.initialize();
 
-    // Adding resize handler with debounce
+
     this.resizeTimer = null;
     window.addEventListener('resize', () => this.handleResize());
 
@@ -66,13 +66,13 @@ export class D3GraphVisualizer {
    */
   initialize() {
     try {
-      // Create SVG element
+
       this.svg = this.container.append('svg')
         .attr('width', this.width)
         .attr('height', this.height)
         .attr('class', 'd3-graph');
 
-      // Add basic zoom behavior (no animations)
+
       const zoom = d3.zoom()
         .scaleExtent([0.1, 4])
         .on('zoom', (event) => {

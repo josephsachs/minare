@@ -41,21 +41,21 @@ class ChangeStreamWorkerVerticle @Inject constructor(
     private var resumeToken: BsonDocument? = null
 
     companion object {
-        // Event bus addresses
+
         const val ADDRESS_STREAM_STARTED = "minare.change.stream.started"
         const val ADDRESS_STREAM_STOPPED = "minare.change.stream.stopped"
         const val ADDRESS_ENTITY_UPDATED = "minare.entity.update"
 
-        // Change stream configuration
+
         const val CHANGE_BATCH_SIZE = 100
-        const val MAX_WAIT_MS = 200L // Max time to wait before processing a batch
+        const val MAX_WAIT_MS = 200L
     }
 
     override suspend fun start() {
         try {
             running = true
 
-            // Start the change stream processor in a separate coroutine
+
             launch {
                 processChangeStream()
             }
@@ -79,7 +79,7 @@ class ChangeStreamWorkerVerticle @Inject constructor(
      * to the event bus.
      */
     private suspend fun processChangeStream() {
-        // Create dedicated IO Job for blocking MongoDB operations
+
         val mongoJob = SupervisorJob()
         val mongoContext = Dispatchers.IO + mongoJob
 

@@ -27,7 +27,7 @@ public final class MinareVerticleFactory(private val injector: Injector) : Verti
             val verticleClass = classLoader.loadClass(className) as Class<out Verticle>
 
             val verticleCallable = Callable<Verticle> {
-                // Use the injector to get a Provider for the verticle type
+
                 // Provider.get() will create a new instance even for singleton-bound classes
                 val verticle = injector.getInstance(verticleClass)
                 log.debug("Instantiated verticle: {}", verticle::class.java.name)

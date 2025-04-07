@@ -13,7 +13,7 @@ import java.util.UUID
 class EventLogger(private val component: String) {
     private val log: Logger = LoggerFactory.getLogger("com.minare.event.$component")
 
-    // For tracking sequences of related events
+
     private val traces = mutableMapOf<String, Long>()
 
     /**
@@ -23,7 +23,7 @@ class EventLogger(private val component: String) {
         val actualTraceId = traceId ?: UUID.randomUUID().toString()
         val timestamp = System.currentTimeMillis()
 
-        // Store timestamp for duration calculations
+
         traces[actualTraceId] = timestamp
 
         val logEntry = JsonObject()
@@ -79,7 +79,7 @@ class EventLogger(private val component: String) {
         details["direction"] = "OUT"
 
         if (message is JsonObject) {
-            // Include a summary of fields (keys only) to avoid logging sensitive data
+
             details["messageFields"] = message.fieldNames().joinToString(",")
         }
 
