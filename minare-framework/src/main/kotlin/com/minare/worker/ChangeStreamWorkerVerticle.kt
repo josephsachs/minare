@@ -84,7 +84,7 @@ class ChangeStreamWorkerVerticle @Inject constructor(
         val mongoContext = Dispatchers.IO + mongoJob
 
         try {
-            // Connect to MongoDB with the native driver
+
             val (nativeMongoClient, entitiesCollection) = withContext(mongoContext) {
                 val mongoClientSettings = com.mongodb.MongoClientSettings.builder()
                     .applyConnectionString(ConnectionString(mongoConnectionString))
@@ -97,7 +97,7 @@ class ChangeStreamWorkerVerticle @Inject constructor(
                 Pair(client, collection)
             }
 
-            // Use pipeline to filter only relevant changes
+
             val pipeline = listOf(
                 Document("\$match",
                     Document("operationType",
@@ -110,9 +110,9 @@ class ChangeStreamWorkerVerticle @Inject constructor(
             log.info("Change stream listener started for collection: $collection")
 
             try {
-                // The change stream watching happens in the IO context
+
                 withContext(mongoContext) {
-                    // Configure the change stream
+
                     var changeStreamIterable = entitiesCollection.watch(pipeline)
                         .fullDocument(FullDocument.UPDATE_LOOKUP)
 

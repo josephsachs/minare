@@ -40,7 +40,7 @@ class ExampleConnectionController @Inject constructor(
     override suspend fun onClientFullyConnected(connection: Connection) {
         log.info("Example client {} is now fully connected", connection._id)
 
-        // Get the default channel from the example channel controller
+
         val defaultChannelId = channelController.getDefaultChannel()
 
         if (defaultChannelId == null) {
@@ -48,12 +48,12 @@ class ExampleConnectionController @Inject constructor(
             return
         }
 
-        // Subscribe the client to the default channel
+
         if (channelController.subscribeClientToChannel(defaultChannelId, connection._id)) {
-            // Sync the channel data to the client
+
             syncChannelToConnection(defaultChannelId, connection._id)
 
-            // Notify the client that initial sync is complete
+
             sendInitialSyncComplete(connection._id)
         }
     }

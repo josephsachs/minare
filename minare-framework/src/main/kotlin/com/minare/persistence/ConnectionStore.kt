@@ -6,8 +6,9 @@ interface ConnectionStore {
     suspend fun create(): Connection
     suspend fun delete(connectionId: String)
     suspend fun find(connectionId: String): Connection
-    suspend fun updateUpdateSocketId(connectionId: String, updateSocketId: String?): Connection
-    suspend fun updateSocketIds(connectionId: String, commandSocketId: String?, updateSocketId: String?): Connection
+    suspend fun find(connectionId: Set<String>): Set<Connection>
+    suspend fun putUpdateSocket(connectionId: String, socketId: String?, deploymentId: String?): Connection
+    suspend fun putCommandSocket(connectionId: String, socketId: String?, deploymentId: String?): Connection
     suspend fun findAllWithUpdateSocket(): List<Connection>
 
     /**
@@ -29,4 +30,9 @@ interface ConnectionStore {
      * Find connections that haven't had activity for a specified time
      */
     suspend fun findInactiveConnections(olderThanMs: Long): List<Connection>
+}
+
+enum class SocketType {
+    Command,
+    Update
 }

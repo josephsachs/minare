@@ -16,7 +16,7 @@ abstract class FrameController @Inject constructor(
     private val log = LoggerFactory.getLogger(this::class.java)
 
 
-    private var frameIntervalMs = 100 : 10 frames per second
+    private var frameIntervalMs = 100 // 10 frames per second
     private var frameTimerId: Long? = null
     private val isRunning = AtomicBoolean(false)
 
@@ -117,7 +117,6 @@ abstract class FrameController @Inject constructor(
         if (intervalMs != this.frameIntervalMs) {
             this.frameIntervalMs = intervalMs
 
-            're running
             if (isRunning.get()) {
                 frameTimerId?.let { vertx.cancelTimer(it) }
                 startFrameLoop()

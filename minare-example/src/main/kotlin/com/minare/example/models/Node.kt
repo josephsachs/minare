@@ -6,7 +6,7 @@ import com.minare.core.models.Entity
 @EntityType("Node")
 class Node() : Entity() {
     init {
-        // Set the type property based on the EntityType annotation
+
         type = "Node"
     }
 
@@ -23,7 +23,7 @@ class Node() : Entity() {
 
     @State
     @Mutable
-    var color: String = "#CCCCCC" // Default boring gray color
+    var color: String = "#CCCCCC"
 
     /**
      * Add a child node to this node

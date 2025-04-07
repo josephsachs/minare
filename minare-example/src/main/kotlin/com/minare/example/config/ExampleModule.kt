@@ -22,15 +22,15 @@ class ExampleModule : PrivateModule(), DatabaseNameProvider {
     private val log = LoggerFactory.getLogger(ExampleModule::class.java)
 
     override fun configure() {
-        // Bind our custom entity factory
-        // This will override the framework default EntityFactory
+
+
         bind(EntityFactory::class.java).to(ExampleEntityFactory::class.java).`in`(Singleton::class.java)
 
-        // Bind our custom controllers
+
         bind(ChannelController::class.java).to(ExampleChannelController::class.java).`in`(Singleton::class.java)
         bind(ConnectionController::class.java).to(ExampleConnectionController::class.java).`in`(Singleton::class.java)
 
-        // Expose our bindings to the parent injector
+
         expose(EntityFactory::class.java)
         expose(ChannelController::class.java)
         expose(ConnectionController::class.java)

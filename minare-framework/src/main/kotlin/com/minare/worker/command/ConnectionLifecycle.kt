@@ -27,7 +27,7 @@ class ConnectionLifecycle @Inject constructor(
     /**
      * Connect to the command socket
      */
-    public suspend fun initiateConnection(websocket: ServerWebSocket, traceId: String) {
+    public suspend fun initiateConnection(websocket: ServerWebSocket, deploymentId: String, traceId: String) {
         try {
             vlog.getEventLogger().logDbOperation("CREATE", "connections", emptyMap(), traceId)
 
@@ -49,7 +49,6 @@ class ConnectionLifecycle @Inject constructor(
                 mapOf("connectionId" to connection._id), traceId
             )
 
-            // Generate a command socket ID
             val commandSocketId = "cs-${java.util.UUID.randomUUID()}"
 
             vlog.getEventLogger().logDbOperation(
@@ -57,10 +56,10 @@ class ConnectionLifecycle @Inject constructor(
                 mapOf("connectionId" to connection._id, "action" to "update_socket_ids"), traceId
             )
 
-            val updatedConnection = connectionStore.updateSocketIds(
+            val updatedConnection = connectionStore.putCommandSocket(
                 connection._id,
                 commandSocketId,
-                null
+                deploymentId
             )
 
             // IMPORTANT: Update the cache with the updated connection

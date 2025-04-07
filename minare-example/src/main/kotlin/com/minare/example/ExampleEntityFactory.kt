@@ -19,9 +19,9 @@ class ExampleEntityFactory @Inject constructor(
     private val classes: HashMap<String, Class<*>> = HashMap()
 
     init {
-        // Register our entity types - use lowercase for consistency in lookups
+
         classes["node"] = Node::class.java
-        classes["entity"] = Entity::class.java  // Base entity type as fallback
+        classes["entity"] = Entity::class.java
 
         log.info("Registered entity types: ${classes.keys.joinToString()}")
     }
@@ -47,7 +47,7 @@ class ExampleEntityFactory @Inject constructor(
             }
         }
 
-        // Inject dependencies
+
         return ensureDependencies(entity)
     }
 
@@ -65,7 +65,7 @@ class ExampleEntityFactory @Inject constructor(
             }
         }
 
-        // Inject dependencies
+
         return ensureDependencies(entity)
     }
 
@@ -87,7 +87,6 @@ class ExampleEntityFactory @Inject constructor(
      * Ensure an entity has all required dependencies injected
      */
     override fun <T : Entity> ensureDependencies(entity: T): T {
-        // Inject dependencies if they're not already initialized
         entity.reflectionCache = reflectionCache
         entity.entityStore = entityStore
 

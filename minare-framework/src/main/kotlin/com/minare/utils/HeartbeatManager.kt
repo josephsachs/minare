@@ -64,7 +64,7 @@ class HeartbeatManager(
                         log.warn("Failed to update last activity for connection $connectionId", e)
                     }
 
-                    if (Math.random() < 0.05) { % of heartbeats
+                    if (Math.random() < 0.05) { // % of heartbeats
                         logger.getEventLogger().trace("HEARTBEAT_SENT", mapOf(
                             "socketId" to socketId,
                             "connectionId" to connectionId
@@ -120,7 +120,7 @@ class HeartbeatManager(
             val now = System.currentTimeMillis()
             val roundTripTime = now - serverTimestamp
 
-            if (Math.random() < 0.1) { % of heartbeat responses
+            if (Math.random() < 0.1) { // % of heartbeat responses
                 logger.getEventLogger().trace("HEARTBEAT_RESPONSE", mapOf(
                     "connectionId" to connectionId,
                     "roundTripMs" to roundTripTime,

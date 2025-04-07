@@ -90,7 +90,7 @@ class Logger {
 
     const fragment = document.createDocumentFragment();
 
-    // Add summarized messages if necessary
+
     if (shouldSummarizeUpdates) {
       const summary = document.createElement('div');
       summary.className = 'log-entry log-entry-summary';

@@ -90,121 +90,24 @@ open class ConnectionController @Inject constructor(
      * Update a connection in database first, then in memory
      */
     suspend fun updateConnection(connection: Connection): Connection {
-        val updatedConnection = connectionStore.updateSocketIds(
-            connection._id,
-            connection.commandSocketId,
-            connection.updateSocketId
+        connectionCache.storeConnection(
+            connectionStore.putCommandSocket(
+                connection._id,
+                connection.commandSocketId,
+                connection.commandDeploymentId
+            )
         )
 
-        // Then update cache with fresh data from database
-        connectionCache.storeConnection(updatedConnection)
-        log.debug("Connection updated: id={}, commandSocketId={}, updateSocketId={}",
-            updatedConnection._id, updatedConnection.commandSocketId, updatedConnection.updateSocketId)
-
-        return updatedConnection
-    }
-
-    /**
-     * Register a command WebSocket for a connection
-     */
-    suspend fun registerCommandSocket(connectionId: String, websocket: ServerWebSocket, socketId: String? = null) {
-        try {
-            // Close existing socket if any
-            connectionCache.getCommandSocket(connectionId)?.let { existingSocket ->
-                try {
-                    existingSocket.close()
-                    log.info("Closed existing command socket for connection {}", connectionId)
-                } catch (e: Exception) {
-                    log.warn("Failed to close existing command socket for {}", connectionId, e)
-                }
-            }
-
-            val connection = getConnection(connectionId)
-            val updatedConnection = connection.copy(
-                commandSocketId = socketId ?: "cs-${java.util.UUID.randomUUID()}",
-                lastUpdated = System.currentTimeMillis(),
-                lastActivity = System.currentTimeMillis()
+        connectionCache.storeConnection(
+            connectionStore.putUpdateSocket(
+                connection._id,
+                connection.updateSocketId,
+                connection.updateDeploymentId
             )
+        )
+        log.debug("Connection updated: id={}, commandSocketId={}, updateSocketId={}", connection._id, connection.updateSocketId, connection.updateDeploymentId)
 
-            val persistedConnection = connectionStore.updateSocketIds(
-                connectionId,
-                updatedConnection.commandSocketId,
-                updatedConnection.updateSocketId
-            )
-
-            if (persistedConnection == null) {
-                throw IllegalStateException("Failed to update command socket ID in database for connection: $connectionId")
-            }
-
-            connectionCache.storeConnection(persistedConnection)
-            connectionCache.storeCommandSocket(connectionId, websocket, persistedConnection)
-
-            log.info("Command socket registered: connection={}, commandSocketId={}",
-                connectionId, persistedConnection.commandSocketId)
-        } catch (e: Exception) {
-            log.error("Failed to register command WebSocket for {}", connectionId, e)
-            throw e
-        }
-    }
-
-    /**
-     * Register an update WebSocket for a connection
-     */
-    suspend fun registerUpdateSocket(connectionId: String, websocket: ServerWebSocket, socketId: String? = null) {
-        try {
-            if (connectionCache.getCommandSocket(connectionId) == null) {
-                throw IllegalStateException("Cannot register update socket: no command socket exists for $connectionId")
-            }
-
-            connectionCache.getUpdateSocket(connectionId)?.let { existingSocket ->
-                try {
-                    existingSocket.close()
-                    log.info("Closed existing update socket for connection {}", connectionId)
-                } catch (e: Exception) {
-                    log.warn("Failed to close existing update socket for {}", connectionId, e)
-                }
-            }
-
-            val connection = getConnection(connectionId)
-            log.info("Before update socket registration - Connection {}: commandSocketId={}, updateSocketId={}",
-                connectionId, connection.commandSocketId, connection.updateSocketId)
-            val wasFullyConnected = connection.updateSocketId != null
-
-            val updatedConnection = connection.copy(
-                updateSocketId = socketId ?: "us-${java.util.UUID.randomUUID()}",
-                lastUpdated = System.currentTimeMillis(),
-                lastActivity = System.currentTimeMillis()
-            )
-
-            // Update database first (source of truth)
-            log.info("Updating socket IDs in DB - Connection {}: commandSocketId={}, updateSocketId={}",
-                connectionId, updatedConnection.commandSocketId, updatedConnection.updateSocketId)
-
-            val persistedConnection = connectionStore.updateSocketIds(
-                connectionId,
-                updatedConnection.commandSocketId,
-                updatedConnection.updateSocketId
-            )
-
-            if (persistedConnection == null) {
-                throw IllegalStateException("Failed to update update socket ID in database for connection: $connectionId")
-            }
-
-            // Then update cache with data from database
-            connectionCache.storeConnection(persistedConnection)
-            connectionCache.storeUpdateSocket(connectionId, websocket, persistedConnection)
-
-            log.info("After DB update - Connection {}: commandSocketId={}, updateSocketId={}",
-                connectionId, persistedConnection.commandSocketId, persistedConnection.updateSocketId)
-
-            val isNowFullyConnected = persistedConnection.updateSocketId != null
-            if (!wasFullyConnected && isNowFullyConnected) {
-                onClientFullyConnected(persistedConnection)
-            }
-        } catch (e: Exception) {
-            log.error("Failed to register update WebSocket for {}", connectionId, e)
-            throw e
-        }
+        return connection
     }
 
     /**
@@ -359,24 +262,21 @@ open class ConnectionController @Inject constructor(
             if (connection != null) {
                 val updatedConnection = connection.copy(
                     updateSocketId = null,
+                    updateDeploymentId = null,
                     lastUpdated = System.currentTimeMillis(),
                     lastActivity = System.currentTimeMillis()
                 )
 
                 try {
-                    val persistedConnection = connectionStore.updateSocketIds(
+                    val persistedConnection = connectionStore.putCommandSocket(
                         connectionId,
                         updatedConnection.commandSocketId,
-                        null
+                        updatedConnection.commandDeploymentId
                     )
 
-                    if (persistedConnection == null) {
-                        log.warn("Failed to update update socket ID in database for connection: {}", connectionId)
-                    } else {
-                        // Update cache with database data
-                        connectionCache.storeConnection(persistedConnection)
-                        log.info("Update socket removed for connection {}", connectionId)
-                    }
+                    connectionCache.storeConnection(persistedConnection)
+                    log.info("Update socket removed for connection {}", connectionId)
+
                 } catch (e: Exception) {
                     // This might fail if connection was already deleted or is being deleted concurrently
                     log.warn("Failed to update database for update socket removal: {}", e.message)

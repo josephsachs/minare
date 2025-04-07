@@ -25,37 +25,35 @@ export const config = {
     console: true,
 
     maxEntries: 20,
-    // Whether to log verbose messages (like all updates and commands)
+
     verbose: false,
-    // How often to flush the log buffer (in milliseconds)
+
     flushIntervalMs: 1000,
-    // Maximum number of messages to buffer before forcing a flush
+
     maxBufferSize: 2,
-    // Throttle update messages (only log 1 in X)
+
     updateLogThrottle: 10,
-    // Enable detailed entity logging
+
     logDetailedEntities: false
   },
 
-  // Visualization settings
+
   visualization: {
-    // Default visualization type ('grid' or 'vis')
-    // If vis.js isn't available, this will be forced to 'grid' at runtime
     defaultType: typeof vis !== 'undefined' ? 'vis' : 'grid',
-    // D3 force simulation settings (kept for backward compatibility)
+
     d3: {
-      // Force simulation parameters
+
       linkDistance: 100,
       chargeStrength: -300,
       collisionRadius: 40,
-      // Colors
+
       nodeDefaultColor: '#CCCCCC',
       linkColor: '#999',
       linkOpacity: 0.6
     },
-    // Vis.js network visualization settings
+
     vis: {
-      // Node settings
+
       node: {
         size: 20,
         color: '#CCCCCC',
@@ -64,14 +62,14 @@ export const config = {
           size: 14
         }
       },
-      // Edge settings
+
       edge: {
         width: 1,
         color: '#999',
         opacity: 0.6,
         smooth: true
       },
-      // Physics settings
+
       physics: {
         enabled: true,
         barnesHut: {

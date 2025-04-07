@@ -130,6 +130,44 @@ class MongoConnectionStore @Inject constructor(
     }
 
     /**
+     * Find multiple connections by their IDs
+     * Returns a set containing all found connections
+     * Note: If any connection ID doesn't exist, it will be omitted from the results
+     * without throwing an exception
+     *
+     * @param connectionIds Set of connection IDs to find
+     * @return Set of found Connection objects
+     */
+    override suspend fun find(connectionId: Set<String>): Set<Connection> {
+        if (connectionId.isEmpty()) {
+            return emptySet()
+        }
+
+        val query = JsonObject().put("_id", JsonObject().put("\$in", connectionId.toList()))
+
+        try {
+            val documents = mongoClient.find(collection, query).await()
+
+            return documents.map { doc ->
+                Connection(
+                    _id = doc.getString("_id"),
+                    createdAt = doc.getLong("createdAt"),
+                    lastUpdated = doc.getLong("lastUpdated"),
+                    lastActivity = doc.getLong("lastActivity", doc.getLong("lastUpdated")), // Fallback for compatibility
+                    commandSocketId = doc.getString("commandSocketId"),
+                    commandDeploymentId = doc.getString("commandDeploymentId"),
+                    updateSocketId = doc.getString("updateSocketId"),
+                    updateDeploymentId = doc.getString("updateDeploymentId"),
+                    reconnectable = doc.getBoolean("reconnectable", true) // Default to true for backward compatibility
+                )
+            }.toSet()
+        } catch (e: Exception) {
+            log.error("Error finding multiple connections: {}", connectionId, e)
+            throw IllegalArgumentException("Error finding multiple connections", e)
+        }
+    }
+
+    /**
      * Update the lastActivity timestamp
      * Improved error handling to properly propagate errors
      */
@@ -195,8 +233,7 @@ class MongoConnectionStore @Inject constructor(
      * Update the update socket ID
      * Improved error handling to throw exceptions instead of using fallbacks
      */
-    override suspend fun updateUpdateSocketId(connectionId: String, updateSocketId: String?): Connection {
-        // First check existence
+    override suspend fun putUpdateSocket(connectionId: String, socketId: String?, deploymentId: String?): Connection {
         if (!exists(connectionId)) {
             log.error("Connection {} doesn't exist for updateUpdateSocketId", connectionId)
             throw IllegalArgumentException("Connection not found: $connectionId")
@@ -208,7 +245,8 @@ class MongoConnectionStore @Inject constructor(
             .put("\$set", JsonObject()
                 .put("lastUpdated", now)
                 .put("lastActivity", now)
-                .put("updateSocketId", updateSocketId)
+                .put("updateSocketId", socketId)
+                .put("updateDeploymentId", deploymentId)
             )
 
         try {
@@ -226,13 +264,13 @@ class MongoConnectionStore @Inject constructor(
     }
 
     /**
-     * Update the socket IDs
+     * Update the command socket ID
      * Improved error handling to throw exceptions instead of using fallbacks
      */
-    override suspend fun updateSocketIds(connectionId: String, commandSocketId: String?, updateSocketId: String?): Connection {
+    override suspend fun putCommandSocket(connectionId: String, socketId: String?, deploymentId: String?): Connection {
         // First check existence
         if (!exists(connectionId)) {
-            log.error("Connection {} doesn't exist for updateSocketIds", connectionId)
+            log.error("Connection {} doesn't exist for putCommandSocket", connectionId)
             throw IllegalArgumentException("Connection not found: $connectionId")
         }
 
@@ -242,21 +280,20 @@ class MongoConnectionStore @Inject constructor(
             .put("\$set", JsonObject()
                 .put("lastUpdated", now)
                 .put("lastActivity", now)
-                .put("commandSocketId", commandSocketId)
-                .put("updateSocketId", updateSocketId)
+                .put("commandSocketId", socketId)
+                .put("commandDeploymentId", deploymentId)
             )
-        log.info("[TRACE] MongoDB update query: {} with update: {}", query.encode(), update.encode())
 
         try {
             val result = mongoClient.updateCollection(collection, query, update).await()
             if (result.docModified == 0L) {
-                log.error("Connection not found for updateSocketIds: {}", connectionId)
+                log.error("Connection not found for putCommandSocket: {}", connectionId)
                 throw IllegalStateException("Failed to update connection: $connectionId")
             }
 
             return find(connectionId)
         } catch (e: Exception) {
-            log.error("Error updating socket IDs: {}", connectionId, e)
+            log.error("Error updating update socket ID: {}", connectionId, e)
             throw e
         }
     }
@@ -276,7 +313,9 @@ class MongoConnectionStore @Inject constructor(
                     lastUpdated = doc.getLong("lastUpdated"),
                     lastActivity = doc.getLong("lastActivity", doc.getLong("lastUpdated")),
                     commandSocketId = doc.getString("commandSocketId"),
+                    commandDeploymentId = doc.getString("commandDeploymentId"),
                     updateSocketId = doc.getString("updateSocketId"),
+                    updateDeploymentId = doc.getString("updateDeploymentId"),
                     reconnectable = doc.getBoolean("reconnectable", true)
                 )
             }
@@ -303,7 +342,9 @@ class MongoConnectionStore @Inject constructor(
                     lastUpdated = doc.getLong("lastUpdated"),
                     lastActivity = doc.getLong("lastActivity", doc.getLong("lastUpdated")),
                     commandSocketId = doc.getString("commandSocketId"),
+                    commandDeploymentId = doc.getString("commandDeploymentId"),
                     updateSocketId = doc.getString("updateSocketId"),
+                    updateDeploymentId = doc.getString("updateDeploymentId"),
                     reconnectable = doc.getBoolean("reconnectable", true)
                 )
             }

@@ -67,9 +67,8 @@ class EntityGraph(root: Entity) {
         visited.add(root)
         graph.addVertex(root)
 
-        @State annotated fields
         for (field in root.javaClass.declaredFields) {
-            if (field.isAnnotationPresent(State::class.java)) {
+            if (field.isAnnotationPresent(State::class.java)) {  // If  we see @State
                 field.isAccessible = true
                 try {
                     val value = field.get(root)
@@ -175,7 +174,7 @@ class EntityGraph(root: Entity) {
                                 stateJson.put(field.name, value)
                             }
                         } catch (e: Exception) {
-                            't be accessed
+                            // Figure out where exactly this info should go
                         }
                     }
                 }
@@ -240,7 +239,7 @@ class EntityGraph(root: Entity) {
                                 stateJson.put(field.name, value)
                             }
                         } catch (e: Exception) {
-                            't be accessed
+                            // Field couldn't be accessed, figure out where to log this
                         }
                     }
                 }

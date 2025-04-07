@@ -40,17 +40,17 @@ class HttpServerVerticle : CoroutineVerticle() {
     override suspend fun start() {
         log.info("Starting HttpServerVerticle")
 
-        // Initialize logging utils
+
         vlog = VerticleLogger()
         vlog.setVerticle(this)
 
-        // Log configuration
+
         vlog.logConfig(config)
 
-        // Initialize router with vertx instance
+
         mainRouter = Router.router(vertx)
 
-        // Register event bus handlers
+
         vertx.eventBus().consumer<JsonObject>(ADDRESS_REGISTER_ROUTER) { message ->
             CoroutineScope(vertx.dispatcher()).launch {
                 val routerId = message.body().getString("routerId")
@@ -59,9 +59,6 @@ class HttpServerVerticle : CoroutineVerticle() {
                 val traceId = vlog.getEventLogger().logReceive(message, "REGISTER_ROUTER")
 
                 try {
-                    // We can't transfer Router objects via event bus, so the caller needs
-                    // to handle their own routing. This is just to register the intention.
-
                     val reply = JsonObject()
                         .put("success", true)
                         .put("message", "Router registration acknowledged for $routerId at $mountPoint")
@@ -80,7 +77,7 @@ class HttpServerVerticle : CoroutineVerticle() {
             }
         }
 
-        // Start HTTP server
+
         startHttpServer()
 
         deploymentID?.let {
@@ -100,7 +97,7 @@ class HttpServerVerticle : CoroutineVerticle() {
         }
 
         try {
-            // Get configuration from verticle config
+
             val port = config.getInteger("port", DEFAULT_PORT)
             val host = config.getString("host", DEFAULT_HOST)
 
@@ -109,14 +106,14 @@ class HttpServerVerticle : CoroutineVerticle() {
                 "port" to port
             ))
 
-            // Configure server options
+
             val options = HttpServerOptions()
                 .setHost(host)
                 .setPort(port)
                 .setTcpKeepAlive(true)
                 .setTcpNoDelay(true)
 
-            // Create and start server
+
             httpServer = vertx.createHttpServer(options)
                 .requestHandler(mainRouter)
                 .listen()
@@ -128,7 +125,7 @@ class HttpServerVerticle : CoroutineVerticle() {
                 "actualPort" to httpServer!!.actualPort()
             ))
 
-            // Notify listeners
+
             vertx.eventBus().publish(ADDRESS_SERVER_STARTED, JsonObject()
                 .put("port", httpServer!!.actualPort())
                 .put("host", host)
@@ -149,7 +146,7 @@ class HttpServerVerticle : CoroutineVerticle() {
                 httpServer!!.close().await()
                 isStarted.set(false)
 
-                // Notify listeners
+
                 vertx.eventBus().publish(ADDRESS_SERVER_STOPPED, JsonObject())
 
                 vlog.logStartupStep("HTTP_SERVER_STOPPED")

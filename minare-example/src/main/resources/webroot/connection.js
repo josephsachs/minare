@@ -120,7 +120,6 @@ export const connectUpdateSocket = async () => {
     throw new Error('No connection ID available');
   }
 
-
   const url = `${config.websocket.wsProtocol}${config.websocket.host}:${config.websocket.updatePort}${config.websocket.updateEndpoint}`;
 
   logger.info('Connecting update socket...');
@@ -131,7 +130,6 @@ export const connectUpdateSocket = async () => {
       handleUpdateSocketMessage,
       {
         onClose: () => {
-          're still connected
           if (store.isConnected()) {
             handleUpdateSocketDisconnect();
           }
@@ -141,7 +139,6 @@ export const connectUpdateSocket = async () => {
 
     store.setUpdateSocket(socket);
     logger.update('Update socket connected');
-
 
     const associationMessage = {
       connectionId: connectionId
@@ -206,8 +203,6 @@ const handleCommandSocketDisconnect = () => {
 
 
   store.setCommandSocket(null);
-
-  // Don't clear connectionId - needed for reconnection
 
   // Try to reconnect with exponential backoff
   attemptReconnect(0);

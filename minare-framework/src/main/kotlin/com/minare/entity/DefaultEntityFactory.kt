@@ -66,7 +66,6 @@ class DefaultEntityFactory @Inject constructor(
      * Ensure an entity has all required dependencies injected
      */
     override fun <T : Entity> ensureDependencies(entity: T): T {
-        're not already initialized
         entity.reflectionCache = reflectionCache
         entity.entityStore = entityStore
 

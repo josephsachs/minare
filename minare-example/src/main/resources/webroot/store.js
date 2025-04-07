@@ -92,11 +92,11 @@ const createStore = () => {
 
     isConnectionStale: () => {
       const now = Date.now();
-      const staleThreshold = 40000; // 40 seconds
+      const staleThreshold = 40000;
       return (now - _state.connection.lastActivity) > staleThreshold;
     },
 
-    // Entity methods
+
     getEntities: () => Object.values(_state.entities),
     getEntityById: (id) => _state.entities[id],
 
@@ -105,25 +105,25 @@ const createStore = () => {
      * @param {Array} entities - Array of entity objects to update
      */
     updateEntities: (entities) => {
-      // Skip if no entities to update
+
       if (!entities || entities.length === 0) return;
 
-      // Track changes for logging
+
       const startTime = performance.now();
       let changed = 0;
       let unchanged = 0;
       let added = 0;
 
-      // Process entities efficiently
+
       for (const entity of entities) {
         if (!entity.id) {
-          // Skip entities without proper ID
+
           continue;
         }
 
         const existing = _state.entities[entity.id];
         if (!existing) {
-          // New entity
+
           _state.entities[entity.id] = {
             id: entity.id,
             version: entity.version,

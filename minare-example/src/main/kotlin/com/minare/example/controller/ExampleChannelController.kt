@@ -17,7 +17,7 @@ class ExampleChannelController @Inject constructor(
 ) : ChannelController(channelStore, contextStore) {
     private val log = LoggerFactory.getLogger(ExampleChannelController::class.java)
 
-    // Store the default channel ID - this is application-specific
+
     private var defaultChannelId: String? = null
 
     /**

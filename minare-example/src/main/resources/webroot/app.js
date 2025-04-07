@@ -9,7 +9,7 @@ import store from './store.js';
 import logger from './logger.js';
 import { connect, disconnect, sendCommand } from './connection.js';
 import { GridVisualizer } from './grid-visualizer.js';
-{ D3GraphVisualizer } from './d3-visualizer.js';
+import { D3GraphVisualizer } from './d3-visualizer.js';
 import { VisNetworkVisualizer } from './vis-visualizer.js';
 
 /**
@@ -155,7 +155,7 @@ class App {
       this.visualizer = null;
     }
 
-    // No try/catch - we want errors to fail loudly
+
     if (type === 'vis') {
       // Initialize Vis.js visualization
       this.visualizer = new VisNetworkVisualizer('graph');

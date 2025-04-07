@@ -34,7 +34,7 @@ export class GridVisualizer {
       return;
     }
 
-    // Find all nodes (entities with label or Node type)
+
     const identifiedNodes = entities.filter(entity =>
       (entity.state && entity.state.label) ||
       (entity.type === 'Node') ||
@@ -46,7 +46,7 @@ export class GridVisualizer {
       console.log(`GridVisualizer: Found ${identifiedNodes.length} nodes out of ${entities.length} entities`);
     }
 
-    // If no nodes identified but we have entities, log only in verbose mode
+
     if (identifiedNodes.length === 0 && entities.length > 0 && config.logging?.logDetailedEntities && config.logging?.verbose) {
       console.log('Entity structure examples:');
       console.log('First entity:', JSON.stringify(entities[0]));
@@ -70,10 +70,10 @@ export class GridVisualizer {
    * @param {Array} nodes - Array of node objects
    */
   renderGrid(nodes) {
-    // Clear the container
+
     this.container.innerHTML = '';
 
-    // Create a flex container for the nodes
+
     const flexContainer = document.createElement('div');
     flexContainer.style.display = 'flex';
     flexContainer.style.flexWrap = 'wrap';

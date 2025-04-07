@@ -11,7 +11,7 @@ export class VisNetworkVisualizer {
    * @param {string} containerId - ID of container element
    */
   constructor(containerId) {
-    // Fail loudly if vis.js is not available
+
     if (typeof vis === 'undefined') {
       throw new Error('Vis.js network library is not loaded');
     }
@@ -27,7 +27,7 @@ export class VisNetworkVisualizer {
       throw new Error(`Container element #${containerId} not found`);
     }
 
-    // Clear any previous content
+
     this.container.innerHTML = '';
 
     // Debug container size

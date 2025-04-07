@@ -31,14 +31,14 @@ class ExampleApplication : MinareApplication() {
      */
     override suspend fun onApplicationStart() {
         try {
-            // Create a default channel for testing
+
             val defaultChannelId = channelController.createChannel()
             log.info("Created default channel: $defaultChannelId")
 
-            // Set this as the default channel in the controller
+
             channelController.setDefaultChannel(defaultChannelId)
 
-            // Initialize the node graph
+
             initializeNodeGraph(defaultChannelId)
 
             log.info("Example application started with default channel: $defaultChannelId")
@@ -48,13 +48,13 @@ class ExampleApplication : MinareApplication() {
         }
     }
 
-    // This is the single implementation of the route setup method
+
     override suspend fun setupApplicationRoutes() {
-        // Set up main app HTTP server and routes
+
         val router = Router.router(vertx)
         router.route().handler(BodyHandler.create())
 
-        // Start HTTP server for main application routes
+
         val serverPort = 8080
         httpServer = vertx.createHttpServer()
             .requestHandler(router)
@@ -64,14 +64,14 @@ class ExampleApplication : MinareApplication() {
         log.info("Main application HTTP server started on port {}", serverPort)
 
         val staticHandler = StaticHandler.create()
-            .setCachingEnabled(false)  // Disable caching during development
+            .setCachingEnabled(false)
             .setDefaultContentEncoding("UTF-8")
             .setFilesReadOnly(true)
 
         router.route("/*").handler(staticHandler)
 
         router.get("/client").handler { ctx ->
-            // Try to read the file directly from resources
+
             val resource = Thread.currentThread().contextClassLoader.getResourceAsStream("webroot/index.html")
 
             if (resource != null) {
@@ -86,7 +86,7 @@ class ExampleApplication : MinareApplication() {
             }
         }
 
-        // Add a debug endpoint to check classpath
+
         router.get("/debug").handler { ctx ->
             val classLoader = Thread.currentThread().contextClassLoader
             val resourceUrl = classLoader.getResource("webroot/index.html")
@@ -114,16 +114,16 @@ class ExampleApplication : MinareApplication() {
      */
     private suspend fun initializeNodeGraph(channelId: String) {
         try {
-            // Build an asymmetric tree using our graph builder
-            // Now returns both the root node and a list of all nodes
+
+
             val (rootNode, allNodes) = nodeGraphBuilder.buildAsymmetricTree(
-                maxDepth = 4,           // Up to 4 levels deep
-                maxBranchingFactor = 3, // At most 3 children per node
-                totalNodes = 25,        // Aim for about 25 nodes total
-                randomSeed = 42L        // Fixed seed for reproducibility
+                maxDepth = 4,
+                maxBranchingFactor = 3,
+                totalNodes = 25,
+                randomSeed = 42L
             )
 
-            // Add all nodes to the channel using the channel controller
+
             val nodesAdded = channelController.addEntitiesToChannel(allNodes, channelId)
             log.info("Added $nodesAdded nodes to channel $channelId")
 

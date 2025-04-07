@@ -242,15 +242,14 @@ class UpdateVerticle @Inject constructor(
             localSockets[connectionId] = websocket
             connectionTracker.registerConnection(connectionId, traceId, websocket)
 
-            connectionStore.updateSocketIds(
+            connectionStore.putUpdateSocket(
                 connectionId,
-                connection.commandSocketId,  // Preserve existing command socket ID
-                socketId
+                socketId,
+                deploymentID // Register the thread context too
             )
 
             connectionCache.storeUpdateSocket(connectionId, websocket, connection)
             heartbeatManager.startHeartbeat(socketId, connectionId, websocket)
-
             WebSocketUtils.sendConfirmation(websocket, "update_socket_confirm", connectionId)
 
             vlog.getEventLogger().logStateChange("UpdateSocket", "CONNECTED", "REGISTERED",
@@ -258,12 +257,12 @@ class UpdateVerticle @Inject constructor(
 
             updateVerticleCache.connectionPendingUpdates.computeIfAbsent(connectionId) { ConcurrentHashMap() }
 
-            // Notify about connection established
             vertx.eventBus().publish(
                 ADDRESS_CONNECTION_ESTABLISHED, JsonObject()
                     .put("connectionId", connectionId)
                     .put("socketId", socketId)  // Include the socket ID in the event
                     .put("socketType", "update")
+                    .put("deploymentId", deploymentID)
             )
 
             vertx.eventBus().publish(
@@ -271,6 +270,7 @@ class UpdateVerticle @Inject constructor(
                 JsonObject()
                     .put("connectionId", connection._id)
                     .put("socketId", socketId)
+                    .put("deploymentId", deploymentID)
                     .put("traceId", traceId)
             )
         } catch (e: Exception) {
@@ -308,14 +308,11 @@ class UpdateVerticle @Inject constructor(
         val traceId = connectionTracker.getTraceId(connectionId)
 
         try {
-            // Remove from tracking
             connectionTracker.handleSocketClosed(websocket)
 
-            // Remove from connection cache
             localSockets.remove(connectionId)
             connectionCache.removeUpdateSocket(connectionId)
 
-            // Notify about connection closed
             vertx.eventBus().publish(
                 ADDRESS_CONNECTION_CLOSED, JsonObject()
                 .put("connectionId", connectionId)
@@ -356,7 +353,6 @@ class UpdateVerticle @Inject constructor(
     override suspend fun stop() {
         vlog.logStartupStep("STOPPING")
 
-        // Stop the frame controller
         frameController.stop()
 
         // Close HTTP server if we created one
@@ -370,7 +366,6 @@ class UpdateVerticle @Inject constructor(
             }
         }
 
-        // Clean up all websockets
         closeAllSockets()
 
         vlog.logUndeployment()
@@ -386,7 +381,7 @@ class UpdateVerticle @Inject constructor(
         for (connectionId in connectionIds) {
             try {
                 val socket = connectionTracker.getSocket(connectionId)
-                if (socket != null && !socket.isClosed()) {
+                if (socket != null && !socket.isClosed) {
                     socket.close()
                     log.debug("Closed update socket for connection: {}", connectionId)
                 }
@@ -416,7 +411,6 @@ class UpdateVerticle @Inject constructor(
             var totalConnectionsProcessed = 0
             var totalUpdatesProcessed = 0
 
-            // Iterate through all connections with pending updates
             for ((connectionId, updates) in updateVerticleCache.connectionPendingUpdates) {
                 if (updates.isEmpty()) {
                     continue
@@ -443,13 +437,11 @@ class UpdateVerticle @Inject constructor(
                         }
                     })
 
-                // Send directly to the client's WebSocket
                 sendUpdate(connectionId, updateMessage)
             }
 
             val processingTime = System.currentTimeMillis() - startTime
 
-            // Log processing stats periodically or if significant work was done
             if (totalUpdatesProcessed > 0 && (
                         totalUpdatesProcessed > 100 ||
                                 processingTime > getFrameIntervalMs() / 2 ||
@@ -461,9 +453,5 @@ class UpdateVerticle @Inject constructor(
                 ))
             }
         }
-    }
-
-    fun isLocal(connectionId: String): Boolean {
-        return connectionId in localSockets
     }
 }

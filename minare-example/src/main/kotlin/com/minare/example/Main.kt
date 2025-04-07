@@ -14,7 +14,7 @@ object ExampleMain {
     fun main(args: Array<String>) {
         log.info("Starting Minare Example Application")
 
-        // Start the application using the standard framework startup method
+
         MinareApplication.start(ExampleApplication::class.java, args)
     }
 }

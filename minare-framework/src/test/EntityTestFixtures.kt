@@ -389,8 +389,6 @@ class EntityTestFixtures {
     }
 
     fun createMockAggregationResults(): JsonArray {
-        $graphLookup aggregation
-        // starting from the soldier's position vector and finding all ancestors
         return JsonArray().add(
             JsonObject()
                 .put("_id", "507f1f77bcf86cd799439020") // MapVector2 (soldier's position)
@@ -402,7 +400,7 @@ class EntityTestFixtures {
                             "parentEntity", JsonObject()
                                 .put("\$ref", "entity")
                                 .put("\$id", "507f1f77bcf86cd799439016")
-                        ) // Refers to soldier
+                        )
                         .put("x", 120.0)
                         .put("y", 120.0)
                 )

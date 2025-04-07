@@ -25,8 +25,7 @@ class ReconnectionHandler @Inject constructor(
     /**
      * Handle a reconnection attempt
      */
-    public suspend fun handle(websocket: ServerWebSocket, connectionId: String, traceId: String) {
-        // Create a trace for this reconnection
+    public suspend fun handle(websocket: ServerWebSocket, connectionId: String, deploymentId: String, traceId: String) {
         val reconnectTraceId = vlog.getEventLogger().trace(
             "RECONNECTION_ATTEMPT", mapOf(
                 "connectionId" to connectionId,
@@ -53,7 +52,7 @@ class ReconnectionHandler @Inject constructor(
                 )
 
                 sendReconnectionResponse(websocket, false, "Connection not found")
-                connectionLifecycle.initiateConnection(websocket, traceId)  // Fallback to creating a new connection
+                connectionLifecycle.initiateConnection(websocket, deploymentId, traceId)  // Fallback to creating a new connection
                 return
             }
 
@@ -69,7 +68,7 @@ class ReconnectionHandler @Inject constructor(
                 )
 
                 sendReconnectionResponse(websocket, false, "Connection not reconnectable")
-                connectionLifecycle.initiateConnection(websocket, traceId)  // Fallback to creating a new connection
+                connectionLifecycle.initiateConnection(websocket, deploymentId, traceId)  // Fallback to creating a new connection
 
                 return
             }
@@ -89,11 +88,10 @@ class ReconnectionHandler @Inject constructor(
                 )
 
                 sendReconnectionResponse(websocket, false, "Reconnection window expired")
-                connectionLifecycle.initiateConnection(websocket, traceId)  // Fallback to creating a new connection
+                connectionLifecycle.initiateConnection(websocket, deploymentId, traceId)  // Fallback to creating a new connection
                 return
             }
 
-            // Close existing command socket if any
             connectionCache.getCommandSocket(connectionId)?.let { existingSocket ->
                 try {
                     if (!existingSocket.isClosed()) {
@@ -112,21 +110,17 @@ class ReconnectionHandler @Inject constructor(
                 }
             }
 
-            // Associate the new websocket with this connection
             connectionCache.storeCommandSocket(connectionId, websocket, connection)
             connectionTracker.registerConnection(connectionId, reconnectTraceId, websocket)
 
-            // Create the actual update socket ID
             val socketId = "cs-${java.util.UUID.randomUUID()}"
 
-            // We arrived, update the database with our new socket ID
-            val updatedConnection = connectionStore.updateSocketIds(
+            val updatedConnection = connectionStore.putUpdateSocket(
                 connectionId,
                 socketId,
-                connection.updateSocketId
+                deploymentId
             )
 
-            // Publish the event for Command Socket
             vertx.eventBus().publish(
                 MinareApplication.ConnectionEvents.ADDRESS_COMMAND_SOCKET_CONNECTED,
                 JsonObject()
@@ -170,7 +164,7 @@ class ReconnectionHandler @Inject constructor(
             )
 
             sendReconnectionResponse(websocket, false, "Internal error")
-            connectionLifecycle.initiateConnection(websocket, traceId)  // Fallback to creating a new connection
+            connectionLifecycle.initiateConnection(websocket, deploymentId, traceId)  // Fallback to creating a new connection
         }
     }
 

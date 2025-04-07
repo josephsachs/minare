@@ -81,16 +81,16 @@ export class D3GraphVisualizer {
 
       this.svg.call(zoom);
 
-      // Create a container for zoom
+
       this.graphContainer = this.svg.append('g')
         .attr('class', 'graph-container');
 
-      // Create tooltip
+
       this.tooltip = d3.select('body').append('div')
         .attr('class', 'tooltip')
         .style('opacity', 0);
 
-      // Add performance mode indicator
+
       this.performanceIndicator = this.svg.append('text')
         .attr('x', 10)
         .attr('y', 20)

@@ -453,14 +453,14 @@ abstract class MinareApplication : CoroutineVerticle() {
 
                 val combinedModule = object : AbstractModule() {
                     override fun configure() {
-                        :
-
+                        // Correct order is required:
+                        // framework (provides defaults)
                         install(frameworkModule)
                         install(commandVerticleModule)
                         install(updateVerticleModule)
-                        // ]Then app module (overrides framework if needed)
+                        // Then app module (overrides framework if needed)
                         install(appModule)
-                        // ]Then vertx and database modules
+                        // Then vertx and database modules
                         install(vertxModule)
                         install(dbNameModule)
                     }

@@ -19,15 +19,12 @@ const PROCESS_INTERVAL = 100;
  * @param {boolean} needsTransform - Whether entities need transformation
  */
 function queueEntityUpdates(entities, needsTransform = true) {
-  't queue if we have no entities
   if (!entities || entities.length ===.0) return;
-
 
   pendingEntities.push({
     entities,
     needsTransform
   });
-
 
   if (!processingQueued) {
     processingQueued = true;
@@ -81,7 +78,7 @@ function processEntityQueue() {
     pendingEntities = [];
   }
 
-  // Reset scheduling flag
+
   processingQueued = false;
 }
 

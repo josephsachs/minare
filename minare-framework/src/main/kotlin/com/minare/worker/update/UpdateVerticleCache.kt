@@ -5,7 +5,6 @@ import com.minare.persistence.ChannelStore
 import com.minare.persistence.ContextStore
 import com.minare.utils.VerticleLogger
 import com.minare.worker.update.UpdateVerticle.Companion.CACHE_TTL_MS
-import io.vertx.core.http.ServerWebSocket
 import io.vertx.core.json.JsonObject
 import java.util.concurrent.ConcurrentHashMap
 
@@ -21,7 +20,7 @@ class UpdateVerticleCache @Inject constructor(
     /**
      * Invalidate any channel cache entries containing this connection
      */
-    suspend fun invalidateChannelCacheForConnection(connectionId: String) {
+    fun invalidateChannelCacheForConnection(connectionId: String) {
         for ((channelId, entry) in channelConnectionCache) {
             val (connections, _) = entry
             if (connectionId in connections) {
@@ -102,7 +101,7 @@ class UpdateVerticleCache @Inject constructor(
      * Queue an entity update for a specific connection.
      * If the entity already has a pending update, it will be replaced with the newer version.
      */
-    suspend fun queueUpdateForConnection(connectionId: String, entityId: String, entityUpdate: JsonObject) {
+    fun queueUpdateForConnection(connectionId: String, entityId: String, entityUpdate: JsonObject) {
         val updates = connectionPendingUpdates.computeIfAbsent(connectionId) { ConcurrentHashMap() }
 
         // Check if we already have an update for this entity

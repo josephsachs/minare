@@ -154,7 +154,7 @@ class CommandVerticle @Inject constructor(
                             // This is a reconnection attempt
                             val connectionId = msg.getString("connectionId")
                             handshakeCompleted = true
-                            reconnectionHandler.handle(websocket, connectionId, traceId)
+                            reconnectionHandler.handle(websocket, connectionId, deploymentID, traceId)
                         } else {
                             // For regular messages after handshake, use the standard handler
                             val msg = JsonObject(message)
@@ -214,7 +214,7 @@ class CommandVerticle @Inject constructor(
                 handshakeCompleted = true
                 CoroutineScope(vertx.dispatcher()).launch {
                     try {
-                        connectionLifecycle.initiateConnection(websocket, traceId)
+                        connectionLifecycle.initiateConnection(websocket, deploymentID, traceId)
                     } catch (e: Exception) {
                         vlog.logVerticleError(
                             "INITIATE_CONNECTION", e, mapOf(
