@@ -7,7 +7,7 @@ The implementer hooks into the framework by defining Entity types and extending 
 
 ## Architecture Overview
 
-Minare facilitates decoupled unidirectional data flow by leveraging DB as the source of truth and relying on event-driven behavior. Vert.x's requirement of thread-safety and a stateless\* approach should aid with horizontal scaling.
+Minare facilitates decoupled unidirectional data flow by leveraging DB as the source of truth and relying on event-driven behavior. Vert.x's requirement of thread-safety and clustering features should aid with horizontal scaling.
 
 ## Core Components
 
@@ -56,8 +56,6 @@ Setup the IntelliJ project/module. The module source root should be `main`.
 
 Create the artifact bucket in your AWS account. Place your application `jar`. Use `minare-infrastructure.yaml` to create a CloudFormation stack.
 
+## Endnotes
 
-
-\* **Footnote on statelessness:** This is a problem I will solve later. For now, aiming for thread-safe and able to leverage clustering.
-
-\** **Footnote on unit tests:** I'm focusing on Entity as this is where most of the complexity lives. We could use mocks to cover the DBAL, socket management and so on, but integration tests will do during early development. 
+\** I'm focusing on Entity as this is where most of the complexity lives. We could use mocks to cover the DBAL, socket management and so on, but integration tests will do during early development. 
