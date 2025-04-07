@@ -16,13 +16,8 @@ class ConnectionTracker @Inject constructor(
 ) {
     private val log = LoggerFactory.getLogger("$componentName.ConnectionTracker")
 
-    // Map connection IDs to trace IDs
     private val connectionTraces = ConcurrentHashMap<String, String>()
-
-    // Map WebSockets to connection IDs
     private val socketToConnectionId = ConcurrentHashMap<ServerWebSocket, String>()
-
-    // Map connection IDs to WebSockets
     private val connectionToSocket = ConcurrentHashMap<String, ServerWebSocket>()
 
     /**
@@ -94,8 +89,6 @@ class ConnectionTracker @Inject constructor(
     fun handleSocketClosed(socket: ServerWebSocket): String? {
         val connectionId = socketToConnectionId.remove(socket) ?: return null
         connectionToSocket.remove(connectionId)
-
-        // Note: We don't remove the trace ID here in case we need it for later reference
 
         logger.getEventLogger().trace("SOCKET_CLOSED", mapOf(
             "socketId" to socket.textHandlerID(),

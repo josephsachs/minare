@@ -3,6 +3,7 @@ package com.minare.worker.update
 import com.minare.MinareApplication
 import com.minare.cache.ConnectionCache
 import com.minare.core.FrameController
+import com.minare.core.models.Connection
 import com.minare.persistence.ChannelStore
 import com.minare.persistence.ConnectionStore
 import com.minare.persistence.ContextStore
@@ -54,6 +55,7 @@ class UpdateVerticle @Inject constructor(
     private var httpServer: HttpServer? = null
 
     private lateinit var frameController: UpdateFrameController
+    private val localSockets = HashMap<String, ServerWebSocket>()
 
     private var deployedAt: Long = 0
 
@@ -247,6 +249,7 @@ class UpdateVerticle @Inject constructor(
             val socketId = "us-${java.util.UUID.randomUUID()}"
 
             // Register the new socket
+            localSockets[connectionId] = websocket
             connectionTracker.registerConnection(connectionId, traceId, websocket)
 
             // Update the database with this ID
@@ -323,6 +326,7 @@ class UpdateVerticle @Inject constructor(
             connectionTracker.handleSocketClosed(websocket)
 
             // Remove from connection cache
+            localSockets.remove(connectionId)
             connectionCache.removeUpdateSocket(connectionId)
 
             // Notify about connection closed
@@ -471,5 +475,9 @@ class UpdateVerticle @Inject constructor(
                 ))
             }
         }
+    }
+
+    fun isLocal(connectionId: String): Boolean {
+        return connectionId in localSockets
     }
 }

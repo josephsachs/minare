@@ -33,20 +33,16 @@ class EventBusUtils(
         message: Any,
         parentTraceId: String? = null
     ): T {
-        // Start tracing this message
         val traceId = parentTraceId ?: eventLog.trace("EVENTBUS_SEND",
             mapOf("address" to address, "component" to component))
 
         eventLog.logSend(address, message, traceId)
 
-        // Add tracing header to the message
         val options = DeliveryOptions().addHeader("traceId", traceId)
 
         try {
-            // Send the message and get the reply
             val reply = vertx.eventBus().request<T>(address, message, options).await()
 
-            // Log the reply
             eventLog.trace("EVENTBUS_REPLY_RECEIVED",
                 mapOf("address" to address, "status" to "success"), traceId)
 
@@ -58,12 +54,10 @@ class EventBusUtils(
 
             return reply.body()
         } catch (e: Exception) {
-            // Log the error
             eventLog.logError("EVENTBUS_SEND_FAILED", e,
                 mapOf("address" to address), traceId)
 
             if (parentTraceId == null) {
-                // Only end trace if we started it
                 eventLog.endTrace(traceId, "EVENTBUS_COMPLETE",
                     mapOf("address" to address, "status" to "failed", "error" to e.message))
             }

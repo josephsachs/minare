@@ -11,7 +11,6 @@ import kotlin.reflect.full.findAnnotation
  * reflection information to avoid repeated reflection operations.
  */
 class ReflectionCache {
-    // Cache entity classes by type name and KClass object
     private val classesByType = ConcurrentHashMap<String, KClass<*>>()
     private val fieldsByClass = ConcurrentHashMap<KClass<*>, List<Field>>()
 
@@ -56,7 +55,6 @@ class ReflectionCache {
      * Register entity classes using the EntityFactory
      */
     fun registerFromEntityFactory(entityFactory: EntityFactory) {
-        // Get all entity type names from the factory
         val entityTypeNames = entityFactory.getTypeNames()
 
         // Register each type using its class
@@ -64,10 +62,7 @@ class ReflectionCache {
             entityFactory.useClass(typeName)?.let { javaClass ->
                 val kClass = javaClass.kotlin
 
-                // Cache fields by class
                 getFields(kClass)
-
-                // Cache by type name
                 classesByType[typeName] = kClass
             }
         }
@@ -78,7 +73,6 @@ class ReflectionCache {
      */
     fun registerEntityClasses(entityClasses: List<KClass<*>>) {
         entityClasses.forEach { entityClass ->
-            // Cache by class
             getFields(entityClass)
 
             // Cache by type name if available

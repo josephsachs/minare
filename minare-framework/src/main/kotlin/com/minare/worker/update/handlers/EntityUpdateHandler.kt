@@ -1,9 +1,11 @@
 package com.minare.worker.update.handlers
 
 import com.google.inject.Inject
+import com.minare.utils.ConnectionTracker
 import com.minare.utils.VerticleLogger
 import io.vertx.core.json.JsonObject
 import com.minare.worker.update.UpdateVerticleCache
+import io.vertx.core.Vertx
 
 class EntityUpdateHandler @Inject constructor(
     private val vlog: VerticleLogger,
@@ -45,6 +47,7 @@ class EntityUpdateHandler @Inject constructor(
 
             // For each channel, get all connections and queue the update
             val processedConnections = mutableSetOf<String>()
+            var hasOwnedConnections = false  // Add this flag
 
             for (channelId in channels) {
                 val connections = updateVerticleCache.getConnectionsForChannel(channelId)
@@ -55,11 +58,25 @@ class EntityUpdateHandler @Inject constructor(
                         continue
                     }
 
+                    // Skip if this verticle doesn't own the connection
+                    if (!Vertx.currentContext().isLocal(connectionId)) {
+                        continue
+                    }
+
+                    hasOwnedConnections = true  // Set flag when we find an owned connection
                     processedConnections.add(connectionId)
 
                     // Queue update for this connection
                     updateVerticleCache.queueUpdateForConnection(connectionId, entityId, entityUpdate)
                 }
+            }
+
+            // Add early return check if we didn't process any connections
+            if (!hasOwnedConnections) {
+                vlog.getEventLogger().trace("UPDATE_SKIPPED_NO_OWNED_CONNECTIONS", mapOf(
+                    "entityId" to entityId
+                ), traceId)
+                return
             }
 
             if (processedConnections.isNotEmpty()) {

@@ -5,6 +5,7 @@ import com.minare.persistence.ChannelStore
 import com.minare.persistence.ContextStore
 import com.minare.utils.VerticleLogger
 import com.minare.worker.update.UpdateVerticle.Companion.CACHE_TTL_MS
+import io.vertx.core.http.ServerWebSocket
 import io.vertx.core.json.JsonObject
 import java.util.concurrent.ConcurrentHashMap
 

@@ -32,10 +32,8 @@ open class ConnectionController @Inject constructor(
      * Create a new connection and store it in database first, then in memory
      */
     suspend fun createConnection(): Connection {
-        // Create in database first (source of truth)
         val connection = connectionStore.create()
 
-        // Then update cache
         connectionCache.storeConnection(connection)
         log.info("Connection created and stored: id={}, commandSocketId={}, updateSocketId={}",
             connection._id, connection.commandSocketId, connection.updateSocketId)
@@ -54,10 +52,8 @@ open class ConnectionController @Inject constructor(
             return cachedConnection
         }
 
-        // Not in cache, fetch from database (source of truth)
         val connection = connectionStore.find(connectionId)
 
-        // Update cache with fresh data from database
         connectionCache.storeConnection(connection)
         log.debug("Connection loaded from database to cache: id={}, commandSocketId={}, updateSocketId={}",
             connection._id, connection.commandSocketId, connection.updateSocketId)
@@ -83,7 +79,6 @@ open class ConnectionController @Inject constructor(
             val now = System.currentTimeMillis()
             val reconnectWindow = 30000L // 30 seconds, should match CleanupVerticle.CONNECTION_RECONNECT_WINDOW_MS
 
-            // Return true if reconnectable flag is true and within reconnection window
             return connection.reconnectable && (now - connection.lastActivity < reconnectWindow)
         } catch (e: Exception) {
             log.error("Error checking if connection is reconnectable: {}", connectionId, e)
@@ -95,7 +90,6 @@ open class ConnectionController @Inject constructor(
      * Update a connection in database first, then in memory
      */
     suspend fun updateConnection(connection: Connection): Connection {
-        // Update database first (source of truth)
         val updatedConnection = connectionStore.updateSocketIds(
             connection._id,
             connection.commandSocketId,
@@ -132,7 +126,6 @@ open class ConnectionController @Inject constructor(
                 lastActivity = System.currentTimeMillis()
             )
 
-            // Update database first (source of truth)
             val persistedConnection = connectionStore.updateSocketIds(
                 connectionId,
                 updatedConnection.commandSocketId,
@@ -143,7 +136,6 @@ open class ConnectionController @Inject constructor(
                 throw IllegalStateException("Failed to update command socket ID in database for connection: $connectionId")
             }
 
-            // Then update cache with data from database
             connectionCache.storeConnection(persistedConnection)
             connectionCache.storeCommandSocket(connectionId, websocket, persistedConnection)
 
@@ -164,7 +156,6 @@ open class ConnectionController @Inject constructor(
                 throw IllegalStateException("Cannot register update socket: no command socket exists for $connectionId")
             }
 
-            // Close existing update socket if any
             connectionCache.getUpdateSocket(connectionId)?.let { existingSocket ->
                 try {
                     existingSocket.close()
@@ -206,10 +197,8 @@ open class ConnectionController @Inject constructor(
             log.info("After DB update - Connection {}: commandSocketId={}, updateSocketId={}",
                 connectionId, persistedConnection.commandSocketId, persistedConnection.updateSocketId)
 
-            // Check if the client is now fully connected but wasn't before
             val isNowFullyConnected = persistedConnection.updateSocketId != null
             if (!wasFullyConnected && isNowFullyConnected) {
-                // Client has become fully connected
                 onClientFullyConnected(persistedConnection)
             }
         } catch (e: Exception) {
@@ -226,7 +215,6 @@ open class ConnectionController @Inject constructor(
      */
     open suspend fun onClientFullyConnected(connection: Connection) {
         log.info("Client {} is now fully connected", connection._id)
-        // Default implementation is empty - application should override this
     }
 
     /**
@@ -289,7 +277,6 @@ open class ConnectionController @Inject constructor(
      */
     suspend fun markCommandSocketDisconnected(connectionId: String) {
         try {
-            // Close and remove socket from cache
             connectionCache.removeCommandSocket(connectionId)?.let { socket ->
                 try {
                     if (!socket.isClosed()) {
@@ -300,8 +287,6 @@ open class ConnectionController @Inject constructor(
                 }
             }
 
-            // Update the connection status in the database but don't delete it yet
-            // This allows reconnection within the reconnection window
             val updatedConnection = connectionStore.updateLastActivity(connectionId)
 
             if (updatedConnection == null) {
@@ -309,7 +294,6 @@ open class ConnectionController @Inject constructor(
                 return
             }
 
-            // Update cache with latest from database
             connectionCache.storeConnection(updatedConnection)
 
             log.info(
@@ -361,7 +345,6 @@ open class ConnectionController @Inject constructor(
      */
     suspend fun removeUpdateSocket(connectionId: String) {
         try {
-            // Close and remove socket from cache
             connectionCache.removeUpdateSocket(connectionId)?.let { socket ->
                 try {
                     if (!socket.isClosed()) {
@@ -372,7 +355,6 @@ open class ConnectionController @Inject constructor(
                 }
             }
 
-            // Update database first (source of truth)
             val connection = connectionCache.getConnection(connectionId)
             if (connection != null) {
                 val updatedConnection = connection.copy(
@@ -404,7 +386,7 @@ open class ConnectionController @Inject constructor(
             }
         } catch (e: Exception) {
             log.error("Failed to remove update WebSocket for {}", connectionId, e)
-            // Don't rethrow - we want this to be resilient to failures
+            // Don't rethrow
         }
     }
 
@@ -415,21 +397,17 @@ open class ConnectionController @Inject constructor(
         try {
             log.info("Command socket closed for connection {}, marking for potential reconnection", connectionId)
 
-            // Mark the connection as reconnectable in database (source of truth)
             val updatedConnection = connectionStore.updateReconnectable(connectionId, true)
 
             if (updatedConnection == null) {
                 log.warn("Failed to mark connection {} as reconnectable, it may already be deleted", connectionId)
             } else {
-                // Update cache with database data
                 connectionCache.storeConnection(updatedConnection)
             }
 
-            // Remove socket from cache
             connectionCache.removeCommandSocket(connectionId)
 
-            // We don't remove the connection from channels yet - that happens on final cleanup
-            // if reconnection doesn't happen
+            // Connection will be removed by CleanupVerticle after TTL
         } catch (e: Exception) {
             log.error("Error handling command socket closure for {}", connectionId, e)
         }
@@ -512,7 +490,6 @@ open class ConnectionController @Inject constructor(
 
             val documentGraph = entityStore.buildDocumentGraph(entityIds)
 
-            // Convert the document graph to JSON format suitable for client consumption
             val syncData = EntityGraph.documentGraphToJson(documentGraph)
 
             syncData.put("channelId", channelId)
@@ -522,7 +499,6 @@ open class ConnectionController @Inject constructor(
                 .put("type", "sync")
                 .put("data", syncData)
 
-            // Send to the client
             val commandSocket = getCommandSocket(connectionId)
             if (commandSocket != null && !commandSocket.isClosed()) {
                 commandSocket.writeTextMessage(syncMessage.encode())

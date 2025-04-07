@@ -34,7 +34,6 @@ object WebSocketUtils {
         logger: VerticleLogger,
         onSuccess: suspend (ServerWebSocket, String) -> Unit
     ) {
-        // Create trace for this connection
         val traceId = logger.getEventLogger().trace("WEBSOCKET_ROUTE_ACCESSED", mapOf(
             "path" to path,
             "remoteAddress" to context.request().remoteAddress().toString()
@@ -109,7 +108,6 @@ object WebSocketUtils {
                 "connectionId" to (connectionId ?: "unknown")
             ))
         } finally {
-            // Only close on critical errors
             if (connectionId == null && !websocket.isClosed()) {
                 websocket.close()
             }
@@ -127,11 +125,9 @@ object WebSocketUtils {
         websocket: ServerWebSocket,
         connectionCache: ConnectionCache
     ): String? {
-        // Try command socket first
         val commandId = connectionCache.getConnectionIdForCommandSocket(websocket)
         if (commandId != null) return commandId
 
-        // Then try update socket
         return connectionCache.getConnectionIdForUpdateSocket(websocket)
     }
 

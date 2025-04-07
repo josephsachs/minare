@@ -144,7 +144,6 @@ class VerticleLogger @Inject constructor() {
 
         eventLog!!.logPerformance("VERTICLE_PERFORMANCE", durationMs, perfInfo)
 
-        // Only log to standard logger if performance is notable
         if (durationMs > 100) {
             log!!.info("{} operation {} took {}ms", verticle!!.javaClass.simpleName, operation, durationMs)
         }
@@ -167,7 +166,6 @@ class VerticleLogger @Inject constructor() {
         val configInfo = mutableMapOf<String, Any?>()
         configInfo["verticle"] = verticle!!.javaClass.simpleName
 
-        // Extract just the config keys to avoid logging sensitive values
         val configKeys = config.fieldNames().joinToString(", ")
         configInfo["configKeys"] = configKeys
 

@@ -51,8 +51,8 @@ class HealthEndpointProvider(
      */
     fun addHealthEndpoint(path: String = "/health"): HealthEndpointProvider {
         router.get(path).handler { ctx ->
-            // Build metrics object with all registered providers
             val metrics = JsonObject()
+
             metricsProviders.forEach { (name, provider) ->
                 try {
                     metrics.put(name, provider())
@@ -62,7 +62,6 @@ class HealthEndpointProvider(
                 }
             }
 
-            // Build stats object with all registered providers
             val stats = JsonObject()
             statsProviders.forEach { (name, provider) ->
                 try {
@@ -73,7 +72,6 @@ class HealthEndpointProvider(
                 }
             }
 
-            // Create the health response
             val healthInfo = JsonObject()
                 .put("status", "ok")
                 .put("component", componentName)
@@ -87,7 +85,6 @@ class HealthEndpointProvider(
                 .putHeader("content-type", "application/json")
                 .end(healthInfo.encode())
 
-            // Sample logging to avoid excessive logs
             if (Math.random() < 0.05) { // ~5% of requests
                 log.debug("Health check accessed: {}", path)
             }

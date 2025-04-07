@@ -21,10 +21,7 @@ class HeartbeatManager(
 ) {
     private val log = LoggerFactory.getLogger(HeartbeatManager::class.java)
 
-    // Map to store heartbeat timer IDs - changed to use socketId as key
     private val heartbeatTimers = ConcurrentHashMap<String, Long>()
-
-    // Default heartbeat interval
     private var heartbeatIntervalMs = 15000L
 
     /**
@@ -45,34 +42,28 @@ class HeartbeatManager(
      * @param socket WebSocket to send heartbeats on
      */
     fun startHeartbeat(socketId: String, connectionId: String, socket: ServerWebSocket) {
-        // Stop any existing heartbeat for this socket
         stopHeartbeat(socketId)
 
-        // Run heartbeat at the configured interval
         val timerId = vertx.setPeriodic(heartbeatIntervalMs) { _ ->
             coroutineScope.launch {
                 try {
                     if (socket.isClosed()) {
-                        // Socket is gone, stop heartbeat
                         stopHeartbeat(socketId)
                         return@launch
                     }
 
-                    // Send heartbeat
                     val heartbeatMessage = JsonObject()
                         .put("type", "heartbeat")
                         .put("timestamp", System.currentTimeMillis())
 
                     socket.writeTextMessage(heartbeatMessage.encode())
 
-                    // Update last activity
                     try {
                         connectionStore.updateLastActivity(connectionId)
                     } catch (e: Exception) {
                         log.warn("Failed to update last activity for connection $connectionId", e)
                     }
 
-                    // Only log occasionally to reduce noise
                     if (Math.random() < 0.05) { // Log roughly 5% of heartbeats
                         logger.getEventLogger().trace("HEARTBEAT_SENT", mapOf(
                             "socketId" to socketId,
@@ -85,7 +76,6 @@ class HeartbeatManager(
                         "connectionId" to connectionId
                     ))
 
-                    // Stop heartbeat if socket appears to be permanently gone
                     if (e.message?.contains("Connection was closed") == true) {
                         stopHeartbeat(socketId)
                     }
@@ -130,7 +120,6 @@ class HeartbeatManager(
             val now = System.currentTimeMillis()
             val roundTripTime = now - serverTimestamp
 
-            // Only log occasionally to reduce noise
             if (Math.random() < 0.1) { // Log roughly 10% of heartbeat responses
                 logger.getEventLogger().trace("HEARTBEAT_RESPONSE", mapOf(
                     "connectionId" to connectionId,

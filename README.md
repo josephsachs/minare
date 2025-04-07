@@ -6,6 +6,8 @@ The extension application defines an object graph. Minare handles persistence, c
 
 The implementer hooks into the framework by extending MinareApplication. They may also use their own Guice module to override framework services as needed.
 
+**NOTE: Minare is currently a work-in-progress. Many planned changes await implementation.** 
+
 ## Architecture Overview
 
 Minare facilitates bidirectional communication between clients and a stateless server layer, with MongoDB serving as the source of truth. This creates a unidirectional data flow:
@@ -40,73 +42,6 @@ The foundation of Minare is the extensible entity system:
     - `OPTIMISTIC`: Allow changes, resolve conflicts later if needed
     - `PESSIMISTIC`: Verify version before allowing changes
     - `STRICT`: Most restrictive, require exact version match
-
-### Network Layer
-
-- **CommandSocketManager**: Handles client connections for receiving mutations
-- **UpdateSocketManager**: Manages sockets for broadcasting updates to clients
-- **ConnectionManager**: Associates command and update sockets with client connections
-- **WebSocketRoutes**: Exposes endpoints for clients to establish connections
-
-### State Management
-
-- **MongoChangeStreamConsumer**: Listens for MongoDB changes and propagates updates
-- **EntityStore**: Persists entities and manages their lifecycle
-- **ConnectionStore**: Tracks client connections and their associated sockets
-
-### Reflection & Metadata
-
-- **EntityReflector**: Analyzes entity classes using reflection
-- **ReflectionCache**: Stores metadata about entity structure for efficiency
-- **EntityFactory**: Creates entity instances based on type
-
-## Synchronization Mechanisms
-
-### Version Bubbling
-
-When an entity changes, its version is incremented. This change may propagate to ancestors based on annotation configuration:
-
-1. An entity is mutated, triggering version increment
-2. JGraphT is used to build an ancestor graph
-3. Version changes bubble up to parents according to bubble_version rules
-
-### Change Stream Processing
-
-MongoDB change streams notify the server of database changes:
-
-1. Server subscribes to entity collection changes
-2. Changes are transformed into update messages
-3. Messages are broadcast to relevant clients
-
-## Client Communication
-
-### Command Socket
-
-- Clients connect to receive a unique connection ID
-- Clients send mutation requests over this socket
-- Server validates and processes these requests
-
-### Update Socket
-
-- Clients establish a second socket using their connection ID
-- Server pushes entity updates to clients through this socket
-- Updates include entity ID, version, and changed state
-
-## Performance Considerations
-
-### Optimizations
-
-- Reflection caching for efficient entity metadata access
-- Field-level mutation control for fine-grained consistency
-- Sparse searches in entity hierarchies
-- Customizable version bubbling
-
-### Planned Features
-
-- Command batching
-- Frame loop for server-initiated updates and command queues
-- State transitions for rate control
-- Distributed synchronization
 
 ## Scaling Strategy
 

@@ -119,7 +119,6 @@ class EntityGraph(root: Entity) {
             val result = JsonObject()
             val entitiesArray = JsonArray()
 
-            // Add each document to the entities array
             graph.vertexSet().forEach { document ->
                 val entityJson = JsonObject()
                     .put("_id", document.getString("_id"))
@@ -130,7 +129,6 @@ class EntityGraph(root: Entity) {
                 entitiesArray.add(entityJson)
             }
 
-            // Add edges information
             val edges = JsonArray()
             graph.edgeSet().forEach { edge ->
                 val source = graph.getEdgeSource(edge)
@@ -157,25 +155,17 @@ class EntityGraph(root: Entity) {
             val result = JsonObject()
             val entitiesArray = JsonArray()
 
-            // Add each entity to the array with its state fields
             for (entity in graph.vertexSet()) {
-                // Extract state fields directly from the entity
                 val stateJson = JsonObject()
                 val entityType = entity.type
 
                 if (entityType != null) {
                     val entityClass = entity.javaClass
 
-                    // Get fields with @State annotation
-                    val stateFields = if (reflectionCache != null) {
-                        // Use reflection cache if provided
-                        reflectionCache.getFieldsWithAnnotation<State>(entityClass.kotlin)
-                    } else {
-                        // Otherwise use direct reflection
-                        entityClass.declaredFields.filter {
+                    val stateFields = reflectionCache?.getFieldsWithAnnotation<State>(entityClass.kotlin)
+                        ?: entityClass.declaredFields.filter {
                             it.isAnnotationPresent(State::class.java)
                         }
-                    }
 
                     for (field in stateFields) {
                         field.isAccessible = true
@@ -230,23 +220,17 @@ class EntityGraph(root: Entity) {
             val entitiesArray = JsonArray()
 
             for (entity in entities) {
-                // Extract state fields directly from the entity
                 val stateJson = JsonObject()
                 val entityType = entity.type
 
                 if (entityType != null) {
                     val entityClass = entity.javaClass
 
-                    // Get fields with @State annotation
-                    val stateFields = if (reflectionCache != null) {
-                        // Use reflection cache if provided
-                        reflectionCache.getFieldsWithAnnotation<State>(entityClass.kotlin)
-                    } else {
-                        // Otherwise use direct reflection
+                    val stateFields = reflectionCache?.getFieldsWithAnnotation<State>(entityClass.kotlin)
+                        ?: // Otherwise use direct reflection
                         entityClass.declaredFields.filter {
                             it.isAnnotationPresent(State::class.java)
                         }
-                    }
 
                     for (field in stateFields) {
                         field.isAccessible = true

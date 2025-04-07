@@ -111,7 +111,7 @@ class CommandVerticle @Inject constructor(
         HttpServerUtils.addHealthEndpoint(
             router = router,
             path = "$BASE_PATH/health",
-            verticleName = "CommandSocketVerticle",
+            verticleName = "CommandVerticle",
             deploymentId = deploymentID,
             deployedAt = deployedAt
         ) {
@@ -140,10 +140,9 @@ class CommandVerticle @Inject constructor(
      * Handle a new command socket connection
      */
     private suspend fun handleMessage(websocket: ServerWebSocket, traceId: String) {
-        log.info("New command WebSocket connection from {}", websocket.remoteAddress())
-
-        // Set up message handler for connection initialization or reconnect
         var handshakeCompleted = false
+
+        log.info("New command WebSocket connection from {}", websocket.remoteAddress())
 
         websocket.textMessageHandler { message ->
             CoroutineScope(vertx.dispatcher()).launch {
@@ -203,7 +202,6 @@ class CommandVerticle @Inject constructor(
         )
 
         // If no reconnection message is received, create a new connection
-        // Extended handshake timer to account for network latency
         vertx.setTimer(HANDSHAKE_TIMEOUT_MS) {
             if (!handshakeCompleted) {
                 vlog.getEventLogger().trace(
@@ -237,7 +235,6 @@ class CommandVerticle @Inject constructor(
         vlog.logStartupStep("DEPLOYING_OWN_HTTP_SERVER")
 
         try {
-            // Use the utility to create and start the server
             httpServer = HttpServerUtils.createAndStartHttpServer(
                 vertx = vertx,
                 router = router,
@@ -261,10 +258,8 @@ class CommandVerticle @Inject constructor(
     override suspend fun stop() {
         vlog.logStartupStep("STOPPING")
 
-        // Stop all heartbeats
         heartbeatManager.stopAll()
 
-        // Close HTTP server if we created one
         if (httpServer != null) {
             try {
                 log.info("Closing HTTP server")

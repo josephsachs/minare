@@ -29,7 +29,9 @@ class MongoConnectionStore @Inject constructor(
             lastUpdated = now,
             lastActivity = now,
             commandSocketId = null,
+            commandDeploymentId = null,
             updateSocketId = null,
+            updateDeploymentId = null,
             reconnectable = true
         )
 
@@ -39,7 +41,9 @@ class MongoConnectionStore @Inject constructor(
             .put("lastUpdated", connection.lastUpdated)
             .put("lastActivity", connection.lastActivity)
             .put("commandSocketId", connection.commandSocketId)
+            .put("commandDeploymentId", connection.commandDeploymentId)
             .put("updateSocketId", connection.updateSocketId)
+            .put("updateDeploymentId", connection.updateDeploymentId)
             .put("reconnectable", connection.reconnectable)
 
         try {
@@ -110,7 +114,9 @@ class MongoConnectionStore @Inject constructor(
                 lastUpdated = result.getLong("lastUpdated"),
                 lastActivity = result.getLong("lastActivity", result.getLong("lastUpdated")), // Fallback for compatibility
                 commandSocketId = result.getString("commandSocketId"),
+                commandDeploymentId = result.getString("commandDeploymentId"),
                 updateSocketId = result.getString("updateSocketId"),
+                updateDeploymentId = result.getString("updateDeploymentId"),
                 reconnectable = result.getBoolean("reconnectable", true) // Default to true for backward compatibility
             )
         } catch (e: Exception) {

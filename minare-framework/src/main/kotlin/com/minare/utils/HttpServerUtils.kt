@@ -7,9 +7,6 @@ import io.vertx.core.http.HttpServerOptions
 import io.vertx.core.http.ServerWebSocket
 import io.vertx.core.json.JsonObject
 import io.vertx.ext.web.Router
-import io.vertx.ext.web.RoutingContext
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.launch
 import org.slf4j.LoggerFactory
 import kotlin.coroutines.CoroutineContext
 
@@ -39,13 +36,11 @@ object HttpServerUtils {
     ): Future<HttpServer> {
         log.info("Starting HTTP server on $host:$port")
 
-        // Create HTTP server options
         val serverOptions = options ?: HttpServerOptions()
             .setHost(host)
             .setPort(port)
-            .setLogActivity(true) // Enable activity logging for debugging
+            .setLogActivity(true)
 
-        // Create and start the HTTP server
         return vertx.createHttpServer(serverOptions)
             .requestHandler(router)
             .listen()
@@ -76,7 +71,6 @@ object HttpServerUtils {
         metricsSupplier: () -> JsonObject
     ) {
         router.get(path).handler { ctx ->
-            // Create response with detailed metrics
             val healthInfo = JsonObject()
                 .put("status", "ok")
                 .put("verticle", verticleName)
@@ -146,15 +140,11 @@ object HttpServerUtils {
         val router = Router.router(vertx)
         verticleLogger.logStartupStep("ROUTER_CREATED")
 
-        // Add debug endpoint
         addDebugEndpoint(router, debugPath, verticleName)
-
-        // Add health endpoint
         addHealthEndpoint(
             router, healthPath, verticleName, deploymentId, deployedAt, metricsSupplier
         )
 
-        // Setup WebSocket route
         log.info("Setting up websocket route handler at path: {}", wsPath)
         router.route(wsPath).handler { context ->
             WebSocketUtils.handleWebSocketUpgrade(

@@ -77,9 +77,6 @@ class MongoEntityStore @Inject constructor(
     private fun getAllParentReferenceFieldPaths(): List<String> {
         // Get classes from the entity factory
         val entityClasses = mutableListOf<Class<*>>()
-
-        // Assuming entityFactory has a method to get registered class types
-        // If not, we'll need another way to get the list of entity classes
         val entityTypeNames = entityFactory.getTypeNames()
 
         for (typeName in entityTypeNames) {
@@ -106,7 +103,6 @@ class MongoEntityStore @Inject constructor(
         val query = buildAncestorTraversalQuery(entityId)
         val results = JsonArray()
 
-        // Create a promise we can await
         val promise = io.vertx.core.Promise.promise<JsonArray>()
 
         mongoClient.aggregate(collection, query.getJsonArray("pipeline"))
@@ -114,7 +110,6 @@ class MongoEntityStore @Inject constructor(
             .endHandler { promise.complete(results) }
             .exceptionHandler { promise.fail(it) }
 
-        // Await the future completion
         return promise.future().await()
     }
 
@@ -288,7 +283,6 @@ class MongoEntityStore @Inject constructor(
         document.put("state", stateJson)
 
         try {
-            // Check if this is an update or new entity (based on id presence)
             if (entity._id.isNullOrEmpty()) {
                 // New entity - let MongoDB generate an ID and set initial version
                 document.put("version", 1)
@@ -298,7 +292,6 @@ class MongoEntityStore @Inject constructor(
                 entity._id = generatedId
                 log.debug("Created new entity with ID: {}", entity._id)
             } else {
-                // Existing entity - just update it, version handling will be done elsewhere
                 val query = JsonObject().put("_id", entity._id)
                 val update = JsonObject().put("\$set", document)
 
@@ -324,30 +317,24 @@ class MongoEntityStore @Inject constructor(
      * @return The updated entity document
      */
     override suspend fun mutateState(entityId: String, delta: JsonObject): JsonObject {
-        // If delta is empty, we have nothing to update
         if (delta.isEmpty()) {
             return JsonObject()
         }
 
-        // Create the $set operation for state fields
         val setOp = JsonObject()
 
-        // Add each field in the delta to the $set operation with "state." prefix
         delta.fieldNames().forEach { fieldName ->
             setOp.put("state.$fieldName", delta.getValue(fieldName))
         }
 
-        // Add version increment
         val update = JsonObject()
             .put("\$set", setOp)
             .put("\$inc", JsonObject().put("version", 1))
 
-        // Create the query to find the entity
         val query = JsonObject()
             .put("_id", entityId)
 
         try {
-            // Execute the update and wait for the result
             val updateResult = mongoClient.updateCollection(collection, query, update).await()
 
             if (updateResult.docModified == 0L) {
@@ -355,7 +342,6 @@ class MongoEntityStore @Inject constructor(
                 throw IllegalStateException("Entity not found: $entityId")
             }
 
-            // Fetch the updated document to return
             val result = mongoClient.findOne(collection, JsonObject().put("_id", entityId), JsonObject()).await()
 
             log.debug("Updated entity state: $entityId")
@@ -378,20 +364,16 @@ class MongoEntityStore @Inject constructor(
         }
 
         try {
-            // Log the query for debugging
             log.debug("Finding ${entityIds.size} entities by IDs")
 
-            // Create an $or query to handle potential ObjectId vs String ID issues
             val orCriteria = JsonArray()
             entityIds.forEach { id ->
                 orCriteria.add(JsonObject().put("_id", id))
             }
             val query = JsonObject().put("\$or", orCriteria)
 
-            // Log the actual query for debugging
             log.debug("MongoDB query: ${query.encode()}")
 
-            // Execute the query and wait for results
             var results = mongoClient.find(collection, query).await()
 
             log.debug("Query results size: ${results.size}")
@@ -399,7 +381,6 @@ class MongoEntityStore @Inject constructor(
             if (results.isEmpty()) {
                 log.debug("No results with \$or query, trying with individual queries")
 
-                // Try querying one by one as a fallback
                 val individualResults = mutableListOf<JsonObject>()
                 for (id in entityIds) {
                     val singleQuery = JsonObject().put("_id", id)

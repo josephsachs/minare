@@ -1,12 +1,12 @@
 package com.minare.worker.command.handlers
 
 import com.google.inject.Inject
-import com.minare.core.websocket.CommandMessageHandler
 import com.minare.persistence.ConnectionStore
 import com.minare.utils.ConnectionTracker
 import com.minare.utils.HeartbeatManager
 import com.minare.utils.VerticleLogger
 import com.minare.utils.WebSocketUtils
+import com.minare.worker.command.CommandMessageHandler
 import io.vertx.core.http.ServerWebSocket
 import io.vertx.core.json.JsonObject
 

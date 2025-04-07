@@ -86,8 +86,8 @@ abstract class MinareApplication : CoroutineVerticle() {
             val commandSocketOptions = DeploymentOptions()
                 .setWorker(true)
                 .setWorkerPoolName("command-socket-pool")
-                .setWorkerPoolSize(2)  // Adjust
-                .setInstances(1) // Only one instance to manage connections centrally
+                .setWorkerPoolSize(5)
+                .setInstances(3)
                 .setConfig(JsonObject().put("useOwnHttpServer", true))
 
             commandVerticleDeploymentId = vertx.deployVerticle(
@@ -100,8 +100,8 @@ abstract class MinareApplication : CoroutineVerticle() {
             val updateVerticleOptions = DeploymentOptions()
                 .setWorker(true)
                 .setWorkerPoolName("update-processor-pool")
-                .setWorkerPoolSize(2)  // Adjust based on needs
-                .setInstances(1)  // Single instance to centralize update processing
+                .setWorkerPoolSize(7)  // Adjust based on needs
+                .setInstances(7)  // Single instance to centralize update processing
 
             updateVerticleDeploymentId = vertx.deployVerticle(
                 "guice:" + UpdateVerticle::class.java.name,
@@ -113,7 +113,8 @@ abstract class MinareApplication : CoroutineVerticle() {
             val changeStreamOptions = DeploymentOptions()
                 .setWorker(true)
                 .setWorkerPoolName("change-stream-pool")
-                .setInstances(processorCount.coerceAtLeast(2))
+                .setWorkerPoolSize(2)
+                .setInstances(2)
                 .setMaxWorkerExecuteTime(Long.MAX_VALUE)  // Allow long-running tasks
 
             // Deploy using the GuiceVerticleFactory
@@ -123,20 +124,18 @@ abstract class MinareApplication : CoroutineVerticle() {
             ).await()
             log.info("Change stream worker deployed with ID: $changeStreamWorkerDeploymentId")
 
-            val mutationInstances = processorCount.coerceAtLeast(2) // At least 2 instances
-
             val mutationOptions = DeploymentOptions()
                 .setWorker(true)
                 .setWorkerPoolName("mutation-pool")
-                .setWorkerPoolSize(mutationInstances)
-                .setInstances(mutationInstances)
+                .setWorkerPoolSize(2)
+                .setInstances(1)
 
             // Deploy using the GuiceVerticleFactory
             mutationVerticleDeploymentId = vertx.deployVerticle(
                 "guice:" + MutationVerticle::class.java.name,
                 mutationOptions
             ).await()
-            log.info("Mutation verticle deployed with $mutationInstances instances, ID: $mutationVerticleDeploymentId")
+            log.info("Mutation verticle deployed with ID: $mutationVerticleDeploymentId")
 
             // Deploy the cleanup verticle
             val cleanupOptions = DeploymentOptions()
