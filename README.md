@@ -6,7 +6,7 @@ The extension application defines an object graph. Minare handles persistence, c
 
 The implementer hooks into the framework by extending MinareApplication. They may also use their own Guice module to override framework services as needed.
 
-**NOTE: Minare is currently a work-in-progress. Many planned changes await implementation.** 
+**NOTE: Minare is currently unreleased. Core systems require improvement and many planned changes await.** 
 
 ## Architecture Overview
 
