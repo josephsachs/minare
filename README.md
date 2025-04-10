@@ -14,7 +14,7 @@ I chose Vert.x because:
 In retrospect, Node.js or plain Java (if I wanted active memory management) would have been fine. While MongoDB suits the data structure well, it is slower; in other words, it's unlikely that server throughput would ever become the bottleneck.
 
 In its current state, the pipeline works but is not efficient. States stay synchronized under moderate load but rapid updates quickly overwhelm the distributor, resulting in inconsistency. The solution to this likely includes some combination of
-1) batching updates on the stream consumer's side,
+1) dynamically batching updates,
 2) using a message queue (to ensure delivery) and
 3) a more efficient publisher.
 
