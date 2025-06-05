@@ -16,8 +16,18 @@ import io.vertx.core.impl.logging.LoggerFactory
 import io.vertx.core.json.JsonObject
 import io.vertx.ext.mongo.MongoClient
 import io.vertx.kotlin.coroutines.dispatcher
+import io.vertx.redis.client.Redis
+import io.vertx.redis.client.RedisAPI
+import io.vertx.redis.client.RedisOptions
 import io.vertx.spi.cluster.hazelcast.HazelcastClusterManager
 import javax.inject.Named
+import kotlin.com.minare.entity.EntityPublishService
+import kotlin.com.minare.entity.EntityVersioningService
+import kotlin.com.minare.entity.RedisEntityPublishService
+import kotlin.com.minare.persistence.EntityQueryStore
+import kotlin.com.minare.persistence.RedisEntityStore
+import kotlin.com.minare.persistence.StateStore
+import kotlin.com.minare.persistence.WriteBehindStore
 import kotlin.coroutines.CoroutineContext
 
 /**
@@ -27,10 +37,17 @@ import kotlin.coroutines.CoroutineContext
 class MinareModule : AbstractModule(), DatabaseNameProvider {
     private val log = LoggerFactory.getLogger(MinareModule::class.java)
 
-    val uri = System.getenv("MONGO_URI") ?: "mongodb://localhost:27017"
+    val uri = System.getenv("MONGO_URI") ?:
+        throw IllegalStateException("MONGO_URI environment variable is required")
 
     override fun configure() {
+        bind(StateStore::class.java).to(RedisEntityStore::class.java).`in`(Singleton::class.java)
         bind(EntityStore::class.java).to(MongoEntityStore::class.java).`in`(Singleton::class.java)
+        bind(EntityPublishService::class.java).to(RedisEntityPublishService::class.java).`in`(Singleton::class.java)
+        bind(EntityVersioningService::class.java).`in`(Singleton::class.java)
+        bind(EntityQueryStore::class.java).to(MongoEntityStore::class.java).`in`(Singleton::class.java)
+        bind(WriteBehindStore::class.java).to(MongoEntityStore::class.java).`in`(Singleton::class.java)
+
         bind(ConnectionStore::class.java).to(MongoConnectionStore::class.java).`in`(Singleton::class.java)
         bind(ChannelStore::class.java).to(MongoChannelStore::class.java).`in`(Singleton::class.java)
         bind(ContextStore::class.java).to(MongoContextStore::class.java).`in`(Singleton::class.java)
@@ -52,13 +69,11 @@ class MinareModule : AbstractModule(), DatabaseNameProvider {
             .annotatedWith(Names.named("clusteringEnabled"))
             .toInstance(false)
 
-
         bind(Int::class.java)
             .annotatedWith(Names.named("frameIntervalMs"))
             .toInstance(100)
 
         bind(VerticleLogger::class.java).`in`(Singleton::class.java)
-
 
         bind(ChangeStreamWorkerVerticle::class.java)
         bind(MutationVerticle::class.java)
@@ -101,6 +116,19 @@ class MinareModule : AbstractModule(), DatabaseNameProvider {
     @Singleton
     fun provideHazelcastClusterManager(): HazelcastClusterManager {
         return HazelcastClusterManager()
+    }
+
+    @Provides
+    @Singleton
+    fun provideRedisAPI(vertx: Vertx): RedisAPI {
+        val redisUri = System.getenv("REDIS_URI")
+            ?: throw IllegalStateException("REDIS_URI environment variable is required")
+
+        val redisOptions = RedisOptions()
+            .setConnectionString(redisUri)
+
+        val redis = Redis.createClient(vertx, redisOptions)
+        return RedisAPI.api(redis)
     }
 
     override fun getDatabaseName(): String = "minare"

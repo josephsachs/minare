@@ -1,11 +1,11 @@
 package com.minare.persistence
 
-import com.google.inject.Inject
 import io.vertx.core.json.JsonArray
 import io.vertx.core.json.JsonObject
 import io.vertx.ext.mongo.MongoClient
 import io.vertx.kotlin.coroutines.await
 import org.slf4j.LoggerFactory
+import javax.inject.Inject
 
 class MongoChannelStore @Inject constructor(
     private val mongoClient: MongoClient
