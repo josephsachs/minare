@@ -9,14 +9,17 @@ import io.vertx.kotlin.coroutines.dispatcher
 import kotlinx.coroutines.launch
 import org.slf4j.LoggerFactory
 import javax.inject.Inject
+import kotlin.com.minare.entity.EntityVersioningService
+import kotlin.com.minare.persistence.StateStore
 
 /**
  * Dedicated verticle for processing mutation commands.
  * This isolates mutation processing from the connection handling.
  */
 class MutationVerticle @Inject constructor(
-    private val entityStore: EntityStore,
-    private val reflectionCache: ReflectionCache
+    private val stateStore: StateStore,
+    private val reflectionCache: ReflectionCache,
+    private val versioningService: EntityVersioningService
 ) : CoroutineVerticle() {
 
     private val log = LoggerFactory.getLogger(MutationVerticle::class.java)
@@ -45,7 +48,7 @@ class MutationVerticle @Inject constructor(
 
                     try {
                         // Find the entity to mutate
-                        val entities: Map<String, Entity> = entityStore.findEntitiesByIds(listOf(entityId))
+                        val entities: Map<String, Entity> = stateStore.findEntitiesByIds(listOf(entityId))
 
                         if (entities.isEmpty()) {
                             message.fail(404, "Entity not found: $entityId")
@@ -55,14 +58,15 @@ class MutationVerticle @Inject constructor(
                         // Get the entity and inject dependencies
                         val entity = entities[entityId]!!
                         entity.reflectionCache = this@MutationVerticle.reflectionCache
-                        entity.entityStore = this@MutationVerticle.entityStore
+                        entity.stateStore = this@MutationVerticle.stateStore  // Changed from entityStore
+                        entity.versioningService = this@MutationVerticle.versioningService  // New
 
                         // Perform the mutation
                         val result = entity.mutate(entityObject)
 
                         // If mutation was successful, fetch the updated entity
                         if (result.getBoolean("success", false)) {
-                            val updatedEntity = entityStore.findEntitiesByIds(listOf(entityId))[entityId]
+                            val updatedEntity = stateStore.findEntitiesByIds(listOf(entityId))[entityId]
 
                             // Build response with the updated entity
                             val response = JsonObject()

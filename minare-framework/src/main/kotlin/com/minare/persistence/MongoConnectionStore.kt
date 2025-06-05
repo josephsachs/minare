@@ -1,5 +1,6 @@
 package com.minare.persistence
 
+import com.google.inject.Singleton
 import com.minare.core.models.Connection
 import io.vertx.core.json.JsonObject
 import io.vertx.ext.mongo.MongoClient
@@ -7,7 +8,6 @@ import io.vertx.kotlin.coroutines.await
 import org.slf4j.LoggerFactory
 import java.util.UUID
 import javax.inject.Inject
-import javax.inject.Singleton
 
 @Singleton
 class MongoConnectionStore @Inject constructor(

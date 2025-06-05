@@ -1,7 +1,6 @@
 package com.minare.entity
 
 import com.google.inject.Singleton
-import com.minare.entity.EntityPublishService
 import com.minare.persistence.ContextStore
 import com.minare.pubsub.PubSubChannelStrategy
 import io.vertx.core.json.JsonObject

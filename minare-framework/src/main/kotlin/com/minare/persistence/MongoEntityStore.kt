@@ -17,6 +17,8 @@ import org.jgrapht.graph.DefaultEdge
 import org.slf4j.LoggerFactory
 import javax.inject.Inject
 import javax.inject.Named
+import kotlin.com.minare.persistence.EntityQueryStore
+import kotlin.com.minare.persistence.WriteBehindStore
 
 /**
  * MongoDB implementation of the EntityStore interface.
@@ -27,7 +29,7 @@ class MongoEntityStore @Inject constructor(
     private val mongoClient: MongoClient,
     private val entityFactory: EntityFactory,
     private val reflectionCache: ReflectionCache
-) : EntityStore {
+) : EntityStore, EntityQueryStore, WriteBehindStore {
 
     private val log = LoggerFactory.getLogger(MongoEntityStore::class.java)
 
