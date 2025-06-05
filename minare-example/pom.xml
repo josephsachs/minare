@@ -13,7 +13,7 @@
     <artifactId>minare-example</artifactId>
 
     <properties>
-        <main.class>com.minare.example.ExampleApplication</main.class>
+        <main.class>com.minare.example.ExampleMain</main.class>
     </properties>
 
     <dependencies>
@@ -109,6 +109,15 @@
             <plugin>
                 <groupId>org.jetbrains.kotlin</groupId>
                 <artifactId>kotlin-maven-plugin</artifactId>
+            </plugin>
+
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <version>3.5.1</version>
+                <configuration>
+                    <mainClass>${main.class}</mainClass>
+                </configuration>
             </plugin>
 
             <plugin>

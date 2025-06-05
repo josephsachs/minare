@@ -84,12 +84,6 @@
             <version>${kotlin.coroutines.version}</version>
         </dependency>
 
-        <!-- Vert.x Kotlin Coroutines -->
-        <dependency>
-            <groupId>io.vertx</groupId>
-            <artifactId>vertx-lang-kotlin-coroutines</artifactId>
-        </dependency>
-
         <!-- JGraphT Core (should already be included) -->
         <dependency>
             <groupId>org.jgrapht</groupId>

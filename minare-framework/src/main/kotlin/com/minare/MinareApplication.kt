@@ -4,13 +4,10 @@ import com.google.inject.*
 import com.google.inject.name.Names
 import com.minare.config.*
 import com.minare.controller.ConnectionController
-import com.minare.worker.ChangeStreamWorkerVerticle
 import com.minare.worker.command.CommandVerticle
-import com.minare.worker.CleanupVerticle
-import com.minare.worker.MutationVerticle
 import com.minare.worker.update.UpdateVerticle
 import com.minare.persistence.DatabaseInitializer
-import com.minare.worker.MinareVerticleFactory
+import com.minare.worker.*
 import com.minare.worker.command.config.CommandVerticleModule
 import com.minare.worker.update.config.UpdateVerticleModule
 import io.vertx.core.DeploymentOptions
@@ -106,16 +103,16 @@ abstract class MinareApplication : CoroutineVerticle() {
 
             val changeStreamOptions = DeploymentOptions()
                 .setWorker(true)
-                .setWorkerPoolName("change-stream-pool")
+                .setWorkerPoolName("redis-pubsub-pool")
                 .setWorkerPoolSize(2)
                 .setInstances(2)
                 .setMaxWorkerExecuteTime(Long.MAX_VALUE)
 
             changeStreamWorkerDeploymentId = vertx.deployVerticle(
-                "guice:" + ChangeStreamWorkerVerticle::class.java.name,
+                "guice:" + RedisPubSubWorkerVerticle::class.java.name,
                 changeStreamOptions
             ).await()
-            log.info("Change stream worker deployed with ID: $changeStreamWorkerDeploymentId")
+            log.info("Redis pub/sub worker deployed with ID: $changeStreamWorkerDeploymentId")
 
             val mutationOptions = DeploymentOptions()
                 .setWorker(true)
