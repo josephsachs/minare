@@ -5,10 +5,12 @@ import com.google.inject.name.Names
 import com.minare.cache.ConnectionCache
 import com.minare.cache.InMemoryConnectionCache
 import com.minare.core.entity.ReflectionCache
-import com.minare.worker.ChangeStreamWorkerVerticle
+import com.minare.pubsub.PubSubChannelStrategy
+import com.minare.pubsub.PerChannelPubSubStrategy
 import com.minare.worker.CleanupVerticle
 import com.minare.worker.MutationVerticle
 import com.minare.worker.MinareVerticleFactory
+import com.minare.worker.RedisPubSubWorkerVerticle
 import com.minare.persistence.*
 import com.minare.utils.VerticleLogger
 import io.vertx.core.Vertx
@@ -21,13 +23,13 @@ import io.vertx.redis.client.RedisAPI
 import io.vertx.redis.client.RedisOptions
 import io.vertx.spi.cluster.hazelcast.HazelcastClusterManager
 import javax.inject.Named
-import kotlin.com.minare.entity.EntityPublishService
-import kotlin.com.minare.entity.EntityVersioningService
-import kotlin.com.minare.entity.RedisEntityPublishService
-import kotlin.com.minare.persistence.EntityQueryStore
-import kotlin.com.minare.persistence.RedisEntityStore
-import kotlin.com.minare.persistence.StateStore
-import kotlin.com.minare.persistence.WriteBehindStore
+import com.minare.entity.EntityPublishService
+import com.minare.entity.EntityVersioningService
+import com.minare.entity.RedisEntityPublishService
+import com.minare.persistence.EntityQueryStore
+import com.minare.persistence.RedisEntityStore
+import com.minare.persistence.StateStore
+import com.minare.persistence.WriteBehindStore
 import kotlin.coroutines.CoroutineContext
 
 /**
@@ -55,6 +57,9 @@ class MinareModule : AbstractModule(), DatabaseNameProvider {
         bind(ConnectionCache::class.java).to(InMemoryConnectionCache::class.java).`in`(Singleton::class.java)
         bind(ReflectionCache::class.java).`in`(Singleton::class.java)
 
+        // NEW: Bind pub/sub strategy - applications can override this
+        bind(PubSubChannelStrategy::class.java).to(PerChannelPubSubStrategy::class.java).`in`(Singleton::class.java)
+
         bind(String::class.java)
             .annotatedWith(Names.named("mongoConnectionString"))
             .toInstance(uri)
@@ -75,7 +80,8 @@ class MinareModule : AbstractModule(), DatabaseNameProvider {
 
         bind(VerticleLogger::class.java).`in`(Singleton::class.java)
 
-        bind(ChangeStreamWorkerVerticle::class.java)
+        // NEW: Bind Redis pub/sub worker instead of MongoDB change stream worker
+        bind(RedisPubSubWorkerVerticle::class.java)
         bind(MutationVerticle::class.java)
         bind(CleanupVerticle::class.java)
     }

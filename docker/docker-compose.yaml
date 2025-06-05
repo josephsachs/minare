@@ -23,6 +23,23 @@ services:
       start_period: 20s
     entrypoint: ["/scripts/init.sh"]
 
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    hostname: redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - ./data/redis:/data
+    networks:
+      - mongo_net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
 networks:
   mongo_net:
     name: mongo_net

@@ -1,7 +1,6 @@
-package kotlin.com.minare.entity
+package com.minare.entity
 
 import io.vertx.core.json.JsonObject
-
 
 /**
  * Service for publishing entity state changes to channels.

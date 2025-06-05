@@ -1,15 +1,15 @@
-package kotlin.com.minare.persistence
+package com.minare.persistence
 
 import com.google.inject.Singleton
 import com.minare.core.entity.EntityFactory
 import com.minare.core.entity.ReflectionCache
 import com.minare.core.entity.annotations.State
 import com.minare.core.models.Entity
+import com.minare.entity.EntityPublishService
 import io.vertx.core.json.JsonObject
 import io.vertx.kotlin.coroutines.await
 import io.vertx.redis.client.RedisAPI
 import javax.inject.Inject
-import kotlin.com.minare.entity.EntityPublishService
 
 @Singleton
 class RedisEntityStore @Inject constructor(

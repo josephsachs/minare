@@ -1,4 +1,4 @@
-package kotlin.com.minare.entity
+package com.minare.entity
 
 import com.google.inject.Inject
 import com.google.inject.Singleton
@@ -9,8 +9,8 @@ import com.minare.persistence.EntityStore
 import io.vertx.core.json.JsonObject
 import org.jgrapht.Graph
 import org.jgrapht.graph.DefaultEdge
-import kotlin.com.minare.persistence.EntityQueryStore
-import kotlin.com.minare.persistence.StateStore
+import com.minare.persistence.EntityQueryStore
+import com.minare.persistence.StateStore
 
 @Singleton
 class EntityVersioningService @Inject constructor(
