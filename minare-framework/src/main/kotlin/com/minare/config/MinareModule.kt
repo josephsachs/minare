@@ -5,7 +5,6 @@ import com.google.inject.name.Names
 import com.minare.cache.ConnectionCache
 import com.minare.cache.InMemoryConnectionCache
 import com.minare.core.entity.ReflectionCache
-import com.minare.entity.EntityPublishService
 import com.minare.pubsub.PubSubChannelStrategy
 import com.minare.pubsub.PerChannelPubSubStrategy
 import com.minare.worker.CleanupVerticle
@@ -21,15 +20,6 @@ import io.vertx.ext.mongo.MongoClient
 import io.vertx.kotlin.coroutines.dispatcher
 import io.vertx.spi.cluster.hazelcast.HazelcastClusterManager
 import javax.inject.Named
-<<<<<<< Updated upstream
-=======
-import com.minare.entity.EntityVersioningService
-import com.minare.entity.RedisEntityPublishService
-import com.minare.persistence.EntityQueryStore
-import com.minare.persistence.RedisEntityStore
-import com.minare.persistence.StateStore
-import com.minare.persistence.WriteBehindStore
->>>>>>> Stashed changes
 import kotlin.coroutines.CoroutineContext
 
 /**
@@ -39,12 +29,8 @@ import kotlin.coroutines.CoroutineContext
 class MinareModule : AbstractModule(), DatabaseNameProvider {
     private val log = LoggerFactory.getLogger(MinareModule::class.java)
 
-<<<<<<< Updated upstream
-    val uri = System.getenv("MONGO_URI") ?: "mongodb://localhost:27017"
-=======
     val uri = System.getenv("MONGO_URI") ?:
-    throw IllegalStateException("MONGO_URI environment variable is required")
->>>>>>> Stashed changes
+        throw IllegalStateException("MONGO_URI environment variable is required")
 
     override fun configure() {
         bind(EntityStore::class.java).to(MongoEntityStore::class.java).`in`(Singleton::class.java)
@@ -79,13 +65,8 @@ class MinareModule : AbstractModule(), DatabaseNameProvider {
 
         bind(VerticleLogger::class.java).`in`(Singleton::class.java)
 
-<<<<<<< Updated upstream
-
-        bind(ChangeStreamWorkerVerticle::class.java)
-=======
         // NEW: Bind Redis pub/sub worker instead of MongoDB change stream worker
         bind(RedisPubSubWorkerVerticle::class.java)
->>>>>>> Stashed changes
         bind(MutationVerticle::class.java)
         bind(CleanupVerticle::class.java)
     }
