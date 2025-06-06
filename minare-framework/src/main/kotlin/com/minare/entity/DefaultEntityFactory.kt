@@ -2,6 +2,7 @@ package com.minare.core.entity
 
 import com.minare.core.models.Entity
 import com.minare.persistence.EntityStore
+import com.minare.persistence.StateStore
 import org.slf4j.LoggerFactory
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -15,7 +16,7 @@ import kotlin.reflect.KClass
 @Singleton
 class DefaultEntityFactory @Inject constructor(
     private val reflectionCache: ReflectionCache,
-    private val entityStore: EntityStore
+    private val stateStore: StateStore
 ) : EntityFactory {
     private val log = LoggerFactory.getLogger(DefaultEntityFactory::class.java)
     private val classes: HashMap<String, Class<*>> = HashMap()
@@ -67,7 +68,7 @@ class DefaultEntityFactory @Inject constructor(
      */
     override fun <T : Entity> ensureDependencies(entity: T): T {
         entity.reflectionCache = reflectionCache
-        entity.entityStore = entityStore
+        entity.stateStore = stateStore
 
         return entity
     }

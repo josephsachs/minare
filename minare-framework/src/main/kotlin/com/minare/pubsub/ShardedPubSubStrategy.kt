@@ -1,4 +1,4 @@
-package kotlin.com.minare.pubsub
+package com.minare.pubsub
 
 import com.minare.pubsub.PubSubChannelStrategy
 import javax.inject.Singleton

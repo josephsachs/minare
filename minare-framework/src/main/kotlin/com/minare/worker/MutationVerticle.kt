@@ -9,8 +9,8 @@ import io.vertx.kotlin.coroutines.dispatcher
 import kotlinx.coroutines.launch
 import org.slf4j.LoggerFactory
 import javax.inject.Inject
-import kotlin.com.minare.entity.EntityVersioningService
-import kotlin.com.minare.persistence.StateStore
+import com.minare.entity.EntityVersioningService
+import com.minare.persistence.StateStore
 
 /**
  * Dedicated verticle for processing mutation commands.

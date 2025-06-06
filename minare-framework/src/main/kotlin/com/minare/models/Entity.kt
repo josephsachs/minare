@@ -13,8 +13,8 @@ import org.jgrapht.Graph
 import org.jgrapht.graph.DefaultEdge
 import java.lang.reflect.Field
 import javax.inject.Inject
-import kotlin.com.minare.entity.EntityVersioningService
-import kotlin.com.minare.persistence.StateStore
+import com.minare.entity.EntityVersioningService
+import com.minare.persistence.StateStore
 
 @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type")
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -89,13 +89,13 @@ open class Entity {
                 .put("message", "No allowed changes")
         }
 
-        if (!::entityStore.isInitialized) {
-            throw IllegalStateException("EntityStore not set")
+        if (!::stateStore.isInitialized) {
+            throw IllegalStateException("StateStore not set")
         }
 
         try {
 
-            val result = entityStore.mutateState(entityId, allowedChanges)
+            val result = stateStore.mutateState(entityId, allowedChanges)
 
             // After mutation is complete, bubble versions
             // Note: we're not waiting for bubbleVersions to complete before returning

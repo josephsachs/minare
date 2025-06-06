@@ -50,10 +50,8 @@ class ExampleApplication : MinareApplication() {
 
 
     override suspend fun setupApplicationRoutes() {
-
         val router = Router.router(vertx)
         router.route().handler(BodyHandler.create())
-
 
         val serverPort = 8080
         httpServer = vertx.createHttpServer()
@@ -63,15 +61,8 @@ class ExampleApplication : MinareApplication() {
 
         log.info("Main application HTTP server started on port {}", serverPort)
 
-        val staticHandler = StaticHandler.create()
-            .setCachingEnabled(false)
-            .setDefaultContentEncoding("UTF-8")
-            .setFilesReadOnly(true)
-
-        router.route("/*").handler(staticHandler)
-
+        // Register specific routes FIRST
         router.get("/client").handler { ctx ->
-
             val resource = Thread.currentThread().contextClassLoader.getResourceAsStream("webroot/index.html")
 
             if (resource != null) {
@@ -85,7 +76,6 @@ class ExampleApplication : MinareApplication() {
                     .end("Couldn't find index.html in resources")
             }
         }
-
 
         router.get("/debug").handler { ctx ->
             val classLoader = Thread.currentThread().contextClassLoader
@@ -106,6 +96,14 @@ class ExampleApplication : MinareApplication() {
                 .putHeader("content-type", "text/plain")
                 .end(response.toString())
         }
+
+        // Register catch-all static handler LAST
+        val staticHandler = StaticHandler.create()
+            .setCachingEnabled(false)
+            .setDefaultContentEncoding("UTF-8")
+            .setFilesReadOnly(true)
+
+        router.route("/*").handler(staticHandler)
     }
 
     /**
