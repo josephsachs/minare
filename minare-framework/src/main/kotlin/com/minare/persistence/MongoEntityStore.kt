@@ -17,8 +17,8 @@ import org.jgrapht.graph.DefaultEdge
 import org.slf4j.LoggerFactory
 import javax.inject.Inject
 import javax.inject.Named
-import kotlin.com.minare.persistence.EntityQueryStore
-import kotlin.com.minare.persistence.WriteBehindStore
+import com.minare.persistence.EntityQueryStore
+import com.minare.persistence.WriteBehindStore
 
 /**
  * MongoDB implementation of the EntityStore interface.
@@ -578,5 +578,15 @@ class MongoEntityStore @Inject constructor(
         }
 
         return graph
+    }
+
+
+    /**
+     * Persist entity for write-behind storage (WriteBehindStore interface)
+     */
+    suspend fun persistForWriteBehind(entity: Entity): Entity {
+        // For write-behind, we just use the same save logic as normal persistence
+        // This writes to MongoDB as the persistent store while Redis handles the live state
+        return save(entity)
     }
 }

@@ -86,4 +86,30 @@ class EntityVersioningService @Inject constructor(
             false
         }
     }
+
+    private suspend fun updateVersionsInRedis(idsToUpdate: Set<String>): JsonObject {
+        if (idsToUpdate.isEmpty()) {
+            return JsonObject().put("updatedCount", 0)
+        }
+
+        try {
+            var updatedCount = 0
+
+            for (entityId in idsToUpdate) {
+                // Increment version in Redis using atomic operation
+                val result = stateStore.mutateState(entityId, JsonObject().put("_versionIncrement", 1))
+                if (result != null && result.containsKey("version")) {
+                    updatedCount++
+                }
+            }
+
+            return JsonObject()
+                .put("updatedCount", updatedCount)
+                .put("processedIds", idsToUpdate.size)
+        } catch (e: Exception) {
+            return JsonObject()
+                .put("error", e.message)
+                .put("updatedCount", 0)
+        }
+    }
 }
