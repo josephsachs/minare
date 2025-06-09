@@ -1,8 +1,8 @@
 package com.minare.worker
 
+import com.minare.controller.EntityController
 import com.minare.core.entity.ReflectionCache
 import com.minare.core.models.Entity
-import com.minare.persistence.EntityStore
 import io.vertx.core.json.JsonObject
 import io.vertx.kotlin.coroutines.CoroutineVerticle
 import io.vertx.kotlin.coroutines.dispatcher
@@ -17,6 +17,7 @@ import com.minare.persistence.StateStore
  * This isolates mutation processing from the connection handling.
  */
 class MutationVerticle @Inject constructor(
+    private val entityController: EntityController,
     private val stateStore: StateStore,
     private val reflectionCache: ReflectionCache,
     private val versioningService: EntityVersioningService
@@ -48,7 +49,7 @@ class MutationVerticle @Inject constructor(
 
                     try {
                         // Find the entity to mutate
-                        val entities: Map<String, Entity> = stateStore.findEntitiesByIds(listOf(entityId))
+                        val entities: Map<String, Entity> = entityController.findByIds(listOf(entityId))
 
                         if (entities.isEmpty()) {
                             message.fail(404, "Entity not found: $entityId")
@@ -57,16 +58,13 @@ class MutationVerticle @Inject constructor(
 
                         // Get the entity and inject dependencies
                         val entity = entities[entityId]!!
-                        entity.reflectionCache = this@MutationVerticle.reflectionCache
-                        entity.stateStore = this@MutationVerticle.stateStore  // Changed from entityStore
-                        entity.versioningService = this@MutationVerticle.versioningService  // New
 
                         // Perform the mutation
                         val result = entity.mutate(entityObject)
 
                         // If mutation was successful, fetch the updated entity
                         if (result.getBoolean("success", false)) {
-                            val updatedEntity = stateStore.findEntitiesByIds(listOf(entityId))[entityId]
+                            val updatedEntity = entityController.findByIds(listOf(entityId))[entityId]
 
                             // Build response with the updated entity
                             val response = JsonObject()

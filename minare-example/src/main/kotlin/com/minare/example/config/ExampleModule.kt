@@ -2,6 +2,7 @@ package com.minare.example.config
 
 import com.google.inject.PrivateModule
 import com.google.inject.Singleton
+import com.google.inject.name.Names
 import com.minare.config.DatabaseNameProvider
 import com.minare.controller.ConnectionController
 import com.minare.core.entity.EntityFactory
@@ -22,16 +23,15 @@ class ExampleModule : PrivateModule(), DatabaseNameProvider {
     private val log = LoggerFactory.getLogger(ExampleModule::class.java)
 
     override fun configure() {
-
-
-        bind(EntityFactory::class.java).to(ExampleEntityFactory::class.java).`in`(Singleton::class.java)
-
+        // Bind our custom EntityFactory
+        bind(EntityFactory::class.java).annotatedWith(Names.named("userEntityFactory"))
+            .to(ExampleEntityFactory::class.java).`in`(Singleton::class.java)
 
         bind(ChannelController::class.java).to(ExampleChannelController::class.java).`in`(Singleton::class.java)
         bind(ConnectionController::class.java).to(ExampleConnectionController::class.java).`in`(Singleton::class.java)
 
-
-        expose(EntityFactory::class.java)
+        // Expose the named user factory (framework will wrap it)
+        expose(EntityFactory::class.java).annotatedWith(Names.named("userEntityFactory"))
         expose(ChannelController::class.java)
         expose(ConnectionController::class.java)
 

@@ -8,10 +8,13 @@ import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.reflect.KClass
 
+
 /**
  * Default implementation of EntityFactory that provides basic entity creation.
  * Applications can replace this with their own implementation by binding a different
  * implementation to the EntityFactory interface in their Guice module.
+ *
+ * Framework dependencies are automatically injected by the framework wrapper.
  */
 @Singleton
 class DefaultEntityFactory @Inject constructor(
@@ -22,7 +25,6 @@ class DefaultEntityFactory @Inject constructor(
     private val classes: HashMap<String, Class<*>> = HashMap()
 
     init {
-
         classes["entity"] = Entity::class.java
     }
 
@@ -61,15 +63,5 @@ class DefaultEntityFactory @Inject constructor(
 
     override fun getTypeList(): List<KClass<*>> {
         return listOf(Entity::class)
-    }
-
-    /**
-     * Ensure an entity has all required dependencies injected
-     */
-    override fun <T : Entity> ensureDependencies(entity: T): T {
-        entity.reflectionCache = reflectionCache
-        entity.stateStore = stateStore
-
-        return entity
     }
 }

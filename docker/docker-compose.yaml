@@ -24,7 +24,7 @@ services:
     entrypoint: ["/scripts/init.sh"]
 
   redis:
-    image: redis:7-alpine
+    image: redis/redis-stack-server:latest
     container_name: redis
     hostname: redis
     ports:

@@ -5,7 +5,6 @@ import com.minare.core.models.Entity
 import com.minare.core.entity.EntityFactory
 import com.minare.core.entity.ReflectionCache
 import com.minare.core.entity.annotations.Parent
-import io.vertx.core.Future
 import io.vertx.core.json.JsonArray
 import io.vertx.core.json.JsonObject
 import io.vertx.ext.mongo.BulkOperation
@@ -16,9 +15,6 @@ import org.jgrapht.graph.DefaultDirectedGraph
 import org.jgrapht.graph.DefaultEdge
 import org.slf4j.LoggerFactory
 import javax.inject.Inject
-import javax.inject.Named
-import com.minare.persistence.EntityQueryStore
-import com.minare.persistence.WriteBehindStore
 
 /**
  * MongoDB implementation of the EntityStore interface.
@@ -584,7 +580,7 @@ class MongoEntityStore @Inject constructor(
     /**
      * Persist entity for write-behind storage (WriteBehindStore interface)
      */
-    suspend fun persistForWriteBehind(entity: Entity): Entity {
+    override suspend fun persistForWriteBehind(entity: Entity): Entity {
         // For write-behind, we just use the same save logic as normal persistence
         // This writes to MongoDB as the persistent store while Redis handles the live state
         return save(entity)

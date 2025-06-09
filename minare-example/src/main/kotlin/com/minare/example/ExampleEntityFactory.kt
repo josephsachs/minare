@@ -20,7 +20,6 @@ class ExampleEntityFactory @Inject constructor(
     private val classes: HashMap<String, Class<*>> = HashMap()
 
     init {
-
         classes["node"] = Node::class.java
         classes["entity"] = Entity::class.java
 
@@ -38,7 +37,7 @@ class ExampleEntityFactory @Inject constructor(
 
     override fun getNew(type: String): Entity {
         val normalizedType = type.lowercase()
-        val entity = when (normalizedType) {
+        return when (normalizedType) {
             "node" -> Node()
             else -> {
                 if (normalizedType != "entity") {
@@ -47,9 +46,7 @@ class ExampleEntityFactory @Inject constructor(
                 Entity()
             }
         }
-
-
-        return ensureDependencies(entity)
+        // Framework automatically handles dependency injection
     }
 
     /**
@@ -57,7 +54,7 @@ class ExampleEntityFactory @Inject constructor(
      */
     @Suppress("UNCHECKED_CAST")
     override fun <T : Entity> createEntity(entityClass: Class<T>): T {
-        val entity = when {
+        return when {
             Node::class.java.isAssignableFrom(entityClass) -> Node() as T
             Entity::class.java.isAssignableFrom(entityClass) -> Entity() as T
             else -> {
@@ -65,9 +62,7 @@ class ExampleEntityFactory @Inject constructor(
                 Entity() as T
             }
         }
-
-
-        return ensureDependencies(entity)
+        // Framework automatically handles dependency injection
     }
 
     /**
@@ -82,15 +77,5 @@ class ExampleEntityFactory @Inject constructor(
             Node::class,
             Entity::class
         )
-    }
-
-    /**
-     * Ensure an entity has all required dependencies injected
-     */
-    override fun <T : Entity> ensureDependencies(entity: T): T {
-        entity.reflectionCache = reflectionCache
-        entity.stateStore = stateStore
-
-        return entity
     }
 }

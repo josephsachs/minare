@@ -60,4 +60,5 @@ interface EntityStore {
      * @return JsonObject with information about the update results
      */
     suspend fun updateVersions(entityIds: Set<String>): JsonObject
+
 }
