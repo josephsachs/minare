@@ -5,6 +5,10 @@ import com.google.inject.name.Names
 import com.minare.cache.ConnectionCache
 import com.minare.cache.InMemoryConnectionCache
 import com.minare.core.entity.ReflectionCache
+import com.minare.core.entity.EntityFactory
+import com.minare.core.entity.DefaultEntityFactory
+import com.minare.entity.EntityDependencyInjector
+import com.minare.entity.EntityFactoryWrapper
 import com.minare.pubsub.PubSubChannelStrategy
 import com.minare.pubsub.PerChannelPubSubStrategy
 import com.minare.worker.CleanupVerticle
@@ -42,6 +46,7 @@ class MinareModule : AbstractModule(), DatabaseNameProvider {
     val uri = System.getenv("MONGO_URI") ?:
         throw IllegalStateException("MONGO_URI environment variable is required")
 
+
     override fun configure() {
         bind(StateStore::class.java).to(RedisEntityStore::class.java).`in`(Singleton::class.java)
         bind(EntityStore::class.java).to(MongoEntityStore::class.java).`in`(Singleton::class.java)
@@ -57,7 +62,12 @@ class MinareModule : AbstractModule(), DatabaseNameProvider {
         bind(ConnectionCache::class.java).to(InMemoryConnectionCache::class.java).`in`(Singleton::class.java)
         bind(ReflectionCache::class.java).`in`(Singleton::class.java)
 
-        // NEW: Bind pub/sub strategy - applications can override this
+        // Entity dependency injection
+        bind(EntityDependencyInjector::class.java).`in`(Singleton::class.java)
+
+        // Note: Applications must provide their own EntityFactory binding with @Named("userEntityFactory")
+        // The framework will automatically wrap it with dependency injection via the provider method
+
         bind(PubSubChannelStrategy::class.java).to(PerChannelPubSubStrategy::class.java).`in`(Singleton::class.java)
 
         bind(String::class.java)
@@ -93,6 +103,20 @@ class MinareModule : AbstractModule(), DatabaseNameProvider {
     @Singleton
     fun provideMinareVerticleFactory(injector: Injector): MinareVerticleFactory {
         return MinareVerticleFactory(injector)
+    }
+
+    /**
+     * Provides EntityFactory with automatic dependency injection.
+     * This wraps the user's EntityFactory implementation to automatically
+     * inject framework dependencies into all created entities.
+     */
+    @Provides
+    @Singleton
+    fun provideEntityFactoryWithInjection(
+        @Named("userEntityFactory") userEntityFactory: EntityFactory,
+        dependencyInjector: EntityDependencyInjector
+    ): EntityFactory {
+        return EntityFactoryWrapper(userEntityFactory, dependencyInjector)
     }
 
     @Provides

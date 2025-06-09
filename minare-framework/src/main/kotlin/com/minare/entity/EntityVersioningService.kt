@@ -2,10 +2,8 @@ package com.minare.entity
 
 import com.google.inject.Inject
 import com.google.inject.Singleton
-import com.minare.core.entity.ReflectionCache
 import com.minare.core.entity.annotations.Parent
 import com.minare.core.models.Entity
-import com.minare.persistence.EntityStore
 import io.vertx.core.json.JsonObject
 import org.jgrapht.Graph
 import org.jgrapht.graph.DefaultEdge
@@ -14,10 +12,8 @@ import com.minare.persistence.StateStore
 
 @Singleton
 class EntityVersioningService @Inject constructor(
-    private val entityQueryStore: EntityQueryStore,  // Mongo - for graph relationships
-    private val stateStore: StateStore,              // Redis - for version updates
-    private val entityStore: EntityStore,
-    private val reflectionCache: ReflectionCache
+    private val entityQueryStore: EntityQueryStore,
+    private val stateStore: StateStore
 ) {
     /**
      * Updates the version of this entity and its ancestors based on parent reference rules.

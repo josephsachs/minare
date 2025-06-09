@@ -10,6 +10,7 @@ import org.slf4j.LoggerFactory
 import java.util.*
 import javax.inject.Inject
 import javax.inject.Singleton
+import com.minare.controller.EntityController
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.random.Random
@@ -20,7 +21,7 @@ import kotlin.random.Random
 @Singleton
 class NodeGraphBuilder @Inject constructor(
     private val entityFactory: EntityFactory,
-    private val entityStore: EntityStore
+    private val entityController: EntityController
 ) {
     private val log = LoggerFactory.getLogger(NodeGraphBuilder::class.java)
 
@@ -46,7 +47,7 @@ class NodeGraphBuilder @Inject constructor(
         rootNode.label = "Root"
 
         try {
-            val savedRootNode = entityStore.save(rootNode) as Node
+            val savedRootNode = entityController.create(rootNode) as Node
             log.debug("Created root node with ID: ${savedRootNode._id}")
 
             graph.addVertex(savedRootNode)
@@ -74,16 +75,15 @@ class NodeGraphBuilder @Inject constructor(
                         val child = entityFactory.createEntity(Node::class.java) as Node
                         child.label = "${parent.label}-${index + 1}"
 
-                        val savedChild = entityStore.save(child) as Node
+                        val savedChild = entityController.create(child) as Node
                         log.debug("Created child node with ID: ${savedChild._id}")
 
                         parent.addChild(savedChild)
 
                         try {
                             log.debug("BEFORE saving parent: ${parent._id}")
-                            val updatedParent = entityStore.save(parent) as Node
+                            val updatedParent = entityController.save(parent) as Node
                             log.debug("AFTER saving parent: ${updatedParent._id}")
-
 
                             graph.addVertex(savedChild)
                             graph.addEdge(updatedParent, savedChild)
