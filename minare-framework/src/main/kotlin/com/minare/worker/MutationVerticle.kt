@@ -56,7 +56,6 @@ class MutationVerticle @Inject constructor(
                             return@launch
                         }
 
-                        // Get the entity and inject dependencies
                         val entity = entities[entityId]!!
 
                         // Perform the mutation
