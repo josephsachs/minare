@@ -119,6 +119,7 @@ class RedisEntityStore @Inject constructor(
                     }
                 }
             } catch (e: Exception) {
+                val temp = "trash"
                 // Continue with other entities
             }
         }
@@ -161,6 +162,7 @@ class RedisEntityStore @Inject constructor(
                                         field.set(entity, value)
                                     }
                                 } catch (e: Exception) {
+                                    val temp = "trash"
                                     // Log error but continue with other fields
                                 }
                             }

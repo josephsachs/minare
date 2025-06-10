@@ -1,0 +1,20 @@
+config:
+  target: "http://localhost:8080"  # Adjust to your actual target
+  processor: "./simple-processor.js"
+  environments:
+    load:
+      phases:
+        - duration: 10  # Short duration since we only want one connection
+          arrivalRate: 1  # One user per second (or use arrivalCount below)
+          # Alternatively: arrivalCount: 1
+
+scenarios:
+  - name: "Single Mutation Test"
+    flow:
+      - log: "Starting test"
+      - function: "connectCommandSocket"
+      - think: 1
+      - function: "connectUpdateSocket"
+      - think: 2
+      - function: "sendMutationCommand"
+      - think: 1
