@@ -2,25 +2,26 @@ package com.minare.worker
 
 import com.minare.controller.EntityController
 import com.minare.core.entity.ReflectionCache
-import com.minare.core.models.Entity
+import com.minare.entity.MutationService
 import io.vertx.core.json.JsonObject
 import io.vertx.kotlin.coroutines.CoroutineVerticle
 import io.vertx.kotlin.coroutines.dispatcher
 import kotlinx.coroutines.launch
 import org.slf4j.LoggerFactory
 import javax.inject.Inject
-import com.minare.entity.EntityVersioningService
 import com.minare.persistence.StateStore
 
 /**
  * Dedicated verticle for processing mutation commands.
  * This isolates mutation processing from the connection handling.
+ *
+ * Updated to work directly with JsonObjects instead of Entity objects.
  */
 class MutationVerticle @Inject constructor(
     private val entityController: EntityController,
     private val stateStore: StateStore,
     private val reflectionCache: ReflectionCache,
-    private val versioningService: EntityVersioningService
+    private val mutationService: MutationService
 ) : CoroutineVerticle() {
 
     private val log = LoggerFactory.getLogger(MutationVerticle::class.java)
@@ -30,7 +31,6 @@ class MutationVerticle @Inject constructor(
     }
 
     override suspend fun start() {
-
         vertx.eventBus().consumer<JsonObject>(ADDRESS_MUTATION).handler { message ->
             launch(vertx.dispatcher()) {
                 try {
@@ -39,39 +39,43 @@ class MutationVerticle @Inject constructor(
                     val connectionId = command.getString("connectionId")
                     val entityObject = command.getJsonObject("entity")
                     val entityId = entityObject?.getString("_id")
+                    val entityType = entityObject?.getString("type")
 
                     if (entityId == null) {
                         message.fail(400, "Missing entity ID")
                         return@launch
                     }
 
+                    if (entityType == null) {
+                        message.fail(400, "Missing entity type")
+                        return@launch
+                    }
+
                     log.debug("Processing mutation for entity '$entityId' from connection '$connectionId'")
 
                     try {
-                        // Find the entity to mutate
-                        val entities: Map<String, Entity> = entityController.findByIds(listOf(entityId))
+                        // Check if entity exists
+                        val entityJson = stateStore.findEntityJson(entityId)
 
-                        if (entities.isEmpty()) {
+                        if (entityJson == null) {
                             message.fail(404, "Entity not found: $entityId")
                             return@launch
                         }
 
-                        val entity = entities[entityId]!!
-
-                        // Perform the mutation
-                        val result = entity.mutate(entityObject)
+                        // Perform the mutation using the service
+                        val result = mutationService.mutate(entityId, entityType, entityObject)
 
                         // If mutation was successful, fetch the updated entity
                         if (result.getBoolean("success", false)) {
-                            val updatedEntity = entityController.findByIds(listOf(entityId))[entityId]
+                            val updatedEntityJson = stateStore.findEntityJson(entityId)
 
                             // Build response with the updated entity
                             val response = JsonObject()
                                 .put("success", true)
                                 .put("entity", JsonObject()
-                                    .put("_id", updatedEntity?._id)
-                                    .put("version", updatedEntity?.version)
-                                    .put("type", updatedEntity?.type)
+                                    .put("_id", entityId)
+                                    .put("version", updatedEntityJson?.getLong("version"))
+                                    .put("type", updatedEntityJson?.getString("type"))
                                 )
 
                             // Send successful response

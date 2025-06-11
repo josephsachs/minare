@@ -7,8 +7,7 @@ import com.minare.cache.InMemoryConnectionCache
 import com.minare.core.entity.ReflectionCache
 import com.minare.core.entity.EntityFactory
 import com.minare.core.entity.DefaultEntityFactory
-import com.minare.entity.EntityDependencyInjector
-import com.minare.entity.EntityFactoryWrapper
+import com.minare.entity.*
 import com.minare.pubsub.PubSubChannelStrategy
 import com.minare.pubsub.PerChannelPubSubStrategy
 import com.minare.worker.CleanupVerticle
@@ -27,9 +26,6 @@ import io.vertx.redis.client.RedisAPI
 import io.vertx.redis.client.RedisOptions
 import io.vertx.spi.cluster.hazelcast.HazelcastClusterManager
 import javax.inject.Named
-import com.minare.entity.EntityPublishService
-import com.minare.entity.EntityVersioningService
-import com.minare.entity.RedisEntityPublishService
 import com.minare.persistence.EntityQueryStore
 import com.minare.persistence.RedisEntityStore
 import com.minare.persistence.StateStore
@@ -44,7 +40,7 @@ class MinareModule : AbstractModule(), DatabaseNameProvider {
     private val log = LoggerFactory.getLogger(MinareModule::class.java)
 
     val uri = System.getenv("MONGO_URI") ?:
-        throw IllegalStateException("MONGO_URI environment variable is required")
+    throw IllegalStateException("MONGO_URI environment variable is required")
 
 
     override fun configure() {
@@ -54,6 +50,9 @@ class MinareModule : AbstractModule(), DatabaseNameProvider {
         bind(EntityVersioningService::class.java).`in`(Singleton::class.java)
         bind(EntityQueryStore::class.java).to(MongoEntityStore::class.java).`in`(Singleton::class.java)
         bind(WriteBehindStore::class.java).to(MongoEntityStore::class.java).`in`(Singleton::class.java)
+
+        // Add binding for the new MutationService
+        bind(MutationService::class.java).`in`(Singleton::class.java)
 
         bind(ConnectionStore::class.java).to(MongoConnectionStore::class.java).`in`(Singleton::class.java)
         bind(ChannelStore::class.java).to(MongoChannelStore::class.java).`in`(Singleton::class.java)
@@ -112,11 +111,11 @@ class MinareModule : AbstractModule(), DatabaseNameProvider {
      */
     @Provides
     @Singleton
-    fun provideEntityFactoryWithInjection(
+    fun provideEntityFactory(
         @Named("userEntityFactory") userEntityFactory: EntityFactory,
-        dependencyInjector: EntityDependencyInjector
+        entityDependencyInjector: EntityDependencyInjector
     ): EntityFactory {
-        return EntityFactoryWrapper(userEntityFactory, dependencyInjector)
+        return EntityFactoryWrapper(userEntityFactory, entityDependencyInjector)
     }
 
     @Provides

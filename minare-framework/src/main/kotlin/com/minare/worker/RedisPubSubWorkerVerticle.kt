@@ -8,6 +8,7 @@ import io.vertx.kotlin.coroutines.await
 import io.vertx.kotlin.coroutines.dispatcher
 import io.vertx.redis.client.Redis
 import io.vertx.redis.client.RedisAPI
+import io.vertx.redis.client.Response
 import io.vertx.redis.client.RedisOptions
 import kotlinx.coroutines.*
 import org.slf4j.LoggerFactory
@@ -39,6 +40,10 @@ class RedisPubSubWorkerVerticle @Inject constructor(
         // Batching constants for performance
         const val CHANGE_BATCH_SIZE = 100
         const val MAX_WAIT_MS = 200L
+
+        // Redis message types
+        private const val MESSAGE_TYPE = "message"
+        private const val PATTERN_MESSAGE_TYPE = "pmessage"
     }
 
     override suspend fun start() {
@@ -104,26 +109,14 @@ class RedisPubSubWorkerVerticle @Inject constructor(
                 val connection = redisSubscriber!!.connect().await()
 
                 // Set up message handler BEFORE subscribing
-                connection.handler { response: io.vertx.redis.client.Response ->
+                connection.handler { response: Response ->
                     // Redis pub/sub responses come as Response objects
                     when (response.type()) {
                         io.vertx.redis.client.ResponseType.PUSH,
                         io.vertx.redis.client.ResponseType.MULTI -> {
-                            // Handle pub/sub messages
+                            // Handle pub/sub messages if response has enough elements
                             if (response.size() >= 3) {
-                                val messageType = response.get(0).toString()
-                                if (messageType == "message" || messageType == "pmessage") {
-                                    val channel = response.get(1).toString()
-                                    val messagePayload = response.get(2).toString()
-
-                                    CoroutineScope(vertx.dispatcher()).launch {
-                                        try {
-                                            handleRedisMessage(messagePayload)
-                                        } catch (e: Exception) {
-                                            log.error("Error handling Redis message from channel {}", channel, e)
-                                        }
-                                    }
-                                }
+                                processRedisResponse(response)
                             }
                         }
                         else -> {
@@ -171,6 +164,48 @@ class RedisPubSubWorkerVerticle @Inject constructor(
             if (running) {
                 delay(5000)
                 processRedisSubscriptions() // Recursive restart
+            }
+        }
+    }
+
+    /**
+     * Process Redis pub/sub response by extracting the message payload based on message type.
+     * Handles both regular messages and pattern-matched messages, which have different formats.
+     */
+    private fun processRedisResponse(response: Response) {
+        val messageType = response.get(0).toString()
+
+        when (messageType) {
+            MESSAGE_TYPE -> {
+                // Regular message format: [message, channel, payload]
+                if (response.size() >= 3) {
+                    val channel = response.get(1).toString()
+                    val payload = response.get(2).toString()
+                    processMessagePayload(channel, payload)
+                }
+            }
+            PATTERN_MESSAGE_TYPE -> {
+                // Pattern message format: [pmessage, pattern, channel, payload]
+                if (response.size() >= 4) {
+                    val pattern = response.get(1).toString()
+                    val channel = response.get(2).toString()
+                    val payload = response.get(3).toString()
+                    processMessagePayload(channel, payload)
+                }
+            }
+        }
+    }
+
+    /**
+     * Process a message payload from a specific channel.
+     * Launches a coroutine to handle the message asynchronously.
+     */
+    private fun processMessagePayload(channel: String, payload: String) {
+        CoroutineScope(vertx.dispatcher()).launch {
+            try {
+                handleRedisMessage(payload)
+            } catch (e: Exception) {
+                log.error("Error handling Redis message from channel {}", channel, e)
             }
         }
     }
@@ -248,13 +283,6 @@ class RedisPubSubWorkerVerticle @Inject constructor(
      */
     private fun extractChangeNotification(redisMessage: JsonObject): JsonObject? {
         try {
-            // Redis pub/sub messages come in the format:
-            // ["message", "channel_name", "actual_message_payload"]
-            // We need to extract the actual payload
-
-            // For now, assume the message is the change notification itself
-            // In a real implementation, you might need to parse the Redis message format
-
             // Validate that this looks like a change notification
             if (redisMessage.containsKey("_id") &&
                 redisMessage.containsKey("type") &&
