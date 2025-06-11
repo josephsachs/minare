@@ -36,4 +36,18 @@ interface StateStore {
      * @return Map of entities with full state
      */
     suspend fun findEntitiesWithState(entityIds: List<String>): Map<String, Entity>
+
+    /**
+     * Finds an entity by ID and returns it as a JsonObject
+     * @param entityId The ID of the entity to fetch
+     * @return The entity as a JsonObject, or null if not found
+     */
+    suspend fun findEntityJson(entityId: String): JsonObject?
+
+    /**
+     * Finds multiple entities by their IDs and returns them as JsonObjects
+     * @param entityIds List of entity IDs to fetch
+     * @return Map of entity IDs to JsonObjects
+     */
+    suspend fun findEntitiesJsonByIds(entityIds: List<String>): Map<String, JsonObject>
 }

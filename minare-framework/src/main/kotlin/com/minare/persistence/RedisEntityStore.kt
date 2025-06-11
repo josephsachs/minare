@@ -1,14 +1,11 @@
 package com.minare.persistence
 
 import com.google.inject.Singleton
-import com.minare.controller.EntityController
 import com.minare.core.entity.EntityFactory
 import com.minare.core.entity.ReflectionCache
 import com.minare.core.entity.annotations.State
 import com.minare.core.models.Entity
 import com.minare.entity.EntityPublishService
-import com.minare.utils.JsonFieldConverter
-import io.vertx.core.json.JsonArray
 import io.vertx.core.json.JsonObject
 import io.vertx.kotlin.coroutines.await
 import io.vertx.redis.client.RedisAPI
@@ -22,7 +19,8 @@ class RedisEntityStore @Inject constructor(
     private val entityFactory: EntityFactory,
     private val publishService: EntityPublishService
 ) : StateStore {
-    private val log = LoggerFactory.getLogger(EntityController::class.java)
+
+    private val log = LoggerFactory.getLogger(RedisEntityStore::class.java)
 
     override suspend fun save(entity: Entity): Entity {
         val stateJson = JsonObject()
@@ -55,14 +53,12 @@ class RedisEntityStore @Inject constructor(
     }
 
     override suspend fun mutateState(entityId: String, delta: JsonObject): JsonObject {
-        // Read current entity from Redis
-        val currentJson = redisAPI.jsonGet(listOf(entityId, "$")).await()
+        log.debug("Mutating state for entity: $entityId with delta: $delta")
 
-        if (currentJson == null) {
-            throw IllegalStateException("Entity not found: $entityId")
-        }
+        // Get the current entity using our findEntityJson method
+        val currentDocument = findEntityJson(entityId)
+            ?: throw IllegalStateException("Entity not found: $entityId")
 
-        val currentDocument = JsonObject(currentJson.toString())
         val currentState = currentDocument.getJsonObject("state", JsonObject())
 
         // Apply delta to state
@@ -79,62 +75,49 @@ class RedisEntityStore @Inject constructor(
         redisAPI.jsonSet(listOf(entityId, "$", currentDocument.encode())).await()
 
         // Publish the change
-        publishService.publishStateChange(entityId, currentDocument.getString("type"), newVersion, delta)
+        publishService.publishStateChange(
+            entityId,
+            currentDocument.getString("type"),
+            newVersion,
+            delta
+        )
 
         return currentDocument
     }
 
     override suspend fun findEntitiesByIds(entityIds: List<String>): Map<String, Entity> {
-        if (entityIds.isEmpty()) return emptyMap()
+        if (entityIds.isEmpty()) {
+            return emptyMap()
+        }
 
-        return entityIds.mapNotNull { entityId ->
+        val result = mutableMapOf<String, Entity>()
+
+        for (entityId in entityIds) {
             try {
-                redisAPI.jsonGet(listOf(entityId, "$")).await()
-                    ?.let { JsonArray(it.toString()) }
-                    ?.mapNotNull { arrayElement ->
-                        (arrayElement as? JsonObject)?.let { document ->
-                            createEntityFromDocument(entityId, document)
+                val entityJson = redisAPI.jsonGet(listOf(entityId, "$")).await()
+
+                if (entityJson != null) {
+                    val document = JsonObject(entityJson.toString())
+                    val entityType = document.getString("type")
+                    val version = document.getLong("version", 1L)
+
+                    if (entityType != null) {
+                        val entity = entityFactory.getNew(entityType).apply {
+                            this._id = entityId
+                            this.version = version
+                            this.type = entityType
                         }
+
+                        result[entityId] = entity
                     }
-                    ?.associateBy { it._id!! }
+                }
             } catch (e: Exception) {
-                log.error("Failed to process entityId=$entityId", e)
-                null
+                // Continue with other entities
+                log.warn("Error fetching entity $entityId: ${e.message}")
             }
         }
-        .filterNotNull()
-        .fold(mutableMapOf<String, Entity>()) { acc, entityMap ->
-            acc.putAll(entityMap)
-            acc
-        }
-    }
 
-    private fun createEntityFromDocument(entityId: String, document: JsonObject): Entity? {
-        val entityType = document.getString("type") ?: return null
-        val version = document.getLong("version", 1L)
-        val state = document.getJsonObject("state", JsonObject())
-
-        return entityFactory.getNew(entityType).apply {
-            this._id = entityId
-            this.version = version
-            this.type = entityType
-        }.also { entity ->
-            entityFactory.useClass(entityType)?.let { entityClass ->
-                val jsonFieldConverter = JsonFieldConverter()
-                reflectionCache.getFieldsWithAnnotation<State>(entityClass)
-                    .forEach { field ->
-                        field.isAccessible = true
-                        state.getValue(field.name)?.let { value ->
-                            try {
-                                val convertedValue = jsonFieldConverter.convert(field, value)
-                                field.set(entity, convertedValue)
-                            } catch (e: Exception) {
-                                log.error("Failed to convert field ${field.name} for entity $entityId: ${e.message}")
-                            }
-                        }
-                    }
-            }
-        }
+        return result
     }
 
     override suspend fun findEntitiesWithState(entityIds: List<String>): Map<String, Entity> {
@@ -163,7 +146,7 @@ class RedisEntityStore @Inject constructor(
 
                         // Populate state fields using reflection
                         entityFactory.useClass(entityType)?.let { entityClass ->
-                            val stateFields = reflectionCache.getFieldsWithAnnotation<com.minare.core.entity.annotations.State>(entityClass)
+                            val stateFields = reflectionCache.getFieldsWithAnnotation<State>(entityClass)
                             for (field in stateFields) {
                                 field.isAccessible = true
                                 try {
@@ -172,7 +155,6 @@ class RedisEntityStore @Inject constructor(
                                         field.set(entity, value)
                                     }
                                 } catch (e: Exception) {
-                                    val temp = "trash"
                                     // Log error but continue with other fields
                                 }
                             }
@@ -183,9 +165,56 @@ class RedisEntityStore @Inject constructor(
                 }
             } catch (e: Exception) {
                 // Log error but continue with other entities
+                log.warn("Error fetching entity with state $entityId: ${e.message}")
             }
         }
 
         return result
+    }
+
+    /**
+     * Finds multiple entities by their IDs and returns them as JsonObjects
+     * @param entityIds List of entity IDs to fetch
+     * @return Map of entity IDs to JsonObjects
+     */
+    override suspend fun findEntitiesJsonByIds(entityIds: List<String>): Map<String, JsonObject> {
+        if (entityIds.isEmpty()) {
+            return emptyMap()
+        }
+
+        val result = mutableMapOf<String, JsonObject>()
+
+        for (entityId in entityIds) {
+            try {
+                val redisResponse = redisAPI.jsonGet(listOf(entityId, "$")).await()
+
+                if (redisResponse != null) {
+                    // Parse as JsonArray since Redis always returns an array
+                    val jsonArray = io.vertx.core.json.JsonArray(redisResponse.toString())
+
+                    // Extract entities from the array
+                    for (i in 0 until jsonArray.size()) {
+                        val entityJson = jsonArray.getJsonObject(i)
+                        // Get the ID from the entity JSON if possible, otherwise use the requested ID
+                        val id = entityJson.getString("_id") ?: entityId
+                        result[id] = entityJson
+                    }
+                }
+            } catch (e: Exception) {
+                log.warn("Error fetching entity JSON for $entityId: ${e.message}")
+                // Continue with other entities
+            }
+        }
+
+        return result
+    }
+
+    /**
+     * Finds an entity by ID and returns it as a JsonObject
+     * @param entityId The ID of the entity to fetch
+     * @return The entity as a JsonObject, or null if not found
+     */
+    override suspend fun findEntityJson(entityId: String): JsonObject? {
+        return findEntitiesJsonByIds(listOf(entityId))[entityId]
     }
 }
