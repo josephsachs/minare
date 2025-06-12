@@ -1,13 +1,12 @@
 /**
  * WebSocket message handlers
  * Optimized for high-frequency updates
- * Enhanced with heartbeat support
+ * Enhanced with heartbeat support and delta merging
  */
 import store from './store.js';
 import logger from './logger.js';
 import { connectUpdateSocket } from './connection.js';
 import config from './config.js';
-
 
 let pendingEntities = [];
 let processingQueued = false;
@@ -19,7 +18,7 @@ const PROCESS_INTERVAL = 100;
  * @param {boolean} needsTransform - Whether entities need transformation
  */
 function queueEntityUpdates(entities, needsTransform = true) {
-  if (!entities || entities.length ===.0) return;
+  if (!entities || entities.length === 0) return;
 
   pendingEntities.push({
     entities,
@@ -33,51 +32,80 @@ function queueEntityUpdates(entities, needsTransform = true) {
 }
 
 /**
- * Process queued entity updates in batch
+ * Process queued entity updates in batch with proper delta handling
  */
 function processEntityQueue() {
   if (pendingEntities.length > 0) {
-
     let totalEntityCount = 0;
     pendingEntities.forEach(batch => {
       totalEntityCount += batch.entities.length;
     });
 
-
     if (totalEntityCount > 0 && config.logging?.verbose) {
       logger.info(`Processing batch of ${totalEntityCount} entity updates`);
     }
 
-
-    const allProcessedEntities = [];
+    let deltaUpdates = 0;
+    let fullUpdates = 0;
+    let transformedUpdates = 0;
 
     for (const batch of pendingEntities) {
       const { entities, needsTransform } = batch;
 
-      if (needsTransform) {
+      for (const entity of entities) {
+        const entityId = entity._id || entity.id;
 
-        const transformed = entities.map(entity => ({
-          id: entity._id || entity.id,
-          version: entity.version,
-          state: entity.state,
-          type: entity.type
-        }));
-        allProcessedEntities.push(...transformed);
-      } else {
+        if (!entityId) {
+          if (config.logging?.verbose) {
+            logger.error('Skipping entity update: missing ID');
+          }
+          continue;
+        }
 
-        allProcessedEntities.push(...entities);
+        // Detect delta vs full state updates
+        if (entity.delta && entity.operation === 'update') {
+          // This is a delta update - merge with existing state
+          const updated = store.mergeEntityDelta(
+            entityId,
+            entity.delta,
+            entity.version,
+            entity.type
+          );
+
+          if (updated) {
+            deltaUpdates++;
+          }
+        } else if (needsTransform) {
+          // This needs transformation to standard format (legacy support)
+          const updated = store.updateEntity({
+            id: entityId,
+            version: entity.version,
+            state: entity.state,
+            type: entity.type
+          });
+
+          if (updated) {
+            transformedUpdates++;
+          }
+        } else {
+          // Already in correct format - direct update
+          const updated = store.updateEntity(entity);
+
+          if (updated) {
+            fullUpdates++;
+          }
+        }
       }
     }
 
-
-    if (allProcessedEntities.length > 0) {
-      store.updateEntities(allProcessedEntities);
+    // Log processing summary if verbose or significant activity
+    if (config.logging?.verbose || (deltaUpdates + fullUpdates + transformedUpdates) > 10) {
+      logger.info(`Processed: ${deltaUpdates} deltas, ${fullUpdates} full updates, ${transformedUpdates} transformed`);
     }
 
-
+    // Clear the queue
     pendingEntities = [];
   }
-
 
   processingQueued = false;
 }
@@ -99,87 +127,87 @@ export const handleCommandSocketMessage = (event) => {
 
     switch (message.type) {
       case 'connection_confirm':
-          store.setConnectionId(message.connectionId);
-          logger.info(`Connection established with ID: ${message.connectionId}`);
-          connectUpdateSocket();
-          break;
+        store.setConnectionId(message.connectionId);
+        logger.info(`Connection established with ID: ${message.connectionId}`);
+        connectUpdateSocket();
+        break;
 
-        case 'reconnect_response':
-          if (message.success) {
-            logger.info(`Reconnection successful with ID: ${store.getConnectionId()}`);
-          } else {
-            logger.error(`Reconnection failed: ${message.error || 'Unknown error'}`);
+      case 'reconnect_response':
+        if (message.success) {
+          logger.info(`Reconnection successful with ID: ${store.getConnectionId()}`);
+        } else {
+          logger.error(`Reconnection failed: ${message.error || 'Unknown error'}`);
+        }
+        break;
+
+      case 'heartbeat':
+        const response = {
+          type: 'heartbeat_response',
+          timestamp: message.timestamp,
+          clientTimestamp: Date.now()
+        };
+
+        const commandSocket = store.getCommandSocket();
+        if (commandSocket && commandSocket.readyState === WebSocket.OPEN) {
+          commandSocket.send(JSON.stringify(response));
+          if (Math.random() < 0.05) { // Log roughly 5% of heartbeats
+            logger.debug(`Received server heartbeat, responded with timestamp ${response.clientTimestamp}`);
           }
-          break;
+        }
 
-        case 'heartbeat':
-          const response = {
-            type: 'heartbeat_response',
-            timestamp: message.timestamp,
-            clientTimestamp: Date.now()
-          };
+        store.updateLastActivity();
+        break;
 
-          const commandSocket = store.getCommandSocket();
-          if (commandSocket && commandSocket.readyState === WebSocket.OPEN) {
-            commandSocket.send(JSON.stringify(response));
-            if (Math.random() < 0.05) { // Log roughly 5% of heartbeats
-              logger.debug(`Received server heartbeat, responded with timestamp ${response.clientTimestamp}`);
+      case 'initial_sync_complete':
+        logger.info('Initial sync complete');
+        break;
+
+      case 'sync':
+        if (message.data && message.data.entities) {
+          logger.info(`Queueing ${message.data.entities.length} entity updates from command sync`);
+          queueEntityUpdates(message.data.entities, true);
+        }
+        break;
+
+      case 'mutation_response':
+      case 'mutation_success':
+        logger.info(`Received mutation response for entity: ${message.entity?._id}`);
+        if (message.entity) {
+          queueEntityUpdates([message.entity], true);
+        }
+        break;
+
+      case 'pong':
+      case 'ping_response':
+        logger.info(`Received ping response: ${message.timestamp ? `latency=${Date.now() - message.timestamp}ms` : 'no timestamp'}`);
+        break;
+
+      case 'reconnect_update_socket':
+        logger.info(`Server requested update socket reconnection at ${message.timestamp}`);
+        const updateSocket = store.getUpdateSocket();
+        if (updateSocket) {
+          try {
+            if (updateSocket.readyState === WebSocket.OPEN ||
+                updateSocket.readyState === WebSocket.CONNECTING) {
+              logger.info('Closing existing update socket before reconnection');
+              updateSocket.close();
             }
+            store.setUpdateSocket(null);
+          } catch (e) {
+            logger.error(`Error closing existing update socket: ${e.message}`);
           }
+        }
 
-          store.updateLastActivity();
-          break;
+        // Reconnect the update socket
+        connectUpdateSocket()
+          .then(() => logger.info('Update socket reconnected successfully'))
+          .catch(err => logger.error(`Failed to reconnect update socket: ${err.message}`));
 
-        case 'initial_sync_complete':
-          logger.info('Initial sync complete');
-          break;
+        break;
 
-        case 'sync':
-          if (message.data && message.data.entities) {
-            logger.info(`Queueing ${message.data.entities.length} entity updates from command sync`);
-            queueEntityUpdates(message.data.entities, true);
-          }
-          break;
-
-        case 'mutation_response':
-        case 'mutation_success':
-          logger.info(`Received mutation response for entity: ${message.entity?._id}`);
-          if (message.entity) {
-            queueEntityUpdates([message.entity], true);
-          }
-          break;
-
-        case 'pong':
-        case 'ping_response':
-          logger.info(`Received ping response: ${message.timestamp ? `latency=${Date.now() - message.timestamp}ms` : 'no timestamp'}`);
-          break;
-
-        case 'reconnect_update_socket':
-          logger.info(`Server requested update socket reconnection at ${message.timestamp}`);
-          const updateSocket = store.getUpdateSocket();
-          if (updateSocket) {
-            try {
-              if (updateSocket.readyState === WebSocket.OPEN ||
-                  updateSocket.readyState === WebSocket.CONNECTING) {
-                logger.info('Closing existing update socket before reconnection');
-                updateSocket.close();
-              }
-              store.setUpdateSocket(null);
-            } catch (e) {
-              logger.error(`Error closing existing update socket: ${e.message}`);
-            }
-          }
-
-          // Reconnect the update socket
-          connectUpdateSocket()
-            .then(() => logger.info('Update socket reconnected successfully'))
-            .catch(err => logger.error(`Failed to reconnect update socket: ${err.message}`));
-
-          break;
-
-        default:
-          logger.info(`Unhandled command message type: ${message.type}`);
-          break;
+      default:
+        logger.info(`Unhandled command message type: ${message.type}`);
+        break;
     }
 
   } catch (error) {
@@ -211,7 +239,8 @@ export const handleUpdateSocketMessage = (event) => {
           logger.info(`Received batch update with ${entityArray.length} entities`);
         }
 
-        queueEntityUpdates(entityArray, true);
+        // Note: update_batch entities come with delta format, no transform needed
+        queueEntityUpdates(entityArray, false);
       }
       return;
     }
