@@ -59,6 +59,13 @@ class EntityUpdateHandler @Inject constructor(
                         continue
                     }
 
+                    vlog.getEventLogger().trace("CONNECTION_DEPLOYMENT_CHECK", mapOf(
+                        "connectionId" to connection._id,
+                        "connectionUpdateDeploymentId" to (connection.updateDeploymentId ?: "null"),
+                        "currentDeploymentId" to currentDeploymentId,
+                        "matches" to (connection.updateDeploymentId == currentDeploymentId)
+                    ), traceId)
+
                     if (connection.updateDeploymentId != currentDeploymentId) {
                         continue
                     }

@@ -1,4 +1,4 @@
-import io.vertx.core.json.JsonArray
+/**import io.vertx.core.json.JsonArray
 import io.vertx.core.json.JsonObject
 import com.google.inject.Injector
 
@@ -699,3 +699,4 @@ class EntityTestFixtures {
     )
 }
 
+**/

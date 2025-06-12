@@ -1,5 +1,6 @@
 package com.minare.pubsub
 
+import io.vertx.core.json.JsonObject
 import javax.inject.Singleton
 
 /**
@@ -27,5 +28,37 @@ class GlobalPubSubStrategy : PubSubChannelStrategy {
         entityChannelIds: List<String>
     ): List<String> {
         return listOf(GLOBAL_CHANNEL)
+    }
+
+    override fun getSubscriptions(): List<PubSubChannelStrategy.SubscriptionDescriptor> {
+        // For global strategy, we use a single regular subscription
+        return listOf(
+            PubSubChannelStrategy.SubscriptionDescriptor(
+                channel = GLOBAL_CHANNEL,
+                isPattern = false,
+                description = "Global subscription for all entity changes"
+            )
+        )
+    }
+
+    override fun parseMessage(channel: String, message: String): JsonObject? {
+        try {
+            // Parse the message from JSON
+            val messageJson = JsonObject(message)
+
+            // Validate that it looks like a change notification
+            if (messageJson.containsKey("_id") &&
+                messageJson.containsKey("type") &&
+                messageJson.containsKey("version")) {
+
+                // The message is already in the format expected by update verticle
+                return messageJson
+            }
+
+            return null
+        } catch (e: Exception) {
+            // Log error in real implementation
+            return null
+        }
     }
 }
