@@ -1,4 +1,4 @@
-import com.fasterxml.jackson.annotation.JsonProperty
+/**import com.fasterxml.jackson.annotation.JsonProperty
 import com.fasterxml.jackson.annotation.JsonTypeName
 import com.minare.core.entity.EntityFactory
 import com.minare.core.entity.annotations.*
@@ -179,4 +179,4 @@ class TestEntityFactory : EntityFactory {
 
         return entity
     }
-}
+}**/

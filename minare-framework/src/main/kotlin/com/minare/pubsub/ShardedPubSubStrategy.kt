@@ -1,6 +1,6 @@
 package com.minare.pubsub
 
-import com.minare.pubsub.PubSubChannelStrategy
+import io.vertx.core.json.JsonObject
 import javax.inject.Singleton
 
 /**
@@ -22,6 +22,7 @@ class ShardedPubSubStrategy : PubSubChannelStrategy {
     companion object {
         const val DEFAULT_SHARD_COUNT = 8
         const val SHARD_CHANNEL_PREFIX = "minare:shard"
+        const val SHARD_CHANNEL_SUFFIX = ":changes"
     }
 
     private val shardCount: Int = DEFAULT_SHARD_COUNT
@@ -36,6 +37,38 @@ class ShardedPubSubStrategy : PubSubChannelStrategy {
             if (it < 0) it + shardCount else it
         }
 
-        return listOf("$SHARD_CHANNEL_PREFIX:${shard}:changes")
+        return listOf("$SHARD_CHANNEL_PREFIX:${shard}$SHARD_CHANNEL_SUFFIX")
+    }
+
+    override fun getSubscriptions(): List<PubSubChannelStrategy.SubscriptionDescriptor> {
+        // For sharded strategy, we subscribe to all shard channels
+        return (0 until shardCount).map { shard ->
+            PubSubChannelStrategy.SubscriptionDescriptor(
+                channel = "$SHARD_CHANNEL_PREFIX:${shard}$SHARD_CHANNEL_SUFFIX",
+                isPattern = false,
+                description = "Subscription for shard $shard"
+            )
+        }
+    }
+
+    override fun parseMessage(channel: String, message: String): JsonObject? {
+        try {
+            // Parse the message from JSON
+            val messageJson = JsonObject(message)
+
+            // Validate that it looks like a change notification
+            if (messageJson.containsKey("_id") &&
+                messageJson.containsKey("type") &&
+                messageJson.containsKey("version")) {
+
+                // The message is already in the format expected by update verticle
+                return messageJson
+            }
+
+            return null
+        } catch (e: Exception) {
+            // Log error in real implementation
+            return null
+        }
     }
 }

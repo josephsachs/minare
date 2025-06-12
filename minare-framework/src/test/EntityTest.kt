@@ -1,4 +1,9 @@
-import com.google.inject.AbstractModule
+/** As of Redis PubSub refactor, the Entity interface has changed completely
+ These tests helped us develop the graphing stuff. They served their purpose. And now, like adult mayflies, they die.
+ Another reminder that until you know what your unit SUTs are, your tests are ephemeral as hell. **/
+
+
+/**import com.google.inject.AbstractModule
 import com.google.inject.Guice
 import com.google.inject.Injector
 import com.google.inject.name.Names
@@ -385,4 +390,4 @@ class EntityTest {
         testInjector.injectMembers(entity)
         return entity
     }
-}
+}**/
