@@ -11,10 +11,18 @@ class EntityUpdatedEvent @Inject constructor(
     private val entityUpdateHandler: EntityUpdateHandler,
     private val vlog: VerticleLogger
 ) {
-    suspend fun register() {
+    suspend fun register(deploymentId: String) {
+        vlog.getEventLogger().trace("REGISTERING_ENTITY_UPDATE_HANDLER", mapOf(
+            "deploymentId" to deploymentId
+        ))
+
+        // Set the deployment ID on the handler to establish ownership
+        entityUpdateHandler.setDeploymentId(deploymentId)
+
         eventBusUtils.registerTracedConsumer<JsonObject>(ADDRESS_ENTITY_UPDATED) { message, traceId ->
             entityUpdateHandler.handle(message.body(), traceId)
         }
+
         vlog.logHandlerRegistration(ADDRESS_ENTITY_UPDATED)
     }
 

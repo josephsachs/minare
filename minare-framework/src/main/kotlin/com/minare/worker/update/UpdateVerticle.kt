@@ -171,7 +171,7 @@ class UpdateVerticle @Inject constructor(
      * Register all event bus consumers
      */
     private suspend fun registerEventBusConsumers() {
-        entityUpdatedEvent.register()
+        entityUpdatedEvent.register(deploymentID!!)
         updateConnectionEstablishedEvent.register()
         updateConnectionClosedEvent.register()
     }
