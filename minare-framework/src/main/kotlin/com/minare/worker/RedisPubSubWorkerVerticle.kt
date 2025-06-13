@@ -2,6 +2,7 @@ package com.minare.worker
 
 import com.minare.pubsub.PubSubChannelStrategy
 import com.minare.utils.VerticleLogger
+import com.minare.pubsub.UpdateBatchCoordinator
 import io.vertx.core.json.JsonObject
 import io.vertx.kotlin.coroutines.CoroutineVerticle
 import io.vertx.kotlin.coroutines.await
@@ -9,7 +10,6 @@ import io.vertx.kotlin.coroutines.dispatcher
 import io.vertx.redis.client.Redis
 import io.vertx.redis.client.RedisAPI
 import io.vertx.redis.client.RedisOptions
-import io.vertx.redis.client.ResponseType
 import kotlinx.coroutines.*
 import org.slf4j.LoggerFactory
 import javax.inject.Inject
@@ -17,25 +17,32 @@ import javax.inject.Named
 
 /**
  * Worker verticle that subscribes to Redis pub/sub channels for entity change notifications.
- * Replaces ChangeStreamWorkerVerticle by providing fast Redis-based change notifications
- * instead of slow MongoDB change streams.
+ *
+ * Now includes an UpdateBatchCoordinator that batches entity updates before distributing them
+ * to ensure all UpdateVerticles receive identical update batches.
  */
 class RedisPubSubWorkerVerticle @Inject constructor(
     @Named("databaseName") private val databaseName: String,
     private val pubSubChannelStrategy: PubSubChannelStrategy,
-    private val vlog: VerticleLogger
+    private val vlog: VerticleLogger,
+    private val updateBatchCoordinator: UpdateBatchCoordinator
 ) : CoroutineVerticle() {
 
     private val log = LoggerFactory.getLogger(RedisPubSubWorkerVerticle::class.java)
     private var running = false
     private var redisSubscriber: Redis? = null
-    private var subscriptionJob: Job? = null
+    private var redisAPI: RedisAPI? = null
 
     companion object {
         // Same event bus addresses as ChangeStreamWorkerVerticle for compatibility
         const val ADDRESS_STREAM_STARTED = "minare.change.stream.started"
         const val ADDRESS_STREAM_STOPPED = "minare.change.stream.stopped"
         const val ADDRESS_ENTITY_UPDATED = "minare.entity.update"
+
+        // Batching constants for performance
+        const val CHANGE_BATCH_SIZE = 100
+        const val MAX_WAIT_MS = 200L
+        const val DEFAULT_BATCH_INTERVAL_MS = 100L // 10 frames per second
     }
 
     override suspend fun start() {
@@ -48,8 +55,12 @@ class RedisPubSubWorkerVerticle @Inject constructor(
             // Initialize Redis subscriber
             initializeRedisSubscriber()
 
+            // Start the update batch coordinator
+            updateBatchCoordinator.start(DEFAULT_BATCH_INTERVAL_MS)
+            log.info("Started UpdateBatchCoordinator with interval: {}ms", DEFAULT_BATCH_INTERVAL_MS)
+
             // Start the subscription process
-            subscriptionJob = launch {
+            launch {
                 processRedisSubscriptions()
             }
 
@@ -64,13 +75,13 @@ class RedisPubSubWorkerVerticle @Inject constructor(
         running = false
 
         try {
-            // Cancel the subscription job if it's running
-            subscriptionJob?.cancelAndJoin()
+            // Stop the batch coordinator
+            updateBatchCoordinator.stop()
+            log.info("UpdateBatchCoordinator stopped")
 
-            // Close the Redis connection
+            // Close Redis connection
             redisSubscriber?.close()
 
-            // Notify that the stream has stopped
             vertx.eventBus().publish(ADDRESS_STREAM_STOPPED, true)
             log.info("Redis pub/sub worker stopped")
         } catch (e: Exception) {
@@ -98,120 +109,180 @@ class RedisPubSubWorkerVerticle @Inject constructor(
      * Determines which channels to subscribe to based on the strategy and subscribes to them.
      */
     private suspend fun processRedisSubscriptions() {
-        val subscriptionSupervisor = SupervisorJob()
-        val subscriptionContext = Dispatchers.IO + subscriptionSupervisor
+        val subscriptionJob = SupervisorJob()
+        val subscriptionContext = Dispatchers.IO + subscriptionJob
 
         try {
             withContext(subscriptionContext) {
-                // Get subscription descriptors from the strategy
-                val subscriptions = pubSubChannelStrategy.getSubscriptions()
-
-                if (subscriptions.isEmpty()) {
-                    log.warn("No subscriptions defined by strategy. No Redis pub/sub monitoring will occur.")
-                    return@withContext
-                }
-
-                log.info("Strategy {} provided {} subscription(s)",
-                    pubSubChannelStrategy::class.simpleName, subscriptions.size)
-
-                // Connect to Redis
+                // Connect and get the connection
                 val connection = redisSubscriber!!.connect().await()
 
                 // Set up message handler BEFORE subscribing
-                connection.handler { response ->
-                    // Handle Redis pub/sub messages
-                    try {
-                        if (response.type() == ResponseType.PUSH) {
-                            val messageType = response.get(0).toString()
+                connection.handler { response: io.vertx.redis.client.Response ->
+                    // Redis pub/sub responses come as Response objects
+                    when (response.type()) {
+                        io.vertx.redis.client.ResponseType.PUSH,
+                        io.vertx.redis.client.ResponseType.MULTI -> {
+                            // Handle pub/sub messages
+                            if (response.size() >= 3) {
+                                val messageType = response.get(0).toString()
+                                if (messageType == "message") {
+                                    val channel = response.get(1).toString()
+                                    val messagePayload = response.get(2).toString()
 
-                            when (messageType) {
-                                "message" -> {
-                                    if (response.size() >= 3) {
-                                        val channel = response.get(1).toString()
-                                        val messagePayload = response.get(2).toString()
-
-                                        // Process message asynchronously to avoid blocking the Redis connection
-                                        CoroutineScope(vertx.dispatcher()).launch {
-                                            handleRedisMessage(channel, messagePayload)
+                                    CoroutineScope(vertx.dispatcher()).launch {
+                                        try {
+                                            handleRedisMessage(messagePayload)
+                                        } catch (e: Exception) {
+                                            log.error("Error handling Redis message from channel {}", channel, e)
                                         }
                                     }
-                                }
-                                "pmessage" -> {
-                                    if (response.size() >= 4) {
-                                        // For pattern messages, we get pattern, channel, payload
-                                        val pattern = response.get(1).toString()
-                                        val channel = response.get(2).toString()
-                                        val messagePayload = response.get(3).toString()
+                                } else if (messageType == "pmessage" && response.size() >= 4) {
+                                    val pattern = response.get(1).toString()
+                                    val channel = response.get(2).toString()
+                                    val messagePayload = response.get(3).toString()
 
-                                        // Process message asynchronously
-                                        CoroutineScope(vertx.dispatcher()).launch {
-                                            handleRedisMessage(channel, messagePayload)
+                                    CoroutineScope(vertx.dispatcher()).launch {
+                                        try {
+                                            handleRedisMessage(messagePayload)
+                                        } catch (e: Exception) {
+                                            log.error("Error handling Redis pattern message from channel {}", channel, e)
                                         }
                                     }
                                 }
                             }
                         }
-                    } catch (e: Exception) {
-                        log.error("Error processing Redis message", e)
-                    }
-                }
-
-                // Create RedisAPI for commands
-                val redisAPI = RedisAPI.api(connection)
-
-                // Subscribe to all channels/patterns from the strategy
-                for (subscription in subscriptions) {
-                    try {
-                        if (subscription.isPattern) {
-                            log.info("Subscribing to pattern: {}", subscription.channel)
-                            redisAPI.psubscribe(listOf(subscription.channel)).await()
-                        } else {
-                            log.info("Subscribing to channel: {}", subscription.channel)
-                            redisAPI.subscribe(listOf(subscription.channel)).await()
+                        else -> {
+                            // Handle other response types if needed
                         }
-                    } catch (e: Exception) {
-                        log.error("Failed to subscribe to {}: {}",
-                            if (subscription.isPattern) "pattern" else "channel",
-                            subscription.channel, e)
                     }
                 }
 
-                // Notify that subscriptions are established
-                vertx.eventBus().publish(ADDRESS_STREAM_STARTED, true)
+                // Determine which Redis pub/sub channels to subscribe to
+                val channelsToSubscribe = determineSubscriptionChannels()
 
-                // Keep the coroutine alive while running
-                while (running) {
-                    delay(5000) // Just to prevent tight loop, pub/sub is handled by handler
+                if (channelsToSubscribe.isEmpty()) {
+                    log.warn("No Redis pub/sub channels to subscribe to")
+                    return@withContext
+                }
+
+                log.info("Subscribing to Redis pub/sub channels: {}", channelsToSubscribe)
+
+                // Subscribe to the channels using the connection
+                for (channel in channelsToSubscribe) {
+                    // Use pattern subscribe for wildcard channels
+                    if (channel.contains("*")) {
+                        connection.send(io.vertx.redis.client.Request.cmd(io.vertx.redis.client.Command.PSUBSCRIBE).arg(channel)).await()
+                        log.info("Successfully subscribed to pattern: {}", channel)
+                    } else {
+                        connection.send(io.vertx.redis.client.Request.cmd(io.vertx.redis.client.Command.SUBSCRIBE).arg(channel)).await()
+                        log.info("Successfully subscribed to channel: {}", channel)
+                    }
+                }
+
+                // Publish stream started event
+                vertx.eventBus().publish(ADDRESS_STREAM_STARTED, true)
+                log.info("Redis pub/sub subscriptions active for {} channels", channelsToSubscribe.size)
+
+                // Keep the subscription alive
+                while (isActive && running) {
+                    delay(1000) // Check every second
                 }
             }
         } catch (e: Exception) {
-            log.error("Error in Redis pub/sub subscription process", e)
+            if (e is CancellationException) throw e
+            log.error("Error in Redis subscription processing", e)
 
-            // Try to clean up
-            subscriptionSupervisor.cancel()
+            // Try to restart after a delay if we're still running
+            if (running) {
+                delay(5000)
+                processRedisSubscriptions() // Recursive restart
+            }
+        }
+    }
 
-            // Re-throw to signal failure
-            throw e
+    /**
+     * Determine which Redis pub/sub channels to subscribe to.
+     * This is strategy-dependent - some strategies might subscribe to all possible channels,
+     * others might use pattern subscriptions, etc.
+     */
+    private fun determineSubscriptionChannels(): List<String> {
+        // For now, we'll use a simple approach based on the strategy type
+        // More sophisticated implementations might use pattern subscriptions or dynamic discovery
+
+        return when (pubSubChannelStrategy::class.simpleName) {
+            "PerChannelPubSubStrategy" -> {
+                // For per-channel strategy, we need to use pattern subscription
+                // since we don't know all possible channel IDs in advance
+                listOf("minare:channel:*:changes")
+            }
+            "GlobalPubSubStrategy" -> {
+                // For global strategy, subscribe to the single global channel
+                listOf("minare:entity:changes")
+            }
+            "ShardedPubSubStrategy" -> {
+                // For sharded strategy, subscribe to all shard channels
+                // This is a simplified example - real implementation might be more sophisticated
+                (0..7).map { "minare:shard:${it}:changes" }
+            }
+            else -> {
+                log.warn("Unknown pub/sub strategy: {}, using global fallback", pubSubChannelStrategy::class.simpleName)
+                listOf("minare:entity:changes")
+            }
         }
     }
 
     /**
      * Handle incoming Redis pub/sub messages.
-     * Delegates to the strategy to parse the message, then publishes it to the event bus.
+     * Instead of publishing directly to the event bus, this now queues updates
+     * for batched distribution via the UpdateBatchCoordinator.
      */
-    private suspend fun handleRedisMessage(channel: String, message: String) {
+    private suspend fun handleRedisMessage(message: String) {
         try {
-            // Use the strategy to parse the message
-            val changeNotification = pubSubChannelStrategy.parseMessage(channel, message)
+            // Parse the Redis message
+            val messageJson = JsonObject(message)
+
+            // Extract the change notification data
+            val changeNotification = extractChangeNotification(messageJson)
 
             if (changeNotification != null) {
-                // Publish to event bus for UpdateVerticle to consume
+                // Queue update for batched distribution instead of publishing directly
+                updateBatchCoordinator.queueUpdate(changeNotification)
+
+                // Note: We temporarily keep the original event bus publication during transition
+                // Once all UpdateVerticles are updated to use batched updates, this can be removed
                 vertx.eventBus().publish(ADDRESS_ENTITY_UPDATED, changeNotification)
-            } else {
-                log.debug("Received invalid message on channel {}, ignoring", channel)
             }
         } catch (e: Exception) {
-            log.error("Error processing Redis message on channel {}: {}", channel, message, e)
+            log.error("Error processing Redis message: {}", message, e)
+        }
+    }
+
+    /**
+     * Extract change notification from Redis pub/sub message.
+     * Redis pub/sub messages have a different format than the change notification payload.
+     */
+    private fun extractChangeNotification(redisMessage: JsonObject): JsonObject? {
+        try {
+            // Redis pub/sub messages come in the format:
+            // ["message", "channel_name", "actual_message_payload"]
+            // We need to extract the actual payload
+
+            // For now, assume the message is the change notification itself
+            // In a real implementation, you might need to parse the Redis message format
+
+            // Validate that this looks like a change notification
+            if (redisMessage.containsKey("_id") &&
+                redisMessage.containsKey("type") &&
+                redisMessage.containsKey("version")) {
+
+                return redisMessage
+            }
+
+            return null
+        } catch (e: Exception) {
+            log.error("Error extracting change notification from Redis message", e)
+            return null
         }
     }
 }

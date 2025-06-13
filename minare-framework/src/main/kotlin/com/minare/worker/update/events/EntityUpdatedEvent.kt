@@ -3,30 +3,31 @@ package com.minare.worker.update.events
 import com.google.inject.Inject
 import com.minare.utils.EventBusUtils
 import com.minare.utils.VerticleLogger
-import io.vertx.core.json.JsonObject
+import com.minare.worker.RedisPubSubWorkerVerticle
 import com.minare.worker.update.handlers.EntityUpdateHandler
+import io.vertx.core.json.JsonObject
 
+/**
+ * Event handler for entity update events.
+ *
+ * Modified to handle both legacy individual updates and batched updates during transition.
+ */
 class EntityUpdatedEvent @Inject constructor(
     private val eventBusUtils: EventBusUtils,
     private val entityUpdateHandler: EntityUpdateHandler,
     private val vlog: VerticleLogger
 ) {
-    suspend fun register(deploymentId: String) {
-        vlog.getEventLogger().trace("REGISTERING_ENTITY_UPDATE_HANDLER", mapOf(
-            "deploymentId" to deploymentId
-        ))
-
-        // Set the deployment ID on the handler to establish ownership
-        entityUpdateHandler.setDeploymentId(deploymentId)
-
+    suspend fun register() {
+        // Register handler for legacy individual entity update events
         eventBusUtils.registerTracedConsumer<JsonObject>(ADDRESS_ENTITY_UPDATED) { message, traceId ->
+            // Only process individual updates if we're in transition period
+            // This will be removed once all components use batched updates
             entityUpdateHandler.handle(message.body(), traceId)
         }
-
         vlog.logHandlerRegistration(ADDRESS_ENTITY_UPDATED)
     }
 
     companion object {
-        const val ADDRESS_ENTITY_UPDATED = "minare.entity.update"
+        const val ADDRESS_ENTITY_UPDATED = RedisPubSubWorkerVerticle.ADDRESS_ENTITY_UPDATED
     }
 }

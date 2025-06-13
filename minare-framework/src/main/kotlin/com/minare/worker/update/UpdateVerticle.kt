@@ -4,6 +4,7 @@ import com.minare.MinareApplication
 import com.minare.cache.ConnectionCache
 import com.minare.core.FrameController
 import com.minare.persistence.ConnectionStore
+import com.minare.pubsub.UpdateBatchCoordinator
 import com.minare.utils.*
 import io.vertx.core.http.HttpServer
 import io.vertx.core.http.ServerWebSocket
@@ -96,6 +97,9 @@ class UpdateVerticle @Inject constructor(
                 "frameInterval" to DEFAULT_FRAME_INTERVAL_MS
             ))
 
+            // ADDED: Register consumer for batched updates from UpdateBatchCoordinator
+            registerBatchedUpdateConsumer()
+
             vlog.logStartupStep("EVENT_BUS_HANDLERS_REGISTERED")
 
             deployHttpServer()
@@ -110,6 +114,31 @@ class UpdateVerticle @Inject constructor(
             vlog.logVerticleError("STARTUP_FAILED", e)
             log.error("Failed to start UpdateVerticle", e)
             throw e
+        }
+    }
+
+    /**
+     * ADDED: Register consumer for batched updates from UpdateBatchCoordinator
+     */
+    private fun registerBatchedUpdateConsumer() {
+        vertx.eventBus().consumer<JsonObject>(UpdateBatchCoordinator.ADDRESS_BATCHED_UPDATES) { message ->
+            try {
+                val batchedUpdate = message.body()
+                forwardUpdateToClients(batchedUpdate)
+            } catch (e: Exception) {
+                vlog.logVerticleError("BATCHED_UPDATE_PROCESSING", e)
+            }
+        }
+        log.info("Registered consumer for batched updates")
+    }
+
+    /**
+     * ADDED: Forward a batched update to all connected clients managed by this verticle
+     */
+    private fun forwardUpdateToClients(batchedUpdate: JsonObject) {
+        val connections = connectionTracker.getAllConnectionIds()
+        for (connectionId in connections) {
+            sendUpdate(connectionId, batchedUpdate)
         }
     }
 
@@ -171,7 +200,7 @@ class UpdateVerticle @Inject constructor(
      * Register all event bus consumers
      */
     private suspend fun registerEventBusConsumers() {
-        entityUpdatedEvent.register(deploymentID!!)
+        entityUpdatedEvent.register()
         updateConnectionEstablishedEvent.register()
         updateConnectionClosedEvent.register()
     }
@@ -315,8 +344,8 @@ class UpdateVerticle @Inject constructor(
 
             vertx.eventBus().publish(
                 ADDRESS_CONNECTION_CLOSED, JsonObject()
-                .put("connectionId", connectionId)
-                .put("socketType", "update")
+                    .put("connectionId", connectionId)
+                    .put("socketType", "update")
             )
 
             vlog.getEventLogger().logStateChange("UpdateSocket", "REGISTERED", "DISCONNECTED",
@@ -327,8 +356,6 @@ class UpdateVerticle @Inject constructor(
             ))
         }
     }
-
-
 
     /**
      * Send an update directly to a client's WebSocket

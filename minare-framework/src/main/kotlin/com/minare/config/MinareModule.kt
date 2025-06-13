@@ -6,7 +6,6 @@ import com.minare.cache.ConnectionCache
 import com.minare.cache.InMemoryConnectionCache
 import com.minare.core.entity.ReflectionCache
 import com.minare.core.entity.EntityFactory
-import com.minare.core.entity.DefaultEntityFactory
 import com.minare.entity.*
 import com.minare.pubsub.PubSubChannelStrategy
 import com.minare.pubsub.PerChannelPubSubStrategy
@@ -30,6 +29,7 @@ import com.minare.persistence.EntityQueryStore
 import com.minare.persistence.RedisEntityStore
 import com.minare.persistence.StateStore
 import com.minare.persistence.WriteBehindStore
+import com.minare.pubsub.UpdateBatchCoordinator
 import kotlin.coroutines.CoroutineContext
 
 /**
@@ -68,6 +68,7 @@ class MinareModule : AbstractModule(), DatabaseNameProvider {
         // The framework will automatically wrap it with dependency injection via the provider method
 
         bind(PubSubChannelStrategy::class.java).to(PerChannelPubSubStrategy::class.java).`in`(Singleton::class.java)
+        bind(UpdateBatchCoordinator::class.java).`in`(Singleton::class.java)
 
         bind(String::class.java)
             .annotatedWith(Names.named("mongoConnectionString"))
