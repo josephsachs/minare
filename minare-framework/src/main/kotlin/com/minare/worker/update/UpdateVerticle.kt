@@ -61,7 +61,7 @@ class UpdateVerticle @Inject constructor(
         const val ADDRESS_UPDATE_SOCKET_CLOSE = "minare.update.socket.close"
         const val ADDRESS_INITIALIZE = "minare.update.initialize"
 
-        const val CACHE_TTL_MS = 10000L // 10 seconds
+        const val CACHE_TTL_MS = 2000L // 10 seconds
         const val HEARTBEAT_INTERVAL_MS = 15000L
         const val DEFAULT_FRAME_INTERVAL_MS = 100 // 10 frames per second
 

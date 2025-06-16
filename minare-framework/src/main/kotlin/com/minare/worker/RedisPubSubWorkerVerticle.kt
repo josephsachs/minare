@@ -203,32 +203,18 @@ class RedisPubSubWorkerVerticle @Inject constructor(
 
     /**
      * Determine which Redis pub/sub channels to subscribe to.
-     * This is strategy-dependent - some strategies might subscribe to all possible channels,
-     * others might use pattern subscriptions, etc.
+     * Updated to use the strategy's own getSubscriptions() method instead of
+     * brittle string-based class name matching. This is both type-safe and
+     * delegates to the strategy itself to determine its subscription needs.
      */
     private fun determineSubscriptionChannels(): List<String> {
-        // For now, we'll use a simple approach based on the strategy type
-        // More sophisticated implementations might use pattern subscriptions or dynamic discovery
-
-        return when (pubSubChannelStrategy::class.simpleName) {
-            "PerChannelPubSubStrategy" -> {
-                // For per-channel strategy, we need to use pattern subscription
-                // since we don't know all possible channel IDs in advance
-                listOf("minare:channel:*:changes")
-            }
-            "GlobalPubSubStrategy" -> {
-                // For global strategy, subscribe to the single global channel
-                listOf("minare:entity:changes")
-            }
-            "ShardedPubSubStrategy" -> {
-                // For sharded strategy, subscribe to all shard channels
-                // This is a simplified example - real implementation might be more sophisticated
-                (0..7).map { "minare:shard:${it}:changes" }
-            }
-            else -> {
-                log.warn("Unknown pub/sub strategy: {}, using global fallback", pubSubChannelStrategy::class.simpleName)
-                listOf("minare:entity:changes")
-            }
+        return try {
+            // Use the strategy's own subscription logic instead of hardcoding
+            pubSubChannelStrategy.getSubscriptions().map { it.channel }
+        } catch (e: Exception) {
+            log.error("Error getting subscriptions from strategy: {}", pubSubChannelStrategy::class.simpleName, e)
+            // Fallback to global channel in case of error
+            listOf("minare:entity:changes")
         }
     }
 
