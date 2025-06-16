@@ -40,7 +40,6 @@ abstract class MinareApplication : CoroutineVerticle() {
     @Inject
     lateinit var injector: Injector
 
-    private var changeStreamWorkerDeploymentId: String? = null
     private var mutationVerticleDeploymentId: String? = null
     private var commandVerticleDeploymentId: String? = null
     private var cleanupVerticleDeploymentId: String? = null
@@ -101,18 +100,18 @@ abstract class MinareApplication : CoroutineVerticle() {
             ).await()
             log.info("Update verticle deployed with ID: $updateVerticleDeploymentId")
 
-            val changeStreamOptions = DeploymentOptions()
+            val redisPubSubWorkerOptions = DeploymentOptions()
                 .setWorker(true)
                 .setWorkerPoolName("redis-pubsub-pool")
                 .setWorkerPoolSize(2)
                 .setInstances(2)
                 .setMaxWorkerExecuteTime(Long.MAX_VALUE)
 
-            changeStreamWorkerDeploymentId = vertx.deployVerticle(
+            val redisPubSubWorkerDeploymentId = vertx.deployVerticle(
                 "guice:" + RedisPubSubWorkerVerticle::class.java.name,
-                changeStreamOptions
+                redisPubSubWorkerOptions
             ).await()
-            log.info("Redis pub/sub worker deployed with ID: $changeStreamWorkerDeploymentId")
+            log.info("Redis pub/sub worker deployed with ID: $redisPubSubWorkerDeploymentId")
 
             val mutationOptions = DeploymentOptions()
                 .setWorker(true)
@@ -137,18 +136,6 @@ abstract class MinareApplication : CoroutineVerticle() {
                 cleanupOptions
             ).await()
             log.info("Cleanup verticle deployed with ID: $cleanupVerticleDeploymentId")
-
-            vertx.eventBus().consumer<Boolean>(ChangeStreamWorkerVerticle.ADDRESS_STREAM_STARTED) {
-                log.info("Received stream started notification")
-            }
-
-            vertx.eventBus().consumer<Boolean>(ChangeStreamWorkerVerticle.ADDRESS_STREAM_STOPPED) {
-                log.info("Received stream stopped notification")
-            }
-
-            vertx.eventBus().consumer<JsonObject>(ChangeStreamWorkerVerticle.ADDRESS_ENTITY_UPDATED) { message ->
-                log.debug("Received entity update notification: ${message.body()}")
-            }
 
             val initResult = vertx.eventBus().request<JsonObject>(
                 CommandVerticle.ADDRESS_COMMAND_SOCKET_INITIALIZE,
@@ -204,7 +191,6 @@ abstract class MinareApplication : CoroutineVerticle() {
                 }
             }
 
-
             if (updateVerticleDeploymentId != null) {
                 try {
                     vertx.undeploy(updateVerticleDeploymentId).await()
@@ -213,7 +199,6 @@ abstract class MinareApplication : CoroutineVerticle() {
                     log.error("Error undeploying update verticle", e)
                 }
             }
-
 
             if (mutationVerticleDeploymentId != null) {
                 try {
@@ -224,17 +209,6 @@ abstract class MinareApplication : CoroutineVerticle() {
                 }
             }
 
-
-            if (changeStreamWorkerDeploymentId != null) {
-                try {
-                    vertx.undeploy(changeStreamWorkerDeploymentId).await()
-                    log.info("Change stream worker undeployed successfully")
-                } catch (e: Exception) {
-                    log.error("Error undeploying change stream worker", e)
-                }
-            }
-
-
             if (cleanupVerticleDeploymentId != null) {
                 try {
                     vertx.undeploy(cleanupVerticleDeploymentId).await()
@@ -243,7 +217,6 @@ abstract class MinareApplication : CoroutineVerticle() {
                     log.error("Error undeploying cleanup verticle", e)
                 }
             }
-
 
             if (httpServer != null) {
                 try {
@@ -262,7 +235,6 @@ abstract class MinareApplication : CoroutineVerticle() {
     }
 
     private fun registerConnectionEventHandlers() {
-
         vertx.eventBus().consumer<JsonObject>(ConnectionEvents.ADDRESS_COMMAND_SOCKET_CONNECTED) { message ->
             val connectionId = message.body().getString("connectionId")
             val traceId = message.body().getString("traceId")
