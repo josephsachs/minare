@@ -35,13 +35,15 @@ import kotlin.coroutines.CoroutineContext
 /**
  * Core framework Guice module that provides default bindings.
  * Applications can override these bindings by using a child injector.
+ *
+ * Updated to remove Entity dependency injection infrastructure since Entity
+ * is now a pure data class with no framework dependencies.
  */
 class MinareModule : AbstractModule(), DatabaseNameProvider {
     private val log = LoggerFactory.getLogger(MinareModule::class.java)
 
     val uri = System.getenv("MONGO_URI") ?:
     throw IllegalStateException("MONGO_URI environment variable is required")
-
 
     override fun configure() {
         bind(StateStore::class.java).to(RedisEntityStore::class.java).`in`(Singleton::class.java)
@@ -61,11 +63,8 @@ class MinareModule : AbstractModule(), DatabaseNameProvider {
         bind(ConnectionCache::class.java).to(InMemoryConnectionCache::class.java).`in`(Singleton::class.java)
         bind(ReflectionCache::class.java).`in`(Singleton::class.java)
 
-        // Entity dependency injection
-        bind(EntityDependencyInjector::class.java).`in`(Singleton::class.java)
-
-        // Note: Applications must provide their own EntityFactory binding with @Named("userEntityFactory")
-        // The framework will automatically wrap it with dependency injection via the provider method
+        // Entity dependency injection removed - Entity is now pure data class
+        // EntityDependencyInjector and EntityFactoryWrapper removed
 
         bind(PubSubChannelStrategy::class.java).to(PerChannelPubSubStrategy::class.java).`in`(Singleton::class.java)
         bind(UpdateBatchCoordinator::class.java).`in`(Singleton::class.java)
@@ -73,7 +72,6 @@ class MinareModule : AbstractModule(), DatabaseNameProvider {
         bind(String::class.java)
             .annotatedWith(Names.named("mongoConnectionString"))
             .toInstance(uri)
-
 
         bind(String::class.java).annotatedWith(Names.named("channels")).toInstance("channels")
         bind(String::class.java).annotatedWith(Names.named("contexts")).toInstance("contexts")
@@ -106,17 +104,15 @@ class MinareModule : AbstractModule(), DatabaseNameProvider {
     }
 
     /**
-     * Provides EntityFactory with automatic dependency injection.
-     * This wraps the user's EntityFactory implementation to automatically
-     * inject framework dependencies into all created entities.
+     * Direct EntityFactory binding - no wrapper needed since Entity has no dependencies.
+     * Applications provide their EntityFactory implementation with @Named("userEntityFactory").
      */
     @Provides
     @Singleton
     fun provideEntityFactory(
-        @Named("userEntityFactory") userEntityFactory: EntityFactory,
-        entityDependencyInjector: EntityDependencyInjector
+        @Named("userEntityFactory") userEntityFactory: EntityFactory
     ): EntityFactory {
-        return EntityFactoryWrapper(userEntityFactory, entityDependencyInjector)
+        return userEntityFactory
     }
 
     @Provides

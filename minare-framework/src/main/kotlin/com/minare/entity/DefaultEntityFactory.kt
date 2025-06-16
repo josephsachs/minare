@@ -1,26 +1,20 @@
 package com.minare.core.entity
 
 import com.minare.core.models.Entity
-import com.minare.persistence.EntityStore
-import com.minare.persistence.StateStore
 import org.slf4j.LoggerFactory
-import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.reflect.KClass
-
 
 /**
  * Default implementation of EntityFactory that provides basic entity creation.
  * Applications can replace this with their own implementation by binding a different
  * implementation to the EntityFactory interface in their Guice module.
  *
- * Framework dependencies are automatically injected by the framework wrapper.
+ * Updated to remove dependency injection since Entity is now a pure data class.
+ * This framework class only knows about the base Entity, not application-specific entities.
  */
 @Singleton
-class DefaultEntityFactory @Inject constructor(
-    private val reflectionCache: ReflectionCache,
-    private val stateStore: StateStore
-) : EntityFactory {
+class DefaultEntityFactory : EntityFactory {
     private val log = LoggerFactory.getLogger(DefaultEntityFactory::class.java)
     private val classes: HashMap<String, Class<*>> = HashMap()
 
@@ -42,10 +36,6 @@ class DefaultEntityFactory @Inject constructor(
         }
     }
 
-    /**
-     * Create a new instance of an entity based on its class
-     * This implementation supports the base Entity class
-     */
     @Suppress("UNCHECKED_CAST")
     override fun <T : Entity> createEntity(entityClass: Class<T>): T {
         return when {

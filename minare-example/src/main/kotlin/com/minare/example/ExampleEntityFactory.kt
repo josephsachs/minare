@@ -1,21 +1,18 @@
 package com.minare.example
 
 import com.minare.core.entity.EntityFactory
-import com.minare.core.entity.ReflectionCache
 import com.minare.core.models.Entity
 import com.minare.example.models.Node
-import com.minare.persistence.EntityStore
-import com.minare.persistence.StateStore
 import org.slf4j.LoggerFactory
-import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.reflect.KClass
 
+/**
+ * Example EntityFactory implementation.
+ * Updated to remove dependency injection since Entity is now a pure data class.
+ */
 @Singleton
-class ExampleEntityFactory @Inject constructor(
-    private val reflectionCache: ReflectionCache,
-    private val stateStore: StateStore
-) : EntityFactory {
+class ExampleEntityFactory : EntityFactory {
     private val log = LoggerFactory.getLogger(ExampleEntityFactory::class.java)
     private val classes: HashMap<String, Class<*>> = HashMap()
 
@@ -46,12 +43,8 @@ class ExampleEntityFactory @Inject constructor(
                 Entity()
             }
         }
-        // Framework automatically handles dependency injection
     }
 
-    /**
-     * Type-safe entity creation method
-     */
     @Suppress("UNCHECKED_CAST")
     override fun <T : Entity> createEntity(entityClass: Class<T>): T {
         return when {
@@ -62,12 +55,8 @@ class ExampleEntityFactory @Inject constructor(
                 Entity() as T
             }
         }
-        // Framework automatically handles dependency injection
     }
 
-    /**
-     * Helper method to get registered entity types
-     */
     override fun getTypeNames(): List<String> {
         return classes.keys.toList()
     }
