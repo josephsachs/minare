@@ -576,6 +576,31 @@ class MongoEntityStore @Inject constructor(
         return graph
     }
 
+    /**
+     * Traverses from a document to its parents in a JsonObject graph, collecting parent documents.
+     * This replaces Entity.traverseParents() with JsonObject-based logic.
+     */
+    override fun traverseParents(
+        graph: Graph<JsonObject, DefaultEdge>,
+        document: JsonObject,
+        visited: MutableSet<String>
+    ): List<JsonObject> {
+        document.getString("_id")?.let { visited.add(it) }
+        val parents = mutableListOf<JsonObject>()
+
+        val outEdges = graph.outgoingEdgesOf(document)
+        outEdges.forEach { edge ->
+            val parent = graph.getEdgeTarget(edge)
+            val parentId = parent.getString("_id")
+
+            if (parentId != null && parentId !in visited) {
+                parents.add(parent)
+                parents.addAll(traverseParents(graph, parent, visited))
+            }
+        }
+
+        return parents
+    }
 
     /**
      * Persist entity for write-behind storage (WriteBehindStore interface)

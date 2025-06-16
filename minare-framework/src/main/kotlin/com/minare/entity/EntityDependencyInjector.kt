@@ -25,9 +25,9 @@ class EntityDependencyInjector @Inject constructor(
      * @return The same entity with dependencies injected
      */
     fun <T : Entity> injectDependencies(entity: T): T {
-        entity.reflectionCache = reflectionCache
-        entity.stateStore = stateStore
-        entity.versioningService = versioningService
+        //entity.reflectionCache = reflectionCache
+        //entity.stateStore = stateStore
+        //entity.versioningService = versioningService
         return entity
     }
 }

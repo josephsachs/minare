@@ -3,44 +3,58 @@ package com.minare.entity
 import com.google.inject.Inject
 import com.google.inject.Singleton
 import com.minare.core.entity.annotations.Parent
-import com.minare.core.models.Entity
+import com.minare.core.entity.EntityFactory
+import com.minare.core.entity.ReflectionCache
 import io.vertx.core.json.JsonObject
 import org.jgrapht.Graph
 import org.jgrapht.graph.DefaultEdge
 import com.minare.persistence.EntityQueryStore
 import com.minare.persistence.StateStore
 
+/**
+ * Updated to work with JsonObject documents instead of Entity instances,
+ * using direct ReflectionCache calls instead of Entity wrapper methods.
+ */
 @Singleton
 class EntityVersioningService @Inject constructor(
     private val entityQueryStore: EntityQueryStore,
-    private val stateStore: StateStore
+    private val stateStore: StateStore,
+    private val reflectionCache: ReflectionCache,
+    private val entityFactory: EntityFactory
 ) {
     /**
      * Updates the version of this entity and its ancestors based on parent reference rules.
      * Returns the result of the version update operation.
+     *
+     * Updated to use document graph instead of entity graph to avoid unnecessary Entity instantiation.
      */
     suspend fun bubbleVersions(entityId: String): JsonObject {
-        val graph = entityQueryStore.getAncestorGraph(entityId)
-        val idsToUpdate = findEntitiesForVersionUpdate(graph, entityId)
+        // Use document graph instead of entity graph to avoid creating Entity instances
+        val documentGraph = entityQueryStore.buildDocumentGraph(listOf(entityId))
+        val idsToUpdate = findEntitiesForVersionUpdate(documentGraph, entityId)
         return updateVersionsInRedis(idsToUpdate)
     }
 
-    private fun findEntitiesForVersionUpdate(graph: Graph<Entity, DefaultEdge>, entityId: String): Set<String> {
+    /**
+     * Find entities that need version updates by traversing the document graph.
+     * Updated to work with JsonObject documents instead of Entity instances.
+     */
+    private fun findEntitiesForVersionUpdate(graph: Graph<JsonObject, DefaultEdge>, entityId: String): Set<String> {
         val idsToUpdate = mutableSetOf<String>()
 
-        // Find the entity in the graph that matches our entityId
-        val self = graph.vertexSet().find { it._id == entityId }
+        // Find the document in the graph that matches our entityId
+        val selfDocument = graph.vertexSet().find { it.getString("_id") == entityId }
             ?: return idsToUpdate
 
         // Add the original entity's ID
         idsToUpdate.add(entityId)
 
-        // Get all parents from the graph
-        val allParents = Entity.traverseParents(graph, self)
+        // Get all parent documents from the graph using JsonObject-based traversal
+        val allParentDocuments = entityQueryStore.traverseParents(graph, selfDocument)
 
-        allParents.forEach { parent ->
-            if (shouldBubbleVersionToParent(self, parent)) {
-                parent._id?.let { idsToUpdate.add(it) }
+        allParentDocuments.forEach { parentDocument ->
+            if (shouldBubbleVersionToParent(selfDocument, parentDocument)) {
+                parentDocument.getString("_id")?.let { idsToUpdate.add(it) }
             }
         }
 
@@ -48,25 +62,34 @@ class EntityVersioningService @Inject constructor(
     }
 
     /**
-     * Determines if version changes should bubble from a child entity to a parent entity.
+     * Determines if version changes should bubble from a child document to a parent document.
+     * Updated to work with JsonObject documents and use direct ReflectionCache calls.
      */
-    private fun shouldBubbleVersionToParent(child: Entity, parent: Entity): Boolean {
+    private fun shouldBubbleVersionToParent(childDocument: JsonObject, parentDocument: JsonObject): Boolean {
         return try {
-            // Get all parent fields from the child entity
-            val parentFields = child.getParentFields()
+            val childType = childDocument.getString("type") ?: return false
+            val parentId = parentDocument.getString("_id") ?: return false
+            val childState = childDocument.getJsonObject("state", JsonObject())
+
+            // Get the entity class for the child type using EntityFactory
+            val childEntityClass = entityFactory.useClass(childType) ?: return false
+
+            // Use direct ReflectionCache call instead of Entity wrapper method
+            val parentFields = reflectionCache.getFieldsWithAnnotation<Parent>(childEntityClass.kotlin)
 
             if (parentFields.isEmpty()) {
                 return false
             }
 
             val matchingParentFields = parentFields.filter { field ->
-                field.isAccessible = true
-                val fieldValue = field.get(child)
+                val stateName = field.getAnnotation(com.minare.core.entity.annotations.State::class.java)
+                    ?.fieldName?.takeIf { it.isNotEmpty() } ?: field.name
+
+                val fieldValue = childState.getValue(stateName)
 
                 // Check if this field references the parent we're checking
                 when (fieldValue) {
-                    is Entity -> fieldValue._id == parent._id
-                    is String -> fieldValue == parent._id
+                    is String -> fieldValue == parentId
                     else -> false
                 }
             }
@@ -83,6 +106,9 @@ class EntityVersioningService @Inject constructor(
         }
     }
 
+    /**
+     * Update versions in Redis for the specified entity IDs
+     */
     private suspend fun updateVersionsInRedis(idsToUpdate: Set<String>): JsonObject {
         if (idsToUpdate.isEmpty()) {
             return JsonObject().put("updatedCount", 0)

@@ -11,4 +11,5 @@ interface EntityQueryStore {
     suspend fun buildDocumentGraph(entityIds: List<String>): Graph<JsonObject, DefaultEdge>
     suspend fun getAncestorGraph(entityId: String): Graph<Entity, DefaultEdge>
     suspend fun updateVersions(entityIds: Set<String>): JsonObject
+    fun traverseParents(graph: Graph<JsonObject, DefaultEdge>, document: JsonObject, visited: MutableSet<String> = mutableSetOf()): List<JsonObject>
 }

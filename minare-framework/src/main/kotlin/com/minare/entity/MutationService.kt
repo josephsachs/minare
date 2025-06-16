@@ -15,6 +15,8 @@ import java.lang.reflect.Field
 /**
  * Service responsible for handling entity mutations without creating full Entity objects.
  * This replaces the Entity.mutate() functionality but operates directly on JsonObjects.
+ *
+ * Updated to use direct ReflectionCache calls instead of Entity wrapper methods.
  */
 @Singleton
 class MutationService @Inject constructor(
@@ -47,11 +49,14 @@ class MutationService @Inject constructor(
 
         val currentVersion = currentJson.getLong("version", 1L)
 
-        // Get a type instance for reflection (we don't populate it, just use it for reflection)
-        val entityInstance = entityFactory.getNew(entityType)
+        // Get the entity class for reflection (no Entity instance needed)
+        val entityClass = entityFactory.useClass(entityType)
+            ?: return JsonObject()
+                .put("success", false)
+                .put("message", "Unknown entity type: $entityType")
 
-        // Process the mutation delta
-        val prunedDelta = getMutateDelta(delta, entityInstance)
+        // Process the mutation delta using direct ReflectionCache calls
+        val prunedDelta = getMutateDelta(delta, entityClass)
 
         if (prunedDelta.isEmpty) {
             return JsonObject()
@@ -63,7 +68,7 @@ class MutationService @Inject constructor(
             prunedDelta,
             requestedVersion,
             currentVersion,
-            entityInstance
+            entityClass
         )
 
         if (allowedChanges.isEmpty) {
@@ -92,13 +97,15 @@ class MutationService @Inject constructor(
 
     /**
      * Filter the mutation delta to only include fields that are marked as @Mutable
+     * Updated to use direct ReflectionCache calls instead of Entity wrapper methods
      */
-    private fun getMutateDelta(delta: JsonObject, entityInstance: Entity): JsonObject {
+    private fun getMutateDelta(delta: JsonObject, entityClass: Class<*>): JsonObject {
         if (delta.isEmpty) {
             return JsonObject()
         }
 
-        val mutableFields = getMutableFields(entityInstance)
+        // Use direct ReflectionCache call instead of Entity wrapper method
+        val mutableFields = reflectionCache.getFieldsWithAnnotation<Mutable>(entityClass.kotlin)
         val result = JsonObject()
 
         delta.fieldNames().forEach { fieldName ->
@@ -113,18 +120,20 @@ class MutationService @Inject constructor(
 
     /**
      * Filter changes based on consistency level rules
+     * Updated to use direct ReflectionCache calls instead of Entity wrapper methods
      */
     private fun filterDeltaByConsistencyLevel(
         delta: JsonObject,
         requestedVersion: Long,
         currentVersion: Long,
-        entityInstance: Entity
+        entityClass: Class<*>
     ): JsonObject {
         if (delta.isEmpty) {
             return JsonObject()
         }
 
-        val mutableFields = getMutableFields(entityInstance)
+        // Use direct ReflectionCache call instead of Entity wrapper method
+        val mutableFields = reflectionCache.getFieldsWithAnnotation<Mutable>(entityClass.kotlin)
 
         // First check for any STRICT fields with version mismatch
         val strictViolation = delta.fieldNames().any { fieldName ->
@@ -136,7 +145,7 @@ class MutationService @Inject constructor(
         }
 
         if (strictViolation) {
-            log.warn("Strict consistency violation detected. Entity: $entityInstance._id, Current: $currentVersion, Requested: $requestedVersion")
+            log.warn("Strict consistency violation detected. Entity type: $entityClass.simpleName, Current: $currentVersion, Requested: $requestedVersion")
             return JsonObject()
         }
 
@@ -161,13 +170,6 @@ class MutationService @Inject constructor(
         }
 
         return result
-    }
-
-    /**
-     * Get all fields marked with @Mutable annotation from an entity instance
-     */
-    private fun getMutableFields(entity: Entity): List<Field> {
-        return reflectionCache.getFieldsWithAnnotation<Mutable>(entity::class)
     }
 
     /**
