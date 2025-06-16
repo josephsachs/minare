@@ -3,9 +3,6 @@ package com.minare.core.models
 import com.fasterxml.jackson.annotation.*
 import com.minare.core.entity.ReflectionCache
 import com.minare.core.entity.annotations.*
-import com.minare.core.entity.serialize.EntitySerializationVisitor
-import com.minare.utils.EntityGraph
-import io.vertx.core.json.JsonArray
 import io.vertx.core.json.JsonObject
 import kotlinx.coroutines.*
 
@@ -45,23 +42,6 @@ open class Entity {
 
     override fun hashCode(): Int {
         return _id?.hashCode() ?: 0
-    }
-
-    /**
-     * Serializes this entity and its related entities into a JSON array.
-     */
-    suspend fun serialize(): JsonArray {
-        return withContext(Dispatchers.Default) {
-            val graph = EntityGraph(this@Entity)
-            val visitor = EntitySerializationVisitor()
-
-            val iterator = graph.getDepthFirstIterator()
-            while (iterator.hasNext()) {
-                visitor.visit(iterator.next())
-            }
-
-            return@withContext visitor.documents
-        }
     }
 
     /**
