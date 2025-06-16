@@ -1,12 +1,14 @@
 package com.minare.persistence
 
-import com.minare.core.models.Entity
+import io.vertx.core.json.JsonObject
 
 interface WriteBehindStore {
     /**
-     * Updates the version numbers for multiple entities
-     * @param entity entity to persist for write-behind
-     * @return Entity persisted object
+     * Persists an entity document for write-behind storage.
+     * Updated to use JsonObject for consistency with the framework's JsonObject-first approach.
+     *
+     * @param entityDocument The entity document to persist (with _id, type, version, state)
+     * @return The persisted entity document
      */
-    suspend fun persistForWriteBehind(entity: Entity): Entity
+    suspend fun persistForWriteBehind(entityDocument: JsonObject): JsonObject
 }

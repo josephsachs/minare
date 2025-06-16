@@ -56,6 +56,7 @@ open class EntityController @Inject constructor(
 
     /**
      * Save an existing entity to Redis (source of truth) with write-behind to MongoDB.
+     * Updated to use JsonObject-based WriteBehindStore for consistency.
      *
      * @param entity The entity to save (must already have an ID)
      * @return The saved entity with any updates
@@ -70,11 +71,16 @@ open class EntityController @Inject constructor(
         // Save to Redis first (source of truth for existing entities)
         val savedEntity = stateStore.save(entity)
 
-        // Schedule write-behind to MongoDB
+        // Schedule write-behind to MongoDB using JsonObject approach
         try {
-            if (writeBehindStore is EntityStore) {
-                (writeBehindStore as EntityStore).save(savedEntity)
-                log.debug("Entity {} written to MongoDB", savedEntity._id)
+            // Get the entity as a JsonObject document from Redis
+            val entityDocument = stateStore.findEntityJson(savedEntity._id!!)
+
+            if (entityDocument != null) {
+                writeBehindStore.persistForWriteBehind(entityDocument)
+                log.debug("Entity {} written to MongoDB via write-behind", savedEntity._id)
+            } else {
+                log.warn("Could not retrieve entity document for write-behind: {}", savedEntity._id)
             }
         } catch (e: Exception) {
             log.warn("Write-behind failed for entity {}: {}", savedEntity._id, e.message)

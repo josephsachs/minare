@@ -603,11 +603,30 @@ class MongoEntityStore @Inject constructor(
     }
 
     /**
-     * Persist entity for write-behind storage (WriteBehindStore interface)
+     * Persist entity document for write-behind storage (WriteBehindStore interface)
+     * Updated to use JsonObject instead of Entity for consistency.
      */
-    override suspend fun persistForWriteBehind(entity: Entity): Entity {
-        // For write-behind, we just use the same save logic as normal persistence
-        // This writes to MongoDB as the persistent store while Redis handles the live state
-        return save(entity)
+    override suspend fun persistForWriteBehind(entityDocument: JsonObject): JsonObject {
+        log.debug("Write-behind persist for entity: {}", entityDocument.getString("_id"))
+
+        val entityId = entityDocument.getString("_id")
+            ?: throw IllegalArgumentException("Entity document must have _id field")
+
+        // Use MongoDB save logic for write-behind persistence
+        val query = JsonObject().put("_id", entityId)
+        val update = JsonObject().put("${'$'}set", entityDocument)
+
+        // Upsert the document to MongoDB
+        val result = mongoClient.findOneAndReplace(collection, query, entityDocument).await()
+
+        if (result == null) {
+            // Document didn't exist, insert it
+            mongoClient.insert(collection, entityDocument).await()
+            log.debug("Write-behind: Inserted new document for entity {}", entityId)
+        } else {
+            log.debug("Write-behind: Updated existing document for entity {}", entityId)
+        }
+
+        return entityDocument
     }
 }
