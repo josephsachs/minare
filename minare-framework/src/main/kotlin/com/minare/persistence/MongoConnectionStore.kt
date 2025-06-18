@@ -28,8 +28,8 @@ class MongoConnectionStore @Inject constructor(
             createdAt = now,
             lastUpdated = now,
             lastActivity = now,
-            commandSocketId = null,
-            commandDeploymentId = null,
+            upSocketId = null,
+            upSocketDeploymentId = null,
             updateSocketId = null,
             updateDeploymentId = null,
             reconnectable = true
@@ -40,8 +40,8 @@ class MongoConnectionStore @Inject constructor(
             .put("createdAt", connection.createdAt)
             .put("lastUpdated", connection.lastUpdated)
             .put("lastActivity", connection.lastActivity)
-            .put("commandSocketId", connection.commandSocketId)
-            .put("commandDeploymentId", connection.commandDeploymentId)
+            .put("upSocketId", connection.upSocketId)
+            .put("upSocketDeploymentId", connection.upSocketDeploymentId)
             .put("updateSocketId", connection.updateSocketId)
             .put("updateDeploymentId", connection.updateDeploymentId)
             .put("reconnectable", connection.reconnectable)
@@ -61,18 +61,17 @@ class MongoConnectionStore @Inject constructor(
      * This method is more resilient to race conditions.
      */
     override suspend fun delete(connectionId: String) {
-        val query = JsonObject().put("_id", connectionId)
-
         try {
-            val result = mongoClient.removeDocument(collection, query).await()
-            if (result.removedCount > 0) {
-                log.info("Connection deleted: {}", connectionId)
+            val query = JsonObject().put("_id", connectionId)
+            val result = mongoClient.removeDocuments(collection, query).await()
+
+            if (result.removedCount == 0L) {
+                log.debug("No connection found to delete: {}", connectionId)
             } else {
-                log.debug("Connection not found for deletion: {}", connectionId)
-                throw IllegalStateException("Connection not found: $connectionId")
+                log.info("Connection deleted: {}", connectionId)
             }
         } catch (e: Exception) {
-            log.error("Error deleting connection: {}", connectionId, e)
+            log.error("Failed to delete connection: {}", connectionId, e)
             throw e
         }
     }
@@ -113,8 +112,8 @@ class MongoConnectionStore @Inject constructor(
                 createdAt = result.getLong("createdAt"),
                 lastUpdated = result.getLong("lastUpdated"),
                 lastActivity = result.getLong("lastActivity", result.getLong("lastUpdated")), // Fallback for compatibility
-                commandSocketId = result.getString("commandSocketId"),
-                commandDeploymentId = result.getString("commandDeploymentId"),
+                upSocketId = result.getString("upSocketId"),
+                upSocketDeploymentId = result.getString("upSocketDeploymentId"),
                 updateSocketId = result.getString("updateSocketId"),
                 updateDeploymentId = result.getString("updateDeploymentId"),
                 reconnectable = result.getBoolean("reconnectable", true) // Default to true for backward compatibility
@@ -154,8 +153,8 @@ class MongoConnectionStore @Inject constructor(
                     createdAt = doc.getLong("createdAt"),
                     lastUpdated = doc.getLong("lastUpdated"),
                     lastActivity = doc.getLong("lastActivity", doc.getLong("lastUpdated")), // Fallback for compatibility
-                    commandSocketId = doc.getString("commandSocketId"),
-                    commandDeploymentId = doc.getString("commandDeploymentId"),
+                    upSocketId = doc.getString("upSocketId"),
+                    upSocketDeploymentId = doc.getString("upSocketDeploymentId"),
                     updateSocketId = doc.getString("updateSocketId"),
                     updateDeploymentId = doc.getString("updateDeploymentId"),
                     reconnectable = doc.getBoolean("reconnectable", true) // Default to true for backward compatibility
@@ -264,13 +263,13 @@ class MongoConnectionStore @Inject constructor(
     }
 
     /**
-     * Update the command socket ID
+     * Update the up socket ID
      * Improved error handling to throw exceptions instead of using fallbacks
      */
-    override suspend fun putCommandSocket(connectionId: String, socketId: String?, deploymentId: String?): Connection {
+    override suspend fun putUpSocket(connectionId: String, socketId: String?, deploymentId: String?): Connection {
         // First check existence
         if (!exists(connectionId)) {
-            log.error("Connection {} doesn't exist for putCommandSocket", connectionId)
+            log.error("Connection {} doesn't exist for putUpSocket", connectionId)
             throw IllegalArgumentException("Connection not found: $connectionId")
         }
 
@@ -280,20 +279,20 @@ class MongoConnectionStore @Inject constructor(
             .put("\$set", JsonObject()
                 .put("lastUpdated", now)
                 .put("lastActivity", now)
-                .put("commandSocketId", socketId)
-                .put("commandDeploymentId", deploymentId)
+                .put("upSocketId", socketId)
+                .put("upSocketDeploymentId", deploymentId)
             )
 
         try {
             val result = mongoClient.updateCollection(collection, query, update).await()
             if (result.docModified == 0L) {
-                log.error("Connection not found for putCommandSocket: {}", connectionId)
+                log.error("Connection not found for putUpSocket: {}", connectionId)
                 throw IllegalStateException("Failed to update connection: $connectionId")
             }
 
             return find(connectionId)
         } catch (e: Exception) {
-            log.error("Error updating update socket ID: {}", connectionId, e)
+            log.error("Error updating up socket ID: {}", connectionId, e)
             throw e
         }
     }
@@ -312,8 +311,8 @@ class MongoConnectionStore @Inject constructor(
                     createdAt = doc.getLong("createdAt"),
                     lastUpdated = doc.getLong("lastUpdated"),
                     lastActivity = doc.getLong("lastActivity", doc.getLong("lastUpdated")),
-                    commandSocketId = doc.getString("commandSocketId"),
-                    commandDeploymentId = doc.getString("commandDeploymentId"),
+                    upSocketId = doc.getString("upSocketId"),
+                    upSocketDeploymentId = doc.getString("upSocketDeploymentId"),
                     updateSocketId = doc.getString("updateSocketId"),
                     updateDeploymentId = doc.getString("updateDeploymentId"),
                     reconnectable = doc.getBoolean("reconnectable", true)
@@ -341,8 +340,8 @@ class MongoConnectionStore @Inject constructor(
                     createdAt = doc.getLong("createdAt"),
                     lastUpdated = doc.getLong("lastUpdated"),
                     lastActivity = doc.getLong("lastActivity", doc.getLong("lastUpdated")),
-                    commandSocketId = doc.getString("commandSocketId"),
-                    commandDeploymentId = doc.getString("commandDeploymentId"),
+                    upSocketId = doc.getString("upSocketId"),
+                    upSocketDeploymentId = doc.getString("upSocketDeploymentId"),
                     updateSocketId = doc.getString("updateSocketId"),
                     updateDeploymentId = doc.getString("updateDeploymentId"),
                     reconnectable = doc.getBoolean("reconnectable", true)

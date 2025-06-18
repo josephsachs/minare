@@ -22,10 +22,10 @@ import com.minare.worker.command.handlers.MessageHandler
 import com.minare.worker.command.handlers.ReconnectionHandler
 
 /**
- * Verticle responsible for managing command socket connections and handling
+ * Verticle responsible for managing up socket connections and handling
  * socket lifecycle events. Creates and manages its own router for WebSocket endpoints.
  */
-class CommandVerticle @Inject constructor(
+class UpVerticle @Inject constructor(
     private val vlog: VerticleLogger,
     private val heartbeatManager: HeartbeatManager,
     private val connectionTracker: ConnectionTracker,
@@ -34,25 +34,25 @@ class CommandVerticle @Inject constructor(
     private val closeHandler: CloseHandler,
     private val connectionLifecycle: ConnectionLifecycle,
     private val channelCleanupEvent: ChannelCleanupEvent,
-    private val commandGetRouterEvent: CommandGetRouterEvent,
-    private val commandSocketCleanupEvent: CommandSocketCleanupEvent,
-    private val commandSocketInitEvent: CommandSocketInitEvent,
+    private val upSocketGetRouterEvent: UpSocketGetRouterEvent,
+    private val upSocketCleanupEvent: UpSocketCleanupEvent,
+    private val upSocketInitEvent: UpSocketInitEvent,
     private val connectionCleanupEvent: ConnectionCleanupEvent,
     private val entitySyncEvent: EntitySyncEvent
 ) : CoroutineVerticle() {
 
-    private val log = LoggerFactory.getLogger(CommandVerticle::class.java)
+    private val log = LoggerFactory.getLogger(UpVerticle::class.java)
     private var deployedAt: Long = 0
     private var httpServer: HttpServer? = null
     lateinit var router: Router
 
     companion object {
-        const val ADDRESS_COMMAND_SOCKET_INITIALIZE = "minare.command.socket.initialize"
+        const val ADDRESS_UP_SOCKET_INITIALIZE = "minare.up.socket.initialize"
         const val ADDRESS_CONNECTION_CLEANUP = "minare.connection.cleanup"
 
         const val ADDRESS_SOCKET_CLEANUP = "minare.socket.cleanup"
         const val ADDRESS_ENTITY_SYNC = "minare.entity.sync"
-        const val ADDRESS_GET_ROUTER = "minare.command.socket.get.router"
+        const val ADDRESS_GET_ROUTER = "minare.up.socket.get.router"
 
         const val HANDSHAKE_TIMEOUT_MS = 3000L
         const val HEARTBEAT_INTERVAL_MS = 15000L
@@ -66,7 +66,7 @@ class CommandVerticle @Inject constructor(
         vlog.setVerticle(this)
 
         deployedAt = System.currentTimeMillis()
-        log.info("Starting CommandSocketVerticle at {$deployedAt}")
+        log.info("Starting UpSocketVerticle at {$deployedAt}")
 
         vlog.logStartupStep("STARTING")
         vlog.logConfig(config)
@@ -89,12 +89,12 @@ class CommandVerticle @Inject constructor(
     }
 
     /**
-     * Initialize the router with command socket routes
+     * Initialize the router with up socket routes
      */
     private fun initializeRouter() {
         vlog.logStartupStep("INITIALIZING_ROUTER")
 
-        HttpServerUtils.addDebugEndpoint(router, "/ws-debug", "CommandSocketVerticle")
+        HttpServerUtils.addDebugEndpoint(router, "/ws-debug", "UpSocketVerticle")
         log.info("Setting up websocket route handler at path: {}", BASE_PATH)
 
         router.route("$BASE_PATH").handler { context ->
@@ -111,7 +111,7 @@ class CommandVerticle @Inject constructor(
         HttpServerUtils.addHealthEndpoint(
             router = router,
             path = "$BASE_PATH/health",
-            verticleName = "CommandVerticle",
+            verticleName = "UpVerticle",
             deploymentId = deploymentID,
             deployedAt = deployedAt
         ) {
@@ -121,28 +121,28 @@ class CommandVerticle @Inject constructor(
         }
 
         vlog.logStartupStep("ROUTER_INITIALIZED")
-        log.info("Command socket router initialized with routes: $BASE_PATH, $BASE_PATH/health, /ws-debug")
+        log.info("Up socket router initialized with routes: $BASE_PATH, $BASE_PATH/health, /ws-debug")
     }
 
     /**
      * Register all event bus consumers
      */
     private suspend fun registerEventBusConsumers() {
-        commandSocketInitEvent.register()
-        commandGetRouterEvent.register(router)
+        upSocketInitEvent.register()
+        upSocketGetRouterEvent.register(router)
         channelCleanupEvent.register()
-        commandSocketCleanupEvent.register()
+        upSocketCleanupEvent.register()
         connectionCleanupEvent.register()
         entitySyncEvent.register()
     }
 
     /**
-     * Handle a new command socket connection
+     * Handle a new up socket connection
      */
     private suspend fun handleMessage(websocket: ServerWebSocket, traceId: String) {
         var handshakeCompleted = false
 
-        log.info("New command WebSocket connection from {}", websocket.remoteAddress())
+        log.info("New up WebSocket connection from {}", websocket.remoteAddress())
 
         websocket.textMessageHandler { message ->
             CoroutineScope(vertx.dispatcher()).launch {
@@ -229,7 +229,7 @@ class CommandVerticle @Inject constructor(
     }
 
     /**
-     * Deploy a dedicated HTTP server for command sockets
+     * Deploy a dedicated HTTP server for up sockets
      */
     suspend fun deployHttpServer() {
         vlog.logStartupStep("DEPLOYING_OWN_HTTP_SERVER")

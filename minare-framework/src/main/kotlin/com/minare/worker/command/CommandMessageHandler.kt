@@ -90,11 +90,11 @@ open class CommandMessageHandler @Inject constructor(
             .put("type", "mutation_success")
             .put("entity", entity)
 
-        val socket = connectionCache.getCommandSocket(connectionId)
+        val socket = connectionCache.getUpSocket(connectionId)
         if (socket != null && !socket.isClosed()) {
             socket.writeTextMessage(response.encode())
         } else {
-            log.warn("Cannot send success response: command socket not found or closed for {}", connectionId)
+            log.warn("Cannot send success response: up socket not found or closed for {}", connectionId)
         }
     }
 
@@ -106,11 +106,11 @@ open class CommandMessageHandler @Inject constructor(
             .put("type", "mutation_error")
             .put("error", errorMessage)
 
-        val socket = connectionCache.getCommandSocket(connectionId)
+        val socket = connectionCache.getUpSocket(connectionId)
         if (socket != null && !socket.isClosed()) {
             socket.writeTextMessage(response.encode())
         } else {
-            log.warn("Cannot send error response: command socket not found or closed for {}", connectionId)
+            log.warn("Cannot send error response: up socket not found or closed for {}", connectionId)
         }
     }
 
@@ -134,11 +134,11 @@ open class CommandMessageHandler @Inject constructor(
                 .put("success", success)
                 .put("timestamp", System.currentTimeMillis())
 
-            val commandSocket = connectionCache.getCommandSocket(connectionId)
-            if (commandSocket != null && !commandSocket.isClosed()) {
-                commandSocket.writeTextMessage(response.encode())
+            val upSocket = connectionCache.getUpSocket(connectionId)
+            if (upSocket != null && !upSocket.isClosed()) {
+                upSocket.writeTextMessage(response.encode())
             } else {
-                log.warn("Cannot send sync initiated response: command socket not found or closed for {}", connectionId)
+                log.warn("Cannot send sync initiated response: up socket not found or closed for {}", connectionId)
             }
 
             return
@@ -164,7 +164,7 @@ open class CommandMessageHandler @Inject constructor(
                 .put("entityId", entityId)
 
             vertx.eventBus().request<JsonObject>(
-                CommandVerticle.ADDRESS_ENTITY_SYNC,
+                UpVerticle.ADDRESS_ENTITY_SYNC,
                 syncCommand
             ).await()
 

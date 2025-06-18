@@ -4,15 +4,14 @@ import com.google.inject.Inject
 import com.minare.utils.EventBusUtils
 import com.minare.utils.VerticleLogger
 import io.vertx.core.json.JsonObject
-import com.minare.worker.command.CommandVerticle
-import com.minare.worker.command.CommandVerticle.Companion.HTTP_SERVER_HOST
+import com.minare.worker.command.UpVerticle.Companion.HTTP_SERVER_HOST
 
-class CommandSocketInitEvent @Inject constructor(
+class UpSocketInitEvent @Inject constructor(
     private val eventBusUtils: EventBusUtils,
     private val vlog: VerticleLogger
 ) {
     public suspend fun register() {
-        eventBusUtils.registerTracedConsumer<JsonObject>(ADDRESS_COMMAND_SOCKET_INITIALIZE) { message, traceId ->
+        eventBusUtils.registerTracedConsumer<JsonObject>(ADDRESS_UP_SOCKET_INITIALIZE) { message, traceId ->
             try {
                 vlog.logStartupStep("INITIALIZING_ROUTER", mapOf("traceId" to traceId))
 
@@ -24,7 +23,7 @@ class CommandSocketInitEvent @Inject constructor(
 
                 val reply = JsonObject()
                     .put("success", true)
-                    .put("message", "Command socket router initialized with dedicated HTTP server on port $HTTP_SERVER_HOST")
+                    .put("message", "Up socket router initialized with dedicated HTTP server on port $HTTP_SERVER_HOST")
 
                 eventBusUtils.tracedReply(message, reply, traceId)
 
@@ -43,6 +42,6 @@ class CommandSocketInitEvent @Inject constructor(
     }
 
     companion object {
-        const val ADDRESS_COMMAND_SOCKET_INITIALIZE = "minare.command.socket.initialize"
+        const val ADDRESS_UP_SOCKET_INITIALIZE = "minare.up.socket.initialize"
     }
 }
