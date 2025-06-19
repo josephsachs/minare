@@ -164,7 +164,7 @@ open class CommandMessageHandler @Inject constructor(
                 .put("entityId", entityId)
 
             vertx.eventBus().request<JsonObject>(
-                UpVerticle.ADDRESS_ENTITY_SYNC,
+                UpSocketVerticle.ADDRESS_ENTITY_SYNC,
                 syncCommand
             ).await()
 

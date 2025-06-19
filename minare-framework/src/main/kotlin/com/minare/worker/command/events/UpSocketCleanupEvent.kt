@@ -5,7 +5,7 @@ import com.google.inject.Singleton
 import com.minare.utils.EventBusUtils
 import com.minare.utils.VerticleLogger
 import io.vertx.core.json.JsonObject
-import com.minare.worker.command.UpVerticle.Companion.ADDRESS_SOCKET_CLEANUP
+import com.minare.worker.command.UpSocketVerticle
 import com.minare.worker.command.ConnectionLifecycle
 
 @Singleton
@@ -15,7 +15,7 @@ class UpSocketCleanupEvent @Inject constructor(
     private val connectionLifecycle: ConnectionLifecycle
 ) {
     suspend fun register() {
-        eventBusUtils.registerTracedConsumer<JsonObject>(ADDRESS_SOCKET_CLEANUP) { message, traceId ->
+        eventBusUtils.registerTracedConsumer<JsonObject>(UpSocketVerticle.ADDRESS_SOCKET_CLEANUP) { message, traceId ->
             val connectionId = message.body().getString("connectionId")
             val hasUpdateSocket = message.body().getBoolean("hasUpdateSocket", false)
             vlog.logStartupStep(

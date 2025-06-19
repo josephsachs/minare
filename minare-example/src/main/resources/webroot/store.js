@@ -14,7 +14,7 @@ const createStore = () => {
     connection: {
       id: null,
       connected: false,
-      commandSocket: null,
+      upSocket: null,
       updateSocket: null,
       lastActivity: Date.now()
     },
@@ -59,9 +59,9 @@ const createStore = () => {
       events.emit('connection.status.changed', connected);
     },
 
-    getCommandSocket: () => _state.connection.commandSocket,
-    setCommandSocket: (socket) => {
-      _state.connection.commandSocket = socket;
+    getUpSocket: () => _state.connection.upSocket,
+    setUpSocket: (socket) => {
+      _state.connection.upSocket = socket;
       _state.connection.lastActivity = Date.now();
     },
 
@@ -96,7 +96,7 @@ const createStore = () => {
     mergeEntityDelta: (entityId, delta, version, type) => {
       if (!entityId || !delta || version == null) {
         if (config.logging?.verbose) {
-          logger.error(`Invalid delta merge parameters: entityId=${entityId}, delta=${!!delta}, version=${version}`);
+          logger.error(`Invalid delta merge parameters: entityId=${entityId}, delta=${!delta}, version=${version}`);
         }
         return false;
       }

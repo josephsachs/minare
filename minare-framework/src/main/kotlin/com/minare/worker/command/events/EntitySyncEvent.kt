@@ -8,7 +8,7 @@ import com.minare.utils.ConnectionTracker
 import com.minare.utils.EventBusUtils
 import com.minare.utils.VerticleLogger
 import io.vertx.core.json.JsonObject
-import com.minare.worker.command.CommandVerticle.Companion.ADDRESS_ENTITY_SYNC
+import com.minare.worker.command.UpSocketVerticle
 
 class EntitySyncEvent @Inject constructor(
     private val eventBusUtils: EventBusUtils,
@@ -20,7 +20,7 @@ class EntitySyncEvent @Inject constructor(
     private val connectionTracker = ConnectionTracker("CommandSocket", vlog)
 
     suspend fun register() {
-        eventBusUtils.registerTracedConsumer<JsonObject>(ADDRESS_ENTITY_SYNC) { message, traceId ->
+        eventBusUtils.registerTracedConsumer<JsonObject>(UpSocketVerticle.ADDRESS_ENTITY_SYNC) { message, traceId ->
             val connectionId = message.body().getString("connectionId")
             val entityId = message.body().getString("entityId")
 
@@ -72,8 +72,8 @@ class EntitySyncEvent @Inject constructor(
                 return false
             }
 
-            val commandSocket = connectionCache.getCommandSocket(connectionId)
-            if (commandSocket == null || commandSocket.isClosed()) {
+            val upSocket = connectionCache.getUpSocket(connectionId)
+            if (upSocket == null || upSocket.isClosed()) {
                 vlog.getEventLogger().trace(
                     "COMMAND_SOCKET_UNAVAILABLE", mapOf(
                         "connectionId" to connectionId
@@ -125,7 +125,7 @@ class EntitySyncEvent @Inject constructor(
                 .put("data", syncData)
 
             // Send the sync message to the client
-            commandSocket.writeTextMessage(syncMessage.encode())
+            upSocket.writeTextMessage(syncMessage.encode())
 
             vlog.getEventLogger().trace(
                 "ENTITY_SYNC_DATA_SENT", mapOf(
@@ -161,7 +161,7 @@ class EntitySyncEvent @Inject constructor(
      * Send a sync error message to the client
      */
     private fun sendSyncErrorToClient(connectionId: String, errorMessage: String) {
-        val socket = connectionCache.getCommandSocket(connectionId)
+        val socket = connectionCache.getUpSocket(connectionId)
         if (socket != null && !socket.isClosed()) {
             try {
                 val errorResponse = JsonObject()

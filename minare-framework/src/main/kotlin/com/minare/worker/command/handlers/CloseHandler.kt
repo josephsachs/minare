@@ -27,7 +27,7 @@ class CloseHandler @Inject constructor(
             connectionStore.updateReconnectable(connectionId, true)
 
             // Remove socket from cache but don't delete connection yet
-            connectionCache.removeCommandSocket(connectionId)
+            connectionCache.removeUpSocket(connectionId)
             connectionTracker.handleSocketClosed(websocket)
 
             vlog.getEventLogger().logStateChange(

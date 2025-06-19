@@ -4,7 +4,7 @@ import com.google.inject.Inject
 import com.minare.utils.EventBusUtils
 import com.minare.utils.VerticleLogger
 import io.vertx.core.json.JsonObject
-import com.minare.worker.command.UpVerticle.Companion.HTTP_SERVER_HOST
+import com.minare.worker.command.UpSocketVerticle.Companion.HTTP_SERVER_HOST
 
 class UpSocketInitEvent @Inject constructor(
     private val eventBusUtils: EventBusUtils,

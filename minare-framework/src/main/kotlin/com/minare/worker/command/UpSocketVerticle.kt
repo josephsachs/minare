@@ -25,7 +25,7 @@ import com.minare.worker.command.handlers.ReconnectionHandler
  * Verticle responsible for managing up socket connections and handling
  * socket lifecycle events. Creates and manages its own router for WebSocket endpoints.
  */
-class UpVerticle @Inject constructor(
+class UpSocketVerticle @Inject constructor(
     private val vlog: VerticleLogger,
     private val heartbeatManager: HeartbeatManager,
     private val connectionTracker: ConnectionTracker,
@@ -41,7 +41,7 @@ class UpVerticle @Inject constructor(
     private val entitySyncEvent: EntitySyncEvent
 ) : CoroutineVerticle() {
 
-    private val log = LoggerFactory.getLogger(UpVerticle::class.java)
+    private val log = LoggerFactory.getLogger(UpSocketVerticle::class.java)
     private var deployedAt: Long = 0
     private var httpServer: HttpServer? = null
     lateinit var router: Router

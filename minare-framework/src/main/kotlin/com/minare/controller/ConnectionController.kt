@@ -3,7 +3,7 @@ package com.minare.controller
 import com.minare.cache.ConnectionCache
 import com.minare.core.models.Connection
 import com.minare.utils.EntityGraph
-import com.minare.worker.command.UpVerticle
+import com.minare.worker.command.UpSocketVerticle
 import io.vertx.core.http.ServerWebSocket
 import io.vertx.core.json.JsonObject
 import org.slf4j.LoggerFactory
@@ -124,9 +124,9 @@ open class ConnectionController @Inject constructor(
      * Get the UpSocketVerticle for advanced socket handling
      * This uses the internal injector to access the verticle directly
      */
-    fun getUpSocketVerticle(): UpVerticle? {
+    fun getUpSocketVerticle(): UpSocketVerticle? {
         return try {
-            InternalInjectorHolder.getInstance<UpVerticle>()
+            InternalInjectorHolder.getInstance<UpSocketVerticle>()
         } catch (e: Exception) {
             log.warn("Failed to get UpSocketVerticle instance: {}", e.message)
             null

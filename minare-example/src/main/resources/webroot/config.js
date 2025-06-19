@@ -6,8 +6,8 @@ export const config = {
   websocket: {
     wsProtocol: 'ws://',
     host: 'localhost',
-    commandEndpoint: '/command',
-    commandPort: "4225",
+    upEndpoint: '/command',
+    upPort: "4225",
 
     updateEndpoint: '/update',
     updatePort: "4226",
