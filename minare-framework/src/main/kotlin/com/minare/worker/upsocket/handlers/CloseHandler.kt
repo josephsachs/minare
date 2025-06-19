@@ -1,4 +1,4 @@
-package com.minare.worker.command.handlers
+package com.minare.worker.upsocket.handlers
 
 import com.google.inject.Inject
 import com.minare.cache.ConnectionCache

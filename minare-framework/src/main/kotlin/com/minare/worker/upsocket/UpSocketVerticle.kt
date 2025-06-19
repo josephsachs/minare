@@ -1,11 +1,11 @@
-package com.minare.worker.command
+package com.minare.worker.upsocket
 
 import com.minare.utils.VerticleLogger
 import com.minare.utils.HeartbeatManager
 import com.minare.utils.ConnectionTracker
 import com.minare.utils.HttpServerUtils
 import com.minare.utils.WebSocketUtils
-import com.minare.worker.command.events.*
+import com.minare.worker.upsocket.events.*
 import io.vertx.core.http.HttpServer
 import io.vertx.core.http.ServerWebSocket
 import io.vertx.core.json.JsonObject
@@ -17,9 +17,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import org.slf4j.LoggerFactory
 import javax.inject.Inject
-import com.minare.worker.command.handlers.CloseHandler
-import com.minare.worker.command.handlers.MessageHandler
-import com.minare.worker.command.handlers.ReconnectionHandler
+import com.minare.worker.upsocket.handlers.CloseHandler
+import com.minare.worker.upsocket.handlers.MessageHandler
+import com.minare.worker.upsocket.handlers.ReconnectionHandler
 
 /**
  * Verticle responsible for managing up socket connections and handling

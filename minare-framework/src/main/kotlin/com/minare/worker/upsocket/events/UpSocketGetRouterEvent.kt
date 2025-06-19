@@ -1,10 +1,10 @@
-package com.minare.worker.command.events
+package com.minare.worker.upsocket.events
 
 import com.google.inject.Inject
 import io.vertx.core.Vertx
 import io.vertx.core.json.JsonObject
 import io.vertx.ext.web.Router
-import com.minare.worker.command.UpSocketVerticle
+import com.minare.worker.upsocket.UpSocketVerticle
 
 class UpSocketGetRouterEvent @Inject constructor(
     private val vertx: Vertx

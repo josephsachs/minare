@@ -4,7 +4,7 @@ import com.google.inject.*
 import com.google.inject.name.Names
 import com.minare.config.*
 import com.minare.controller.ConnectionController
-import com.minare.worker.command.UpSocketVerticle
+import com.minare.worker.upsocket.UpSocketVerticle
 import com.minare.worker.update.UpdateVerticle
 import com.minare.persistence.DatabaseInitializer
 import com.minare.worker.*

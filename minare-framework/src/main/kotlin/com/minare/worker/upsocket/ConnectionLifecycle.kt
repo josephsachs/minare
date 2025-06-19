@@ -1,4 +1,4 @@
-package com.minare.worker.command
+package com.minare.worker.upsocket
 
 import com.google.inject.Inject
 import com.google.inject.Singleton

@@ -11,16 +11,16 @@ import com.minare.utils.ConnectionTracker
 import com.minare.utils.EventBusUtils
 import com.minare.utils.HeartbeatManager
 import com.minare.utils.VerticleLogger
-import com.minare.worker.command.CommandMessageHandler
+import com.minare.worker.upsocket.CommandMessageHandler
 import io.vertx.core.Vertx
 import io.vertx.ext.web.Router
 import kotlinx.coroutines.CoroutineScope
-import com.minare.worker.command.UpSocketVerticle
-import com.minare.worker.command.ConnectionLifecycle
-import com.minare.worker.command.events.*
-import com.minare.worker.command.handlers.CloseHandler
-import com.minare.worker.command.handlers.MessageHandler
-import com.minare.worker.command.handlers.ReconnectionHandler
+import com.minare.worker.upsocket.UpSocketVerticle
+import com.minare.worker.upsocket.ConnectionLifecycle
+import com.minare.worker.upsocket.events.*
+import com.minare.worker.upsocket.handlers.CloseHandler
+import com.minare.worker.upsocket.handlers.MessageHandler
+import com.minare.worker.upsocket.handlers.ReconnectionHandler
 import kotlin.coroutines.CoroutineContext
 
 /**

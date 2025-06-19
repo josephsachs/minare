@@ -1,4 +1,4 @@
-package com.minare.worker.command
+package com.minare.worker.upsocket
 
 import com.minare.cache.ConnectionCache
 import com.minare.controller.ConnectionController

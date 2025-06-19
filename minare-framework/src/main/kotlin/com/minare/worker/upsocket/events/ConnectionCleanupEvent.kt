@@ -1,11 +1,11 @@
-package com.minare.worker.command.events
+package com.minare.worker.upsocket.events
 
 import com.google.inject.Inject
 import com.minare.utils.EventBusUtils
 import com.minare.utils.VerticleLogger
 import io.vertx.core.json.JsonObject
-import com.minare.worker.command.UpSocketVerticle
-import com.minare.worker.command.ConnectionLifecycle
+import com.minare.worker.upsocket.UpSocketVerticle
+import com.minare.worker.upsocket.ConnectionLifecycle
 
 class ConnectionCleanupEvent @Inject constructor(
     private val eventBusUtils: EventBusUtils,

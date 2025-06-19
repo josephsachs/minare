@@ -1,4 +1,4 @@
-package com.minare.worker.command.handlers
+package com.minare.worker.upsocket.handlers
 
 import com.google.inject.Inject
 import com.minare.MinareApplication
@@ -10,7 +10,7 @@ import com.minare.utils.VerticleLogger
 import com.minare.worker.CleanupVerticle
 import io.vertx.core.http.ServerWebSocket
 import io.vertx.core.json.JsonObject
-import com.minare.worker.command.ConnectionLifecycle
+import com.minare.worker.upsocket.ConnectionLifecycle
 import io.vertx.core.Vertx
 
 class ReconnectionHandler @Inject constructor(

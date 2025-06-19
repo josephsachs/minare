@@ -18,7 +18,7 @@ import kotlinx.coroutines.launch
 import org.slf4j.LoggerFactory
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
-import com.minare.worker.command.UpSocketVerticle
+import com.minare.worker.upsocket.UpSocketVerticle
 import com.minare.worker.update.events.EntityUpdatedEvent
 import com.minare.worker.update.events.UpdateConnectionClosedEvent
 import com.minare.worker.update.events.UpdateConnectionClosedEvent.Companion.ADDRESS_CONNECTION_CLOSED

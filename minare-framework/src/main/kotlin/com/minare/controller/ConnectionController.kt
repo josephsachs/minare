@@ -3,7 +3,7 @@ package com.minare.controller
 import com.minare.cache.ConnectionCache
 import com.minare.core.models.Connection
 import com.minare.utils.EntityGraph
-import com.minare.worker.command.UpSocketVerticle
+import com.minare.worker.upsocket.UpSocketVerticle
 import io.vertx.core.http.ServerWebSocket
 import io.vertx.core.json.JsonObject
 import org.slf4j.LoggerFactory
