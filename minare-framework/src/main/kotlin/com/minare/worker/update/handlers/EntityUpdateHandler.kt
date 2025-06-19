@@ -39,8 +39,8 @@ class EntityUpdateHandler @Inject constructor(
                 return
             }
 
-            val currentDeploymentId = this.deploymentId
-                ?: error("Deployment ID not set on EntityUpdateHandler - register() was not called properly")
+            /**val currentDeploymentId = this.deploymentId
+                ?: error("Deployment ID not set on EntityUpdateHandler - register() was not called properly")**/
 
             val startTime = System.currentTimeMillis()
             val channels = updateVerticleCache.getChannelsForEntity(entityId)
@@ -73,7 +73,7 @@ class EntityUpdateHandler @Inject constructor(
                         continue
                     }
 
-                    if (connection.updateDeploymentId != currentDeploymentId) {
+                    /**if (connection.updateDeploymentId != currentDeploymentId) {
                         vlog.getEventLogger().trace("CONNECTION_DEPLOYMENT_CHECK", mapOf(
                             "connectionId" to connection._id,
                             "connectionUpdateDeploymentId" to connection.updateDeploymentId,
@@ -88,7 +88,7 @@ class EntityUpdateHandler @Inject constructor(
                             "currentDeploymentId" to currentDeploymentId,
                             "matches" to "true"
                         ), traceId)
-                    }
+                    }**/
 
                     hasOwnedConnections = true
                     processedConnections.add(connection._id)
