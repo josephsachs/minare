@@ -5,11 +5,11 @@ import com.google.inject.name.Names
 import com.minare.config.*
 import com.minare.controller.ConnectionController
 import com.minare.worker.upsocket.UpSocketVerticle
-import com.minare.worker.update.UpdateVerticle
+import com.minare.worker.downsocket.DownSocketVerticle
 import com.minare.persistence.DatabaseInitializer
 import com.minare.worker.*
-import com.minare.worker.command.config.UpSocketVerticleModule
-import com.minare.worker.update.config.UpdateVerticleModule
+import com.minare.worker.downsocket.config.DownSocketVerticleModule
+import com.minare.worker.upsocket.config.UpSocketVerticleModule
 import io.vertx.core.DeploymentOptions
 import io.vertx.core.Vertx
 import io.vertx.core.VertxOptions
@@ -43,7 +43,7 @@ abstract class MinareApplication : CoroutineVerticle() {
     private var mutationVerticleDeploymentId: String? = null
     private var upSocketVerticleDeploymentId: String? = null
     private var cleanupVerticleDeploymentId: String? = null
-    private var updateVerticleDeploymentId: String? = null
+    private var downSocketVerticleDeploymentId: String? = null
 
     private val pendingConnections = ConcurrentHashMap<String, ConnectionState>()
 
@@ -88,17 +88,17 @@ abstract class MinareApplication : CoroutineVerticle() {
             ).await()
             log.info("Up socket verticle deployed with ID: $upSocketVerticleDeploymentId")
 
-            val updateVerticleOptions = DeploymentOptions()
+            val downSocketVerticleOptions = DeploymentOptions()
                 .setWorker(true)
-                .setWorkerPoolName("update-processor-pool")
+                .setWorkerPoolName("down-socket-pool")
                 .setWorkerPoolSize(7)
                 .setInstances(7)
 
-            updateVerticleDeploymentId = vertx.deployVerticle(
-                "guice:" + UpdateVerticle::class.java.name,
-                updateVerticleOptions
+            downSocketVerticleDeploymentId = vertx.deployVerticle(
+                "guice:" + DownSocketVerticle::class.java.name,
+                downSocketVerticleOptions
             ).await()
-            log.info("Update verticle deployed with ID: $updateVerticleDeploymentId")
+            log.info("Down socket verticle deployed with ID: $downSocketVerticleDeploymentId")
 
             val redisPubSubWorkerOptions = DeploymentOptions()
                 .setWorker(true)
@@ -191,9 +191,9 @@ abstract class MinareApplication : CoroutineVerticle() {
                 }
             }
 
-            if (updateVerticleDeploymentId != null) {
+            if (downSocketVerticleDeploymentId != null) {
                 try {
-                    vertx.undeploy(updateVerticleDeploymentId).await()
+                    vertx.undeploy(downSocketVerticleDeploymentId).await()
                     log.info("Update verticle undeployed successfully")
                 } catch (e: Exception) {
                     log.error("Error undeploying update verticle", e)
@@ -401,7 +401,7 @@ abstract class MinareApplication : CoroutineVerticle() {
 
                 val frameworkModule = MinareModule()
                 val upSocketVerticleModule = UpSocketVerticleModule()
-                val updateVerticleModule = UpdateVerticleModule()
+                val updateVerticleModule = DownSocketVerticleModule()
 
                 val dbNameModule = object : AbstractModule() {
                     override fun configure() {

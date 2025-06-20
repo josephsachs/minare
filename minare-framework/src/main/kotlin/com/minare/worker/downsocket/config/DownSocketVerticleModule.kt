@@ -1,4 +1,4 @@
-package com.minare.worker.update.config
+package com.minare.worker.downsocket.config
 
 import com.google.inject.PrivateModule
 import com.google.inject.Provides
@@ -7,30 +7,29 @@ import com.minare.cache.ConnectionCache
 import com.minare.persistence.ChannelStore
 import com.minare.persistence.ConnectionStore
 import com.minare.persistence.ContextStore
-import com.minare.utils.ConnectionTracker
 import com.minare.utils.EventBusUtils
 import com.minare.utils.HeartbeatManager
 import com.minare.utils.VerticleLogger
-import com.minare.worker.update.UpdateVerticle
+import com.minare.worker.downsocket.DownSocketVerticle
+import com.minare.worker.downsocket.DownSocketVerticleCache
 import io.vertx.core.Vertx
 import io.vertx.ext.web.Router
 import kotlinx.coroutines.CoroutineScope
-import com.minare.worker.update.UpdateVerticleCache
-import com.minare.worker.update.events.EntityUpdatedEvent
-import com.minare.worker.update.events.UpdateConnectionClosedEvent
-import com.minare.worker.update.events.UpdateConnectionEstablishedEvent
-import com.minare.worker.update.handlers.EntityUpdateHandler
+import com.minare.worker.downsocket.events.EntityUpdatedEvent
+import com.minare.worker.downsocket.events.UpdateConnectionClosedEvent
+import com.minare.worker.downsocket.events.UpdateConnectionEstablishedEvent
+import com.minare.worker.downsocket.handlers.EntityUpdateHandler
 import kotlin.coroutines.CoroutineContext
 
 /**
  * Specialized Guice module for UpdateVerticle and its dependencies.
  * This module provides all the necessary components within the UpdateVerticle's scope.
  */
-class UpdateVerticleModule : PrivateModule() {
+class DownSocketVerticleModule : PrivateModule() {
 
     override fun configure() {
         // Bind update verticle itself
-        bind(UpdateVerticle::class.java)
+        bind(DownSocketVerticle::class.java)
 
         // Bind all event handlers
         bind(EntityUpdatedEvent::class.java).`in`(Singleton::class.java)
@@ -40,7 +39,7 @@ class UpdateVerticleModule : PrivateModule() {
         // Bind connection handlers
         bind(EntityUpdateHandler::class.java).`in`(Singleton::class.java)
 
-        bind(UpdateVerticleCache::class.java).`in`(Singleton::class.java)
+        bind(DownSocketVerticleCache::class.java).`in`(Singleton::class.java)
 
         // Request external dependencies that should be provided by parent injector
         requireBinding(Vertx::class.java)
@@ -50,7 +49,7 @@ class UpdateVerticleModule : PrivateModule() {
         requireBinding(ContextStore::class.java)
 
         // Expose UpdateVerticle to the parent injector
-        expose(UpdateVerticle::class.java)
+        expose(DownSocketVerticle::class.java)
     }
 
     /**
@@ -92,7 +91,7 @@ class UpdateVerticleModule : PrivateModule() {
         coroutineScope: CoroutineScope
     ): HeartbeatManager {
         val heartbeatManager = HeartbeatManager(vertx, verticleLogger, connectionStore, coroutineScope)
-        heartbeatManager.setHeartbeatInterval(UpdateVerticle.HEARTBEAT_INTERVAL_MS)
+        heartbeatManager.setHeartbeatInterval(DownSocketVerticle.HEARTBEAT_INTERVAL_MS)
         return heartbeatManager
     }
 }

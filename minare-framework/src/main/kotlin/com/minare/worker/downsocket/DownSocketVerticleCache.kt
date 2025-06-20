@@ -1,14 +1,14 @@
-package com.minare.worker.update
+package com.minare.worker.downsocket
 
 import com.google.inject.Inject
 import com.minare.persistence.ChannelStore
 import com.minare.persistence.ContextStore
 import com.minare.utils.VerticleLogger
-import com.minare.worker.update.UpdateVerticle.Companion.CACHE_TTL_MS
+import com.minare.worker.downsocket.DownSocketVerticle.Companion.CACHE_TTL_MS
 import io.vertx.core.json.JsonObject
 import java.util.concurrent.ConcurrentHashMap
 
-class UpdateVerticleCache @Inject constructor(
+class DownSocketVerticleCache @Inject constructor(
     private val channelStore: ChannelStore,
     private val contextStore: ContextStore,
     private val vlog: VerticleLogger

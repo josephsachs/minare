@@ -1,4 +1,4 @@
-package com.minare.worker.update
+package com.minare.worker.downsocket
 
 import com.minare.MinareApplication
 import com.minare.cache.ConnectionCache
@@ -19,11 +19,11 @@ import org.slf4j.LoggerFactory
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import com.minare.worker.upsocket.UpSocketVerticle
-import com.minare.worker.update.events.EntityUpdatedEvent
-import com.minare.worker.update.events.UpdateConnectionClosedEvent
-import com.minare.worker.update.events.UpdateConnectionClosedEvent.Companion.ADDRESS_CONNECTION_CLOSED
-import com.minare.worker.update.events.UpdateConnectionEstablishedEvent
-import com.minare.worker.update.events.UpdateConnectionEstablishedEvent.Companion.ADDRESS_CONNECTION_ESTABLISHED
+import com.minare.worker.downsocket.events.EntityUpdatedEvent
+import com.minare.worker.downsocket.events.UpdateConnectionClosedEvent
+import com.minare.worker.downsocket.events.UpdateConnectionClosedEvent.Companion.ADDRESS_CONNECTION_CLOSED
+import com.minare.worker.downsocket.events.UpdateConnectionEstablishedEvent
+import com.minare.worker.downsocket.events.UpdateConnectionEstablishedEvent.Companion.ADDRESS_CONNECTION_ESTABLISHED
 
 /**
  * Verticle responsible for accumulating entity updates and distributing them
@@ -31,16 +31,16 @@ import com.minare.worker.update.events.UpdateConnectionEstablishedEvent.Companio
  *
  * This verticle hosts its own HTTP server for direct WebSocket connections.
  */
-class UpdateVerticle @Inject constructor(
+class DownSocketVerticle @Inject constructor(
     private val connectionStore: ConnectionStore,
     private val connectionCache: ConnectionCache,
-    private val updateVerticleCache: UpdateVerticleCache,
+    private val downSocketVerticleCache: DownSocketVerticleCache,
     private val entityUpdatedEvent: EntityUpdatedEvent,
     private val updateConnectionClosedEvent: UpdateConnectionClosedEvent,
     private val updateConnectionEstablishedEvent: UpdateConnectionEstablishedEvent
 ) : CoroutineVerticle() {
 
-    private val log = LoggerFactory.getLogger(UpdateVerticle::class.java)
+    private val log = LoggerFactory.getLogger(DownSocketVerticle::class.java)
     private lateinit var vlog: VerticleLogger
     private lateinit var eventBusUtils: EventBusUtils
 
@@ -155,16 +155,16 @@ class UpdateVerticle @Inject constructor(
             debugPath = "/debug",
             deploymentId = deploymentID,
             deployedAt = deployedAt,
-            wsHandler = this::handleUpdateSocket,
+            wsHandler = this::handleDownSocket,
             coroutineContext = vertx.dispatcher(),
             metricsSupplier = {
                 JsonObject()
                     .put("connections", connectionTracker.getMetrics())
                     .put("heartbeats", heartbeatManager.getMetrics())
-                    .put("pendingUpdateQueues", updateVerticleCache.connectionPendingUpdates.size)
+                    .put("pendingUpdateQueues", downSocketVerticleCache.connectionPendingUpdates.size)
                     .put("caches", JsonObject()
-                        .put("entityChannel", updateVerticleCache.entityChannelCache.size)
-                        .put("channelConnection", updateVerticleCache.channelConnectionCache.size)
+                        .put("entityChannel", downSocketVerticleCache.entityChannelCache.size)
+                        .put("channelConnection", downSocketVerticleCache.channelConnectionCache.size)
                     )
             }
         )
@@ -208,7 +208,7 @@ class UpdateVerticle @Inject constructor(
     /**
      * Handle a new update socket connection
      */
-    private suspend fun handleUpdateSocket(websocket: ServerWebSocket, traceId: String) {
+    private suspend fun handleDownSocket(websocket: ServerWebSocket, traceId: String) {
         log.info("New update socket connection from {}", websocket.remoteAddress())
 
         websocket.textMessageHandler { message ->
@@ -284,7 +284,7 @@ class UpdateVerticle @Inject constructor(
             vlog.getEventLogger().logStateChange("UpdateSocket", "CONNECTED", "REGISTERED",
                 mapOf("connectionId" to connectionId, "socketId" to socketId), traceId)
 
-            updateVerticleCache.connectionPendingUpdates.computeIfAbsent(connectionId) { ConcurrentHashMap() }
+            downSocketVerticleCache.connectionPendingUpdates.computeIfAbsent(connectionId) { ConcurrentHashMap() }
 
             vertx.eventBus().publish(
                 ADDRESS_CONNECTION_ESTABLISHED, JsonObject()
@@ -438,7 +438,7 @@ class UpdateVerticle @Inject constructor(
             var totalConnectionsProcessed = 0
             var totalUpdatesProcessed = 0
 
-            for ((connectionId, updates) in updateVerticleCache.connectionPendingUpdates) {
+            for ((connectionId, updates) in downSocketVerticleCache.connectionPendingUpdates) {
                 if (updates.isEmpty()) {
                     continue
                 }

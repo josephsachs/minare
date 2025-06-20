@@ -1,4 +1,4 @@
-package com.minare.worker.command.config
+package com.minare.worker.upsocket.config
 
 import com.google.inject.PrivateModule
 import com.google.inject.Provides
