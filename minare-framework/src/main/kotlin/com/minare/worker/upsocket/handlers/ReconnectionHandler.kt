@@ -115,7 +115,7 @@ class ReconnectionHandler @Inject constructor(
 
             val socketId = "cs-${java.util.UUID.randomUUID()}"
 
-            val updatedConnection = connectionStore.putUpdateSocket(
+            val updatedConnection = connectionStore.putDownSocket(
                 connectionId,
                 socketId,
                 deploymentId

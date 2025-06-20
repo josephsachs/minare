@@ -7,7 +7,7 @@ interface ConnectionStore {
     suspend fun delete(connectionId: String)
     suspend fun find(connectionId: String): Connection
     suspend fun find(connectionId: Set<String>): Set<Connection>
-    suspend fun putUpdateSocket(connectionId: String, socketId: String?, deploymentId: String?): Connection
+    suspend fun putDownSocket(connectionId: String, socketId: String?, deploymentId: String?): Connection
     suspend fun putUpSocket(connectionId: String, socketId: String?, deploymentId: String?): Connection
     suspend fun findAllWithUpdateSocket(): List<Connection>
 
@@ -34,5 +34,5 @@ interface ConnectionStore {
 
 enum class SocketType {
     Up,
-    Update
+    Down
 }

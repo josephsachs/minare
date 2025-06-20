@@ -271,7 +271,7 @@ class UpdateVerticle @Inject constructor(
             localSockets[connectionId] = websocket
             connectionTracker.registerConnection(connectionId, traceId, websocket)
 
-            connectionStore.putUpdateSocket(
+            connectionStore.putDownSocket(
                 connectionId,
                 socketId,
                 deploymentID // Register the thread context too

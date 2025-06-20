@@ -12,7 +12,7 @@ data class Connection(
     val lastActivity: Long = System.currentTimeMillis(),
     val upSocketId: String? = null,
     val upSocketDeploymentId: String? = null,
-    val updateSocketId: String? = null,
-    val updateDeploymentId: String? = null,
+    val downSocketId: String? = null,
+    val downSocketDeploymentId: String? = null,
     val reconnectable: Boolean = true
 )

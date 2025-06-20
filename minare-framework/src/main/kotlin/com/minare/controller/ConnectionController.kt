@@ -36,7 +36,7 @@ open class ConnectionController @Inject constructor(
 
         connectionCache.storeConnection(connection)
         log.info("Connection created and stored: id={}, upSocketId={}, updateSocketId={}",
-            connection._id, connection.upSocketId, connection.updateSocketId)
+            connection._id, connection.upSocketId, connection.downSocketId)
         return connection
     }
 
@@ -48,7 +48,7 @@ open class ConnectionController @Inject constructor(
 
         if (cachedConnection != null) {
             log.debug("Connection found in cache: id={}, upSocketId={}, updateSocketId={}",
-                connectionId, cachedConnection.upSocketId, cachedConnection.updateSocketId)
+                connectionId, cachedConnection.upSocketId, cachedConnection.downSocketId)
             return cachedConnection
         }
 
@@ -56,7 +56,7 @@ open class ConnectionController @Inject constructor(
 
         connectionCache.storeConnection(connection)
         log.debug("Connection loaded from database to cache: id={}, upSocketId={}, updateSocketId={}",
-            connection._id, connection.upSocketId, connection.updateSocketId)
+            connection._id, connection.upSocketId, connection.downSocketId)
 
         return connection
     }
@@ -99,13 +99,13 @@ open class ConnectionController @Inject constructor(
         )
 
         connectionCache.storeConnection(
-            connectionStore.putUpdateSocket(
+            connectionStore.putDownSocket(
                 connection._id,
-                connection.updateSocketId,
-                connection.updateDeploymentId
+                connection.downSocketId,
+                connection.downSocketDeploymentId
             )
         )
-        log.debug("Connection updated: id={}, upSocketId={}, updateSocketId={}", connection._id, connection.updateSocketId, connection.updateDeploymentId)
+        log.debug("Connection updated: id={}, upSocketId={}, updateSocketId={}", connection._id, connection.downSocketId, connection.downSocketDeploymentId)
 
         return connection
     }
@@ -261,8 +261,8 @@ open class ConnectionController @Inject constructor(
             val connection = connectionCache.getConnection(connectionId)
             if (connection != null) {
                 val updatedConnection = connection.copy(
-                    updateSocketId = null,
-                    updateDeploymentId = null,
+                    downSocketId = null,
+                    downSocketDeploymentId = null,
                     lastUpdated = System.currentTimeMillis(),
                     lastActivity = System.currentTimeMillis()
                 )

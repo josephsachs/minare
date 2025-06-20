@@ -26,7 +26,7 @@ class InMemoryConnectionCache @Inject constructor(
 
     override fun storeConnection(connection: Connection) {
         log.info("[TRACE] Storing connection in cache: {} with upSocketId={}, updateSocketId={}",
-            connection._id, connection.upSocketId, connection.updateSocketId)
+            connection._id, connection.upSocketId, connection.downSocketId)
         connections[connection._id] = connection
     }
 
@@ -39,14 +39,14 @@ class InMemoryConnectionCache @Inject constructor(
 
         if (cachedConnection != null) {
             log.info("[TRACE] Retrieved connection from cache: {} with upSocketId={}, updateSocketId={}",
-                cachedConnection._id, cachedConnection.upSocketId, cachedConnection.updateSocketId)
+                cachedConnection._id, cachedConnection.upSocketId, cachedConnection.downSocketId)
             return cachedConnection
         }
 
         try {
             val connection = connectionStore.find(connectionId)
             log.info("[TRACE] Retrieved connection from database: {} with upSocketId={}, updateSocketId={}",
-                connection._id, connection.upSocketId, connection.updateSocketId)
+                connection._id, connection.upSocketId, connection.downSocketId)
 
             connections[connectionId] = connection
             return connection

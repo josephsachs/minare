@@ -30,8 +30,8 @@ class MongoConnectionStore @Inject constructor(
             lastActivity = now,
             upSocketId = null,
             upSocketDeploymentId = null,
-            updateSocketId = null,
-            updateDeploymentId = null,
+            downSocketId = null,
+            downSocketDeploymentId = null,
             reconnectable = true
         )
 
@@ -42,8 +42,8 @@ class MongoConnectionStore @Inject constructor(
             .put("lastActivity", connection.lastActivity)
             .put("upSocketId", connection.upSocketId)
             .put("upSocketDeploymentId", connection.upSocketDeploymentId)
-            .put("updateSocketId", connection.updateSocketId)
-            .put("updateDeploymentId", connection.updateDeploymentId)
+            .put("downSocketId", connection.downSocketId)
+            .put("downSocketDeploymentId", connection.downSocketDeploymentId)
             .put("reconnectable", connection.reconnectable)
 
         try {
@@ -114,8 +114,8 @@ class MongoConnectionStore @Inject constructor(
                 lastActivity = result.getLong("lastActivity", result.getLong("lastUpdated")), // Fallback for compatibility
                 upSocketId = result.getString("upSocketId"),
                 upSocketDeploymentId = result.getString("upSocketDeploymentId"),
-                updateSocketId = result.getString("updateSocketId"),
-                updateDeploymentId = result.getString("updateDeploymentId"),
+                downSocketId = result.getString("downSocketId"),
+                downSocketDeploymentId = result.getString("downSocketDeploymentId"),
                 reconnectable = result.getBoolean("reconnectable", true) // Default to true for backward compatibility
             )
         } catch (e: Exception) {
@@ -134,7 +134,7 @@ class MongoConnectionStore @Inject constructor(
      * Note: If any connection ID doesn't exist, it will be omitted from the results
      * without throwing an exception
      *
-     * @param connectionIds Set of connection IDs to find
+     * @param connectionId Set of connection IDs to find
      * @return Set of found Connection objects
      */
     override suspend fun find(connectionId: Set<String>): Set<Connection> {
@@ -155,8 +155,8 @@ class MongoConnectionStore @Inject constructor(
                     lastActivity = doc.getLong("lastActivity", doc.getLong("lastUpdated")), // Fallback for compatibility
                     upSocketId = doc.getString("upSocketId"),
                     upSocketDeploymentId = doc.getString("upSocketDeploymentId"),
-                    updateSocketId = doc.getString("updateSocketId"),
-                    updateDeploymentId = doc.getString("updateDeploymentId"),
+                    downSocketId = doc.getString("downSocketId"),
+                    downSocketDeploymentId = doc.getString("downSocketDeploymentId"),
                     reconnectable = doc.getBoolean("reconnectable", true) // Default to true for backward compatibility
                 )
             }.toSet()
@@ -232,9 +232,9 @@ class MongoConnectionStore @Inject constructor(
      * Update the update socket ID
      * Improved error handling to throw exceptions instead of using fallbacks
      */
-    override suspend fun putUpdateSocket(connectionId: String, socketId: String?, deploymentId: String?): Connection {
+    override suspend fun putDownSocket(connectionId: String, socketId: String?, deploymentId: String?): Connection {
         if (!exists(connectionId)) {
-            log.error("Connection {} doesn't exist for updateUpdateSocketId", connectionId)
+            log.error("Connection {} doesn't exist for updateDownSocketId", connectionId)
             throw IllegalArgumentException("Connection not found: $connectionId")
         }
 
@@ -244,8 +244,8 @@ class MongoConnectionStore @Inject constructor(
             .put("\$set", JsonObject()
                 .put("lastUpdated", now)
                 .put("lastActivity", now)
-                .put("updateSocketId", socketId)
-                .put("updateDeploymentId", deploymentId)
+                .put("downSocketId", socketId)
+                .put("downSocketDeploymentId", deploymentId)
             )
 
         try {
@@ -313,8 +313,8 @@ class MongoConnectionStore @Inject constructor(
                     lastActivity = doc.getLong("lastActivity", doc.getLong("lastUpdated")),
                     upSocketId = doc.getString("upSocketId"),
                     upSocketDeploymentId = doc.getString("upSocketDeploymentId"),
-                    updateSocketId = doc.getString("updateSocketId"),
-                    updateDeploymentId = doc.getString("updateDeploymentId"),
+                    downSocketId = doc.getString("downSocketId"),
+                    downSocketDeploymentId = doc.getString("downSocketDeploymentId"),
                     reconnectable = doc.getBoolean("reconnectable", true)
                 )
             }
@@ -342,8 +342,8 @@ class MongoConnectionStore @Inject constructor(
                     lastActivity = doc.getLong("lastActivity", doc.getLong("lastUpdated")),
                     upSocketId = doc.getString("upSocketId"),
                     upSocketDeploymentId = doc.getString("upSocketDeploymentId"),
-                    updateSocketId = doc.getString("updateSocketId"),
-                    updateDeploymentId = doc.getString("updateDeploymentId"),
+                    downSocketId = doc.getString("downSocketId"),
+                    downSocketDeploymentId = doc.getString("downSocketDeploymentId"),
                     reconnectable = doc.getBoolean("reconnectable", true)
                 )
             }
