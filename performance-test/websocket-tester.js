@@ -11,7 +11,7 @@ commandSocket.on('open', () => {
 });
 
 let connectionId = null;
-let updateSocket = null;
+let downSocket = null;
 
 commandSocket.on('message', (data) => {
   try {
@@ -22,8 +22,8 @@ commandSocket.on('message', (data) => {
       connectionId = message.connectionId;
       console.log(`Connection confirmed with ID: ${connectionId}`);
 
-      // Connect to update socket after receiving connection ID
-      connectUpdateSocket();
+      // Connect to down socket after receiving connection ID
+      connectDownSocket();
 
       // Send a sync request to get entity data
       setTimeout(() => {
@@ -66,33 +66,33 @@ commandSocket.on('close', (code, reason) => {
   console.log(`Command socket closed: ${code} ${reason}`);
 });
 
-function connectUpdateSocket() {
-  console.log(`Connecting to update socket...`);
-  updateSocket = new WebSocket('ws://localhost:4226/update');
+function connectDownSocket() {
+  console.log(`Connecting to down socket...`);
+  downSocket = new WebSocket('ws://localhost:4226/update');
 
-  updateSocket.on('open', () => {
-    console.log('Update socket connected, sending connection ID');
+  downSocket.on('open', () => {
+    console.log('Down socket connected, sending connection ID');
     // Send connection ID message
-    updateSocket.send(JSON.stringify({
+    downSocket.send(JSON.stringify({
       connectionId: connectionId
     }));
   });
 
-  updateSocket.on('message', (data) => {
+  downSocket.on('message', (data) => {
     try {
       const message = JSON.parse(data.toString());
-      console.log('Update socket received:', message);
+      console.log('Down socket received:', message);
     } catch (err) {
-      console.error('Error parsing update socket message:', err);
+      console.error('Error parsing down socket message:', err);
     }
   });
 
-  updateSocket.on('error', (err) => {
-    console.error('Update socket error:', err);
+  downSocket.on('error', (err) => {
+    console.error('Down socket error:', err);
   });
 
-  updateSocket.on('close', (code, reason) => {
-    console.log(`Update socket closed: ${code} ${reason}`);
+  downSocket.on('close', (code, reason) => {
+    console.log(`Down socket closed: ${code} ${reason}`);
   });
 }
 
@@ -126,8 +126,8 @@ process.on('SIGINT', () => {
   if (commandSocket.readyState === WebSocket.OPEN) {
     commandSocket.close();
   }
-  if (updateSocket && updateSocket.readyState === WebSocket.OPEN) {
-    updateSocket.close();
+  if (downSocket && downSocket.readyState === WebSocket.OPEN) {
+    downSocket.close();
   }
   process.exit(0);
 });

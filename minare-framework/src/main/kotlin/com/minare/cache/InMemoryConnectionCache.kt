@@ -19,13 +19,13 @@ class InMemoryConnectionCache @Inject constructor(
     private val connections = ConcurrentHashMap<String, Connection>()
 
     private val upSockets = ConcurrentHashMap<String, ServerWebSocket>()
-    private val updateSockets = ConcurrentHashMap<String, ServerWebSocket>()
+    private val downSockets = ConcurrentHashMap<String, ServerWebSocket>()
 
     private val upSocketToConnection = ConcurrentHashMap<ServerWebSocket, Connection>()
-    private val updateSocketToConnection = ConcurrentHashMap<ServerWebSocket, Connection>()
+    private val downSocketToConnection = ConcurrentHashMap<ServerWebSocket, Connection>()
 
     override fun storeConnection(connection: Connection) {
-        log.info("[TRACE] Storing connection in cache: {} with upSocketId={}, updateSocketId={}",
+        log.info("[TRACE] Storing connection in cache: {} with upSocketId={}, downSocketId={}",
             connection._id, connection.upSocketId, connection.downSocketId)
         connections[connection._id] = connection
     }
@@ -38,14 +38,14 @@ class InMemoryConnectionCache @Inject constructor(
         val cachedConnection = connections[connectionId]
 
         if (cachedConnection != null) {
-            log.info("[TRACE] Retrieved connection from cache: {} with upSocketId={}, updateSocketId={}",
+            log.info("[TRACE] Retrieved connection from cache: {} with upSocketId={}, downSocketId={}",
                 cachedConnection._id, cachedConnection.upSocketId, cachedConnection.downSocketId)
             return cachedConnection
         }
 
         try {
             val connection = connectionStore.find(connectionId)
-            log.info("[TRACE] Retrieved connection from database: {} with upSocketId={}, updateSocketId={}",
+            log.info("[TRACE] Retrieved connection from database: {} with upSocketId={}, downSocketId={}",
                 connection._id, connection.upSocketId, connection.downSocketId)
 
             connections[connectionId] = connection
@@ -72,36 +72,36 @@ class InMemoryConnectionCache @Inject constructor(
         upSocketToConnection[socket] = connection
     }
 
-    override fun storeUpdateSocket(connectionId: String, socket: ServerWebSocket, connection: Connection) {
-        updateSockets[connectionId]?.let { oldSocket ->
-            updateSocketToConnection.remove(oldSocket)
+    override fun storeDownSocket(connectionId: String, socket: ServerWebSocket, connection: Connection) {
+        downSockets[connectionId]?.let { oldSocket ->
+            downSocketToConnection.remove(oldSocket)
         }
-        updateSockets[connectionId] = socket
-        updateSocketToConnection[socket] = connection
+        downSockets[connectionId] = socket
+        downSocketToConnection[socket] = connection
     }
 
     override fun getUpSocket(connectionId: String): ServerWebSocket? {
         return upSockets[connectionId]
     }
 
-    override fun getUpdateSocket(connectionId: String): ServerWebSocket? {
-        return updateSockets[connectionId]
+    override fun getDownSocket(connectionId: String): ServerWebSocket? {
+        return downSockets[connectionId]
     }
 
     override fun getConnectionIdForUpSocket(socket: ServerWebSocket): String? {
         return upSocketToConnection[socket]?._id
     }
 
-    override fun getConnectionIdForUpdateSocket(socket: ServerWebSocket): String? {
-        return updateSocketToConnection[socket]?._id
+    override fun getConnectionIdForDownSocket(socket: ServerWebSocket): String? {
+        return downSocketToConnection[socket]?._id
     }
 
     override fun getConnectionForUpSocket(socket: ServerWebSocket): Connection? {
         return upSocketToConnection[socket]
     }
 
-    override fun getConnectionForUpdateSocket(socket: ServerWebSocket): Connection? {
-        return updateSocketToConnection[socket]
+    override fun getConnectionForDownSocket(socket: ServerWebSocket): Connection? {
+        return downSocketToConnection[socket]
     }
 
     override fun removeUpSocket(connectionId: String): ServerWebSocket? {
@@ -110,9 +110,9 @@ class InMemoryConnectionCache @Inject constructor(
         return socket
     }
 
-    override fun removeUpdateSocket(connectionId: String): ServerWebSocket? {
-        val socket = updateSockets.remove(connectionId)
-        socket?.let { updateSocketToConnection.remove(it) }
+    override fun removeDownSocket(connectionId: String): ServerWebSocket? {
+        val socket = downSockets.remove(connectionId)
+        socket?.let { downSocketToConnection.remove(it) }
         return socket
     }
 
@@ -125,10 +125,10 @@ class InMemoryConnectionCache @Inject constructor(
     }
 
     override fun getFullyConnectedCount(): Int {
-        return upSockets.keys.count { updateSockets.containsKey(it) }
+        return upSockets.keys.count { downSockets.containsKey(it) }
     }
 
     override fun isFullyConnected(connectionId: String): Boolean {
-        return upSockets.containsKey(connectionId) && updateSockets.containsKey(connectionId)
+        return upSockets.containsKey(connectionId) && downSockets.containsKey(connectionId)
     }
 }

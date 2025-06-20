@@ -3,7 +3,7 @@ package com.minare.core.models
 /**
  * Represents a client connection with two communication sockets:
  * - An up socket for receiving client requests
- * - An update socket for pushing updates to the client
+ * - An down socket for pushing updates to the client
  */
 data class Connection(
     val _id: String,

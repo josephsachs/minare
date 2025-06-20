@@ -49,7 +49,7 @@ abstract class MinareApplication : CoroutineVerticle() {
 
     private class ConnectionState {
         var upSocketConnected = false
-        var updateSocketConnected = false
+        var downSocketConnected = false
         var traceId: String? = null
     }
 
@@ -57,7 +57,7 @@ abstract class MinareApplication : CoroutineVerticle() {
 
     object ConnectionEvents {
         const val ADDRESS_UP_SOCKET_CONNECTED = "minare.connection.up.connected"
-        const val ADDRESS_UPDATE_SOCKET_CONNECTED = "minare.connection.update.connected"
+        const val ADDRESS_DOWN_SOCKET_CONNECTED = "minare.connection.down.connected"
         const val ADDRESS_CONNECTION_COMPLETE = "minare.connection.complete"
     }
 
@@ -194,9 +194,9 @@ abstract class MinareApplication : CoroutineVerticle() {
             if (downSocketVerticleDeploymentId != null) {
                 try {
                     vertx.undeploy(downSocketVerticleDeploymentId).await()
-                    log.info("Update verticle undeployed successfully")
+                    log.info("Down socket verticle undeployed successfully")
                 } catch (e: Exception) {
-                    log.error("Error undeploying update verticle", e)
+                    log.error("Error undeploying down socket verticle", e)
                 }
             }
 
@@ -249,15 +249,15 @@ abstract class MinareApplication : CoroutineVerticle() {
         }
 
 
-        vertx.eventBus().consumer<JsonObject>(ConnectionEvents.ADDRESS_UPDATE_SOCKET_CONNECTED) { message ->
+        vertx.eventBus().consumer<JsonObject>(ConnectionEvents.ADDRESS_DOWN_SOCKET_CONNECTED) { message ->
             val connectionId = message.body().getString("connectionId")
             val traceId = message.body().getString("traceId")
 
-            Companion.log.info("MinareApplication acknowledges update socket for ${connectionId}")
+            Companion.log.info("MinareApplication acknowledges down socket for ${connectionId}")
 
             if (connectionId != null) {
                 CoroutineScope(vertx.dispatcher()).launch {
-                    handleUpdateSocketConnected(connectionId, traceId)
+                    handleDownSocketConnected(connectionId, traceId)
                 }
             }
         }
@@ -273,9 +273,9 @@ abstract class MinareApplication : CoroutineVerticle() {
         checkConnectionComplete(connectionId)
     }
 
-    private suspend fun handleUpdateSocketConnected(connectionId: String, traceId: String?) {
+    private suspend fun handleDownSocketConnected(connectionId: String, traceId: String?) {
         val state = pendingConnections.computeIfAbsent(connectionId) { ConnectionState() }
-        state.updateSocketConnected = true
+        state.downSocketConnected = true
         if (traceId != null) state.traceId = traceId
 
         checkConnectionComplete(connectionId)
@@ -284,7 +284,7 @@ abstract class MinareApplication : CoroutineVerticle() {
     private suspend fun checkConnectionComplete(connectionId: String) {
         val state = pendingConnections[connectionId] ?: return
 
-        if (state.upSocketConnected && state.updateSocketConnected) {
+        if (state.upSocketConnected && state.downSocketConnected) {
             Companion.log.info("Connection $connectionId is now fully established")
 
             try {
@@ -401,7 +401,7 @@ abstract class MinareApplication : CoroutineVerticle() {
 
                 val frameworkModule = MinareModule()
                 val upSocketVerticleModule = UpSocketVerticleModule()
-                val updateVerticleModule = DownSocketVerticleModule()
+                val downSocketVerticleModule = DownSocketVerticleModule()
 
                 val dbNameModule = object : AbstractModule() {
                     override fun configure() {
@@ -426,7 +426,7 @@ abstract class MinareApplication : CoroutineVerticle() {
                         // framework (provides defaults)
                         install(frameworkModule)
                         install(upSocketVerticleModule)
-                        install(updateVerticleModule)
+                        install(downSocketVerticleModule)
                         // Then app module (overrides framework if needed)
                         install(appModule)
                         // Then vertx and database modules

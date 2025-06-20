@@ -16,29 +16,29 @@ socket.on('message', (data) => {
     if (message.type === 'connection_confirm') {
       console.log(`Connection confirmed with ID: ${message.connectionId}`);
 
-      // Now try to connect to the update socket
-      console.log(`Connecting to update socket with connection ID: ${message.connectionId}`);
-      const updateSocket = new WebSocket(`ws://localhost:4226/update?connection_id=${message.connectionId}`);
+      // Now try to connect to the down socket
+      console.log(`Connecting to down socket with connection ID: ${message.connectionId}`);
+      const downSocket = new WebSocket(`ws://localhost:4226/update?connection_id=${message.connectionId}`);
 
-      updateSocket.on('open', () => {
-        console.log('Update socket connected');
+      downSocket.on('open', () => {
+        console.log('Down socket connected');
       });
 
-      updateSocket.on('message', (updateData) => {
+      downSocket.on('message', (updateData) => {
         try {
           const updateMessage = JSON.parse(updateData.toString());
-          console.log('Update socket message:', updateMessage);
+          console.log('Down socket message:', updateMessage);
         } catch (err) {
           console.error('Error parsing update message:', err);
         }
       });
 
-      updateSocket.on('error', (err) => {
-        console.error('Update socket error:', err);
+      downSocket.on('error', (err) => {
+        console.error('Down socket error:', err);
       });
 
-      updateSocket.on('close', (code, reason) => {
-        console.log(`Update socket closed: ${code} ${reason}`);
+      downSocket.on('close', (code, reason) => {
+        console.log(`Down socket closed: ${code} ${reason}`);
       });
 
       // Send a test command after a short delay

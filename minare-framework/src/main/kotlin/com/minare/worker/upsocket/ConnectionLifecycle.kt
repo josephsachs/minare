@@ -53,7 +53,7 @@ class ConnectionLifecycle @Inject constructor(
 
             vlog.getEventLogger().logDbOperation(
                 "UPDATE", "connections",
-                mapOf("connectionId" to connection._id, "action" to "update_socket_ids"), traceId
+                mapOf("connectionId" to connection._id, "action" to "down_socket_ids"), traceId
             )
 
             val updatedConnection = connectionStore.putUpSocket(
@@ -116,7 +116,7 @@ class ConnectionLifecycle @Inject constructor(
 
             // Step 2: Clean up sockets and stop heartbeat
             heartbeatManager.stopHeartbeat(connectionId)
-            val updateSocket = connectionCache.getUpdateSocket(connectionId)
+            val updateSocket = connectionCache.getDownSocket(connectionId)
             val socketCleanupResult = cleanupConnectionSockets(connectionId, updateSocket != null)
             if (!socketCleanupResult) {
                 vlog.getEventLogger().trace(
@@ -192,7 +192,7 @@ class ConnectionLifecycle @Inject constructor(
             // Do emergency cleanup as a last resort
             try {
                 connectionCache.removeUpSocket(connectionId)
-                connectionCache.removeUpdateSocket(connectionId)
+                connectionCache.removeDownSocket(connectionId)
                 connectionCache.removeConnection(connectionId)
                 connectionTracker.removeConnection(connectionId)
                 vlog.getEventLogger().trace(
@@ -312,26 +312,26 @@ class ConnectionLifecycle @Inject constructor(
                 success = false
             }
 
-            // Clean up update socket if it exists
+            // Clean up down socket if it exists
             if (hasUpdateSocket) {
                 try {
-                    connectionCache.removeUpdateSocket(connectionId)?.let { socket ->
+                    connectionCache.removeDownSocket(connectionId)?.let { socket ->
                         if (!socket.isClosed()) {
                             try {
                                 socket.close()
-                                vlog.getEventLogger().trace("UPDATE_SOCKET_CLOSED", mapOf(
+                                vlog.getEventLogger().trace("DOWN_SOCKET_CLOSED", mapOf(
                                     "connectionId" to connectionId,
                                     "socketId" to socket.textHandlerID()
                                 ), traceId)
                             } catch (e: Exception) {
-                                vlog.logVerticleError("UPDATE_SOCKET_CLOSE", e, mapOf(
+                                vlog.logVerticleError("DOWN_SOCKET_CLOSE", e, mapOf(
                                     "connectionId" to connectionId
                                 ))
                             }
                         }
                     }
                 } catch (e: Exception) {
-                    vlog.logVerticleError("UPDATE_SOCKET_CLEANUP", e, mapOf(
+                    vlog.logVerticleError("DOWN_SOCKET_CLEANUP", e, mapOf(
                         "connectionId" to connectionId
                     ))
                     success = false

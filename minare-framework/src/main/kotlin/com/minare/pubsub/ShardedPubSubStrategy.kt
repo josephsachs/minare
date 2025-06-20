@@ -61,7 +61,7 @@ class ShardedPubSubStrategy : PubSubChannelStrategy {
                 messageJson.containsKey("type") &&
                 messageJson.containsKey("version")) {
 
-                // The message is already in the format expected by update verticle
+                // The message is already in the format expected by down socket verticle
                 return messageJson
             }
 

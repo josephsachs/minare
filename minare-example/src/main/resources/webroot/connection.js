@@ -5,7 +5,7 @@
 import config from './config.js';
 import store from './store.js';
 import logger from './logger.js';
-import { handleUpSocketMessage, handleUpdateSocketMessage } from './handlers.js';
+import { handleUpSocketMessage, handleDownSocketMessage } from './handlers.js';
 
 /**
  * Create a WebSocket connection
@@ -111,34 +111,34 @@ export const connectUpSocket = async (isReconnect = false) => {
 };
 
 /**
- * Connect update socket
- * @returns {Promise<WebSocket>} Update socket instance
+ * Connect down socket
+ * @returns {Promise<WebSocket>} Down socket instance
  */
-export const connectUpdateSocket = async () => {
+export const connectDownSocket = async () => {
   const connectionId = store.getConnectionId();
   if (!connectionId) {
     throw new Error('No connection ID available');
   }
 
-  const url = `${config.websocket.wsProtocol}${config.websocket.host}:${config.websocket.updatePort}${config.websocket.updateEndpoint}`;
+  const url = `${config.websocket.wsProtocol}${config.websocket.host}:${config.websocket.downPort}${config.websocket.downEndpoint}`;
 
-  logger.info('Connecting update socket...');
+  logger.info('Connecting down socket...');
 
   try {
     const socket = await createWebSocket(
       url,
-      handleUpdateSocketMessage,
+      handleDownSocketMessage,
       {
         onClose: () => {
           if (store.isConnected()) {
-            handleUpdateSocketDisconnect();
+            handleDownSocketDisconnect();
           }
         }
       }
     );
 
-    store.setUpdateSocket(socket);
-    logger.update('Update socket connected');
+    store.setDownSocket(socket);
+    logger.update('Down socket connected');
 
     const associationMessage = {
       connectionId: connectionId
@@ -147,13 +147,13 @@ export const connectUpdateSocket = async () => {
 
     return socket;
   } catch (error) {
-    logger.error(`Update socket connection failed: ${error.message}`);
+    logger.error(`Down socket connection failed: ${error.message}`);
     throw error;
   }
 };
 
 /**
- * Connect to the server (both up and update sockets)
+ * Connect to the server (both up and down sockets)
  * @param {boolean} isReconnect - Whether this is a reconnect attempt
  * @returns {Promise<boolean>} Success indicator
  */
@@ -174,10 +174,10 @@ export const connect = async (isReconnect = false) => {
  * Disconnect from the server
  */
 export const disconnect = () => {
-  const updateSocket = store.getUpdateSocket();
-  if (updateSocket) {
-    updateSocket.close();
-    store.setUpdateSocket(null);
+  const downSocket = store.getDownSocket();
+  if (downSocket) {
+    downSocket.close();
+    store.setDownSocket(null);
   }
 
   const upSocket = store.getUpSocket();
@@ -211,17 +211,17 @@ const handleUpSocketDisconnect = () => {
 /**
  * Handle update socket disconnect
  */
-const handleUpdateSocketDisconnect = () => {
-  logger.warn('Update socket disconnected, attempting to reconnect...');
+const handleDownSocketDisconnect = () => {
+  logger.warn('Down socket disconnected, attempting to reconnect...');
 
   // Clear update socket reference
-  store.setUpdateSocket(null);
+  store.setDownSocket(null);
 
   // Attempt to reconnect the update socket
   const attemptUpdateReconnect = async () => {
     try {
-      await connectUpdateSocket();
-      logger.info('Update socket reconnected successfully');
+      await connectDownSocket();
+      logger.info('Down socket reconnected successfully');
     } catch (error) {
       logger.error(`Failed to reconnect update socket: ${error.message}`);
 
@@ -332,8 +332,8 @@ export const reconnectConfig = {
     upEndpoint: '/',
     upPort: 4225,
     // Update socket endpoint
-    updateEndpoint: '/',
-    updatePort: 4226,
+    downEndpoint: '/',
+    downPort: 4226,
     // Reconnection settings
     reconnect: {
       enabled: true,
@@ -351,6 +351,6 @@ export default {
   disconnect,
   sendCommand,
   connectUpSocket,
-  connectUpdateSocket,
+  connectDownSocket,
   checkConnectionHealth
 };

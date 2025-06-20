@@ -7,7 +7,7 @@ const userSessions = new Map();
 
 module.exports = {
   connectCommandSocket,
-  connectUpdateSocket,
+  connectDownSocket,
   sendMutationCommand
 };
 
@@ -110,9 +110,9 @@ function connectCommandSocket(context, events, done) {
 }
 
 /**
- * Connect to the update socket using the connection ID
+ * Connect to the down socket using the connection ID
  */
-function connectUpdateSocket(context, events, done) {
+function connectDownSocket(context, events, done) {
   const userId = context.vars.userId;
   const connectionId = context.vars.connectionId;
 
@@ -121,30 +121,30 @@ function connectUpdateSocket(context, events, done) {
     return done(new Error('No connection ID available'));
   }
 
-  console.log(`[${userId}] Connecting to update socket with ID: ${connectionId}`);
+  console.log(`[${userId}] Connecting to down socket with ID: ${connectionId}`);
 
-  // Create update socket connection
+  // Create down socket connection
   // Note: No longer using query parameter, will send ID in first message
-  const updateSocket = new WebSocket('ws://localhost:4226/update');
+  const downSocket = new WebSocket('ws://localhost:4226/update');
 
   // Set a timeout to detect connection issues
   const connectionTimeout = setTimeout(() => {
-    console.error(`[${userId}] Update socket connection timeout`);
+    console.error(`[${userId}] Down socket connection timeout`);
     events.emit('counter', 'ws.update.timeout', 1);
-    updateSocket.terminate();
-    done(new Error('Update socket connection timeout'));
+    downSocket.terminate();
+    done(new Error('Down socket connection timeout'));
   }, 10000);
 
-  updateSocket.on('open', () => {
-    console.log(`[${userId}] Connected to update socket, sending connection ID`);
+  downSocket.on('open', () => {
+    console.log(`[${userId}] Connected to down socket, sending connection ID`);
 
     // Send connection ID in a message after connection
     try {
       const connectionMessage = {
         connectionId: connectionId
       };
-      updateSocket.send(JSON.stringify(connectionMessage));
-      console.log(`[${userId}] Sent connection ID to update socket: ${connectionId}`);
+      downSocket.send(JSON.stringify(connectionMessage));
+      console.log(`[${userId}] Sent connection ID to down socket: ${connectionId}`);
     } catch (err) {
       console.error(`[${userId}] Error sending connection ID:`, err);
       clearTimeout(connectionTimeout);
@@ -152,22 +152,22 @@ function connectUpdateSocket(context, events, done) {
       return;
     }
 
-    // Store update socket in session
+    // Store down socket in session
     const session = userSessions.get(userId) || {};
-    session.updateSocket = updateSocket;
+    session.downSocket = downSocket;
     userSessions.set(userId, session);
 
     events.emit('counter', 'ws.update.open', 1);
   });
 
-  updateSocket.on('message', (data) => {
+  downSocket.on('message', (data) => {
     try {
       const message = JSON.parse(data.toString());
-      console.log(`[${userId}] Update socket received message type: ${message.type || 'unknown'}`);
+      console.log(`[${userId}] Down socket received message type: ${message.type || 'unknown'}`);
 
       // Check for confirmation message
-      if (message.type === 'update_socket_confirm') {
-        console.log(`[${userId}] Update socket confirmed for connection ${message.connectionId}`);
+      if (message.type === 'down_socket_confirm') {
+        console.log(`[${userId}] Down socket confirmed for connection ${message.connectionId}`);
         clearTimeout(connectionTimeout);
         events.emit('counter', 'ws.update.success', 1);
         done();
@@ -209,14 +209,14 @@ function connectUpdateSocket(context, events, done) {
     }
   });
 
-  updateSocket.on('error', (error) => {
+  downSocket.on('error', (error) => {
     console.error(`[${userId}] Update socket error:`, error);
     clearTimeout(connectionTimeout);
     events.emit('counter', 'ws.update.error', 1);
     done(error);
   });
 
-  updateSocket.on('close', (code, reason) => {
+  downSocket.on('close', (code, reason) => {
     console.log(`[${userId}] Update socket closed: ${code} ${reason}`);
   });
 }
@@ -352,11 +352,11 @@ process.on('SIGINT', () => {
         console.error(`[${userId}] Error closing command socket:`, err);
       }
     }
-    if (session.updateSocket) {
+    if (session.downSocket) {
       try {
-        session.updateSocket.close();
+        session.downSocket.close();
       } catch (err) {
-        console.error(`[${userId}] Error closing update socket:`, err);
+        console.error(`[${userId}] Error closing down socket:`, err);
       }
     }
   }

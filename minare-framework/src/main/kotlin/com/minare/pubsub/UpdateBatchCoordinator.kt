@@ -9,10 +9,10 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Coordinates batching of entity updates across all UpdateVerticles.
+ * Coordinates batching of entity updates across all DownSocketVerticles.
  *
  * This class collects entity updates from Redis and distributes them in batches
- * at regular intervals to ensure all UpdateVerticles receive identical update batches.
+ * at regular intervals to ensure all DownSocketVerticles receive identical update batches.
  */
 @Singleton
 class UpdateBatchCoordinator @Inject constructor(
@@ -158,7 +158,7 @@ class UpdateBatchCoordinator @Inject constructor(
     }
 
     /**
-     * Distribute the current batch of updates to all UpdateVerticles
+     * Distribute the current batch of updates to all DownSocketVerticles
      */
     private fun distributeBatch() {
         if (pendingUpdates.isEmpty()) {
@@ -169,7 +169,7 @@ class UpdateBatchCoordinator @Inject constructor(
         val updatesBatch = HashMap(pendingUpdates)
         pendingUpdates.clear()
 
-        // Create the update message in the same format as UpdateVerticle currently uses
+        // Create the update message in the same format as DownSocketVerticle currently uses
         val updateMessage = JsonObject()
             .put("type", "update_batch")
             .put("timestamp", System.currentTimeMillis())
@@ -179,7 +179,7 @@ class UpdateBatchCoordinator @Inject constructor(
                 }
             })
 
-        // Publish to event bus for all UpdateVerticles to consume
+        // Publish to event bus for all DownSocketVerticles to consume
         vertx.eventBus().publish(ADDRESS_BATCHED_UPDATES, updateMessage)
 
         if (updatesBatch.size > 0 && (

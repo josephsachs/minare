@@ -9,7 +9,7 @@ interface ConnectionStore {
     suspend fun find(connectionId: Set<String>): Set<Connection>
     suspend fun putDownSocket(connectionId: String, socketId: String?, deploymentId: String?): Connection
     suspend fun putUpSocket(connectionId: String, socketId: String?, deploymentId: String?): Connection
-    suspend fun findAllWithUpdateSocket(): List<Connection>
+    suspend fun findAllWithDownSocket(): List<Connection>
 
     /**
      * Update the lastActivity timestamp for a connection

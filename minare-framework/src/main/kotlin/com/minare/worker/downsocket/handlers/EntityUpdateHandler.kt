@@ -16,7 +16,7 @@ class EntityUpdateHandler @Inject constructor(
     /**
      * Set the deployment ID for this handler instance.
      * This should be called during event registration to establish which
-     * UpdateVerticle instance this handler belongs to.
+     * DownSocketVerticle instance this handler belongs to.
      */
     fun setDeploymentId(deploymentId: String) {
         this.deploymentId = deploymentId

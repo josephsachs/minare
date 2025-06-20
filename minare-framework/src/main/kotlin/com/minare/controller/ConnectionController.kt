@@ -35,7 +35,7 @@ open class ConnectionController @Inject constructor(
         val connection = connectionStore.create()
 
         connectionCache.storeConnection(connection)
-        log.info("Connection created and stored: id={}, upSocketId={}, updateSocketId={}",
+        log.info("Connection created and stored: id={}, upSocketId={}, downSocketId={}",
             connection._id, connection.upSocketId, connection.downSocketId)
         return connection
     }
@@ -47,7 +47,7 @@ open class ConnectionController @Inject constructor(
         val cachedConnection = connectionCache.getConnection(connectionId)
 
         if (cachedConnection != null) {
-            log.debug("Connection found in cache: id={}, upSocketId={}, updateSocketId={}",
+            log.debug("Connection found in cache: id={}, upSocketId={}, downSocketId={}",
                 connectionId, cachedConnection.upSocketId, cachedConnection.downSocketId)
             return cachedConnection
         }
@@ -55,7 +55,7 @@ open class ConnectionController @Inject constructor(
         val connection = connectionStore.find(connectionId)
 
         connectionCache.storeConnection(connection)
-        log.debug("Connection loaded from database to cache: id={}, upSocketId={}, updateSocketId={}",
+        log.debug("Connection loaded from database to cache: id={}, upSocketId={}, downSocketId={}",
             connection._id, connection.upSocketId, connection.downSocketId)
 
         return connection
@@ -105,13 +105,13 @@ open class ConnectionController @Inject constructor(
                 connection.downSocketDeploymentId
             )
         )
-        log.debug("Connection updated: id={}, upSocketId={}, updateSocketId={}", connection._id, connection.downSocketId, connection.downSocketDeploymentId)
+        log.debug("Connection updated: id={}, upSocketId={}, downSocketId={}", connection._id, connection.downSocketId, connection.downSocketDeploymentId)
 
         return connection
     }
 
     /**
-     * Hook called when a client becomes fully connected (has both up and update sockets).
+     * Hook called when a client becomes fully connected (has both up and down sockets).
      * Applications can override this to handle connection-specific logic.
      *
      * @param connection The fully connected connection
@@ -144,7 +144,7 @@ open class ConnectionController @Inject constructor(
      * Get the update WebSocket for a connection
      */
     fun getUpdateSocket(connectionId: String): ServerWebSocket? {
-        return connectionCache.getUpdateSocket(connectionId)
+        return connectionCache.getDownSocket(connectionId)
     }
 
     /**
@@ -158,7 +158,7 @@ open class ConnectionController @Inject constructor(
      * Get the connection ID for an update WebSocket
      */
     fun getConnectionIdForUpdateSocket(websocket: ServerWebSocket): String? {
-        return connectionCache.getConnectionIdForUpdateSocket(websocket)
+        return connectionCache.getConnectionIdForDownSocket(websocket)
     }
 
     /**
@@ -172,7 +172,7 @@ open class ConnectionController @Inject constructor(
      * Get the connection for an update WebSocket
      */
     fun getConnectionForUpdateSocket(websocket: ServerWebSocket): Connection? {
-        return connectionCache.getConnectionForUpdateSocket(websocket)
+        return connectionCache.getConnectionForDownSocket(websocket)
     }
 
     /**
@@ -211,7 +211,7 @@ open class ConnectionController @Inject constructor(
 
     /**
      * Remove an up WebSocket
-     * This is a primary operation that will also remove the update socket and connection
+     * This is a primary operation that will also remove the down socket and connection
      */
     suspend fun removeUpSocket(connectionId: String) {
         try {
@@ -248,13 +248,13 @@ open class ConnectionController @Inject constructor(
      */
     suspend fun removeUpdateSocket(connectionId: String) {
         try {
-            connectionCache.removeUpdateSocket(connectionId)?.let { socket ->
+            connectionCache.removeDownSocket(connectionId)?.let { socket ->
                 try {
                     if (!socket.isClosed()) {
                         socket.close()
                     }
                 } catch (e: Exception) {
-                    log.warn("Error closing update socket for {}", connectionId, e)
+                    log.warn("Error closing down socket for {}", connectionId, e)
                 }
             }
 
@@ -275,11 +275,11 @@ open class ConnectionController @Inject constructor(
                     )
 
                     connectionCache.storeConnection(persistedConnection)
-                    log.info("Update socket removed for connection {}", connectionId)
+                    log.info("Down socket removed for connection {}", connectionId)
 
                 } catch (e: Exception) {
                     // This might fail if connection was already deleted or is being deleted concurrently
-                    log.warn("Failed to update database for update socket removal: {}", e.message)
+                    log.warn("Failed to update database for down socket removal: {}", e.message)
                     // Update cache anyway to maintain consistency with what we tried to do
                     connectionCache.storeConnection(updatedConnection)
                 }
@@ -436,16 +436,16 @@ open class ConnectionController @Inject constructor(
                 }
             }
 
-            connectionCache.getUpdateSocket(connectionId)?.let { socket ->
+            connectionCache.getDownSocket(connectionId)?.let { socket ->
                 try {
                     if (!socket.isClosed()) socket.close()
                 } catch (e: Exception) {
-                    log.warn("Error closing update socket for {}", connectionId, e)
+                    log.warn("Error closing down socket for {}", connectionId, e)
                 }
             }
 
             connectionCache.removeUpSocket(connectionId)
-            connectionCache.removeUpdateSocket(connectionId)
+            connectionCache.removeDownSocket(connectionId)
             connectionCache.removeConnection(connectionId)
 
             log.info("Connection {} removed from cache", connectionId)

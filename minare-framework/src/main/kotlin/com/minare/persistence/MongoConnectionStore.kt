@@ -229,7 +229,7 @@ class MongoConnectionStore @Inject constructor(
     }
 
     /**
-     * Update the update socket ID
+     * Update the down socket ID
      * Improved error handling to throw exceptions instead of using fallbacks
      */
     override suspend fun putDownSocket(connectionId: String, socketId: String?, deploymentId: String?): Connection {
@@ -257,7 +257,7 @@ class MongoConnectionStore @Inject constructor(
 
             return find(connectionId)
         } catch (e: Exception) {
-            log.error("Error updating update socket ID: {}", connectionId, e)
+            log.error("Error updating down socket ID: {}", connectionId, e)
             throw e
         }
     }
@@ -298,10 +298,10 @@ class MongoConnectionStore @Inject constructor(
     }
 
     /**
-     * Get all connections with update sockets
+     * Get all connections with down sockets
      */
-    override suspend fun findAllWithUpdateSocket(): List<Connection> {
-        val query = JsonObject().put("updateSocketId", JsonObject().put("\$ne", null))
+    override suspend fun findAllWithDownSocket(): List<Connection> {
+        val query = JsonObject().put("downSocketId", JsonObject().put("\$ne", null))
 
         try {
             val documents = mongoClient.find(collection, query).await()
@@ -319,7 +319,7 @@ class MongoConnectionStore @Inject constructor(
                 )
             }
         } catch (e: Exception) {
-            log.error("Error finding connections with update socket", e)
+            log.error("Error finding connections with down socket", e)
             throw e
         }
     }

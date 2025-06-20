@@ -22,7 +22,7 @@ scenarios:
       - log: "Starting WebSocket connection test"
       - function: "connectCommandSocket"
       - think: 2  # Short wait after command socket connection
-      - function: "connectUpdateSocket"
+      - function: "connectDownSocket"
       - think: 5  # Wait to receive initial entity sync
       - function: "sendMutationCommand"
       - think: 2  # Wait after mutation

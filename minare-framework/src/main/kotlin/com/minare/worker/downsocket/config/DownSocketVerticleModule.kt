@@ -22,8 +22,8 @@ import com.minare.worker.downsocket.handlers.EntityUpdateHandler
 import kotlin.coroutines.CoroutineContext
 
 /**
- * Specialized Guice module for UpdateVerticle and its dependencies.
- * This module provides all the necessary components within the UpdateVerticle's scope.
+ * Specialized Guice module for DownSocketVerticle and its dependencies.
+ * This module provides all the necessary components within the DownSocketVerticle's scope.
  */
 class DownSocketVerticleModule : PrivateModule() {
 
@@ -48,12 +48,12 @@ class DownSocketVerticleModule : PrivateModule() {
         requireBinding(ChannelStore::class.java)
         requireBinding(ContextStore::class.java)
 
-        // Expose UpdateVerticle to the parent injector
+        // Expose DownSocketVerticle to the parent injector
         expose(DownSocketVerticle::class.java)
     }
 
     /**
-     * Provides a Router instance specifically for UpdateVerticle
+     * Provides a Router instance specifically for DownSocketVerticle
      */
     @Provides
     @Singleton
@@ -71,16 +71,16 @@ class DownSocketVerticleModule : PrivateModule() {
     }
 
     /**
-     * Provides EventBusUtils for UpdateVerticle
+     * Provides EventBusUtils for DownSocketVerticle
      */
     @Provides
     @Singleton
     fun provideEventBusUtils(vertx: Vertx, coroutineContext: CoroutineContext): EventBusUtils {
-        return EventBusUtils(vertx, coroutineContext, "UpdateVerticle")
+        return EventBusUtils(vertx, coroutineContext, "DownSocketVerticle")
     }
 
     /**
-     * Provides HeartbeatManager for UpdateVerticle
+     * Provides HeartbeatManager for DownSocketVerticle
      */
     @Provides
     @Singleton

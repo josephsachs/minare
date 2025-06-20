@@ -115,7 +115,7 @@ object WebSocketUtils {
     }
 
     /**
-     * Get connection ID for a socket, checking both command and update sockets
+     * Get connection ID for a socket, checking both command and down sockets
      *
      * @param websocket The WebSocket to check
      * @param connectionCache Connection cache to look up in
@@ -128,7 +128,7 @@ object WebSocketUtils {
         val commandId = connectionCache.getConnectionIdForUpSocket(websocket)
         if (commandId != null) return commandId
 
-        return connectionCache.getConnectionIdForUpdateSocket(websocket)
+        return connectionCache.getConnectionIdForDownSocket(websocket)
     }
 
     /**
