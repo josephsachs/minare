@@ -1,34 +1,14 @@
 # Minare Framework
+Current version: 0.2.0
 
 ### Author's Note
-I worked on this for two intense weeks to produce the prototype, after which I took a break. My goal was to gain some practical experience implementing a realtime data feed at scale.
-
-I made it a framework for two reasons:
-1) I have more than one idea how to use the finished product.
-2) Portfolios are the place for willful perversity in the name of challenge.
-
-I chose Vert.x because:
-1) I wanted to learn Java.
-2) Vert.x's reputation for high throughput.
-
-In retrospect, Node.js or plain Java (if I wanted active memory management) would have been fine. While MongoDB suits the data structure well, it is slower; in other words, it's unlikely that server throughput would ever become the bottleneck.
-
-In its current state, the pipeline works but is not efficient. States stay synchronized under moderate load but rapid updates quickly overwhelm the distributor, resulting in inconsistency. The solution to this likely includes some combination of
-1) dynamically batching updates,
-2) using a message queue (to ensure delivery) and
-3) a more efficient publisher.
-
-If list that makes you think of a couple of product names, well, me too but let's not say them out loud.
-
-Finally, we get to the "at scale" part. I will need to handle this carefully as costs add up when you start deploying autoscale groups.
-
-This remains a project I plan to revisit when time allows. I estimate the timeline for the above at 14-30 more long days.
+Version 2 is underway and the contents of this document will likely invalidate frequently.
 
 ### **NOTE: Minare is currently unreleased. Core systems require improvement and many planned changes await.**
 
 ## Architecture Overview
 
-Minare facilitates decoupled unidirectional data flow by leveraging DB as the source of truth and relying on event-driven behavior. Vert.x's requirement of thread-safety and clustering features should aid with horizontal scaling.
+Minare provides a back-end framework for management of real-time data with many clients.
 
 ## Core Components
 
@@ -42,12 +22,9 @@ Entities can have parent (`@Parent`) and child (`@Child`) relationships with oth
  
 ## Near term roadmap
 
-- Optimize the updater for load
-- Continue to assess where processes can be isolated
-- Audit all caches for thread- and instance- safety requirements
-- Implement a message queue, particularly on the Update side
+- Finetune batch updater
+- Implement Kafka + frame control + cluster orchestration
 - New integration tests that better simulate expected user pattern
-- Deploy to AWS with the infra stack
 
 ## Example Application
 
