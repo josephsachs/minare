@@ -2,7 +2,7 @@
 Current version: 0.2.0
 
 ### Author's Note
-Version 2 is underway and the contents of this document will likely invalidate frequently.
+Major pre-release version update is underway and the contents of this document will likely invalidate frequently.
 
 ### **NOTE: Minare is currently unreleased. Core systems require improvement and many planned changes await.**
 
