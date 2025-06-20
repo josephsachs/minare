@@ -31,7 +31,7 @@ This basic test:
 
 1. Connects to the command socket at `/ws`
 2. Obtains a connection ID
-3. Connects to the update socket at `/ws/updates` with the connection ID
+3. Connects to the down socket at `/ws/update` with the connection ID
 4. Sends a simple ping command
 5. Tracks basic metrics like connection success and message flow
 

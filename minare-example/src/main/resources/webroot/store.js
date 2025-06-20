@@ -15,7 +15,7 @@ const createStore = () => {
       id: null,
       connected: false,
       upSocket: null,
-      updateSocket: null,
+      downSocket: null,
       lastActivity: Date.now()
     },
 
@@ -65,9 +65,9 @@ const createStore = () => {
       _state.connection.lastActivity = Date.now();
     },
 
-    getUpdateSocket: () => _state.connection.updateSocket,
-    setUpdateSocket: (socket) => {
-      _state.connection.updateSocket = socket;
+    getDownSocket: () => _state.connection.downSocket,
+    setDownSocket: (socket) => {
+      _state.connection.downSocket = socket;
       _state.connection.lastActivity = Date.now();
     },
 

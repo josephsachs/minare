@@ -1,4 +1,4 @@
-package com.minare.worker.update
+package com.minare.worker.downsocket
 
 import com.minare.MinareApplication
 import com.minare.cache.ConnectionCache
@@ -19,11 +19,11 @@ import org.slf4j.LoggerFactory
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import com.minare.worker.upsocket.UpSocketVerticle
-import com.minare.worker.update.events.EntityUpdatedEvent
-import com.minare.worker.update.events.UpdateConnectionClosedEvent
-import com.minare.worker.update.events.UpdateConnectionClosedEvent.Companion.ADDRESS_CONNECTION_CLOSED
-import com.minare.worker.update.events.UpdateConnectionEstablishedEvent
-import com.minare.worker.update.events.UpdateConnectionEstablishedEvent.Companion.ADDRESS_CONNECTION_ESTABLISHED
+import com.minare.worker.downsocket.events.EntityUpdatedEvent
+import com.minare.worker.downsocket.events.UpdateConnectionClosedEvent
+import com.minare.worker.downsocket.events.UpdateConnectionClosedEvent.Companion.ADDRESS_CONNECTION_CLOSED
+import com.minare.worker.downsocket.events.UpdateConnectionEstablishedEvent
+import com.minare.worker.downsocket.events.UpdateConnectionEstablishedEvent.Companion.ADDRESS_CONNECTION_ESTABLISHED
 
 /**
  * Verticle responsible for accumulating entity updates and distributing them
@@ -31,16 +31,16 @@ import com.minare.worker.update.events.UpdateConnectionEstablishedEvent.Companio
  *
  * This verticle hosts its own HTTP server for direct WebSocket connections.
  */
-class UpdateVerticle @Inject constructor(
+class DownSocketVerticle @Inject constructor(
     private val connectionStore: ConnectionStore,
     private val connectionCache: ConnectionCache,
-    private val updateVerticleCache: UpdateVerticleCache,
+    private val downSocketVerticleCache: DownSocketVerticleCache,
     private val entityUpdatedEvent: EntityUpdatedEvent,
     private val updateConnectionClosedEvent: UpdateConnectionClosedEvent,
     private val updateConnectionEstablishedEvent: UpdateConnectionEstablishedEvent
 ) : CoroutineVerticle() {
 
-    private val log = LoggerFactory.getLogger(UpdateVerticle::class.java)
+    private val log = LoggerFactory.getLogger(DownSocketVerticle::class.java)
     private lateinit var vlog: VerticleLogger
     private lateinit var eventBusUtils: EventBusUtils
 
@@ -57,8 +57,8 @@ class UpdateVerticle @Inject constructor(
     private var deployedAt: Long = 0
 
     companion object {
-        const val ADDRESS_UPDATE_SOCKET_INITIALIZED = "minare.update.socket.initialized"
-        const val ADDRESS_UPDATE_SOCKET_CLOSE = "minare.update.socket.close"
+        const val ADDRESS_DOWN_SOCKET_INITIALIZED = "minare.down.socketinitialized"
+        const val ADDRESS_DOWN_SOCKET_CLOSE = "minare.down.socketclose"
         const val ADDRESS_INITIALIZE = "minare.update.initialize"
 
         const val CACHE_TTL_MS = 2000L // 10 seconds
@@ -73,7 +73,7 @@ class UpdateVerticle @Inject constructor(
     override suspend fun start() {
         try {
             deployedAt = System.currentTimeMillis()
-            log.info("Starting UpdateVerticle at {$deployedAt}")
+            log.info("Starting DownSocketVerticle at {$deployedAt}")
 
             vlog = VerticleLogger()
             vlog.setVerticle(this)
@@ -81,7 +81,7 @@ class UpdateVerticle @Inject constructor(
             eventBusUtils = vlog.createEventBusUtils()
             registerEventBusConsumers()
 
-            connectionTracker = ConnectionTracker("UpdateSocket", vlog)
+            connectionTracker = ConnectionTracker("DownSocket", vlog)
             heartbeatManager = HeartbeatManager(vertx, vlog, connectionStore, CoroutineScope(vertx.dispatcher()))
             heartbeatManager.setHeartbeatInterval(UpSocketVerticle.HEARTBEAT_INTERVAL_MS)
 
@@ -109,10 +109,10 @@ class UpdateVerticle @Inject constructor(
             }
 
             vlog.logStartupStep("STARTED")
-            log.info("UpdateVerticle started with frame interval: {}ms", DEFAULT_FRAME_INTERVAL_MS)
+            log.info("DownSocketVerticle started with frame interval: {}ms", DEFAULT_FRAME_INTERVAL_MS)
         } catch (e: Exception) {
             vlog.logVerticleError("STARTUP_FAILED", e)
-            log.error("Failed to start UpdateVerticle", e)
+            log.error("Failed to start DownSocketVerticle", e)
             throw e
         }
     }
@@ -143,35 +143,35 @@ class UpdateVerticle @Inject constructor(
     }
 
     /**
-     * Initialize the router with update socket routes
+     * Initialize the router with down socket routes
      */
     private fun initializeRouter() {
         router = HttpServerUtils.createWebSocketRouter(
             vertx = vertx,
-            verticleName = "UpdateVerticle",
+            verticleName = "DownSocketVerticle",
             verticleLogger = vlog,
             wsPath = "/update",
             healthPath = "/health",
             debugPath = "/debug",
             deploymentId = deploymentID,
             deployedAt = deployedAt,
-            wsHandler = this::handleUpdateSocket,
+            wsHandler = this::handleDownSocket,
             coroutineContext = vertx.dispatcher(),
             metricsSupplier = {
                 JsonObject()
                     .put("connections", connectionTracker.getMetrics())
                     .put("heartbeats", heartbeatManager.getMetrics())
-                    .put("pendingUpdateQueues", updateVerticleCache.connectionPendingUpdates.size)
+                    .put("pendingUpdateQueues", downSocketVerticleCache.connectionPendingUpdates.size)
                     .put("caches", JsonObject()
-                        .put("entityChannel", updateVerticleCache.entityChannelCache.size)
-                        .put("channelConnection", updateVerticleCache.channelConnectionCache.size)
+                        .put("entityChannel", downSocketVerticleCache.entityChannelCache.size)
+                        .put("channelConnection", downSocketVerticleCache.channelConnectionCache.size)
                     )
             }
         )
     }
 
     /**
-     * Deploy a dedicated HTTP server for update sockets
+     * Deploy a dedicated HTTP server for down sockets
      */
     private suspend fun deployHttpServer() {
         vlog.logStartupStep("DEPLOYING_OWN_HTTP_SERVER")
@@ -206,10 +206,10 @@ class UpdateVerticle @Inject constructor(
     }
 
     /**
-     * Handle a new update socket connection
+     * Handle a new down socket connection
      */
-    private suspend fun handleUpdateSocket(websocket: ServerWebSocket, traceId: String) {
-        log.info("New update socket connection from {}", websocket.remoteAddress())
+    private suspend fun handleDownSocket(websocket: ServerWebSocket, traceId: String) {
+        log.info("New down socket connection from {}", websocket.remoteAddress())
 
         websocket.textMessageHandler { message ->
             CoroutineScope(vertx.dispatcher()).launch {
@@ -243,7 +243,7 @@ class UpdateVerticle @Inject constructor(
     }
 
     /**
-     * Associate an update socket with a connection ID
+     * Associate an down socket with a connection ID
      */
     private suspend fun associateUpdateSocket(connectionId: String, websocket: ServerWebSocket, traceId: String) {
         vlog.getEventLogger().trace("ASSOCIATING_SOCKET", mapOf(
@@ -271,31 +271,31 @@ class UpdateVerticle @Inject constructor(
             localSockets[connectionId] = websocket
             connectionTracker.registerConnection(connectionId, traceId, websocket)
 
-            connectionStore.putUpdateSocket(
+            connectionStore.putDownSocket(
                 connectionId,
                 socketId,
                 deploymentID // Register the thread context too
             )
 
-            connectionCache.storeUpdateSocket(connectionId, websocket, connection)
+            connectionCache.storeDownSocket(connectionId, websocket, connection)
             heartbeatManager.startHeartbeat(socketId, connectionId, websocket)
-            WebSocketUtils.sendConfirmation(websocket, "update_socket_confirm", connectionId)
+            WebSocketUtils.sendConfirmation(websocket, "down_socket_confirm", connectionId)
 
-            vlog.getEventLogger().logStateChange("UpdateSocket", "CONNECTED", "REGISTERED",
+            vlog.getEventLogger().logStateChange("DownSocket", "CONNECTED", "REGISTERED",
                 mapOf("connectionId" to connectionId, "socketId" to socketId), traceId)
 
-            updateVerticleCache.connectionPendingUpdates.computeIfAbsent(connectionId) { ConcurrentHashMap() }
+            downSocketVerticleCache.connectionPendingUpdates.computeIfAbsent(connectionId) { ConcurrentHashMap() }
 
             vertx.eventBus().publish(
                 ADDRESS_CONNECTION_ESTABLISHED, JsonObject()
                     .put("connectionId", connectionId)
                     .put("socketId", socketId)  // Include the socket ID in the event
-                    .put("socketType", "update")
+                    .put("socketType", "down")
                     .put("deploymentId", deploymentID)
             )
 
             vertx.eventBus().publish(
-                MinareApplication.ConnectionEvents.ADDRESS_UPDATE_SOCKET_CONNECTED,
+                MinareApplication.ConnectionEvents.ADDRESS_DOWN_SOCKET_CONNECTED,
                 JsonObject()
                     .put("connectionId", connection._id)
                     .put("socketId", socketId)
@@ -303,7 +303,7 @@ class UpdateVerticle @Inject constructor(
                     .put("traceId", traceId)
             )
         } catch (e: Exception) {
-            vlog.logVerticleError("ASSOCIATE_UPDATE_SOCKET", e, mapOf(
+            vlog.logVerticleError("ASSOCIATE_DOWN_SOCKET", e, mapOf(
                 "connectionId" to connectionId
             ))
             WebSocketUtils.sendErrorResponse(websocket, e, connectionId, vlog)
@@ -311,7 +311,7 @@ class UpdateVerticle @Inject constructor(
     }
 
     /**
-     * Close any existing update socket for a connection
+     * Close any existing down socket for a connection
      */
     private fun closeExistingUpdateSocket(connectionId: String, traceId: String) {
         val existingSocket = connectionTracker.getSocket(connectionId) ?: return
@@ -340,18 +340,18 @@ class UpdateVerticle @Inject constructor(
             connectionTracker.handleSocketClosed(websocket)
 
             localSockets.remove(connectionId)
-            connectionCache.removeUpdateSocket(connectionId)
+            connectionCache.removeDownSocket(connectionId)
 
             vertx.eventBus().publish(
                 ADDRESS_CONNECTION_CLOSED, JsonObject()
                     .put("connectionId", connectionId)
-                    .put("socketType", "update")
+                    .put("socketType", "down")
             )
 
-            vlog.getEventLogger().logStateChange("UpdateSocket", "REGISTERED", "DISCONNECTED",
+            vlog.getEventLogger().logStateChange("DownSocket", "REGISTERED", "DISCONNECTED",
                 mapOf("connectionId" to connectionId), traceId)
         } catch (e: Exception) {
-            vlog.logVerticleError("UPDATE_SOCKET_CLOSE", e, mapOf(
+            vlog.logVerticleError("DOWN_SOCKET_CLOSE", e, mapOf(
                 "connectionId" to connectionId
             ))
         }
@@ -372,7 +372,7 @@ class UpdateVerticle @Inject constructor(
                 false
             }
         } else {
-            log.debug("No update socket found for connection {}", connectionId)
+            log.debug("No down socket found for connection {}", connectionId)
             false
         }
     }
@@ -396,7 +396,7 @@ class UpdateVerticle @Inject constructor(
         closeAllSockets()
 
         vlog.logUndeployment()
-        log.info("UpdateVerticle stopped")
+        log.info("DownSocketVerticle stopped")
     }
 
     /**
@@ -410,7 +410,7 @@ class UpdateVerticle @Inject constructor(
                 val socket = connectionTracker.getSocket(connectionId)
                 if (socket != null && !socket.isClosed) {
                     socket.close()
-                    log.debug("Closed update socket for connection: {}", connectionId)
+                    log.debug("Closed down socket for connection: {}", connectionId)
                 }
             } catch (e: Exception) {
                 log.error("Error closing socket for connection: {}", connectionId, e)
@@ -438,7 +438,7 @@ class UpdateVerticle @Inject constructor(
             var totalConnectionsProcessed = 0
             var totalUpdatesProcessed = 0
 
-            for ((connectionId, updates) in updateVerticleCache.connectionPendingUpdates) {
+            for ((connectionId, updates) in downSocketVerticleCache.connectionPendingUpdates) {
                 if (updates.isEmpty()) {
                     continue
                 }

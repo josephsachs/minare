@@ -1,14 +1,14 @@
-package com.minare.worker.update.handlers
+package com.minare.worker.downsocket.handlers
 
 import com.google.inject.Inject
 import com.minare.persistence.ConnectionStore
 import com.minare.utils.VerticleLogger
 import io.vertx.core.json.JsonObject
-import com.minare.worker.update.UpdateVerticleCache
+import com.minare.worker.downsocket.DownSocketVerticleCache
 
 class EntityUpdateHandler @Inject constructor(
     private val vlog: VerticleLogger,
-    private val updateVerticleCache: UpdateVerticleCache,
+    private val downSocketVerticleCache: DownSocketVerticleCache,
     private val connectionStore: ConnectionStore
 ) {
     private var deploymentId: String? = null
@@ -16,7 +16,7 @@ class EntityUpdateHandler @Inject constructor(
     /**
      * Set the deployment ID for this handler instance.
      * This should be called during event registration to establish which
-     * UpdateVerticle instance this handler belongs to.
+     * DownSocketVerticle instance this handler belongs to.
      */
     fun setDeploymentId(deploymentId: String) {
         this.deploymentId = deploymentId
@@ -43,7 +43,7 @@ class EntityUpdateHandler @Inject constructor(
                 ?: error("Deployment ID not set on EntityUpdateHandler - register() was not called properly")**/
 
             val startTime = System.currentTimeMillis()
-            val channels = updateVerticleCache.getChannelsForEntity(entityId)
+            val channels = downSocketVerticleCache.getChannelsForEntity(entityId)
             val lookupTime = System.currentTimeMillis() - startTime
 
             if (lookupTime > 50) {
@@ -65,7 +65,7 @@ class EntityUpdateHandler @Inject constructor(
 
             for (channelId in channels) {
                 val connections = connectionStore.find(
-                    updateVerticleCache.getConnectionsForChannel(channelId)
+                    downSocketVerticleCache.getConnectionsForChannel(channelId)
                 )
 
                 for (connection in connections) {
@@ -94,7 +94,7 @@ class EntityUpdateHandler @Inject constructor(
                     processedConnections.add(connection._id)
 
                     // Queue update for this connection
-                    updateVerticleCache.queueUpdateForConnection(connection._id, entityId, entityUpdate)
+                    downSocketVerticleCache.queueUpdateForConnection(connection._id, entityId, entityUpdate)
                 }
             }
 

@@ -19,7 +19,7 @@ import javax.inject.Named
  * Worker verticle that subscribes to Redis pub/sub channels for entity change notifications.
  *
  * Now includes an UpdateBatchCoordinator that batches entity updates before distributing them
- * to ensure all UpdateVerticles receive identical update batches.
+ * to ensure all DownSocketVerticles receive identical update batches.
  */
 class RedisPubSubWorkerVerticle @Inject constructor(
     @Named("databaseName") private val databaseName: String,
@@ -236,7 +236,7 @@ class RedisPubSubWorkerVerticle @Inject constructor(
                 updateBatchCoordinator.queueUpdate(changeNotification)
 
                 // Note: We temporarily keep the original event bus publication during transition
-                // Once all UpdateVerticles are updated to use batched updates, this can be removed
+                // Once all DownSocketVerticles are updated to use batched updates, this can be removed
                 vertx.eventBus().publish(ADDRESS_ENTITY_UPDATED, changeNotification)
             }
         } catch (e: Exception) {

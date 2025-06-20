@@ -9,8 +9,8 @@ export const config = {
     upEndpoint: '/command',
     upPort: "4225",
 
-    updateEndpoint: '/update',
-    updatePort: "4226",
+    downEndpoint: '/update',
+    downPort: "4226",
 
     reconnect: {
       enabled: false,

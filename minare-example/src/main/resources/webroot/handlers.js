@@ -5,7 +5,7 @@
  */
 import store from './store.js';
 import logger from './logger.js';
-import { connectUpdateSocket } from './connection.js';
+import { connectDownSocket } from './connection.js';
 import config from './config.js';
 
 let pendingEntities = [];
@@ -129,7 +129,7 @@ export const handleUpSocketMessage = (event) => {
       case 'connection_confirm':
         store.setConnectionId(message.connectionId);
         logger.info(`Connection established with ID: ${message.connectionId}`);
-        connectUpdateSocket();
+        connectDownSocket();
         break;
 
       case 'reconnect_response':
@@ -182,24 +182,24 @@ export const handleUpSocketMessage = (event) => {
         logger.info(`Received ping response: ${message.timestamp ? `latency=${Date.now() - message.timestamp}ms` : 'no timestamp'}`);
         break;
 
-      case 'reconnect_update_socket':
+      case 'reconnect_down_socket':
         logger.info(`Server requested update socket reconnection at ${message.timestamp}`);
-        const updateSocket = store.getUpdateSocket();
-        if (updateSocket) {
+        const downSocket = store.getDownSocket();
+        if (downSocket) {
           try {
-            if (updateSocket.readyState === WebSocket.OPEN ||
-                updateSocket.readyState === WebSocket.CONNECTING) {
+            if (downSocket.readyState === WebSocket.OPEN ||
+                downSocket.readyState === WebSocket.CONNECTING) {
               logger.info('Closing existing update socket before reconnection');
-              updateSocket.close();
+              downSocket.close();
             }
-            store.setUpdateSocket(null);
+            store.setDownSocket(null);
           } catch (e) {
             logger.error(`Error closing existing update socket: ${e.message}`);
           }
         }
 
         // Reconnect the update socket
-        connectUpdateSocket()
+        connectDownSocket()
           .then(() => logger.info('Update socket reconnected successfully'))
           .catch(err => logger.error(`Failed to reconnect update socket: ${err.message}`));
 
@@ -219,7 +219,7 @@ export const handleUpSocketMessage = (event) => {
  * Handle messages from the update socket - optimized for high frequency
  * @param {MessageEvent} event - WebSocket message event
  */
-export const handleUpdateSocketMessage = (event) => {
+export const handleDownSocketMessage = (event) => {
   try {
     const message = JSON.parse(event.data);
 
@@ -275,7 +275,7 @@ export const handleUpdateSocketMessage = (event) => {
 
     // Other message types
     switch (message.type) {
-      case 'update_socket_confirm':
+      case 'down_socket_confirm':
         // Update socket confirmed, we're fully connected
         store.setConnected(true);
         logger.info('Fully connected to server');
@@ -294,5 +294,5 @@ export const handleUpdateSocketMessage = (event) => {
 
 export default {
   handleUpSocketMessage,
-  handleUpdateSocketMessage
+  handleDownSocketMessage
 };

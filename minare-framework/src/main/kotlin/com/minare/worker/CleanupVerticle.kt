@@ -142,7 +142,7 @@ class CleanupVerticle @Inject constructor(
                     log.info("Removing orphaned cache entry: $connectionId")
                     // Clean up from cache
                     connectionCache.removeUpSocket(connectionId)
-                    connectionCache.removeUpdateSocket(connectionId)
+                    connectionCache.removeDownSocket(connectionId)
                     connectionCache.removeConnection(connectionId)
                     connectionsRemoved++
                 } catch (e: Exception) {
@@ -179,7 +179,7 @@ class CleanupVerticle @Inject constructor(
         return try {
             // First try closing any sockets
             val upSocket = connectionCache.getUpSocket(connectionId)
-            val updateSocket = connectionCache.getUpdateSocket(connectionId)
+            val downSocket = connectionCache.getDownSocket(connectionId)
 
             if (upSocket != null && !upSocket.isClosed()) {
                 try {
@@ -189,11 +189,11 @@ class CleanupVerticle @Inject constructor(
                 }
             }
 
-            if (updateSocket != null && !updateSocket.isClosed()) {
+            if (downSocket != null && !downSocket.isClosed()) {
                 try {
-                    updateSocket.close()
+                    downSocket.close()
                 } catch (e: Exception) {
-                    log.warn("Error closing update socket for $connectionId", e)
+                    log.warn("Error closing down socket for $connectionId", e)
                 }
             }
 
@@ -206,7 +206,7 @@ class CleanupVerticle @Inject constructor(
             if (!result) {
                 // If the regular cleanup fails, try direct removal
                 connectionCache.removeUpSocket(connectionId)
-                connectionCache.removeUpdateSocket(connectionId)
+                connectionCache.removeDownSocket(connectionId)
                 connectionCache.removeConnection(connectionId)
                 connectionStore.delete(connectionId)
             }

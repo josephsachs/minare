@@ -38,12 +38,12 @@ interface ConnectionCache {
     fun storeUpSocket(connectionId: String, socket: ServerWebSocket, connection: Connection)
 
     /**
-     * Associate an update socket with a connection
+     * Associate an down socket with a connection
      * @param connectionId The connection ID
      * @param socket The WebSocket instance
      * @param connection The full Connection object
      */
-    fun storeUpdateSocket(connectionId: String, socket: ServerWebSocket, connection: Connection)
+    fun storeDownSocket(connectionId: String, socket: ServerWebSocket, connection: Connection)
 
     /**
      * Get the up socket for a connection
@@ -51,9 +51,9 @@ interface ConnectionCache {
     fun getUpSocket(connectionId: String): ServerWebSocket?
 
     /**
-     * Get the update socket for a connection
+     * Get the down socket for a connection
      */
-    fun getUpdateSocket(connectionId: String): ServerWebSocket?
+    fun getDownSocket(connectionId: String): ServerWebSocket?
 
     /**
      * Get the connection ID associated with an up socket
@@ -62,10 +62,10 @@ interface ConnectionCache {
     fun getConnectionIdForUpSocket(socket: ServerWebSocket): String?
 
     /**
-     * Get the connection ID associated with an update socket
+     * Get the connection ID associated with an down socket
      * @return The connection ID or null if not found
      */
-    fun getConnectionIdForUpdateSocket(socket: ServerWebSocket): String?
+    fun getConnectionIdForDownSocket(socket: ServerWebSocket): String?
 
     /**
      * Get the connection associated with an up socket
@@ -74,10 +74,10 @@ interface ConnectionCache {
     fun getConnectionForUpSocket(socket: ServerWebSocket): Connection?
 
     /**
-     * Get the connection associated with an update socket
+     * Get the connection associated with an down socket
      * @return The full Connection object or null if not found
      */
-    fun getConnectionForUpdateSocket(socket: ServerWebSocket): Connection?
+    fun getConnectionForDownSocket(socket: ServerWebSocket): Connection?
 
     /**
      * Remove an up socket from the cache
@@ -85,9 +85,9 @@ interface ConnectionCache {
     fun removeUpSocket(connectionId: String): ServerWebSocket?
 
     /**
-     * Remove an update socket from the cache
+     * Remove an down socket from the cache
      */
-    fun removeUpdateSocket(connectionId: String): ServerWebSocket?
+    fun removeDownSocket(connectionId: String): ServerWebSocket?
 
     /**
      * Get all connection IDs with at least an up socket
@@ -100,12 +100,12 @@ interface ConnectionCache {
     fun getConnectionCount(): Int
 
     /**
-     * Get number of connections with both up and update sockets
+     * Get number of connections with both up and down sockets
      */
     fun getFullyConnectedCount(): Int
 
     /**
-     * Check if a connection has both up and update sockets
+     * Check if a connection has both up and down sockets
      */
     fun isFullyConnected(connectionId: String): Boolean
 }

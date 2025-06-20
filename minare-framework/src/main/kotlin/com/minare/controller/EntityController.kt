@@ -38,7 +38,7 @@ open class EntityController @Inject constructor(
      */
     open suspend fun create(entity: Entity): Entity {
         if (!entity._id.isNullOrEmpty()) {
-            throw IllegalArgumentException("Entity already has an ID - use save() for updates")
+            throw IllegalArgumentException("Entity already has an ID - use save() for downSockets")
         }
 
         log.debug("Creating new entity of type {}", entity.type)
