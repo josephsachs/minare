@@ -1,4 +1,4 @@
-package com.minare.worker.command.handlers
+package com.minare.worker.upsocket.handlers
 
 import com.google.inject.Inject
 import com.minare.persistence.ConnectionStore
@@ -6,7 +6,7 @@ import com.minare.utils.ConnectionTracker
 import com.minare.utils.HeartbeatManager
 import com.minare.utils.VerticleLogger
 import com.minare.utils.WebSocketUtils
-import com.minare.worker.command.CommandMessageHandler
+import com.minare.worker.upsocket.CommandMessageHandler
 import io.vertx.core.http.ServerWebSocket
 import io.vertx.core.json.JsonObject
 

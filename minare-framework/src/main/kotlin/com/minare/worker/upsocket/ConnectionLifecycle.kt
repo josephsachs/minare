@@ -1,4 +1,4 @@
-package com.minare.worker.command
+package com.minare.worker.upsocket
 
 import com.google.inject.Inject
 import com.google.inject.Singleton
@@ -25,7 +25,7 @@ class ConnectionLifecycle @Inject constructor(
     private val heartbeatManager: HeartbeatManager
 ) {
     /**
-     * Connect to the command socket
+     * Connect to the up socket
      */
     public suspend fun initiateConnection(websocket: ServerWebSocket, deploymentId: String, traceId: String) {
         try {
@@ -49,30 +49,30 @@ class ConnectionLifecycle @Inject constructor(
                 mapOf("connectionId" to connection._id), traceId
             )
 
-            val commandSocketId = "cs-${java.util.UUID.randomUUID()}"
+            val upSocketId = "cs-${java.util.UUID.randomUUID()}"
 
             vlog.getEventLogger().logDbOperation(
                 "UPDATE", "connections",
                 mapOf("connectionId" to connection._id, "action" to "update_socket_ids"), traceId
             )
 
-            val updatedConnection = connectionStore.putCommandSocket(
+            val updatedConnection = connectionStore.putUpSocket(
                 connection._id,
-                commandSocketId,
+                upSocketId,
                 deploymentId
             )
 
             // IMPORTANT: Update the cache with the updated connection
             connectionCache.storeConnection(updatedConnection)
-            connectionCache.storeCommandSocket(connection._id, websocket, updatedConnection)
+            connectionCache.storeUpSocket(connection._id, websocket, updatedConnection)
 
             vlog.getEventLogger().logWebSocketEvent(
                 "SOCKET_REGISTERED", connection._id,
-                mapOf("socketType" to "command", "socketId" to commandSocketId), traceId
+                mapOf("socketType" to "up", "socketId" to upSocketId), traceId
             )
 
             WebSocketUtils.sendConfirmation(websocket, "connection_confirm", connection._id)
-            heartbeatManager.startHeartbeat(commandSocketId, connection._id, websocket)
+            heartbeatManager.startHeartbeat(upSocketId, connection._id, websocket)
 
             vlog.getEventLogger().trace(
                 "CONNECTION_ESTABLISHED",
@@ -80,7 +80,7 @@ class ConnectionLifecycle @Inject constructor(
             )
 
             vertx.eventBus().publish(
-                MinareApplication.ConnectionEvents.ADDRESS_COMMAND_SOCKET_CONNECTED,
+                MinareApplication.ConnectionEvents.ADDRESS_UP_SOCKET_CONNECTED,
                 JsonObject()
                     .put("connectionId", connection._id)
                     .put("traceId", traceId)
@@ -191,7 +191,7 @@ class ConnectionLifecycle @Inject constructor(
 
             // Do emergency cleanup as a last resort
             try {
-                connectionCache.removeCommandSocket(connectionId)
+                connectionCache.removeUpSocket(connectionId)
                 connectionCache.removeUpdateSocket(connectionId)
                 connectionCache.removeConnection(connectionId)
                 connectionTracker.removeConnection(connectionId)
@@ -288,25 +288,25 @@ class ConnectionLifecycle @Inject constructor(
                 "hasUpdateSocket" to hasUpdateSocket
             ), traceId)
 
-            // Clean up command socket
+            // Clean up up socket
             try {
-                connectionCache.removeCommandSocket(connectionId)?.let { socket ->
+                connectionCache.removeUpSocket(connectionId)?.let { socket ->
                     if (!socket.isClosed()) {
                         try {
                             socket.close()
-                            vlog.getEventLogger().trace("COMMAND_SOCKET_CLOSED", mapOf(
+                            vlog.getEventLogger().trace("UP_SOCKET_CLOSED", mapOf(
                                 "connectionId" to connectionId,
                                 "socketId" to socket.textHandlerID()
                             ), traceId)
                         } catch (e: Exception) {
-                            vlog.logVerticleError("COMMAND_SOCKET_CLOSE", e, mapOf(
+                            vlog.logVerticleError("UP_SOCKET_CLOSE", e, mapOf(
                                 "connectionId" to connectionId
                             ))
                         }
                     }
                 }
             } catch (e: Exception) {
-                vlog.logVerticleError("COMMAND_SOCKET_CLEANUP", e, mapOf(
+                vlog.logVerticleError("UP_SOCKET_CLEANUP", e, mapOf(
                     "connectionId" to connectionId
                 ))
                 success = false

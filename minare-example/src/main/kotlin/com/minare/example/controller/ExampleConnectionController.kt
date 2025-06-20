@@ -62,7 +62,7 @@ class ExampleConnectionController @Inject constructor(
      * Send a message to the client indicating that initial sync is complete
      */
     private fun sendInitialSyncComplete(connectionId: String) {
-        val commandSocket = getCommandSocket(connectionId)
+        val commandSocket = getUpSocket(connectionId)
         if (commandSocket != null && !commandSocket.isClosed()) {
             val message = JsonObject()
                 .put("type", "initial_sync_complete")

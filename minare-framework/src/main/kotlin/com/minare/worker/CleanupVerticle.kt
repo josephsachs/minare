@@ -11,7 +11,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import org.slf4j.LoggerFactory
 import javax.inject.Inject
-import com.minare.worker.command.CommandVerticle
+import com.minare.worker.upsocket.UpSocketVerticle
 
 /**
  * Verticle that handles periodic cleaning of stale connections and data.
@@ -100,7 +100,7 @@ class CleanupVerticle @Inject constructor(
             if (aggressive) {
                 // Only if aggressive cleanup is enabled
                 val recentlyDisconnected = connectionStore.findInactiveConnections(CONNECTION_RECONNECT_WINDOW_MS)
-                    .filter { !it.reconnectable || it.commandSocketId == null }
+                    .filter { !it.reconnectable || it.upSocketId == null }
 
                 log.info("Found ${recentlyDisconnected.size} recently disconnected non-reconnectable connections")
                 connectionsToClear.addAll(recentlyDisconnected.map { it._id })
@@ -118,7 +118,7 @@ class CleanupVerticle @Inject constructor(
                         connectionsRemoved++
                     }
                 } catch (e: Exception) {
-                    log.error("Error cleaning up connection $connectionId", e)
+                    log.error("Failed to clean up connection $connectionId", e)
                 }
             }
 
@@ -141,7 +141,7 @@ class CleanupVerticle @Inject constructor(
                 try {
                     log.info("Removing orphaned cache entry: $connectionId")
                     // Clean up from cache
-                    connectionCache.removeCommandSocket(connectionId)
+                    connectionCache.removeUpSocket(connectionId)
                     connectionCache.removeUpdateSocket(connectionId)
                     connectionCache.removeConnection(connectionId)
                     connectionsRemoved++
@@ -160,11 +160,12 @@ class CleanupVerticle @Inject constructor(
     }
 
     /**
-     * Validates the integrity of the cache against the database
+     * Validates that cache and database are in sync
      */
     private suspend fun validateCacheIntegrity() {
-        log.debug("Validating cache integrity")
+        log.debug("Starting cache integrity validation")
 
+        // Get all connections from cache
         val cacheConnectionIds = connectionCache.getAllConnectedIds()
         log.debug("Found ${cacheConnectionIds.size} connections in cache")
 
@@ -177,14 +178,14 @@ class CleanupVerticle @Inject constructor(
     private suspend fun cleanupStaleConnection(connectionId: String): Boolean {
         return try {
             // First try closing any sockets
-            val commandSocket = connectionCache.getCommandSocket(connectionId)
+            val upSocket = connectionCache.getUpSocket(connectionId)
             val updateSocket = connectionCache.getUpdateSocket(connectionId)
 
-            if (commandSocket != null && !commandSocket.isClosed()) {
+            if (upSocket != null && !upSocket.isClosed()) {
                 try {
-                    commandSocket.close()
+                    upSocket.close()
                 } catch (e: Exception) {
-                    log.warn("Error closing command socket for $connectionId", e)
+                    log.warn("Error closing up socket for $connectionId", e)
                 }
             }
 
@@ -198,13 +199,13 @@ class CleanupVerticle @Inject constructor(
 
             // Then use the controller to clean up
             val result = vertx.eventBus().request<JsonObject>(
-                CommandVerticle.ADDRESS_CONNECTION_CLEANUP,
+                UpSocketVerticle.ADDRESS_CONNECTION_CLEANUP,
                 JsonObject().put("connectionId", connectionId)
             ).await().body().getBoolean("success", false)
 
             if (!result) {
                 // If the regular cleanup fails, try direct removal
-                connectionCache.removeCommandSocket(connectionId)
+                connectionCache.removeUpSocket(connectionId)
                 connectionCache.removeUpdateSocket(connectionId)
                 connectionCache.removeConnection(connectionId)
                 connectionStore.delete(connectionId)

@@ -4,11 +4,11 @@ import com.google.inject.*
 import com.google.inject.name.Names
 import com.minare.config.*
 import com.minare.controller.ConnectionController
-import com.minare.worker.command.CommandVerticle
+import com.minare.worker.upsocket.UpSocketVerticle
 import com.minare.worker.update.UpdateVerticle
 import com.minare.persistence.DatabaseInitializer
 import com.minare.worker.*
-import com.minare.worker.command.config.CommandVerticleModule
+import com.minare.worker.command.config.UpSocketVerticleModule
 import com.minare.worker.update.config.UpdateVerticleModule
 import io.vertx.core.DeploymentOptions
 import io.vertx.core.Vertx
@@ -41,14 +41,14 @@ abstract class MinareApplication : CoroutineVerticle() {
     lateinit var injector: Injector
 
     private var mutationVerticleDeploymentId: String? = null
-    private var commandVerticleDeploymentId: String? = null
+    private var upSocketVerticleDeploymentId: String? = null
     private var cleanupVerticleDeploymentId: String? = null
     private var updateVerticleDeploymentId: String? = null
 
     private val pendingConnections = ConcurrentHashMap<String, ConnectionState>()
 
     private class ConnectionState {
-        var commandSocketConnected = false
+        var upSocketConnected = false
         var updateSocketConnected = false
         var traceId: String? = null
     }
@@ -56,7 +56,7 @@ abstract class MinareApplication : CoroutineVerticle() {
     var httpServer: HttpServer? = null
 
     object ConnectionEvents {
-        const val ADDRESS_COMMAND_SOCKET_CONNECTED = "minare.connection.command.connected"
+        const val ADDRESS_UP_SOCKET_CONNECTED = "minare.connection.up.connected"
         const val ADDRESS_UPDATE_SOCKET_CONNECTED = "minare.connection.update.connected"
         const val ADDRESS_CONNECTION_COMPLETE = "minare.connection.complete"
     }
@@ -75,18 +75,18 @@ abstract class MinareApplication : CoroutineVerticle() {
             vertx.registerVerticleFactory(MinareVerticleFactory(injector))
             log.info("Registered MinareVerticleFactory")
 
-            val commandSocketOptions = DeploymentOptions()
+            val upSocketOptions = DeploymentOptions()
                 .setWorker(true)
-                .setWorkerPoolName("command-socket-pool")
+                .setWorkerPoolName("up-socket-pool")
                 .setWorkerPoolSize(5)
                 .setInstances(3)
                 .setConfig(JsonObject().put("useOwnHttpServer", true))
 
-            commandVerticleDeploymentId = vertx.deployVerticle(
-                "guice:" + CommandVerticle::class.java.name,
-                commandSocketOptions
+            upSocketVerticleDeploymentId = vertx.deployVerticle(
+                "guice:" + UpSocketVerticle::class.java.name,
+                upSocketOptions
             ).await()
-            log.info("Command socket verticle deployed with ID: $commandVerticleDeploymentId")
+            log.info("Up socket verticle deployed with ID: $upSocketVerticleDeploymentId")
 
             val updateVerticleOptions = DeploymentOptions()
                 .setWorker(true)
@@ -138,15 +138,15 @@ abstract class MinareApplication : CoroutineVerticle() {
             log.info("Cleanup verticle deployed with ID: $cleanupVerticleDeploymentId")
 
             val initResult = vertx.eventBus().request<JsonObject>(
-                CommandVerticle.ADDRESS_COMMAND_SOCKET_INITIALIZE,
+                UpSocketVerticle.ADDRESS_UP_SOCKET_INITIALIZE,
                 JsonObject()
             ).await()
 
             if (initResult.body().getBoolean("success", false)) {
-                log.info("CommandSocketVerticle router initialized: {}",
+                log.info("UpSocketVerticle router initialized: {}",
                     initResult.body().getString("message"))
             } else {
-                log.error("Failed to initialize CommandSocketVerticle router")
+                log.error("Failed to initialize UpSocketVerticle router")
             }
 
             registerConnectionEventHandlers()
@@ -182,12 +182,12 @@ abstract class MinareApplication : CoroutineVerticle() {
     override suspend fun stop() {
         try {
 
-            if (commandVerticleDeploymentId != null) {
+            if (upSocketVerticleDeploymentId != null) {
                 try {
-                    vertx.undeploy(commandVerticleDeploymentId).await()
-                    log.info("Command socket verticle undeployed successfully")
+                    vertx.undeploy(upSocketVerticleDeploymentId).await()
+                    log.info("Up socket verticle undeployed successfully")
                 } catch (e: Exception) {
-                    log.error("Error undeploying command socket verticle", e)
+                    log.error("Error undeploying up socket verticle", e)
                 }
             }
 
@@ -235,15 +235,15 @@ abstract class MinareApplication : CoroutineVerticle() {
     }
 
     private fun registerConnectionEventHandlers() {
-        vertx.eventBus().consumer<JsonObject>(ConnectionEvents.ADDRESS_COMMAND_SOCKET_CONNECTED) { message ->
+        vertx.eventBus().consumer<JsonObject>(ConnectionEvents.ADDRESS_UP_SOCKET_CONNECTED) { message ->
             val connectionId = message.body().getString("connectionId")
             val traceId = message.body().getString("traceId")
 
-            Companion.log.info("MinareApplication acknowledges command socket for ${connectionId}")
+            Companion.log.info("MinareApplication acknowledges up socket for ${connectionId}")
 
             if (connectionId != null) {
                 CoroutineScope(vertx.dispatcher()).launch {
-                    handleCommandSocketConnected(connectionId, traceId)
+                    handleUpSocketConnected(connectionId, traceId)
                 }
             }
         }
@@ -265,9 +265,9 @@ abstract class MinareApplication : CoroutineVerticle() {
         Companion.log.info("Connection event handlers registered")
     }
 
-    private suspend fun handleCommandSocketConnected(connectionId: String, traceId: String?) {
+    private suspend fun handleUpSocketConnected(connectionId: String, traceId: String?) {
         val state = pendingConnections.computeIfAbsent(connectionId) { ConnectionState() }
-        state.commandSocketConnected = true
+        state.upSocketConnected = true
         if (traceId != null) state.traceId = traceId
 
         checkConnectionComplete(connectionId)
@@ -284,7 +284,7 @@ abstract class MinareApplication : CoroutineVerticle() {
     private suspend fun checkConnectionComplete(connectionId: String) {
         val state = pendingConnections[connectionId] ?: return
 
-        if (state.commandSocketConnected && state.updateSocketConnected) {
+        if (state.upSocketConnected && state.updateSocketConnected) {
             Companion.log.info("Connection $connectionId is now fully established")
 
             try {
@@ -400,7 +400,7 @@ abstract class MinareApplication : CoroutineVerticle() {
                 log.info("Using database name: $dbName")
 
                 val frameworkModule = MinareModule()
-                val commandVerticleModule = CommandVerticleModule()
+                val upSocketVerticleModule = UpSocketVerticleModule()
                 val updateVerticleModule = UpdateVerticleModule()
 
                 val dbNameModule = object : AbstractModule() {
@@ -425,7 +425,7 @@ abstract class MinareApplication : CoroutineVerticle() {
                         // Correct order is required:
                         // framework (provides defaults)
                         install(frameworkModule)
-                        install(commandVerticleModule)
+                        install(upSocketVerticleModule)
                         install(updateVerticleModule)
                         // Then app module (overrides framework if needed)
                         install(appModule)

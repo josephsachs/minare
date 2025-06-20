@@ -5,7 +5,7 @@
 import config from './config.js';
 import store from './store.js';
 import logger from './logger.js';
-import { handleCommandSocketMessage, handleUpdateSocketMessage } from './handlers.js';
+import { handleUpSocketMessage, handleUpdateSocketMessage } from './handlers.js';
 
 /**
  * Create a WebSocket connection
@@ -56,27 +56,27 @@ const createWebSocket = (url, onMessage, options = {}) => {
 };
 
 /**
- * Connect command socket with reconnection support
+ * Connect up socket with reconnection support
  * @param {boolean} isReconnect - If this is a reconnection attempt
- * @returns {Promise<WebSocket>} Command socket instance
+ * @returns {Promise<WebSocket>} Up socket instance
  */
-export const connectCommandSocket = async (isReconnect = false) => {
+export const connectUpSocket = async (isReconnect = false) => {
 
-  const url = `${config.websocket.wsProtocol}${config.websocket.host}:${config.websocket.commandPort}${config.websocket.commandEndpoint}`;
+  const url = `${config.websocket.wsProtocol}${config.websocket.host}:${config.websocket.upPort}${config.websocket.upEndpoint}`;
 
-  logger.info(isReconnect ? 'Reconnecting command socket...' : 'Connecting command socket...');
+  logger.info(isReconnect ? 'Reconnecting up socket...' : 'Connecting up socket...');
 
   try {
     const socket = await createWebSocket(
       url,
-      handleCommandSocketMessage,
+      handleUpSocketMessage,
       {
         onClose: (event) => {
 
           if (store.isConnected()) {
 
             if (event.code !== 1000 && config.websocket.reconnect.enabled) {
-              handleCommandSocketDisconnect();
+              handleUpSocketDisconnect();
             } else {
 
               disconnect();
@@ -86,8 +86,8 @@ export const connectCommandSocket = async (isReconnect = false) => {
       }
     );
 
-    store.setCommandSocket(socket);
-    logger.command('Command socket connected');
+    store.setUpSocket(socket);
+    logger.command('Up socket connected');
 
 
     if (isReconnect) {
@@ -105,7 +105,7 @@ export const connectCommandSocket = async (isReconnect = false) => {
 
     return socket;
   } catch (error) {
-    logger.error(`Command socket connection failed: ${error.message}`);
+    logger.error(`Up socket connection failed: ${error.message}`);
     throw error;
   }
 };
@@ -153,14 +153,14 @@ export const connectUpdateSocket = async () => {
 };
 
 /**
- * Connect to the server (both command and update sockets)
+ * Connect to the server (both up and update sockets)
  * @param {boolean} isReconnect - Whether this is a reconnect attempt
  * @returns {Promise<boolean>} Success indicator
  */
 export const connect = async (isReconnect = false) => {
   try {
 
-    await connectCommandSocket(isReconnect);
+    await connectUpSocket(isReconnect);
 
 
     return true;
@@ -180,10 +180,10 @@ export const disconnect = () => {
     store.setUpdateSocket(null);
   }
 
-  const commandSocket = store.getCommandSocket();
-  if (commandSocket) {
-    commandSocket.close();
-    store.setCommandSocket(null);
+  const upSocket = store.getUpSocket();
+  if (upSocket) {
+    upSocket.close();
+    store.setUpSocket(null);
   }
 
 
@@ -195,14 +195,14 @@ export const disconnect = () => {
 };
 
 /**
- * Handle command socket disconnect
+ * Handle up socket disconnect
  */
-const handleCommandSocketDisconnect = () => {
-  logger.warn('Command socket disconnected unexpectedly, attempting reconnect...');
+const handleUpSocketDisconnect = () => {
+  logger.warn('Up socket disconnected unexpectedly, attempting reconnect...');
   store.setConnected(false);
 
 
-  store.setCommandSocket(null);
+  store.setUpSocket(null);
 
   // Try to reconnect with exponential backoff
   attemptReconnect(0);
@@ -225,8 +225,8 @@ const handleUpdateSocketDisconnect = () => {
     } catch (error) {
       logger.error(`Failed to reconnect update socket: ${error.message}`);
 
-      // If still connected (command socket is alive), try again after delay
-      if (store.getCommandSocket()) {
+      // If still connected (up socket is alive), try again after delay
+      if (store.getUpSocket()) {
         setTimeout(attemptUpdateReconnect, 1000);
       }
     }
@@ -299,10 +299,10 @@ export const checkConnectionHealth = () => {
  * @returns {boolean} Success indicator
  */
 export const sendCommand = (command) => {
-  const socket = store.getCommandSocket();
+  const socket = store.getUpSocket();
 
   if (!socket || socket.readyState !== WebSocket.OPEN) {
-    logger.error('Cannot send command: Command socket not connected');
+    logger.error('Cannot send command: Up socket not connected');
     return false;
   }
 
@@ -328,9 +328,9 @@ export const reconnectConfig = {
       const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       return `${wsProtocol}//${window.location.host}`;
     },
-    // Command socket endpoint
-    commandEndpoint: '/',
-    commandPort: 4225,
+    // Up socket endpoint
+    upEndpoint: '/',
+    upPort: 4225,
     // Update socket endpoint
     updateEndpoint: '/',
     updatePort: 4226,
@@ -350,7 +350,7 @@ export default {
   connect,
   disconnect,
   sendCommand,
-  connectCommandSocket,
+  connectUpSocket,
   connectUpdateSocket,
   checkConnectionHealth
 };

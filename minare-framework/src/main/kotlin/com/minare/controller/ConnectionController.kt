@@ -3,7 +3,7 @@ package com.minare.controller
 import com.minare.cache.ConnectionCache
 import com.minare.core.models.Connection
 import com.minare.utils.EntityGraph
-import com.minare.worker.command.CommandVerticle
+import com.minare.worker.upsocket.UpSocketVerticle
 import io.vertx.core.http.ServerWebSocket
 import io.vertx.core.json.JsonObject
 import org.slf4j.LoggerFactory
@@ -35,8 +35,8 @@ open class ConnectionController @Inject constructor(
         val connection = connectionStore.create()
 
         connectionCache.storeConnection(connection)
-        log.info("Connection created and stored: id={}, commandSocketId={}, updateSocketId={}",
-            connection._id, connection.commandSocketId, connection.updateSocketId)
+        log.info("Connection created and stored: id={}, upSocketId={}, updateSocketId={}",
+            connection._id, connection.upSocketId, connection.updateSocketId)
         return connection
     }
 
@@ -47,16 +47,16 @@ open class ConnectionController @Inject constructor(
         val cachedConnection = connectionCache.getConnection(connectionId)
 
         if (cachedConnection != null) {
-            log.debug("Connection found in cache: id={}, commandSocketId={}, updateSocketId={}",
-                connectionId, cachedConnection.commandSocketId, cachedConnection.updateSocketId)
+            log.debug("Connection found in cache: id={}, upSocketId={}, updateSocketId={}",
+                connectionId, cachedConnection.upSocketId, cachedConnection.updateSocketId)
             return cachedConnection
         }
 
         val connection = connectionStore.find(connectionId)
 
         connectionCache.storeConnection(connection)
-        log.debug("Connection loaded from database to cache: id={}, commandSocketId={}, updateSocketId={}",
-            connection._id, connection.commandSocketId, connection.updateSocketId)
+        log.debug("Connection loaded from database to cache: id={}, upSocketId={}, updateSocketId={}",
+            connection._id, connection.upSocketId, connection.updateSocketId)
 
         return connection
     }
@@ -91,10 +91,10 @@ open class ConnectionController @Inject constructor(
      */
     suspend fun updateConnection(connection: Connection): Connection {
         connectionCache.storeConnection(
-            connectionStore.putCommandSocket(
+            connectionStore.putUpSocket(
                 connection._id,
-                connection.commandSocketId,
-                connection.commandDeploymentId
+                connection.upSocketId,
+                connection.upSocketDeploymentId
             )
         )
 
@@ -105,13 +105,13 @@ open class ConnectionController @Inject constructor(
                 connection.updateDeploymentId
             )
         )
-        log.debug("Connection updated: id={}, commandSocketId={}, updateSocketId={}", connection._id, connection.updateSocketId, connection.updateDeploymentId)
+        log.debug("Connection updated: id={}, upSocketId={}, updateSocketId={}", connection._id, connection.updateSocketId, connection.updateDeploymentId)
 
         return connection
     }
 
     /**
-     * Hook called when a client becomes fully connected (has both command and update sockets).
+     * Hook called when a client becomes fully connected (has both up and update sockets).
      * Applications can override this to handle connection-specific logic.
      *
      * @param connection The fully connected connection
@@ -121,23 +121,23 @@ open class ConnectionController @Inject constructor(
     }
 
     /**
-     * Get the CommandSocketVerticle for advanced socket handling
+     * Get the UpSocketVerticle for advanced socket handling
      * This uses the internal injector to access the verticle directly
      */
-    fun getCommandSocketVerticle(): CommandVerticle? {
+    fun getUpSocketVerticle(): UpSocketVerticle? {
         return try {
-            InternalInjectorHolder.getInstance<CommandVerticle>()
+            InternalInjectorHolder.getInstance<UpSocketVerticle>()
         } catch (e: Exception) {
-            log.warn("Failed to get CommandSocketVerticle instance: {}", e.message)
+            log.warn("Failed to get UpSocketVerticle instance: {}", e.message)
             null
         }
     }
 
     /**
-     * Get the command WebSocket for a connection
+     * Get the up WebSocket for a connection
      */
-    fun getCommandSocket(connectionId: String): ServerWebSocket? {
-        return connectionCache.getCommandSocket(connectionId)
+    fun getUpSocket(connectionId: String): ServerWebSocket? {
+        return connectionCache.getUpSocket(connectionId)
     }
 
     /**
@@ -148,10 +148,10 @@ open class ConnectionController @Inject constructor(
     }
 
     /**
-     * Get the connection ID for a command WebSocket
+     * Get the connection ID for an up WebSocket
      */
-    fun getConnectionIdForCommandSocket(websocket: ServerWebSocket): String? {
-        return connectionCache.getConnectionIdForCommandSocket(websocket)
+    fun getConnectionIdForUpSocket(websocket: ServerWebSocket): String? {
+        return connectionCache.getConnectionIdForUpSocket(websocket)
     }
 
     /**
@@ -162,10 +162,10 @@ open class ConnectionController @Inject constructor(
     }
 
     /**
-     * Get the connection for a command WebSocket
+     * Get the connection for an up WebSocket
      */
-    fun getConnectionForCommandSocket(websocket: ServerWebSocket): Connection? {
-        return connectionCache.getConnectionForCommandSocket(websocket)
+    fun getConnectionForUpSocket(websocket: ServerWebSocket): Connection? {
+        return connectionCache.getConnectionForUpSocket(websocket)
     }
 
     /**
@@ -176,17 +176,17 @@ open class ConnectionController @Inject constructor(
     }
 
     /**
-     * Remove a command WebSocket and mark the connection for reconnection instead of immediately removing it
+     * Remove an up WebSocket and mark the connection for reconnection instead of immediately removing it
      */
-    suspend fun markCommandSocketDisconnected(connectionId: String) {
+    suspend fun markUpSocketDisconnected(connectionId: String) {
         try {
-            connectionCache.removeCommandSocket(connectionId)?.let { socket ->
+            connectionCache.removeUpSocket(connectionId)?.let { socket ->
                 try {
                     if (!socket.isClosed()) {
                         socket.close()
                     }
                 } catch (e: Exception) {
-                    log.warn("Error closing command socket for {}", connectionId, e)
+                    log.warn("Error closing up socket for {}", connectionId, e)
                 }
             }
 
@@ -200,28 +200,28 @@ open class ConnectionController @Inject constructor(
             connectionCache.storeConnection(updatedConnection)
 
             log.info(
-                "Command socket for connection {} marked as disconnected, available for reconnection",
+                "Up socket for connection {} marked as disconnected, available for reconnection",
                 connectionId
             )
         } catch (e: Exception) {
-            log.error("Failed to mark command WebSocket disconnected for {}", connectionId, e)
+            log.error("Failed to mark up WebSocket disconnected for {}", connectionId, e)
             throw e
         }
     }
 
     /**
-     * Remove a command WebSocket
+     * Remove an up WebSocket
      * This is a primary operation that will also remove the update socket and connection
      */
-    suspend fun removeCommandSocket(connectionId: String) {
+    suspend fun removeUpSocket(connectionId: String) {
         try {
-            connectionCache.removeCommandSocket(connectionId)?.let { socket ->
+            connectionCache.removeUpSocket(connectionId)?.let { socket ->
                 try {
                     if (!socket.isClosed()) {
                         socket.close()
                     }
                 } catch (e: Exception) {
-                    log.warn("Error closing command socket for {}", connectionId, e)
+                    log.warn("Error closing up socket for {}", connectionId, e)
                 }
             }
 
@@ -237,14 +237,14 @@ open class ConnectionController @Inject constructor(
             log.info("Connection {} removed from cache", connectionId)
 
         } catch (e: Exception) {
-            log.error("Failed to remove command WebSocket for {}", connectionId, e)
+            log.error("Failed to remove up WebSocket for {}", connectionId, e)
             throw e
         }
     }
 
     /**
      * Remove an update WebSocket.
-     * This is a secondary operation that does not affect the command socket or remove the connection.
+     * This is a secondary operation that does not affect the up socket or remove the connection.
      */
     suspend fun removeUpdateSocket(connectionId: String) {
         try {
@@ -268,10 +268,10 @@ open class ConnectionController @Inject constructor(
                 )
 
                 try {
-                    val persistedConnection = connectionStore.putCommandSocket(
+                    val persistedConnection = connectionStore.putUpSocket(
                         connectionId,
-                        updatedConnection.commandSocketId,
-                        updatedConnection.commandDeploymentId
+                        updatedConnection.upSocketId,
+                        updatedConnection.upSocketDeploymentId
                     )
 
                     connectionCache.storeConnection(persistedConnection)
@@ -291,11 +291,11 @@ open class ConnectionController @Inject constructor(
     }
 
     /**
-     * Handle the closure of a command socket by marking it for reconnection instead of cleaning up immediately
+     * Handle the closure of an up socket by marking it for reconnection instead of cleaning up immediately
      */
-    suspend fun handleCommandSocketClosed(connectionId: String) {
+    suspend fun handleUpSocketClosed(connectionId: String) {
         try {
-            log.info("Command socket closed for connection {}, marking for potential reconnection", connectionId)
+            log.info("Up socket closed for connection {}, marking for potential reconnection", connectionId)
 
             val updatedConnection = connectionStore.updateReconnectable(connectionId, true)
 
@@ -305,23 +305,23 @@ open class ConnectionController @Inject constructor(
                 connectionCache.storeConnection(updatedConnection)
             }
 
-            connectionCache.removeCommandSocket(connectionId)
+            connectionCache.removeUpSocket(connectionId)
 
             // Connection will be removed by CleanupVerticle after TTL
         } catch (e: Exception) {
-            log.error("Error handling command socket closure for {}", connectionId, e)
+            log.error("Error handling up socket closure for {}", connectionId, e)
         }
     }
 
     /**
-     * Get all connected client IDs (those with at least a command socket)
+     * Get all connected client IDs (those with at least an up socket)
      */
     fun getAllConnectedIds(): List<String> {
         return connectionCache.getAllConnectedIds()
     }
 
     /**
-     * Get count of active connections (those with at least a command socket)
+     * Get count of active connections (those with at least an up socket)
      */
     fun getConnectionCount(): Int {
         return connectionCache.getConnectionCount()
@@ -399,12 +399,12 @@ open class ConnectionController @Inject constructor(
                 .put("type", "sync")
                 .put("data", syncData)
 
-            val commandSocket = getCommandSocket(connectionId)
-            if (commandSocket != null && !commandSocket.isClosed()) {
-                commandSocket.writeTextMessage(syncMessage.encode())
+            val upSocket = getUpSocket(connectionId)
+            if (upSocket != null && !upSocket.isClosed()) {
+                upSocket.writeTextMessage(syncMessage.encode())
                 log.debug("Sent sync data for channel {} to connection {}", channelId, connectionId)
             } else {
-                log.warn("Cannot sync: command socket not found or closed for connection {}", connectionId)
+                log.warn("Cannot sync: up socket not found or closed for connection {}", connectionId)
             }
 
         } catch (e: Exception) {
@@ -428,11 +428,11 @@ open class ConnectionController @Inject constructor(
 
         // Clean up sockets and cache
         try {
-            connectionCache.getCommandSocket(connectionId)?.let { socket ->
+            connectionCache.getUpSocket(connectionId)?.let { socket ->
                 try {
                     if (!socket.isClosed()) socket.close()
                 } catch (e: Exception) {
-                    log.warn("Error closing command socket for {}", connectionId, e)
+                    log.warn("Error closing up socket for {}", connectionId, e)
                 }
             }
 
@@ -444,7 +444,7 @@ open class ConnectionController @Inject constructor(
                 }
             }
 
-            connectionCache.removeCommandSocket(connectionId)
+            connectionCache.removeUpSocket(connectionId)
             connectionCache.removeUpdateSocket(connectionId)
             connectionCache.removeConnection(connectionId)
 

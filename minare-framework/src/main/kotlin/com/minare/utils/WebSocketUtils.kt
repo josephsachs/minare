@@ -125,7 +125,7 @@ object WebSocketUtils {
         websocket: ServerWebSocket,
         connectionCache: ConnectionCache
     ): String? {
-        val commandId = connectionCache.getConnectionIdForCommandSocket(websocket)
+        val commandId = connectionCache.getConnectionIdForUpSocket(websocket)
         if (commandId != null) return commandId
 
         return connectionCache.getConnectionIdForUpdateSocket(websocket)

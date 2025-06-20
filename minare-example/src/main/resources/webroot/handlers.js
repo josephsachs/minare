@@ -111,18 +111,18 @@ function processEntityQueue() {
 }
 
 /**
- * Handle messages from the command socket
+ * Handle messages from the up socket
  * @param {MessageEvent} event - WebSocket message event
  */
-export const handleCommandSocketMessage = (event) => {
+export const handleUpSocketMessage = (event) => {
   try {
     const message = JSON.parse(event.data);
 
     // Only log detailed message content in verbose mode to reduce noise
     if (config.logging?.verbose) {
-      logger.command(`Received command message: ${JSON.stringify(message)}`);
+      logger.command(`Received up message: ${JSON.stringify(message)}`);
     } else {
-      logger.command(`Received command message type: ${message.type}`);
+      logger.command(`Received up message type: ${message.type}`);
     }
 
     switch (message.type) {
@@ -147,9 +147,9 @@ export const handleCommandSocketMessage = (event) => {
           clientTimestamp: Date.now()
         };
 
-        const commandSocket = store.getCommandSocket();
-        if (commandSocket && commandSocket.readyState === WebSocket.OPEN) {
-          commandSocket.send(JSON.stringify(response));
+        const upSocket = store.getUpSocket();
+        if (upSocket && upSocket.readyState === WebSocket.OPEN) {
+          upSocket.send(JSON.stringify(response));
           if (Math.random() < 0.05) { // Log roughly 5% of heartbeats
             logger.debug(`Received server heartbeat, responded with timestamp ${response.clientTimestamp}`);
           }
@@ -164,7 +164,7 @@ export const handleCommandSocketMessage = (event) => {
 
       case 'sync':
         if (message.data && message.data.entities) {
-          logger.info(`Queueing ${message.data.entities.length} entity updates from command sync`);
+          logger.info(`Queueing ${message.data.entities.length} entity updates from up sync`);
           queueEntityUpdates(message.data.entities, true);
         }
         break;
@@ -206,12 +206,12 @@ export const handleCommandSocketMessage = (event) => {
         break;
 
       default:
-        logger.info(`Unhandled command message type: ${message.type}`);
+        logger.info(`Unhandled up message type: ${message.type}`);
         break;
     }
 
   } catch (error) {
-    logger.error(`Error processing command message: ${error.message}`);
+    logger.error(`Error processing up message: ${error.message}`);
   }
 };
 
@@ -293,6 +293,6 @@ export const handleUpdateSocketMessage = (event) => {
 };
 
 export default {
-  handleCommandSocketMessage,
+  handleUpSocketMessage,
   handleUpdateSocketMessage
 };

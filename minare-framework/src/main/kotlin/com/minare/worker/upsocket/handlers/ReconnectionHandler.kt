@@ -1,4 +1,4 @@
-package com.minare.worker.command.handlers
+package com.minare.worker.upsocket.handlers
 
 import com.google.inject.Inject
 import com.minare.MinareApplication
@@ -10,7 +10,7 @@ import com.minare.utils.VerticleLogger
 import com.minare.worker.CleanupVerticle
 import io.vertx.core.http.ServerWebSocket
 import io.vertx.core.json.JsonObject
-import com.minare.worker.command.ConnectionLifecycle
+import com.minare.worker.upsocket.ConnectionLifecycle
 import io.vertx.core.Vertx
 
 class ReconnectionHandler @Inject constructor(
@@ -92,7 +92,7 @@ class ReconnectionHandler @Inject constructor(
                 return
             }
 
-            connectionCache.getCommandSocket(connectionId)?.let { existingSocket ->
+            connectionCache.getUpSocket(connectionId)?.let { existingSocket ->
                 try {
                     if (!existingSocket.isClosed()) {
                         existingSocket.close()
@@ -110,7 +110,7 @@ class ReconnectionHandler @Inject constructor(
                 }
             }
 
-            connectionCache.storeCommandSocket(connectionId, websocket, connection)
+            connectionCache.storeUpSocket(connectionId, websocket, connection)
             connectionTracker.registerConnection(connectionId, reconnectTraceId, websocket)
 
             val socketId = "cs-${java.util.UUID.randomUUID()}"
@@ -122,7 +122,7 @@ class ReconnectionHandler @Inject constructor(
             )
 
             vertx.eventBus().publish(
-                MinareApplication.ConnectionEvents.ADDRESS_COMMAND_SOCKET_CONNECTED,
+                MinareApplication.ConnectionEvents.ADDRESS_UP_SOCKET_CONNECTED,
                 JsonObject()
                     .put("connectionId", connection._id)
                     .put("traceId", traceId)

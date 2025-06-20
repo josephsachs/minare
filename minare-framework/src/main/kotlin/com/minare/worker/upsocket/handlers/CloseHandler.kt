@@ -1,4 +1,4 @@
-package com.minare.worker.command.handlers
+package com.minare.worker.upsocket.handlers
 
 import com.google.inject.Inject
 import com.minare.cache.ConnectionCache
@@ -27,7 +27,7 @@ class CloseHandler @Inject constructor(
             connectionStore.updateReconnectable(connectionId, true)
 
             // Remove socket from cache but don't delete connection yet
-            connectionCache.removeCommandSocket(connectionId)
+            connectionCache.removeUpSocket(connectionId)
             connectionTracker.handleSocketClosed(websocket)
 
             vlog.getEventLogger().logStateChange(

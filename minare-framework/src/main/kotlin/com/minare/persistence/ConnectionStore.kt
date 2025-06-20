@@ -8,7 +8,7 @@ interface ConnectionStore {
     suspend fun find(connectionId: String): Connection
     suspend fun find(connectionId: Set<String>): Set<Connection>
     suspend fun putUpdateSocket(connectionId: String, socketId: String?, deploymentId: String?): Connection
-    suspend fun putCommandSocket(connectionId: String, socketId: String?, deploymentId: String?): Connection
+    suspend fun putUpSocket(connectionId: String, socketId: String?, deploymentId: String?): Connection
     suspend fun findAllWithUpdateSocket(): List<Connection>
 
     /**
@@ -33,6 +33,6 @@ interface ConnectionStore {
 }
 
 enum class SocketType {
-    Command,
+    Up,
     Update
 }
