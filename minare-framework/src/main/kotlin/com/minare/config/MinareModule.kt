@@ -83,7 +83,7 @@ class MinareModule : AbstractModule(), DatabaseNameProvider {
             .toInstance(false)
 
         bind(Int::class.java)
-            .annotatedWith(Names.named("frameIntervalMs"))
+            .annotatedWith(Names.named("intervalMs"))
             .toInstance(100)
 
         bind(VerticleLogger::class.java).`in`(Singleton::class.java)

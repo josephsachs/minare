@@ -27,15 +27,15 @@ class UpdateBatchCoordinator @Inject constructor(
     private val isRunning = AtomicBoolean(false)
 
     // The interval between batch distributions (milliseconds)
-    private var batchIntervalMs = 100L // 10 frames per second
+    private var batchIntervalMs = 100L // 10 updates per second
 
     // Timer ID for the periodic batch distribution
     private var timerId: Long? = null
 
     // Metrics
-    private var frameCount = 0L
+    private var tickCount = 0L
     private var totalProcessingTimeMs = 0L
-    private var lastFrameTimeMs = 0L
+    private var lastTickTimeMs = 0L
 
     // Address to publish batched updates
     companion object {
@@ -62,7 +62,7 @@ class UpdateBatchCoordinator @Inject constructor(
         if (isRunning.compareAndSet(true, false)) {
             timerId?.let { vertx.cancelTimer(it) }
             timerId = null
-            log.info("UpdateBatchCoordinator stopped after {} frames", frameCount)
+            log.info("UpdateBatchCoordinator stopped after {} ticks", tickCount)
         } else {
             log.warn("UpdateBatchCoordinator not running")
         }
@@ -135,23 +135,23 @@ class UpdateBatchCoordinator @Inject constructor(
 
             val startTime = System.currentTimeMillis()
             try {
-                frameCount++
+                tickCount++
                 distributeBatch()
             } catch (e: Exception) {
                 log.error("Error in batch distribution: {}", e.message, e)
             } finally {
-                lastFrameTimeMs = System.currentTimeMillis() - startTime
-                totalProcessingTimeMs += lastFrameTimeMs
+                lastTickTimeMs = System.currentTimeMillis() - startTime
+                totalProcessingTimeMs += lastTickTimeMs
 
-                if (lastFrameTimeMs > batchIntervalMs * 0.8) {
+                if (lastTickTimeMs > batchIntervalMs * 0.8) {
                     log.warn("Batch processing took {}ms ({}% of batch interval)",
-                        lastFrameTimeMs, (lastFrameTimeMs * 100 / batchIntervalMs))
+                        lastTickTimeMs, (lastTickTimeMs * 100 / batchIntervalMs))
                 }
 
-                if (frameCount % 100 == 0L) {
-                    val avgFrameTime = if (frameCount > 0) totalProcessingTimeMs / frameCount else 0
+                if (tickCount % 100 == 0L) {
+                    val avgTickTime = if (tickCount > 0) totalProcessingTimeMs / tickCount else 0
                     log.info("Batch stats: count={}, avg={}ms, last={}ms",
-                        frameCount, avgFrameTime, lastFrameTimeMs)
+                        tickCount, avgTickTime, lastTickTimeMs)
                 }
             }
         }
@@ -184,11 +184,11 @@ class UpdateBatchCoordinator @Inject constructor(
 
         if (updatesBatch.size > 0 && (
                     updatesBatch.size > 100 ||
-                            lastFrameTimeMs > batchIntervalMs / 2 ||
-                            frameCount % 100 == 0L
+                            lastTickTimeMs > batchIntervalMs / 2 ||
+                            tickCount % 100 == 0L
                     )) {
             log.info("Distributed batch with {} entity updates in {}ms",
-                updatesBatch.size, lastFrameTimeMs)
+                updatesBatch.size, lastTickTimeMs)
         }
     }
 
@@ -196,14 +196,14 @@ class UpdateBatchCoordinator @Inject constructor(
      * Get performance metrics for the batch coordinator
      */
     fun getMetrics(): Map<String, Any> {
-        val avgFrameTime = if (frameCount > 0) totalProcessingTimeMs / frameCount else 0
+        val avgTickTime = if (tickCount > 0) totalProcessingTimeMs / tickCount else 0
 
         return mapOf(
-            "frameCount" to frameCount,
-            "averageFrameTimeMs" to avgFrameTime,
-            "lastFrameTimeMs" to lastFrameTimeMs,
+            "counter" to tickCount,
+            "averageTickTimeMs" to avgTickTime,
+            "lastTickTimeMs" to lastTickTimeMs,
             "batchIntervalMs" to batchIntervalMs,
-            "utilization" to if (frameCount > 0) lastFrameTimeMs.toFloat() / batchIntervalMs else 0f,
+            "utilization" to if (tickCount > 0) lastTickTimeMs.toFloat() / batchIntervalMs else 0f,
             "pendingUpdatesCount" to pendingUpdates.size
         )
     }

@@ -2,7 +2,7 @@ package com.minare.worker.downsocket
 
 import com.minare.MinareApplication
 import com.minare.cache.ConnectionCache
-import com.minare.core.FrameController
+import com.minare.core.Timer
 import com.minare.persistence.ConnectionStore
 import com.minare.pubsub.UpdateBatchCoordinator
 import com.minare.utils.*
@@ -27,7 +27,7 @@ import com.minare.worker.downsocket.events.UpdateConnectionEstablishedEvent.Comp
 
 /**
  * Verticle responsible for accumulating entity updates and distributing them
- * to clients on a frame-based schedule.
+ * to clients on a timer.
  *
  * This verticle hosts its own HTTP server for direct WebSocket connections.
  */
@@ -51,7 +51,7 @@ class DownSocketVerticle @Inject constructor(
 
     private var httpServer: HttpServer? = null
 
-    private lateinit var frameController: UpdateFrameController
+    private lateinit var timer: UpdateTimer
     private val localSockets = HashMap<String, ServerWebSocket>()
 
     private var deployedAt: Long = 0
@@ -63,7 +63,7 @@ class DownSocketVerticle @Inject constructor(
 
         const val CACHE_TTL_MS = 2000L // 10 seconds
         const val HEARTBEAT_INTERVAL_MS = 15000L
-        const val DEFAULT_FRAME_INTERVAL_MS = 100 // 10 frames per second
+        const val DEFAULT_TICK_INTERVAL_MS = 100 // 10 ticks per second
 
         const val BASE_PATH = "/update"
         const val HTTP_SERVER_HOST = "0.0.0.0"
@@ -90,11 +90,11 @@ class DownSocketVerticle @Inject constructor(
 
             initializeRouter()
 
-            frameController = UpdateFrameController()
-            frameController.start(DEFAULT_FRAME_INTERVAL_MS)
-            log.info("Started FrameController at {${System.currentTimeMillis()}}")
-            vlog.logStartupStep("FRAME_CONTROLLER_STARTED", mapOf(
-                "frameInterval" to DEFAULT_FRAME_INTERVAL_MS
+            timer = UpdateTimer()
+            timer.start(DEFAULT_TICK_INTERVAL_MS)
+            log.info("Started Timer at {${System.currentTimeMillis()}}")
+            vlog.logStartupStep("UPDATE_TIMER_STARTED", mapOf(
+                "intervalMs" to DEFAULT_TICK_INTERVAL_MS
             ))
 
             // ADDED: Register consumer for batched updates from UpdateBatchCoordinator
@@ -109,7 +109,7 @@ class DownSocketVerticle @Inject constructor(
             }
 
             vlog.logStartupStep("STARTED")
-            log.info("DownSocketVerticle started with frame interval: {}ms", DEFAULT_FRAME_INTERVAL_MS)
+            log.info("DownSocketVerticle started with tick interval: {}ms", DEFAULT_TICK_INTERVAL_MS)
         } catch (e: Exception) {
             vlog.logVerticleError("STARTUP_FAILED", e)
             log.error("Failed to start DownSocketVerticle", e)
@@ -380,7 +380,7 @@ class DownSocketVerticle @Inject constructor(
     override suspend fun stop() {
         vlog.logStartupStep("STOPPING")
 
-        frameController.stop()
+        timer.stop()
 
         // Close HTTP server if we created one
         if (httpServer != null) {
@@ -419,14 +419,14 @@ class DownSocketVerticle @Inject constructor(
     }
 
     /**
-     * Frame controller implementation for update processing.
+     * Timer implementation for update processing.
      */
-    private inner class UpdateFrameController : FrameController(vertx) {
+    private inner class UpdateTimer : Timer(vertx) {
         override fun tick() {
             try {
                 processAndSendUpdates()
             } catch (e: Exception) {
-                vlog.logVerticleError("FRAME_PROCESSING", e)
+                vlog.logVerticleError("TICK_PROCESSING", e)
             }
         }
 
@@ -471,10 +471,10 @@ class DownSocketVerticle @Inject constructor(
 
             if (totalUpdatesProcessed > 0 && (
                         totalUpdatesProcessed > 100 ||
-                                processingTime > getFrameIntervalMs() / 2 ||
-                                frameCount % 100 == 0L
+                                processingTime > getIntervalMs() / 2 ||
+                                counter % 100 == 0L
                         )) {
-                vlog.logVerticlePerformance("FRAME_UPDATE", processingTime, mapOf(
+                vlog.logVerticlePerformance("TICK_UPDATE", processingTime, mapOf(
                     "updatesProcessed" to totalUpdatesProcessed,
                     "connectionsProcessed" to totalConnectionsProcessed
                 ))
