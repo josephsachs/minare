@@ -14,11 +14,9 @@ Minare provides a back-end framework for management of real-time data with many 
 
 ### Entity System
 
-The foundation of Minare is the extensible entity system:
+The foundation of Minare is Entity, the base class for objects on the state graph. Fields must be marked for persistence with the `@State` annotation. 
 
-**Entity**: Entity is the base class for objects on the state graph. Fields must be marked for persistence with the `@State` annotation. 
-
-Entities can have parent (`@Parent`), child (`@Child`) and peer (`@Peer`) relationships with other entities, including other types. These are stored as references when persisted. The chain of parent-child relationships will affect version propogation (`@BubbleUp`, `@BubbleDown`), consistency guarantees (`@Mutate(rule=)`) and will be included when an Entity's full context is considered.
+Entities can be defined with hierarchical and peer relationships, including to other types. The application developer can then leverage efficient relationship queries to support their own logic. 
  
 ## Near term roadmap
 
@@ -30,11 +28,7 @@ Entities can have parent (`@Parent`), child (`@Child`) and peer (`@Peer`) relati
 
 The framework includes an example application demonstrating a simple graph of nodes:
 
-- **Node**: Custom entity in the example application with parent/child relationships and an integer value
-- **ExampleApplication**: Extends MinareApplication and initializes a sample node graph
-- **ExampleEntityFactory**: Extends EntityFactory and creates the entities for the test application
-
-This stuff is used in the development of the framework and is as subject to change as it.
+This application is used in the development of the framework and is as subject to change as it.
 
 ## Testing
 
