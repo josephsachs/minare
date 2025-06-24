@@ -8,7 +8,7 @@ Major pre-release version update is underway and the contents of this document w
 
 ## Architecture Overview
 
-Minare provides a back-end framework for management of real-time data with many clients.
+Minare provides a back-end framework for management of real-time data with many clients. The aim is to solve distributed state problems for game developers.
 
 ## Core Components
 
@@ -18,12 +18,12 @@ The foundation of Minare is the extensible entity system:
 
 **Entity**: Entity is the base class for objects on the state graph. Fields must be marked for persistence with the `@State` annotation. 
 
-Entities can have parent (`@Parent`) and child (`@Child`) relationships with other entities, including other types. These are stored as references when persisted. The chain of parent-child relationships will affect version propogation (`@BubbleUp`, `@BubbleDown`), consistency guarantees (`@Mutate(rule=)`) and will be included an Entity's full context is considered.
+Entities can have parent (`@Parent`), child (`@Child`) and peer (`@Peer`) relationships with other entities, including other types. These are stored as references when persisted. The chain of parent-child relationships will affect version propogation (`@BubbleUp`, `@BubbleDown`), consistency guarantees (`@Mutate(rule=)`) and will be included an Entity's full context is considered.
  
 ## Near term roadmap
 
-- Finetune batch updater
-- Implement Kafka + frame control + cluster orchestration
+- Implement Kafka for ordering guarantees and replay
+- Frame control + cluster orchestration for consistency guarantee
 - New integration tests that better simulate expected user pattern
 
 ## Example Application
@@ -38,9 +38,7 @@ This stuff is used in the development of the framework and is as subject to chan
 
 ## Testing
 
-The framework uses JUnit 5 with Vert.x extensions and Mockito for unit tests. I'm focusing on Entity as this is where most of the complexity lives. We could use mocks to cover the DBAL, socket management and so on, but integration tests will do during early development. 
-
-Artillery used for integration and performance testing.
+Artillery is used for integration and performance testing.
 
 ## Getting Started
 
