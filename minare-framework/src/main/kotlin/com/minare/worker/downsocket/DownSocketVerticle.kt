@@ -61,9 +61,9 @@ class DownSocketVerticle @Inject constructor(
         const val ADDRESS_DOWN_SOCKET_CLOSE = "minare.down.socketclose"
         const val ADDRESS_INITIALIZE = "minare.update.initialize"
 
-        const val CACHE_TTL_MS = 2000L // 10 seconds
+        const val CACHE_TTL_MS = 1000L // 10 seconds
         const val HEARTBEAT_INTERVAL_MS = 15000L
-        const val DEFAULT_TICK_INTERVAL_MS = 100 // 10 ticks per second
+        const val DEFAULT_TICK_INTERVAL_MS = 20 // 10 ticks per second
 
         const val BASE_PATH = "/update"
         const val HTTP_SERVER_HOST = "0.0.0.0"

@@ -15,7 +15,7 @@ abstract class Timer @Inject constructor(
     private val log = LoggerFactory.getLogger(this::class.java)
 
 
-    private var intervalMs = 100 // 10 ticks per second
+    private var intervalMs = 20 // 10 ticks per second
     private var timerId: Long? = null
     private val isRunning = AtomicBoolean(false)
 
