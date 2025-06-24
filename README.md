@@ -18,7 +18,7 @@ The foundation of Minare is the extensible entity system:
 
 **Entity**: Entity is the base class for objects on the state graph. Fields must be marked for persistence with the `@State` annotation. 
 
-Entities can have parent (`@Parent`), child (`@Child`) and peer (`@Peer`) relationships with other entities, including other types. These are stored as references when persisted. The chain of parent-child relationships will affect version propogation (`@BubbleUp`, `@BubbleDown`), consistency guarantees (`@Mutate(rule=)`) and will be included an Entity's full context is considered.
+Entities can have parent (`@Parent`), child (`@Child`) and peer (`@Peer`) relationships with other entities, including other types. These are stored as references when persisted. The chain of parent-child relationships will affect version propogation (`@BubbleUp`, `@BubbleDown`), consistency guarantees (`@Mutate(rule=)`) and will be included when an Entity's full context is considered.
  
 ## Near term roadmap
 
