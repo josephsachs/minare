@@ -90,8 +90,8 @@ class DownSocketVerticle @Inject constructor(
 
             initializeRouter()
 
-            timer = UpdateTimer()
-            timer.start(DEFAULT_TICK_INTERVAL_MS)
+            //timer = UpdateTimer()
+            //timer.start(DEFAULT_TICK_INTERVAL_MS)
             log.info("Started Timer at {${System.currentTimeMillis()}}")
             vlog.logStartupStep("UPDATE_TIMER_STARTED", mapOf(
                 "intervalMs" to DEFAULT_TICK_INTERVAL_MS
@@ -200,7 +200,7 @@ class DownSocketVerticle @Inject constructor(
      * Register all event bus consumers
      */
     private suspend fun registerEventBusConsumers() {
-        entityUpdatedEvent.register()
+        //entityUpdatedEvent.register()
         updateConnectionEstablishedEvent.register()
         updateConnectionClosedEvent.register()
     }
