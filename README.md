@@ -23,7 +23,7 @@ Entities can have parent (`@Parent`), child (`@Child`) and peer (`@Peer`) relati
 ## Near term roadmap
 
 - Implement Kafka for ordering guarantees and replay
-- Frame control + cluster orchestration for consistency guarantee
+- Frame control + cluster orchestration for consistency
 - New integration tests that better simulate expected user pattern
 
 ## Example Application
@@ -42,12 +42,4 @@ Artillery is used for integration and performance testing.
 
 ## Getting Started
 
-**Local Development**
-
-Use `docker-compose` to raise the container in the `docker/` path.
-
-Setup the IntelliJ project/module. The module source root should be `main`.
-
-**Deployment**
-
-Create the artifact bucket in your AWS account. Place your application `jar`. Use `minare-infrastructure.yaml` to create a CloudFormation stack.
+Coming soon
