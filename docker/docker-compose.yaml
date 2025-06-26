@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # HAProxy Load Balancer
   haproxy:
@@ -30,6 +28,8 @@ services:
       dockerfile: Dockerfile
     container_name: minare-app
     hostname: app
+    # Override Dockerfile user for development time sync
+    user: root
     volumes:
       # Mount the built JAR for fast iteration (generic naming)
       - ./app.jar:/app/app.jar:ro
@@ -38,8 +38,8 @@ services:
     environment:
       - MONGO_URI=mongodb://mongodb-rs:27017/minare?replicaSet=rs0
       - REDIS_URI=redis://redis:6379
-      - NTP_URL=pool.ntp.org
       - JAVA_OPTS=-Xmx512m -XX:+UseContainerSupport
+      - NTP_URL=pool.ntp.org
       # Debug configuration (conditional)
       - JAVA_DEBUG=${JAVA_DEBUG:-false}
       - JAVA_DEBUG_PORT=${JAVA_DEBUG_PORT:-5005}
