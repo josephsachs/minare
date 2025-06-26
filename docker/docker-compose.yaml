@@ -38,6 +38,7 @@ services:
     environment:
       - MONGO_URI=mongodb://mongodb-rs:27017/minare?replicaSet=rs0
       - REDIS_URI=redis://redis:6379
+      - NTP_URL=pool.ntp.org
       - JAVA_OPTS=-Xmx512m -XX:+UseContainerSupport
       # Debug configuration (conditional)
       - JAVA_DEBUG=${JAVA_DEBUG:-false}

@@ -6,7 +6,8 @@ RUN apk add --no-cache \
     curl \
     chrony \
     tzdata \
-    bash
+    bash \
+    libcap
 
 # Create application user and directory
 RUN addgroup -S minare && adduser -S minare -G minare
