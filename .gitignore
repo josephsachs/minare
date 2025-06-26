@@ -2,6 +2,7 @@
 .idea/
 docker/config/mongodb.key
 docker/data
+docker/app.jar
 logs/
 target/
 performance-test/node_modules

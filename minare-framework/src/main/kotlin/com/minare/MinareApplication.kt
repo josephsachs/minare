@@ -7,6 +7,7 @@ import com.minare.controller.ConnectionController
 import com.minare.worker.upsocket.UpSocketVerticle
 import com.minare.worker.downsocket.DownSocketVerticle
 import com.minare.persistence.DatabaseInitializer
+import com.minare.utils.TimeSyncService
 import com.minare.worker.*
 import com.minare.worker.downsocket.config.DownSocketVerticleModule
 import com.minare.worker.upsocket.config.UpSocketVerticleModule
@@ -67,6 +68,9 @@ abstract class MinareApplication : CoroutineVerticle() {
      */
     override suspend fun start() {
         try {
+            TimeSyncService().syncTime()
+            log.info("Time synchronization complete")
+
             databaseInitializer.initialize()
             log.info("Database initialized successfully")
 

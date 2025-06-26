@@ -1,6 +1,75 @@
 version: '3.8'
 
 services:
+  # HAProxy Load Balancer
+  haproxy:
+    image: haproxy:2.8
+    container_name: haproxy
+    hostname: haproxy
+    ports:
+      - "8080:8080"   # Main HTTP server
+      - "4225:4225"   # Up socket (commands)
+      - "4226:4226"   # Down socket (updates)
+      - "8404:8404"   # HAProxy stats
+    volumes:
+      - ./haproxy/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+    networks:
+      - minare_net
+    depends_on:
+      - app
+    healthcheck:
+      test: ["CMD", "haproxy", "-c", "-f", "/usr/local/etc/haproxy/haproxy.cfg"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # Minare Application
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: minare-app
+    hostname: app
+    volumes:
+      # Mount the built JAR for fast iteration (generic naming)
+      - ./app.jar:/app/app.jar:ro
+      # Mount logs directory
+      - ./logs:/app/logs
+    environment:
+      - MONGO_URI=mongodb://mongodb-rs:27017/minare?replicaSet=rs0
+      - REDIS_URI=redis://redis:6379
+      - NTP_URL=pool.ntp.org
+      - JAVA_OPTS=-Xmx512m -XX:+UseContainerSupport
+      # Debug configuration (conditional)
+      - JAVA_DEBUG=${JAVA_DEBUG:-false}
+      - JAVA_DEBUG_PORT=${JAVA_DEBUG_PORT:-5005}
+      - JAVA_DEBUG_SUSPEND=${JAVA_DEBUG_SUSPEND:-y}
+    ports:
+      # Debug port (only active when JAVA_DEBUG=true)
+      - "${JAVA_DEBUG_PORT:-5005}:${JAVA_DEBUG_PORT:-5005}"
+    networks:
+      - minare_net
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    # Enable NTP capabilities for system clock adjustment
+    cap_add:
+      - SYS_TIME
+    # Expose ports for HAProxy to reach (not to host)
+    expose:
+      - "8080"
+      - "4225"
+      - "4226"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # MongoDB with Replica Set
   mongodb:
     image: mongo:latest
     container_name: mongodb
@@ -12,7 +81,7 @@ services:
       - ./data/db:/data/db
       - ./scripts:/scripts
     networks:
-      mongo_net:
+      minare_net:
         aliases:
           - mongodb-rs
     healthcheck:
@@ -23,6 +92,7 @@ services:
       start_period: 20s
     entrypoint: ["/scripts/init.sh"]
 
+  # Redis
   redis:
     image: redis/redis-stack-server:latest
     container_name: redis
@@ -32,7 +102,7 @@ services:
     volumes:
       - ./data/redis:/data
     networks:
-      - mongo_net
+      - minare_net
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -40,7 +110,41 @@ services:
       retries: 3
       start_period: 10s
 
+  # Development scaling - uncomment to test clustering
+  # app2:
+  #   build:
+  #     context: ..
+  #     dockerfile: docker/Dockerfile
+  #   container_name: minare-app2
+  #   hostname: app2
+  #   volumes:
+  #     - ./app.jar:/app/app.jar:ro
+  #     - ./logs2:/app/logs
+  #   environment:
+  #     - MONGO_URI=mongodb://mongodb-rs:27017/minare?replicaSet=rs0
+  #     - REDIS_URI=redis://redis:6379
+  #     - JAVA_OPTS=-Xmx512m -XX:+UseContainerSupport
+  #     # Debug on different port for second instance
+  #     - JAVA_DEBUG=${JAVA_DEBUG:-false}
+  #     - JAVA_DEBUG_PORT=${JAVA_DEBUG_PORT2:-5006}
+  #     - JAVA_DEBUG_SUSPEND=${JAVA_DEBUG_SUSPEND:-y}
+  #   ports:
+  #     - "${JAVA_DEBUG_PORT2:-5006}:${JAVA_DEBUG_PORT2:-5006}"
+  #   networks:
+  #     - minare_net
+  #   depends_on:
+  #     mongodb:
+  #       condition: service_healthy
+  #     redis:
+  #       condition: service_healthy
+  #   cap_add:
+  #     - SYS_TIME
+  #   expose:
+  #     - "8080"
+  #     - "4225"
+  #     - "4226"
+
 networks:
-  mongo_net:
-    name: mongo_net
+  minare_net:
+    name: minare_net
     driver: bridge

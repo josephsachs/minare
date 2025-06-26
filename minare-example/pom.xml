@@ -93,12 +93,11 @@
         <sourceDirectory>${project.basedir}/src/main</sourceDirectory>
         <testSourceDirectory>${project.basedir}/src/test</testSourceDirectory>
 
+        <!-- Use generic final name for infrastructure -->
+        <finalName>minare-app</finalName>
+
         <!-- Explicitly configure resources -->
         <resources>
-            <!--- <resource> -->
-                <!--- <directory>${project.basedir}/src/resources</directory> -->
-                <!--- <filtering>false</filtering> -->
-            <!--- </resource> -->
             <resource>
                 <directory>src/main/resources</directory>
                 <filtering>false</filtering>
@@ -173,7 +172,32 @@
                                 <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
                             </transformers>
                             <artifactSet/>
-                            <outputFile>${project.build.directory}/${project.artifactId}-${project.version}-fat.jar</outputFile>
+                            <!-- Use generic output file name for infrastructure -->
+                            <outputFile>${project.build.directory}/minare-app-fat.jar</outputFile>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!-- Auto-copy JAR to docker directory for containerization -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-antrun-plugin</artifactId>
+                <version>3.1.0</version>
+                <executions>
+                    <execution>
+                        <id>copy-jar-to-docker</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>run</goal>
+                        </goals>
+                        <configuration>
+                            <target>
+                                <copy file="${project.build.directory}/minare-app-fat.jar"
+                                      tofile="${project.basedir}/../docker/app.jar"
+                                      overwrite="true"/>
+                                <echo message="Copied JAR to docker/app.jar for containerization"/>
+                            </target>
                         </configuration>
                     </execution>
                 </executions>
