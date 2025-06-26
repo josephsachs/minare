@@ -16,10 +16,43 @@ services:
     depends_on:
       - app
     healthcheck:
-      test: ["CMD", "haproxy", "-c", "-f", "/usr/local/etc/haproxy/haproxy.cfg"]
+      test: ["CMD", "sh", "-c", "chronyc tracking && timeout 2 chronyd -q 'server 127.0.0.1'"]
       interval: 10s
       timeout: 5s
+      retries: 5
+      start_period: 45s
+
+  # Local NTP Server for fast cluster synchronization
+  ntp-server:
+    image: alpine:latest
+    container_name: minare-ntp
+    hostname: ntp-server
+    restart: unless-stopped
+    user: root
+    command: |
+      sh -c "
+      apk add chrony &&
+      echo 'server 0.pool.ntp.org iburst' > /etc/chrony/chrony.conf &&
+      echo 'server 1.pool.ntp.org iburst' >> /etc/chrony/chrony.conf &&
+      echo 'allow all' >> /etc/chrony/chrony.conf &&
+      echo 'makestep 1.0 3' >> /etc/chrony/chrony.conf &&
+      echo 'driftfile /var/lib/chrony/chrony.drift' >> /etc/chrony/chrony.conf &&
+      mkdir -p /var/lib/chrony &&
+      chronyd -d -f /etc/chrony/chrony.conf
+      "
+    ports:
+      - "123:123/udp"  # NTP port
+    networks:
+      - minare_net
+    cap_add:
+      - SYS_TIME
+      - SYS_NICE
+    healthcheck:
+      test: ["CMD", "chronyc", "tracking"]
+      interval: 30s
+      timeout: 10s
       retries: 3
+      start_period: 30s
 
   # Minare Application
   app:
@@ -28,36 +61,31 @@ services:
       dockerfile: Dockerfile
     container_name: minare-app
     hostname: app
-    # Override Dockerfile user for development time sync
     user: root
     volumes:
-      # Mount the built JAR for fast iteration (generic naming)
       - ./app.jar:/app/app.jar:ro
-      # Mount logs directory
       - ./logs:/app/logs
     environment:
       - MONGO_URI=mongodb://mongodb-rs:27017/minare?replicaSet=rs0
       - REDIS_URI=redis://redis:6379
       - JAVA_OPTS=-Xmx512m -XX:+UseContainerSupport
-      - NTP_URL=pool.ntp.org
-      # Debug configuration (conditional)
+      - NTP_URL=ntp-server
       - JAVA_DEBUG=${JAVA_DEBUG:-false}
       - JAVA_DEBUG_PORT=${JAVA_DEBUG_PORT:-5005}
       - JAVA_DEBUG_SUSPEND=${JAVA_DEBUG_SUSPEND:-y}
     ports:
-      # Debug port (only active when JAVA_DEBUG=true)
       - "${JAVA_DEBUG_PORT:-5005}:${JAVA_DEBUG_PORT:-5005}"
     networks:
       - minare_net
     depends_on:
+      ntp-server:
+        condition: service_healthy
       mongodb:
         condition: service_healthy
       redis:
         condition: service_healthy
-    # Enable NTP capabilities for system clock adjustment
     cap_add:
       - SYS_TIME
-    # Expose ports for HAProxy to reach (not to host)
     expose:
       - "8080"
       - "4225"
@@ -143,7 +171,7 @@ services:
   #     - "8080"
   #     - "4225"
   #     - "4226"
-
+  
 networks:
   minare_net:
     name: minare_net

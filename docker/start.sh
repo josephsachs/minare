@@ -28,29 +28,6 @@ test_ntp_capability() {
     fi
 }
 
-# Function to perform initial NTP sync (if capabilities allow)
-sync_time() {
-    echo "Attempting initial NTP synchronization..."
-
-    # Use ntpd for time sync if we have capabilities
-    if test_ntp_capability; then
-        # Try to sync time using ntpd
-        if command -v ntpd >/dev/null 2>&1; then
-            echo "Using ntpd for time synchronization..."
-            # Run ntpd once to sync time, then exit
-            timeout 30s ntpd -n -q -p pool.ntp.org || {
-                echo "⚠ NTP sync failed or timed out"
-                echo "  Continuing with application startup..."
-            }
-        else
-            echo "⚠ ntpd not available, skipping time sync"
-        fi
-    else
-        echo "⚠ Cannot adjust system time without SYS_TIME capability"
-        echo "  Application will start with current container time"
-    fi
-}
-
 # Function to setup Java options
 setup_java_opts() {
     # Default Java options for containerized environment
@@ -116,9 +93,6 @@ main() {
     echo "Minare Application Container Starting"
     echo "Time: $(date)"
     echo "==========================================="
-
-    # Perform NTP sync
-    sync_time
 
     # Setup Java environment
     setup_java_opts
