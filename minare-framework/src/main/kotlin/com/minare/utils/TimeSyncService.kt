@@ -58,14 +58,15 @@ class TimeSyncService {
      * Uses chronyd's one-shot sync mode to adjust system clock.
      */
     private fun executeChronySyncCommand(): CommandResult {
-        // Use chronyd in one-shot mode to sync with specified NTP server
+        // Use chrony in one-shot mode with server specified via -S option
         // -q: quit after clock is set once
         // -t: timeout for server response
+        // -S: specify NTP server directly
         val command = arrayOf(
             "chronyd",
             "-q",                           // One-shot mode
             "-t", SYNC_TIMEOUT_SECONDS.toString(),  // Timeout
-            "server", ntpUrl               // NTP server to use
+            "-S", ntpUrl                   // NTP server to use
         )
 
         log.debug("Executing time sync command: ${command.joinToString(" ")}")
