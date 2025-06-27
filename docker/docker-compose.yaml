@@ -39,7 +39,7 @@ services:
       - MONGO_URI=mongodb://mongodb-rs:27017/minare?replicaSet=rs0
       - REDIS_URI=redis://redis:6379
       - JAVA_OPTS=-Xmx512m -XX:+UseContainerSupport
-      - NTP_URL=pool.ntp.org
+      - NTP_URL=host.docker.internal
       # Debug configuration (conditional)
       - JAVA_DEBUG=${JAVA_DEBUG:-false}
       - JAVA_DEBUG_PORT=${JAVA_DEBUG_PORT:-5005}

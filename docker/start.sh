@@ -97,15 +97,15 @@ wait_for_dependencies() {
     fi
 
     # Wait for Redis
-    if [ -n "${REDIS_URI}" ]; then
-        echo "Waiting for Redis..."
-        REDIS_HOST=$(echo "${REDIS_URI}" | sed -n 's/.*\/\/\([^:]*\):.*/\1/p')
-        REDIS_PORT=$(echo "${REDIS_URI}" | sed -n 's/.*:\([0-9]*\).*/\1/p')
+    # if [ -n "${REDIS_URI}" ]; then
+    #    echo "Waiting for Redis..."
+    #    REDIS_HOST=$(echo "${REDIS_URI}" | sed -n 's/.*\/\/\([^:]*\):.*/\1/p')
+    #    REDIS_PORT=$(echo "${REDIS_URI}" | sed -n 's/.*:\([0-9]*\).*/\1/p')
 
-        timeout 30s bash -c "until curl -s ${REDIS_HOST}:${REDIS_PORT} >/dev/null 2>&1; do sleep 2; done" || {
-            echo "⚠ Redis connection timeout"
-        }
-    fi
+    #    timeout 30s bash -c "until curl -s ${REDIS_HOST}:${REDIS_PORT} >/dev/null 2>&1; do sleep 2; done" || {
+    #        echo "⚠ Redis connection timeout"
+    #    }
+    #fi
 
     echo "✓ Dependency checks complete"
 }
