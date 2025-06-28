@@ -7,7 +7,7 @@ import com.minare.controller.ConnectionController
 import com.minare.worker.upsocket.UpSocketVerticle
 import com.minare.worker.downsocket.DownSocketVerticle
 import com.minare.persistence.DatabaseInitializer
-import com.minare.utils.TimeSyncService
+import com.minare.time.TimeService
 import com.minare.worker.*
 import com.minare.worker.downsocket.config.DownSocketVerticleModule
 import com.minare.worker.upsocket.config.UpSocketVerticleModule
@@ -36,6 +36,8 @@ abstract class MinareApplication : CoroutineVerticle() {
     private val log = LoggerFactory.getLogger(MinareApplication::class.java)
     @Inject
     private lateinit var connectionController: ConnectionController
+    @Inject
+    private lateinit var timeService: TimeService
     @Inject
     lateinit var databaseInitializer: DatabaseInitializer
     @Inject
@@ -68,7 +70,7 @@ abstract class MinareApplication : CoroutineVerticle() {
      */
     override suspend fun start() {
         try {
-            TimeSyncService().syncTime()
+            timeService.syncTime()
             log.info("Time synchronization complete")
 
             databaseInitializer.initialize()

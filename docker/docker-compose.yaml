@@ -28,18 +28,14 @@ services:
       dockerfile: Dockerfile
     container_name: minare-app
     hostname: app
-    # Override Dockerfile user for development time sync
-    user: root
     volumes:
-      # Mount the built JAR for fast iteration (generic naming)
       - ./app.jar:/app/app.jar:ro
-      # Mount logs directory
       - ./logs:/app/logs
     environment:
       - MONGO_URI=mongodb://mongodb-rs:27017/minare?replicaSet=rs0
       - REDIS_URI=redis://redis:6379
       - JAVA_OPTS=-Xmx512m -XX:+UseContainerSupport
-      - NTP_URL=host.docker.internal
+      - NTP_URL=ntp.local
       # Debug configuration (conditional)
       - JAVA_DEBUG=${JAVA_DEBUG:-false}
       - JAVA_DEBUG_PORT=${JAVA_DEBUG_PORT:-5005}
@@ -54,7 +50,6 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    # Enable NTP capabilities for system clock adjustment
     cap_add:
       - SYS_TIME
     # Expose ports for HAProxy to reach (not to host)
