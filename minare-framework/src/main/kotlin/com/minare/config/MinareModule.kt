@@ -30,6 +30,8 @@ import com.minare.persistence.RedisEntityStore
 import com.minare.persistence.StateStore
 import com.minare.persistence.WriteBehindStore
 import com.minare.pubsub.UpdateBatchCoordinator
+import com.minare.time.DockerTimeService
+import com.minare.time.TimeService
 import kotlin.coroutines.CoroutineContext
 
 /**
@@ -52,6 +54,9 @@ class MinareModule : AbstractModule(), DatabaseNameProvider {
         bind(EntityVersioningService::class.java).`in`(Singleton::class.java)
         bind(EntityQueryStore::class.java).to(MongoEntityStore::class.java).`in`(Singleton::class.java)
         bind(WriteBehindStore::class.java).to(MongoEntityStore::class.java).`in`(Singleton::class.java)
+
+        // Temporary for Development in Docker
+        bind(TimeService::class.java).to(DockerTimeService::class.java).`in`(Singleton::class.java)
 
         // Add binding for the new MutationService
         bind(MutationService::class.java).`in`(Singleton::class.java)
