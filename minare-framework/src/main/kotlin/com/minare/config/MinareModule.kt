@@ -31,6 +31,7 @@ import com.minare.persistence.StateStore
 import com.minare.persistence.WriteBehindStore
 import com.minare.pubsub.UpdateBatchCoordinator
 import com.minare.time.DockerTimeService
+import com.minare.time.FrameConfiguration
 import com.minare.time.TimeService
 import kotlin.coroutines.CoroutineContext
 
@@ -48,6 +49,7 @@ class MinareModule : AbstractModule(), DatabaseNameProvider {
     throw IllegalStateException("MONGO_URI environment variable is required")
 
     override fun configure() {
+        // Internal services, do not permit override
         bind(StateStore::class.java).to(RedisEntityStore::class.java).`in`(Singleton::class.java)
         bind(EntityStore::class.java).to(MongoEntityStore::class.java).`in`(Singleton::class.java)
         bind(EntityPublishService::class.java).to(RedisEntityPublishService::class.java).`in`(Singleton::class.java)
@@ -55,21 +57,14 @@ class MinareModule : AbstractModule(), DatabaseNameProvider {
         bind(EntityQueryStore::class.java).to(MongoEntityStore::class.java).`in`(Singleton::class.java)
         bind(WriteBehindStore::class.java).to(MongoEntityStore::class.java).`in`(Singleton::class.java)
 
-        // Temporary for Development in Docker
-        bind(TimeService::class.java).to(DockerTimeService::class.java).`in`(Singleton::class.java)
-
-        // Add binding for the new MutationService
-        bind(MutationService::class.java).`in`(Singleton::class.java)
-
         bind(ConnectionStore::class.java).to(MongoConnectionStore::class.java).`in`(Singleton::class.java)
         bind(ChannelStore::class.java).to(MongoChannelStore::class.java).`in`(Singleton::class.java)
         bind(ContextStore::class.java).to(MongoContextStore::class.java).`in`(Singleton::class.java)
 
+        bind(TimeService::class.java).to(DockerTimeService::class.java).`in`(Singleton::class.java)
+        bind(MutationService::class.java).`in`(Singleton::class.java)
         bind(ConnectionCache::class.java).to(InMemoryConnectionCache::class.java).`in`(Singleton::class.java)
         bind(ReflectionCache::class.java).`in`(Singleton::class.java)
-
-        // Entity dependency injection removed - Entity is now pure data class
-        // EntityDependencyInjector and EntityFactoryWrapper removed
 
         bind(PubSubChannelStrategy::class.java).to(PerChannelPubSubStrategy::class.java).`in`(Singleton::class.java)
         bind(UpdateBatchCoordinator::class.java).`in`(Singleton::class.java)
@@ -93,10 +88,13 @@ class MinareModule : AbstractModule(), DatabaseNameProvider {
 
         bind(VerticleLogger::class.java).`in`(Singleton::class.java)
 
-        // NEW: Bind Redis pub/sub worker instead of MongoDB change stream worker
+        // Workers
         bind(RedisPubSubWorkerVerticle::class.java)
         bind(MutationVerticle::class.java)
         bind(CleanupVerticle::class.java)
+
+        // Configuration classes
+        bind(FrameConfiguration::class.java).`in`(Singleton::class.java)
     }
 
     /**
