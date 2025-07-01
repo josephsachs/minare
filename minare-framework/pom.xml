@@ -104,6 +104,12 @@
             <artifactId>guice</artifactId>
         </dependency>
 
+        <!-- Kafka -->
+        <dependency>
+            <groupId>io.vertx</groupId>
+            <artifactId>vertx-kafka-client</artifactId>
+        </dependency>
+
         <!-- Lombok -->
         <dependency>
             <groupId>org.projectlombok</groupId>

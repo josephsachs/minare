@@ -112,6 +112,13 @@
                 <version>${guice.version}</version>
             </dependency>
 
+            <!--- Kafka -->
+            <dependency>
+                <groupId>io.vertx</groupId>
+                <artifactId>vertx-kafka-client</artifactId>
+                <version>${vertx.version}</version>
+            </dependency>
+
             <!-- Lombok -->
             <dependency>
                 <groupId>org.projectlombok</groupId>
