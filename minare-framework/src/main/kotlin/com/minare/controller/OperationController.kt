@@ -24,30 +24,31 @@ abstract class OperationController @Inject constructor(
 ) {
     private val log = LoggerFactory.getLogger(EntityController::class.java)
 
-    /**
-     * Developer override hooks
-     */
-    protected open suspend fun preQueue(commands: JsonArray) {}
-    protected open suspend fun postQueue(commands: JsonArray) {}
-
-    /**
-     * Queue an operation set for
-     *
-     * This method handles the MongoDB-first-then-Redis flow for new entities:
-     * 1. Save to MongoDB to get an ID assigned
-     * 2. Save to Redis for fast state access
-     *
-     * @param operations
-     * @return if the operation succeeded
-     */
-    // Framework calls this after preQueue
-    internal suspend fun queueOperations(operations: Any) {
+    suspend fun queue(operations: Any) {
         val message = when (operations) {
             is OperationSet -> operations.toJsonArray()
             is Operation -> JsonArray().add(operations.build())
             else -> throw IllegalArgumentException("Expected OperationSet or Operation")
         }
+        
+        preQueue(message)
+            .also { sendMessage(it) }
+            .let { postQueue(it) }
+    }
 
+    /**
+     * Developer override hooks
+     */
+    protected open suspend fun preQueue(operations: JsonArray): JsonArray { return operations }
+    protected open suspend fun postQueue(operations: JsonArray): JsonArray { return operations }
+
+    /**
+     * Send an operation set to the message broker
+     *
+     * @param message
+     * @return if the operation succeeded
+     */
+    internal suspend fun sendMessage(message: JsonArray) {
         messageQueue.send(OPERATIONS_TOPIC, message)
     }
 
