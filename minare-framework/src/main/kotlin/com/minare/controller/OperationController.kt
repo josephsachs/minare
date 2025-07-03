@@ -18,7 +18,6 @@ import javax.inject.Singleton
  * - Applications must bind it in their module (to this class or their extension)
  * - Applications can extend this class to customize behavior
  */
-@Singleton
 abstract class OperationController @Inject constructor(
     private val messageQueue: MessageQueue
 ) {

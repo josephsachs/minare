@@ -12,8 +12,7 @@ import javax.inject.Singleton
  *
  * Immutable once set - changes require application restart.
  */
-@Singleton
-data class FrameConfiguration @Inject constructor(
+data class FrameConfiguration constructor(
     /**
      * Duration of each frame in milliseconds.
      * All commands within this time window are processed together.
