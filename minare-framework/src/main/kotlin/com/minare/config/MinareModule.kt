@@ -7,6 +7,8 @@ import com.minare.cache.InMemoryConnectionCache
 import com.minare.core.entity.ReflectionCache
 import com.minare.core.entity.EntityFactory
 import com.minare.entity.*
+import com.minare.operation.KafkaMessageQueue
+import com.minare.operation.MessageQueue
 import com.minare.pubsub.PubSubChannelStrategy
 import com.minare.pubsub.PerChannelPubSubStrategy
 import com.minare.worker.CleanupVerticle
@@ -33,6 +35,7 @@ import com.minare.pubsub.UpdateBatchCoordinator
 import com.minare.time.DockerTimeService
 import com.minare.time.FrameConfiguration
 import com.minare.time.TimeService
+import com.minare.worker.upsocket.CommandMessageHandler
 import kotlin.coroutines.CoroutineContext
 
 /**
@@ -56,6 +59,7 @@ class MinareModule : AbstractModule(), DatabaseNameProvider {
         bind(EntityVersioningService::class.java).`in`(Singleton::class.java)
         bind(EntityQueryStore::class.java).to(MongoEntityStore::class.java).`in`(Singleton::class.java)
         bind(WriteBehindStore::class.java).to(MongoEntityStore::class.java).`in`(Singleton::class.java)
+        bind(MessageQueue::class.java).to(KafkaMessageQueue::class.java).`in`(Singleton::class.java)
 
         bind(ConnectionStore::class.java).to(MongoConnectionStore::class.java).`in`(Singleton::class.java)
         bind(ChannelStore::class.java).to(MongoChannelStore::class.java).`in`(Singleton::class.java)
@@ -68,6 +72,7 @@ class MinareModule : AbstractModule(), DatabaseNameProvider {
 
         bind(PubSubChannelStrategy::class.java).to(PerChannelPubSubStrategy::class.java).`in`(Singleton::class.java)
         bind(UpdateBatchCoordinator::class.java).`in`(Singleton::class.java)
+        bind(CommandMessageHandler::class.java).`in`(Singleton::class.java)
 
         bind(String::class.java)
             .annotatedWith(Names.named("mongoConnectionString"))
@@ -92,9 +97,6 @@ class MinareModule : AbstractModule(), DatabaseNameProvider {
         bind(RedisPubSubWorkerVerticle::class.java)
         bind(MutationVerticle::class.java)
         bind(CleanupVerticle::class.java)
-
-        // Configuration classes
-        bind(FrameConfiguration::class.java).`in`(Singleton::class.java)
     }
 
     /**

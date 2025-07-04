@@ -5,11 +5,13 @@ import com.google.inject.Singleton
 import com.google.inject.name.Names
 import com.minare.config.DatabaseNameProvider
 import com.minare.controller.ConnectionController
+import com.minare.controller.OperationController
 import com.minare.core.entity.EntityFactory
 import com.minare.example.ExampleEntityFactory
 import com.minare.example.controller.ChannelController
 import com.minare.example.controller.ExampleChannelController
 import com.minare.example.controller.ExampleConnectionController
+import com.minare.example.controller.ExampleOperationController
 import org.slf4j.LoggerFactory
 
 /**
@@ -29,11 +31,13 @@ class ExampleModule : PrivateModule(), DatabaseNameProvider {
 
         bind(ChannelController::class.java).to(ExampleChannelController::class.java).`in`(Singleton::class.java)
         bind(ConnectionController::class.java).to(ExampleConnectionController::class.java).`in`(Singleton::class.java)
+        bind(OperationController::class.java).to(ExampleOperationController::class.java).`in`(Singleton::class.java)
 
         // Expose the named user factory (framework will wrap it)
         expose(EntityFactory::class.java).annotatedWith(Names.named("userEntityFactory"))
         expose(ChannelController::class.java)
         expose(ConnectionController::class.java)
+        expose(OperationController::class.java)
 
         log.info("ExampleModule configured with custom EntityFactory and controllers")
     }

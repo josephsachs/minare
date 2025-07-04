@@ -28,7 +28,7 @@ class Operation {
         version = v
     }
 
-    internal fun build(): JsonObject {
+    fun build(): JsonObject {
         requireNotNull(entityId) { "Entity ID is required" }
         requireNotNull(actionType) { "Action type is required" }
 

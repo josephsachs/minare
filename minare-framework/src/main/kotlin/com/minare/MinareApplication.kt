@@ -15,6 +15,7 @@ import io.vertx.core.DeploymentOptions
 import io.vertx.core.Vertx
 import io.vertx.core.VertxOptions
 import io.vertx.core.http.HttpServer
+import io.vertx.core.impl.Deployment
 import io.vertx.core.json.JsonObject
 import io.vertx.kotlin.coroutines.CoroutineVerticle
 import io.vertx.kotlin.coroutines.await
@@ -47,6 +48,7 @@ abstract class MinareApplication : CoroutineVerticle() {
     private var upSocketVerticleDeploymentId: String? = null
     private var cleanupVerticleDeploymentId: String? = null
     private var downSocketVerticleDeploymentId: String? = null
+    private var messageQueueConsumerVerticleDeploymentId: String? = null
 
     private val pendingConnections = ConcurrentHashMap<String, ConnectionState>()
 
@@ -142,6 +144,18 @@ abstract class MinareApplication : CoroutineVerticle() {
                 cleanupOptions
             ).await()
             log.info("Cleanup verticle deployed with ID: $cleanupVerticleDeploymentId")
+
+            val messageQueueOptions = DeploymentOptions()
+                .setWorker(true)
+                .setWorkerPoolName("message-queue-consumer-pool")
+                .setWorkerPoolSize(1)
+                .setInstances(1)
+
+            messageQueueConsumerVerticleDeploymentId = vertx.deployVerticle(
+                "guice:" + MessageQueueConsumerVerticle::class.java.name,
+                messageQueueOptions
+            ).await()
+            log.info("KafkaMessageQueueConsumer verticle deployed with ID: $messageQueueConsumerVerticleDeploymentId")
 
             val initResult = vertx.eventBus().request<JsonObject>(
                 UpSocketVerticle.ADDRESS_UP_SOCKET_INITIALIZE,
