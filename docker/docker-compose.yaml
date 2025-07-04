@@ -1,3 +1,5 @@
+version: '3.8'
+
 services:
   # HAProxy Load Balancer
   haproxy:
@@ -32,10 +34,23 @@ services:
       - ./app.jar:/app/app.jar:ro
       - ./logs:/app/logs
     environment:
+      - RESET_DB=true # Development only
       - MONGO_URI=mongodb://mongodb-rs:27017/minare?replicaSet=rs0
       - REDIS_URI=redis://redis:6379
       - JAVA_OPTS=-Xmx512m -XX:+UseContainerSupport
       - NTP_URL=ntp.local
+      # Kafka configuration
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - KAFKA_TOPIC_PARTITIONS=3
+      - KAFKA_TOPIC_REPLICATION_FACTOR=1
+      - KAFKA_PRODUCER_ACKS=all
+      - KAFKA_PRODUCER_COMPRESSION=gzip
+      - KAFKA_PRODUCER_RETRIES=3
+      # Kafka consumer configuration
+      - KAFKA_CONSUMER_GROUP=minare-mutation-processor
+      - KAFKA_SESSION_TIMEOUT_MS=30000
+      - KAFKA_MAX_POLL_RECORDS=100
+      - KAFKA_AUTO_OFFSET_RESET=earliest
       # Debug configuration (conditional)
       - JAVA_DEBUG=${JAVA_DEBUG:-false}
       - JAVA_DEBUG_PORT=${JAVA_DEBUG_PORT:-5005}
@@ -50,6 +65,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      kafka:
+        condition: service_started
     cap_add:
       - SYS_TIME
     # Expose ports for HAProxy to reach (not to host)
@@ -105,6 +122,7 @@ services:
       retries: 3
       start_period: 10s
 
+  # Kafka (KRaft mode - no Zookeeper needed)
   kafka:
     image: confluentinc/cp-kafka:7.5.0
     container_name: kafka
@@ -122,12 +140,16 @@ services:
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_LOG_DIRS: '/tmp/kraft-combined-logs'
       CLUSTER_ID: 'MkU3OEVBNTcwNTJENDM2Qk'
+    networks:
+      - minare_net
+    volumes:
+      - ./data/kafka:/tmp/kraft-combined-logs
 
   # Development scaling - uncomment to test clustering
   # app2:
   #   build:
-  #     context: ..
-  #     dockerfile: docker/Dockerfile
+  #     context: .
+  #     dockerfile: Dockerfile
   #   container_name: minare-app2
   #   hostname: app2
   #   volumes:
@@ -136,6 +158,10 @@ services:
   #   environment:
   #     - MONGO_URI=mongodb://mongodb-rs:27017/minare?replicaSet=rs0
   #     - REDIS_URI=redis://redis:6379
+  #     - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+  #     - KAFKA_TOPIC_PARTITIONS=3
+  #     - KAFKA_TOPIC_REPLICATION_FACTOR=1
+  #     - KAFKA_PRODUCER_ACKS=1
   #     - JAVA_OPTS=-Xmx512m -XX:+UseContainerSupport
   #     # Debug on different port for second instance
   #     - JAVA_DEBUG=${JAVA_DEBUG:-false}
@@ -149,6 +175,8 @@ services:
   #     mongodb:
   #       condition: service_healthy
   #     redis:
+  #       condition: service_healthy
+  #     kafka:
   #       condition: service_healthy
   #   cap_add:
   #     - SYS_TIME

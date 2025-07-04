@@ -4,8 +4,6 @@ import com.minare.controller.OperationController
 import com.minare.operation.MessageQueue
 import com.minare.operation.Operation
 import com.minare.operation.OperationType
-import com.minare.worker.upsocket.SyncCommandHandler
-import io.vertx.core.json.JsonArray
 import io.vertx.core.json.JsonObject
 import org.slf4j.LoggerFactory
 import javax.inject.Inject
@@ -17,39 +15,34 @@ import javax.inject.Singleton
  */
 @Singleton
 class ExampleOperationController @Inject constructor(
-    messageQueue: MessageQueue,
-    private val syncCommandHandler: SyncCommandHandler
+    messageQueue: MessageQueue
 ) : OperationController(messageQueue) {
 
     private val log = LoggerFactory.getLogger(ExampleOperationController::class.java)
 
     /**
-     * Convert incoming client commands to Operations before queueing to Kafka
+     * Convert incoming client commands to Operations before queueing to Kafka.
+     *
+     * @param message The raw message from the client
+     * @return Operation, OperationSet, or null to skip processing
      */
-    override suspend fun preQueue(operations: JsonArray): JsonArray {
-        // For now, we expect a single JsonObject (the raw message from client)
-        // In the future, this might handle batches
-        if (operations.size() != 1 || operations.getValue(0) !is JsonObject) {
-            return operations // Pass through unchanged if not expected format
-        }
-
-        val message = operations.getJsonObject(0)
+    override suspend fun preQueue(message: JsonObject): Any? {
         val command = message.getString("command")
         val connectionId = message.getString("connectionId")
 
-        when (command) {
+        return when (command) {
             "mutate" -> {
                 // Convert mutate command to Operation
                 val entityObject = message.getJsonObject("entity")
                 if (entityObject == null) {
                     log.warn("Invalid mutate command: missing entity object")
-                    return JsonArray() // Return empty array to skip processing
+                    return null
                 }
 
                 val entityId = entityObject.getString("_id")
                 if (entityId == null) {
                     log.warn("Invalid mutate command: missing entity ID")
-                    return JsonArray() // Return empty array to skip processing
+                    return null
                 }
 
                 val operation = Operation()
@@ -66,30 +59,20 @@ class ExampleOperationController @Inject constructor(
                 operation.value("connectionId", connectionId)
                 operation.value("entityType", entityObject.getString("type"))
 
-                // Return as JsonArray containing the built Operation
-                return JsonArray().add(operation.build())
+                log.debug("Created MUTATE operation for entity {} from connection {}", entityId, connectionId)
+
+                operation
             }
 
-            "sync" -> {
-                // Sync commands bypass Kafka for now
-                syncCommandHandler.handle(connectionId, message)
-                return JsonArray() // Return empty array to skip Kafka
-            }
+            // Add other command types here as needed
+            // "create" -> { ... }
+            // "delete" -> { ... }
 
             else -> {
                 // Unknown command - log and skip
                 log.warn("Unknown command received: {} from connection: {}", command, connectionId)
-                return JsonArray() // Return empty array to skip processing
+                null
             }
         }
-    }
-
-    /**
-     * Post-queue hook for any cleanup or additional processing
-     * after messages have been sent to Kafka
-     */
-    override suspend fun postQueue(operations: JsonArray): JsonArray {
-        // No post-processing needed for now
-        return operations
     }
 }

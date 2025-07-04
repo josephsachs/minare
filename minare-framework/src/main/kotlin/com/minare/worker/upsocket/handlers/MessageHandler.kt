@@ -7,25 +7,29 @@ import com.minare.utils.HeartbeatManager
 import com.minare.utils.VerticleLogger
 import com.minare.utils.WebSocketUtils
 import com.minare.controller.OperationController
+import com.minare.worker.upsocket.SyncCommandHandler
 import io.vertx.core.http.ServerWebSocket
 import io.vertx.core.json.JsonObject
 
 /**
  * Handles incoming messages from WebSocket connections.
- * Refactored to delegate all command processing to OperationController
- * as part of the Kafka-based architecture.
+ * Routes messages to appropriate handlers based on type:
+ * - Heartbeats: handled directly
+ * - Sync commands: routed to SyncCommandHandler (temporary)
+ * - All others: routed to OperationController for Kafka
  */
 class MessageHandler @Inject constructor(
     private val vlog: VerticleLogger,
     private val connectionStore: ConnectionStore,
     private val connectionTracker: ConnectionTracker,
     private val heartbeatManager: HeartbeatManager,
-    private val operationController: OperationController
+    private val operationController: OperationController,
+    private val syncCommandHandler: SyncCommandHandler
 ) {
     /**
      * Handle an incoming message from a client
      */
-    public suspend fun handle(websocket: ServerWebSocket, message: JsonObject) {
+    suspend fun handle(websocket: ServerWebSocket, message: JsonObject) {
         val connectionId = connectionTracker.getConnectionId(websocket)
         if (connectionId == null) {
             WebSocketUtils.sendErrorResponse(
@@ -39,6 +43,7 @@ class MessageHandler @Inject constructor(
         val msgTraceId = vlog.getEventLogger().trace(
             "MESSAGE_RECEIVED", mapOf(
                 "messageType" to message.getString("type", "unknown"),
+                "command" to message.getString("command", "unknown"),
                 "connectionId" to connectionId
             ), traceId
         )
@@ -46,19 +51,31 @@ class MessageHandler @Inject constructor(
         try {
             connectionStore.updateLastActivity(connectionId)
 
-            if (message.getString("type") == "heartbeat_response") {
+            // Route based on message type
+            when {
                 // Heartbeat responses are handled directly
-                heartbeatManager.handleHeartbeatResponse(connectionId, message)
-            } else {
-                // All other messages are delegated to OperationController
-                // Add connectionId to the message for downstream processing
-                message.put("connectionId", connectionId)
-                operationController.queue(message)
+                message.getString("type") == "heartbeat_response" -> {
+                    heartbeatManager.handleHeartbeatResponse(connectionId, message)
+                }
+
+                // Sync commands bypass Kafka (temporary implementation)
+                message.getString("command") == "sync" -> {
+                    vlog.logInfo("Routing sync command to SyncCommandHandler for connection ${connectionId}")
+                    syncCommandHandler.handle(connectionId, message)
+                }
+
+                // All other messages go through OperationController to Kafka
+                else -> {
+                    // Add connectionId to the message for downstream processing
+                    message.put("connectionId", connectionId)
+                    operationController.process(message)
+                }
             }
 
             vlog.getEventLogger().trace(
                 "MESSAGE_PROCESSED", mapOf(
                     "messageType" to message.getString("type", "unknown"),
+                    "command" to message.getString("command", "unknown"),
                     "connectionId" to connectionId
                 ), msgTraceId
             )
