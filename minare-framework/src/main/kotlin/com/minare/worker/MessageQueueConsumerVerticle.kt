@@ -32,7 +32,7 @@ class MessageQueueConsumerVerticle @Inject constructor(
 
     companion object {
         private const val OPERATIONS_TOPIC = "minare.operations"
-        private const val CONSUMER_GROUP = "minare-mutation-processor"
+        private const val CONSUMER_GROUP = "minare-operation-processor"
     }
 
     // Configuration from environment
