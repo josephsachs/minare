@@ -26,11 +26,6 @@ import kotlin.coroutines.CoroutineContext
 /**
  * Specialized Guice module for UpSocketVerticle and its dependencies.
  * This module provides all the necessary components within the UpSocketVerticle's scope.
- *
- * Updated for Kafka architecture:
- * - CommandMessageHandler moved to main module (used by MessageQueueConsumerVerticle)
- * - Added SyncCommandHandler for sync operations
- * - Added OperationController requirement
  */
 class UpSocketVerticleModule : PrivateModule() {
 

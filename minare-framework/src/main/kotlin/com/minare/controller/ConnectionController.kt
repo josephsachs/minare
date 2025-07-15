@@ -23,8 +23,7 @@ open class ConnectionController @Inject constructor(
     val connectionCache: ConnectionCache,
     val channelStore: ChannelStore,
     val contextStore: ContextStore,
-    val entityStore: EntityStore,
-    val reflectionCache: ReflectionCache
+    val entityStore: EntityStore
 ) {
     private val log = LoggerFactory.getLogger(ConnectionController::class.java)
 

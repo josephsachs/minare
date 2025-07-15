@@ -39,7 +39,6 @@ services:
       - INSTANCE_ROLE=COORDINATOR
 
       # Cluster configuration
-      - VERTX_CLUSTERED=true
       - VERTX_CLUSTER_HOST=app-coordinator
       - HAZELCAST_CLUSTER_NAME=minare-cluster
 
@@ -114,7 +113,6 @@ services:
       - INSTANCE_ROLE=WORKER
 
       # Cluster configuration
-      - VERTX_CLUSTERED=true
       - VERTX_CLUSTER_HOST=app-worker
       - HAZELCAST_CLUSTER_NAME=minare-cluster
 

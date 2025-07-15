@@ -41,15 +41,12 @@ import kotlin.coroutines.CoroutineContext
 /**
  * Core framework Guice module that provides default bindings.
  * Applications can override these bindings by using a child injector.
- *
- * Updated to remove Entity dependency injection infrastructure since Entity
- * is now a pure data class with no framework dependencies.
  */
 class MinareModule : AbstractModule(), DatabaseNameProvider {
     private val log = LoggerFactory.getLogger(MinareModule::class.java)
 
     val uri = System.getenv("MONGO_URI") ?:
-    throw IllegalStateException("MONGO_URI environment variable is required")
+        throw IllegalStateException("MONGO_URI environment variable is required")
 
     override fun configure() {
         // Internal services, do not permit override
