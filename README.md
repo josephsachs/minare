@@ -6,23 +6,22 @@ Major pre-release version update is underway and the contents of this document w
 
 ### **NOTE: Minare is currently unreleased. Core systems require improvement and many planned changes await.**
 
-## Architecture Overview
+## Overview
 
 Minare provides a back-end framework for management of real-time data with many clients. The aim is to solve distributed state problems for game developers.
 
-## Core Components
+## Stack
 
-### Entity System
+- **Vert.x**: cluster orchestration, socket management
+- **Redis**: source of truth for entity state, publication
+- **MongoDB**: secondary datastore for entity relationships, snapshots
+- **Kafka**: delivery guarantee, audit and replay
 
-The foundation of Minare is Entity, the base class for objects on the state graph. Fields must be marked for persistence with the `@State` annotation. 
+## Principles
 
-Entities can be defined with hierarchical and peer relationships, including to other types. The application developer can then leverage efficient relationship queries to support their own logic. 
- 
-## Near term roadmap
-
-- Implement Kafka for ordering guarantees and replay
-- Frame control + cluster orchestration for consistency
-- New integration tests that better simulate expected user pattern
+- Domain agnostic
+- Consistency above all
+- Unidirectional flow
 
 ## Example Application
 
@@ -36,4 +35,4 @@ Artillery is used for integration and performance testing.
 
 ## Getting Started
 
-Coming soon
+TBD
