@@ -20,7 +20,6 @@ import javax.inject.Singleton
  */
 @Singleton
 open class CommandMessageHandler @Inject constructor(
-    private val connectionController: ConnectionController,
     private val vertx: Vertx,
     private val connectionCache: ConnectionCache
 ) {

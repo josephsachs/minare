@@ -11,7 +11,8 @@ import com.minare.worker.downsocket.DownSocketVerticle
 import com.minare.persistence.DatabaseInitializer
 import com.minare.time.TimeService
 import com.minare.worker.*
-import com.minare.worker.coordinator.CoordinatorVerticle
+import com.minare.worker.coordinator.FrameCoordinatorVerticle
+import com.minare.worker.coordinator.config.FrameCoordinatorVerticleModule
 import com.minare.worker.downsocket.config.DownSocketVerticleModule
 import com.minare.worker.upsocket.config.UpSocketVerticleModule
 import io.vertx.core.DeploymentOptions
@@ -49,7 +50,7 @@ abstract class MinareApplication : CoroutineVerticle() {
     lateinit var injector: Injector
 
     private var processorCount: Number? = null
-    private var coordinatorVerticleDeploymentId: String? = null
+    private var frameCoordinatorVerticleDeploymentId: String? = null
     private var mutationVerticleDeploymentId: String? = null
     private var upSocketVerticleDeploymentId: String? = null
     private var redisPubSubWorkerDeploymentId: String? = null
@@ -120,7 +121,7 @@ abstract class MinareApplication : CoroutineVerticle() {
             ?.toSet()
             ?: throw IllegalStateException("CLUSTER_WORKERS must be set for coordinator")
 
-        val coordinatorVerticleOptions = DeploymentOptions()
+        val frameCordinatorVerticleOptions = DeploymentOptions()
             .setInstances(1)
             .setConfig(
                 JsonObject()
@@ -128,13 +129,13 @@ abstract class MinareApplication : CoroutineVerticle() {
                     .put("expectedWorkers", JsonArray(expectedWorkers.toList()))
             )
 
-        coordinatorVerticleDeploymentId = vertx.deployVerticle(
-            "guice:" + CoordinatorVerticle::class.java.name,
-            coordinatorVerticleOptions
+        frameCoordinatorVerticleDeploymentId = vertx.deployVerticle(
+            "guice:" + FrameCoordinatorVerticle::class.java.name,
+            frameCordinatorVerticleOptions
         ).await()
 
         vertx.eventBus().publish(ADDRESS_COORDINATOR_STARTED, JsonObject())
-        log.info("Coordinator verticle deployed with ID: $coordinatorVerticleDeploymentId")
+        log.info("Coordinator verticle deployed with ID: $frameCoordinatorVerticleDeploymentId")
     }
 
     /**
@@ -482,6 +483,7 @@ abstract class MinareApplication : CoroutineVerticle() {
                 val frameworkModule = MinareModule()
                 val upSocketVerticleModule = UpSocketVerticleModule()
                 val downSocketVerticleModule = DownSocketVerticleModule()
+                val frameCoordinatorVerticleModule = FrameCoordinatorVerticleModule()
 
                 val dbNameModule = object : AbstractModule() {
                     override fun configure() {
@@ -507,6 +509,7 @@ abstract class MinareApplication : CoroutineVerticle() {
                         install(frameworkModule)
                         install(upSocketVerticleModule)
                         install(downSocketVerticleModule)
+                        install(frameCoordinatorVerticleModule)
                         // Then app module (overrides framework if needed)
                         install(appModule)
                         // Then vertx and database modules
