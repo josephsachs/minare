@@ -4,16 +4,16 @@ import com.google.inject.PrivateModule
 import com.google.inject.Provides
 import com.google.inject.Singleton
 import com.minare.config.MinareModule
-import com.minare.utils.EventBusUtils
 import com.minare.worker.coordinator.FrameCoordinatorVerticle
+import com.minare.utils.EventBusUtils
 import com.minare.worker.coordinator.events.InfraAddWorkerEvent
 import com.minare.worker.coordinator.events.InfraRemoveWorkerEvent
 import io.vertx.core.Vertx
 import io.vertx.core.impl.logging.LoggerFactory
 import kotlinx.coroutines.CoroutineScope
-import kotlin.com.minare.worker.coordinator.events.WorkerFrameCompleteEvent
-import kotlin.com.minare.worker.coordinator.events.WorkerHeartbeatEvent
-import kotlin.com.minare.worker.coordinator.events.WorkerRegisterEvent
+import com.minare.worker.coordinator.events.WorkerFrameCompleteEvent
+import com.minare.worker.coordinator.events.WorkerHeartbeatEvent
+import com.minare.worker.coordinator.events.WorkerRegisterEvent
 import kotlin.coroutines.CoroutineContext
 
 /**

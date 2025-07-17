@@ -1,4 +1,4 @@
-package com.minare.coordinator
+package com.minare.worker.coordinator
 
 import org.slf4j.LoggerFactory
 import java.util.concurrent.ConcurrentHashMap

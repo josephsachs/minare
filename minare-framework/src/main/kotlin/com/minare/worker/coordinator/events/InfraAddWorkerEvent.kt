@@ -1,7 +1,7 @@
 package com.minare.worker.coordinator.events
 
 import com.google.inject.Inject
-import com.minare.coordinator.WorkerRegistry
+import com.minare.worker.coordinator.WorkerRegistry
 import com.minare.utils.EventBusUtils
 import com.minare.utils.VerticleLogger
 import io.vertx.core.json.JsonObject

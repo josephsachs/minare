@@ -6,12 +6,12 @@ import com.minare.MinareApplication.ConnectionEvents.ADDRESS_COORDINATOR_STARTED
 import com.minare.MinareApplication.ConnectionEvents.ADDRESS_WORKER_STARTED
 import com.minare.config.*
 import com.minare.controller.ConnectionController
+import com.minare.worker.coordinator.FrameCoordinatorVerticle
 import com.minare.worker.upsocket.UpSocketVerticle
 import com.minare.worker.downsocket.DownSocketVerticle
 import com.minare.persistence.DatabaseInitializer
 import com.minare.time.TimeService
 import com.minare.worker.*
-import com.minare.worker.coordinator.FrameCoordinatorVerticle
 import com.minare.worker.coordinator.config.FrameCoordinatorVerticleModule
 import com.minare.worker.downsocket.config.DownSocketVerticleModule
 import com.minare.worker.upsocket.config.UpSocketVerticleModule
@@ -19,7 +19,6 @@ import io.vertx.core.DeploymentOptions
 import io.vertx.core.Vertx
 import io.vertx.core.VertxOptions
 import io.vertx.core.http.HttpServer
-import io.vertx.core.impl.Deployment
 import io.vertx.core.json.JsonArray
 import io.vertx.core.json.JsonObject
 import io.vertx.kotlin.coroutines.CoroutineVerticle

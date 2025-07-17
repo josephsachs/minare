@@ -1,16 +1,18 @@
-package kotlin.com.minare.worker.coordinator.events
+package com.minare.worker.coordinator.events
 
 import com.google.inject.Inject
-import com.minare.coordinator.WorkerRegistry
+import com.minare.worker.coordinator.FrameCompletion
+import com.minare.worker.coordinator.FrameCoordinatorState
+import com.minare.worker.coordinator.WorkerRegistry
 import com.minare.utils.EventBusUtils
 import com.minare.utils.VerticleLogger
-import com.minare.worker.coordinator.FrameCoordinatorVerticle.FrameCompletion
 import io.vertx.core.json.JsonObject
 
 class WorkerFrameCompleteEvent @Inject constructor(
     private val eventBusUtils: EventBusUtils,
     private val vlog: VerticleLogger,
-    private val workerRegistry: WorkerRegistry
+    private val workerRegistry: WorkerRegistry,
+    private val frameCoordinatorState: FrameCoordinatorState
 ) {
     suspend fun register() {
         eventBusUtils.registerTracedConsumer<JsonObject>(ADDRESS_WORKER_FRAME_COMPLETE) { message, traceId ->
@@ -18,17 +20,33 @@ class WorkerFrameCompleteEvent @Inject constructor(
             val frameStartTime = message.body().getLong("frameStartTime")
             val operationCount = message.body().getInteger("operationCount", 0)
 
-            frameCompletions[workerId] = FrameCompletion(
+            // Check if we should process this
+            if (frameCoordinatorState.isPaused) {
+                vlog.logInfo("Ignoring frame completion while paused")
+                return@registerTracedConsumer
+            }
+
+            // Record the completion
+            val completion = FrameCompletion(
                 workerId = workerId,
                 frameStartTime = frameStartTime,
                 operationCount = operationCount,
                 completedAt = System.currentTimeMillis()
             )
 
-            // Track in worker registry
+            frameCoordinatorState.recordFrameCompletion(completion)
             workerRegistry.recordFrameCompletion(workerId, frameStartTime)
 
-            vlog.logInfo("Worker $workerId completed frame $frameStartTime with $operationCount operations")
+            // Log it
+            vlog.getEventLogger().trace(
+                "FRAME_COMPLETION_RECORDED",
+                mapOf(
+                    "workerId" to workerId,
+                    "frameStartTime" to frameStartTime,
+                    "operationCount" to operationCount
+                ),
+                traceId
+            )
         }
     }
 
