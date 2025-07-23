@@ -37,7 +37,7 @@ class ExampleConnectionController @Inject constructor(
      */
     override suspend fun onClientFullyConnected(connection: Connection) {
         log.info("Example client {} is now fully connected", connection._id)
-        
+
         val defaultChannelId = channelController.getDefaultChannel()
 
         if (defaultChannelId == null) {

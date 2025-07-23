@@ -6,6 +6,7 @@ import com.google.inject.Singleton
 import com.minare.config.MinareModule
 import com.minare.worker.coordinator.FrameCoordinatorVerticle
 import com.minare.utils.EventBusUtils
+import com.minare.worker.coordinator.CoordinatorAdminVerticle
 import com.minare.worker.coordinator.events.InfraAddWorkerEvent
 import com.minare.worker.coordinator.events.InfraRemoveWorkerEvent
 import io.vertx.core.Vertx
@@ -25,6 +26,7 @@ class FrameCoordinatorVerticleModule : PrivateModule() {
 
     override fun configure() {
         bind(FrameCoordinatorVerticle::class.java)
+        bind(CoordinatorAdminVerticle::class.java)
 
         // Event handlers
         bind(InfraAddWorkerEvent::class.java).`in`(Singleton::class.java)
@@ -41,6 +43,7 @@ class FrameCoordinatorVerticleModule : PrivateModule() {
 
         // Expose UpSocketVerticle to the parent injector
         expose(FrameCoordinatorVerticle::class.java)
+        expose(CoordinatorAdminVerticle::class.java)
     }
 
     /**

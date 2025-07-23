@@ -1,12 +1,21 @@
 package com.minare.worker.coordinator.events
 
 import com.google.inject.Inject
+import com.minare.MinareApplication.ConnectionEvents.ADDRESS_WORKER_STARTED
 import com.minare.worker.coordinator.FrameCoordinatorState
 import com.minare.worker.coordinator.WorkerRegistry
 import com.minare.utils.EventBusUtils
 import com.minare.utils.VerticleLogger
 import io.vertx.core.json.JsonObject
 
+/**
+ * Handles the ADDRESS_WORKER_STARTED event from MinareApplication.
+ * This event indicates that a worker has fully deployed all its verticles
+ * and is ready to participate in frame processing.
+ *
+ * Repurposed from handling custom registration messages to using the
+ * existing worker startup signal.
+ */
 class WorkerRegisterEvent @Inject constructor(
     private val eventBusUtils: EventBusUtils,
     private val vlog: VerticleLogger,
@@ -14,36 +23,39 @@ class WorkerRegisterEvent @Inject constructor(
     private val frameCoordinatorState: FrameCoordinatorState
 ) {
     suspend fun register() {
-        eventBusUtils.registerTracedConsumer<JsonObject>(ADDRESS_WORKER_REGISTER) { message, traceId ->
+        eventBusUtils.registerTracedConsumer<JsonObject>(ADDRESS_WORKER_STARTED) { message, traceId ->
             val workerId = message.body().getString("workerId")
 
             vlog.logStartupStep(
-                "WORKER_REGISTER_REQUEST",
+                "WORKER_STARTED_RECEIVED",
                 mapOf("workerId" to workerId)
             )
 
-            val registered = workerRegistry.registerWorker(workerId)
+            // Transition worker from PENDING to ACTIVE
+            val activated = workerRegistry.activateWorker(workerId)
 
-            if (registered) {
+            if (activated) {
                 vlog.getEventLogger().trace(
-                    "WORKER_REGISTERED",
-                    mapOf("workerId" to workerId),
+                    "WORKER_ACTIVATED",
+                    mapOf(
+                        "workerId" to workerId,
+                        "status" to "ACTIVE"
+                    ),
                     traceId
                 )
 
-                // Check if we should start the frame loop
-                if (frameCoordinatorState.shouldStartFrameLoop()) {
-                    // Signal the coordinator verticle to start the frame loop
-                    eventBusUtils.sendWithTracing<Unit>(
-                        ADDRESS_START_FRAME_LOOP,
-                        JsonObject().put("trigger", "worker_registered"),
-                        traceId
+                // Log activation success
+                vlog.logStartupStep(
+                    "WORKER_ACTIVATION_COMPLETE",
+                    mapOf(
+                        "workerId" to workerId,
+                        "activeWorkers" to workerRegistry.getActiveWorkers().size
                     )
-                }
+                )
             } else {
                 vlog.logVerticleError(
-                    "WORKER_REGISTRATION_FAILED",
-                    Exception(),
+                    "WORKER_ACTIVATION_FAILED",
+                    Exception("Worker not in PENDING state or not found"),
                     mapOf("workerId" to workerId)
                 )
             }
@@ -51,7 +63,6 @@ class WorkerRegisterEvent @Inject constructor(
     }
 
     companion object {
-        const val ADDRESS_WORKER_REGISTER = "minare.coordinator.worker.register"
-        const val ADDRESS_START_FRAME_LOOP = "minare.coordinator.internal.start-frame-loop"
+        // No internal constants needed
     }
 }

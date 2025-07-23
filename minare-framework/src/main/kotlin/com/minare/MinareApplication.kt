@@ -12,6 +12,8 @@ import com.minare.worker.downsocket.DownSocketVerticle
 import com.minare.persistence.DatabaseInitializer
 import com.minare.time.TimeService
 import com.minare.worker.*
+import com.minare.worker.coordinator.CoordinatorAdminVerticle
+import com.minare.worker.coordinator.FrameWorkerVerticle
 import com.minare.worker.coordinator.config.FrameCoordinatorVerticleModule
 import com.minare.worker.downsocket.config.DownSocketVerticleModule
 import com.minare.worker.upsocket.config.UpSocketVerticleModule
@@ -135,6 +137,16 @@ abstract class MinareApplication : CoroutineVerticle() {
 
         vertx.eventBus().publish(ADDRESS_COORDINATOR_STARTED, JsonObject())
         log.info("Coordinator verticle deployed with ID: $frameCoordinatorVerticleDeploymentId")
+
+        val coordinatorAdminOptions = DeploymentOptions()
+            .setInstances(1)
+            .setConfig(JsonObject().put("role", "coordinator-admin"))
+
+        val coordinatorAdminDeploymentId = vertx.deployVerticle(
+            "guice:" + CoordinatorAdminVerticle::class.java.name,
+            coordinatorAdminOptions
+        ).await()
+        log.info("Coordinator admin interface deployed with ID: {} on port 9090", coordinatorAdminDeploymentId)
     }
 
     /**
@@ -214,6 +226,18 @@ abstract class MinareApplication : CoroutineVerticle() {
             messageQueueOptions
         ).await()
         log.info("KafkaMessageQueueConsumer verticle deployed with ID: $messageQueueConsumerVerticleDeploymentId")
+
+        // Deploy the frame worker verticle
+        val frameWorkerOptions = DeploymentOptions()
+            .setInstances(1)
+            .setConfig(JsonObject().put("workerId", System.getenv("HOSTNAME")))
+
+        val frameWorkerDeploymentId = vertx.deployVerticle(
+            "guice:" + FrameWorkerVerticle::class.java.name,
+            frameWorkerOptions
+        ).await()
+
+        log.info("Frame worker verticle deployed with ID: {}", frameWorkerDeploymentId)
 
         val initResult = vertx.eventBus().request<JsonObject>(
             UpSocketVerticle.ADDRESS_UP_SOCKET_INITIALIZE,

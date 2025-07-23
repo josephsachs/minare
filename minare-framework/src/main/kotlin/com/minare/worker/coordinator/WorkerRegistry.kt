@@ -52,26 +52,36 @@ class WorkerRegistry {
     }
 
     /**
-     * Handle worker registration - transition from PENDING to ACTIVE
+     * Activate a worker that has completed startup.
+     * Transitions from PENDING to ACTIVE state.
+     *
+     * @return true if activation was successful, false otherwise
      */
-    fun registerWorker(workerId: String): Boolean {
+    fun activateWorker(workerId: String): Boolean {
         val state = workers[workerId]
 
         return when {
             state == null -> {
-                log.warn("Unknown worker {} attempted registration", workerId)
+                log.warn("Unknown worker {} attempted activation", workerId)
                 false
             }
             state.status == WorkerStatus.PENDING -> {
-                log.info("Worker {} registered successfully", workerId)
+                log.info("Worker {} activated successfully", workerId)
                 workers[workerId] = state.copy(
                     status = WorkerStatus.ACTIVE,
                     lastHeartbeat = System.currentTimeMillis()
                 )
                 true
             }
+            state.status == WorkerStatus.ACTIVE -> {
+                log.debug("Worker {} already active, updating heartbeat", workerId)
+                workers[workerId] = state.copy(
+                    lastHeartbeat = System.currentTimeMillis()
+                )
+                true
+            }
             else -> {
-                log.warn("Worker {} attempted registration in state {}", workerId, state.status)
+                log.warn("Worker {} attempted activation in state {}", workerId, state.status)
                 false
             }
         }
@@ -85,6 +95,7 @@ class WorkerRegistry {
             workers[workerId] = state.copy(
                 lastHeartbeat = System.currentTimeMillis(),
                 status = if (state.status == WorkerStatus.UNHEALTHY) {
+                    log.info("Worker {} recovered from unhealthy state", workerId)
                     WorkerStatus.ACTIVE
                 } else {
                     state.status
@@ -97,7 +108,14 @@ class WorkerRegistry {
      * Record frame completion for a worker
      */
     fun recordFrameCompletion(workerId: String, frameStartTime: Long) {
-        workers[workerId]?.completedFrames?.add(frameStartTime)
+        workers[workerId]?.let { state ->
+            state.completedFrames.add(frameStartTime)
+
+            // Also update heartbeat since completing a frame proves liveness
+            workers[workerId] = state.copy(
+                lastHeartbeat = System.currentTimeMillis()
+            )
+        }
     }
 
     /**
@@ -116,6 +134,7 @@ class WorkerRegistry {
                     }
                 }
                 WorkerStatus.REMOVING -> {
+                    // Actually remove workers marked for removal
                     workers.remove(workerId)
                     log.info("Removed worker {} from registry", workerId)
                 }
@@ -125,13 +144,46 @@ class WorkerRegistry {
     }
 
     /**
-     * Get all active workers
+     * Mark specific workers as unhealthy
+     */
+    fun markWorkersUnhealthy(workerIds: Collection<String>) {
+        workerIds.forEach { workerId ->
+            workers[workerId]?.let { state ->
+                workers[workerId] = state.copy(status = WorkerStatus.UNHEALTHY)
+                log.warn("Marked worker {} as unhealthy", workerId)
+            }
+        }
+    }
+
+    /**
+     * Get all active workers.
+     * This is the key method for frame coordination - only ACTIVE workers
+     * should receive frame manifests and be expected to complete frames.
      */
     fun getActiveWorkers(): Set<String> {
         return workers.values
             .filter { it.status == WorkerStatus.ACTIVE }
             .map { it.workerId }
             .toSet()
+    }
+
+    /**
+     * Get workers that were active at frame start but may have failed.
+     * Used for recovery scenarios.
+     */
+    fun getWorkersActiveAtFrame(frameStartTime: Long): Set<String> {
+        // For now, return current active workers
+        // Could be enhanced to track historical state if needed
+        return getActiveWorkers()
+    }
+
+    /**
+     * Check if we have the minimum number of workers to process
+     */
+    fun hasMinimumWorkers(): Boolean {
+        val activeCount = getActiveWorkers().size
+        val minimumWorkers = System.getenv("MIN_WORKERS")?.toIntOrNull() ?: 1
+        return activeCount >= minimumWorkers
     }
 
     /**
@@ -142,27 +194,54 @@ class WorkerRegistry {
     }
 
     /**
-     * Mark workers as unhealthy
+     * Get all workers and their states (for monitoring)
      */
-    fun markWorkersUnhealthy(workerIds: Collection<String>) {
-        workerIds.forEach { workerId ->
-            workers[workerId]?.let { state ->
-                workers[workerId] = state.copy(status = WorkerStatus.UNHEALTHY)
-            }
+    fun getAllWorkers(): Map<String, WorkerState> {
+        return workers.toMap()
+    }
+
+    /**
+     * Check if a specific worker is healthy and active
+     */
+    fun isWorkerHealthy(workerId: String): Boolean {
+        return workers[workerId]?.status == WorkerStatus.ACTIVE
+    }
+
+    /**
+     * Get count of workers by status (for monitoring)
+     */
+    fun getWorkerCountByStatus(): Map<WorkerStatus, Int> {
+        return workers.values
+            .groupBy { it.status }
+            .mapValues { it.value.size }
+    }
+
+    /**
+     * Remove a worker immediately (used in testing or emergency scenarios)
+     */
+    fun removeWorkerImmediately(workerId: String): Boolean {
+        val removed = workers.remove(workerId)
+        if (removed != null) {
+            log.warn("Worker {} removed immediately from registry", workerId)
+            return true
+        }
+        return false
+    }
+
+    /**
+     * Clear all completed frame records (used between frames to save memory)
+     */
+    fun clearFrameCompletionHistory() {
+        workers.values.forEach { state ->
+            state.completedFrames.clear()
         }
     }
 
     /**
-     * Check if minimum number of workers are available
+     * Reset the registry (useful for testing)
      */
-    fun hasMinimumWorkers(minimum: Int = 1): Boolean {
-        return getActiveWorkers().size >= minimum
-    }
-
-    /**
-     * Get all workers with their states (for monitoring)
-     */
-    fun getAllWorkers(): Map<String, WorkerState> {
-        return workers.toMap()
+    fun reset() {
+        workers.clear()
+        log.info("Worker registry reset")
     }
 }

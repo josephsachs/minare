@@ -1,6 +1,7 @@
 package com.minare.worker.coordinator
 
-import com.minare.worker.coordinator.FrameCompletion
+import com.hazelcast.core.HazelcastInstance
+import com.hazelcast.map.IMap
 import com.minare.worker.coordinator.FrameCoordinatorState
 import com.minare.time.FrameConfiguration
 import com.minare.time.TimeService
@@ -27,7 +28,7 @@ import kotlin.math.abs
  * Responsibilities:
  * - Consume operations from Kafka
  * - Group operations into frames based on timing
- * - Distribute frame manifests to workers
+ * - Write frame manifests to distributed map
  * - Track frame completion across all workers
  * - Handle worker failures and frame recovery
  */
@@ -37,6 +38,7 @@ class FrameCoordinatorVerticle @Inject constructor(
     private val vlog: VerticleLogger,
     private val workerRegistry: WorkerRegistry,
     private val coordinatorState: FrameCoordinatorState,
+    private val hazelcastInstance: HazelcastInstance,
     private val infraAddWorkerEvent: InfraAddWorkerEvent,
     private val infraRemoveWorkerEvent: InfraRemoveWorkerEvent,
     private val workerFrameCompleteEvent: WorkerFrameCompleteEvent,
@@ -49,11 +51,16 @@ class FrameCoordinatorVerticle @Inject constructor(
     // Kafka consumer
     private var kafkaConsumer: KafkaConsumer<String, String>? = null
 
+    // Distributed maps for frame coordination
+    private lateinit var manifestMap: IMap<String, JsonObject>
+    private lateinit var completionMap: IMap<String, OperationCompletion>
+
     companion object {
         // EventBus addresses
         const val ADDRESS_FRAME_START = "minare.coordinator.frame.start"
         const val ADDRESS_FRAME_PAUSE = "minare.coordinator.frame.pause"
         const val ADDRESS_FRAME_RESUME = "minare.coordinator.frame.resume"
+        const val ADDRESS_FRAME_ALL_COMPLETE = "minare.coordinator.internal.frame-all-complete"
 
         // Configuration
         const val OPERATIONS_TOPIC = "minare.operations"
@@ -62,15 +69,13 @@ class FrameCoordinatorVerticle @Inject constructor(
         const val RECOVERY_TIMEOUT = 5000L
     }
 
-    data class FrameManifest(
-        val frameStartTime: Long,
-        val frameEndTime: Long,
-        val operations: List<JsonObject>
-    )
-
     override suspend fun start() {
         log.info("Starting FrameCoordinatorVerticle")
         vlog.setVerticle(this)
+
+        // Initialize distributed maps
+        manifestMap = hazelcastInstance.getMap("frame-manifests")
+        completionMap = hazelcastInstance.getMap("operation-completions")
 
         setupEventBusConsumers()
         setupKafkaConsumer()
@@ -79,7 +84,7 @@ class FrameCoordinatorVerticle @Inject constructor(
         vertx.setTimer(FRAME_STARTUP_GRACE_PERIOD) {
             launch {
                 if (coordinatorState.shouldStartFrameLoop()) {
-                    startFrameLoop()
+                    startFirstFrame()
                 } else {
                     log.warn("Insufficient workers to start frame processing")
                 }
@@ -99,11 +104,11 @@ class FrameCoordinatorVerticle @Inject constructor(
             workerFrameCompleteEvent.register()
         }
 
-        vertx.eventBus().consumer<JsonObject>("minare.coordinator.internal.start-frame-loop") { msg ->
+        // Internal event for when all workers complete a frame
+        vertx.eventBus().consumer<JsonObject>(ADDRESS_FRAME_ALL_COMPLETE) { msg ->
             launch {
-                if (coordinatorState.shouldStartFrameLoop()) {
-                    startFrameLoop()
-                }
+                val frameStartTime = msg.body().getLong("frameStartTime")
+                onFrameComplete(frameStartTime)
             }
         }
     }
@@ -150,76 +155,19 @@ class FrameCoordinatorVerticle @Inject constructor(
         log.info("Kafka consumer started, subscribed to {}", OPERATIONS_TOPIC)
     }
 
-    private suspend fun handleWorkerRegistration(message: JsonObject) {
-        val workerId = message.getString("workerId")
-
-        val registered = workerRegistry.registerWorker(workerId)
-
-        if (registered && coordinatorState.shouldStartFrameLoop()) {
-            startFrameLoop()
-        }
-    }
-
-    private fun handleWorkerHeartbeat(message: JsonObject) {
-        val workerId = message.getString("workerId")
-        workerRegistry.updateHeartbeat(workerId)
-    }
-
-    private fun handleFrameCompletion(message: JsonObject) {
-        val workerId = message.getString("workerId")
-        val frameStartTime = message.getLong("frameStartTime")
-        val operationCount = message.getInteger("operationCount", 0)
-
-        val completion = FrameCompletion(
-            workerId = workerId,
-            frameStartTime = frameStartTime,
-            operationCount = operationCount,
-            completedAt = System.currentTimeMillis()
-        )
-
-        coordinatorState.recordFrameCompletion(completion)
-        workerRegistry.recordFrameCompletion(workerId, frameStartTime)
-
-        log.debug("Worker {} completed frame {} with {} operations",
-            workerId, frameStartTime, operationCount)
-    }
-
-    private suspend fun startFrameLoop() {
+    private suspend fun startFirstFrame() {
         log.info("Starting frame loop with duration {}ms", frameConfig.frameDurationMs)
 
         // Calculate first frame start aligned to clock
         coordinatorState.currentFrameStart = coordinatorState.calculateNextFrameStart()
 
-        // Schedule first frame
-        scheduleNextFrame()
-    }
-
-
-
-    private fun scheduleNextFrame() {
-        val delay = coordinatorState.currentFrameStart - System.currentTimeMillis()
-
-        if (delay > 0) {
-            coordinatorState.nextFrameTimerId = vertx.setTimer(delay) {
-                coordinatorState.nextFrameTimerId = null  // Clear timer ID before executing
-                launch {
-                    executeFrame()
-                }
-            }
-        } else {
-            // We're behind schedule
-            coordinatorState.nextFrameTimerId = null
-            launch {
-                executeFrame()
-            }
-        }
+        // Execute first frame
+        executeFrame()
     }
 
     private suspend fun executeFrame() {
         if (coordinatorState.isPaused) {
-            // Reschedule for next frame
-            coordinatorState.currentFrameStart += frameConfig.frameDurationMs + frameConfig.frameOffsetMs
-            scheduleNextFrame()
+            log.info("Frame processing is paused, not executing frame")
             return
         }
 
@@ -227,6 +175,9 @@ class FrameCoordinatorVerticle @Inject constructor(
         val frameEndTime = frameStartTime + frameConfig.frameDurationMs
 
         log.debug("Executing frame starting at {}", frameStartTime)
+
+        // Update state to indicate frame is in progress
+        coordinatorState.setFrameInProgress(frameStartTime)
 
         try {
             // 1. Check worker health
@@ -243,26 +194,23 @@ class FrameCoordinatorVerticle @Inject constructor(
             val frameOperations = coordinatorState.extractFrameOperations(frameStartTime)
 
             if (frameOperations.isNotEmpty()) {
-                // Create assignments and store for recovery
+                // Distribute operations and write to distributed map
                 val assignments = distributeOperations(frameOperations, activeWorkers)
-                coordinatorState.storeFrameAssignments(frameStartTime, assignments)
-
-                // Distribute to workers
-                distributeFrameManifest(frameStartTime, frameEndTime, assignments)
+                writeManifestsToMap(frameStartTime, frameEndTime, assignments)
+            } else {
+                // Even with no operations, workers need frame notification
+                writeEmptyManifests(frameStartTime, frameEndTime, activeWorkers)
             }
 
-            // 3. Broadcast frame timing
+            // 3. Broadcast frame timing to all workers
             broadcastFrameStart(frameStartTime, frameEndTime)
 
-            // 4. Wait for completions during frame offset period
-            val deadline = coordinatorState.calculateFrameDeadline(frameEndTime)
+            // 4. Start deadline monitor
+            startFrameDeadlineMonitor(frameStartTime, frameEndTime)
 
-            waitForFrameCompletions(frameStartTime, activeWorkers, deadline)
-
-        } finally {
-            // Schedule next frame
-            coordinatorState.currentFrameStart += frameConfig.frameDurationMs + frameConfig.frameOffsetMs
-            scheduleNextFrame()
+        } catch (e: Exception) {
+            log.error("Error executing frame {}", frameStartTime, e)
+            pauseFrameProcessing("Frame execution error: ${e.message}")
         }
     }
 
@@ -275,46 +223,47 @@ class FrameCoordinatorVerticle @Inject constructor(
 
         return operations.groupBy { op ->
             // Use entity ID for consistent hashing
-            val entityId = op.getJsonObject("values")?.getString("entityId")
-                ?: op.getString("entityId")
-                ?: ""
+            val entityId = op.getString("entityId") ?: ""
 
             val hash = abs(entityId.hashCode())
             workerList[hash % workerList.size]
         }
     }
 
-    private fun distributeFrameManifest(
+    private fun writeManifestsToMap(
         frameStartTime: Long,
         frameEndTime: Long,
         assignments: Map<String, List<JsonObject>>
     ) {
-        // Send manifest to each worker
         assignments.forEach { (workerId, operations) ->
-            val message = JsonObject()
+            val manifest = JsonObject()
+                .put("workerId", workerId)
                 .put("frameStartTime", frameStartTime)
                 .put("frameEndTime", frameEndTime)
                 .put("operations", JsonArray(operations))
 
-            // Send to worker's frame processor
-            vertx.eventBus().send("worker.$workerId.frame.manifest", message)
+            val key = "manifest:$frameStartTime:$workerId"
+            manifestMap[key] = manifest
 
-            log.debug("Sent {} operations to worker {} for frame starting at {}",
-                operations.size, workerId, frameStartTime)
+            log.debug("Wrote manifest for worker {} with {} operations",
+                workerId, operations.size)
         }
+    }
 
-        // Workers with no operations still need frame notification
-        val workersWithOps = assignments.keys
-        val activeWorkers = workerRegistry.getActiveWorkers()
-        val workersWithoutOps = activeWorkers - workersWithOps
-
-        workersWithoutOps.forEach { workerId ->
-            val message = JsonObject()
+    private fun writeEmptyManifests(
+        frameStartTime: Long,
+        frameEndTime: Long,
+        workers: Set<String>
+    ) {
+        workers.forEach { workerId ->
+            val manifest = JsonObject()
+                .put("workerId", workerId)
                 .put("frameStartTime", frameStartTime)
                 .put("frameEndTime", frameEndTime)
                 .put("operations", JsonArray())
 
-            vertx.eventBus().send("worker.$workerId.frame.manifest", message)
+            val key = "manifest:$frameStartTime:$workerId"
+            manifestMap[key] = manifest
         }
     }
 
@@ -325,44 +274,71 @@ class FrameCoordinatorVerticle @Inject constructor(
             .put("frameDuration", frameConfig.frameDurationMs)
 
         vertx.eventBus().publish(ADDRESS_FRAME_START, frameStart)
+        log.info("Broadcast frame start for frame {}", frameStartTime)
     }
 
-    private suspend fun waitForFrameCompletions(
-        frameStartTime: Long,
-        expectedWorkers: Set<String>,
-        deadline: Long
-    ) {
-        // Clear previous frame completions
-        coordinatorState.clearFrameCompletions()
+    private fun startFrameDeadlineMonitor(frameStartTime: Long, frameEndTime: Long) {
+        // Monitor at 80% of frame duration
+        val checkDelay = (frameConfig.frameDurationMs * 0.8).toLong()
 
-        // Wait until deadline
-        while (System.currentTimeMillis() < deadline) {
-            val completed = coordinatorState.getFrameCompletions(frameStartTime)
-
-            if (completed.containsAll(expectedWorkers)) {
-                log.debug("All workers completed frame {}", frameStartTime)
-                // Clean up assignment tracking
-                coordinatorState.clearFrameAssignments(frameStartTime)
-                return
+        vertx.setTimer(checkDelay) {
+            launch {
+                checkFrameProgress(frameStartTime)
             }
-
-            // Small delay to avoid busy waiting
-            delay(10)
         }
+    }
 
-        // Deadline reached - check who's missing
-        val completed = coordinatorState.getFrameCompletions(frameStartTime)
-        val missing = expectedWorkers - completed
+    private suspend fun checkFrameProgress(frameStartTime: Long) {
+        val completed = coordinatorState.getCompletedWorkers(frameStartTime)
+        val expected = workerRegistry.getActiveWorkers()
+        val missing = expected - completed
 
         if (missing.isNotEmpty()) {
-            log.error("Frame {} incomplete. Missing workers: {}", frameStartTime, missing)
-            pauseFrameProcessing("Workers failed to complete frame: $missing")
+            log.warn("Frame {} progress check: {} workers incomplete at 80% mark",
+                frameStartTime, missing.size)
 
-            // Attempt recovery
-            launch {
-                attemptFrameRecovery(frameStartTime, missing)
-            }
+            // Give final warning but don't pause yet
+            // The frame deadline handler will deal with actual timeout
         }
+    }
+
+    private suspend fun onFrameComplete(frameStartTime: Long) {
+        log.info("Frame {} completed successfully", frameStartTime)
+
+        // Clear distributed maps for this frame
+        clearFrameMaps(frameStartTime)
+
+        // Calculate next frame time
+        coordinatorState.currentFrameStart = frameStartTime +
+                frameConfig.frameDurationMs + frameConfig.frameOffsetMs
+
+        // Check if we're behind schedule
+        val now = System.currentTimeMillis()
+        val drift = now - coordinatorState.currentFrameStart
+
+        if (drift > frameConfig.frameOffsetMs) {
+            log.warn("Frame timing drift detected: {}ms behind schedule", drift)
+        }
+
+        // Execute next frame
+        executeFrame()
+    }
+
+    private fun clearFrameMaps(frameStartTime: Long) {
+        // Clear manifests
+        val manifestKeys = manifestMap.keys
+            .filter { it.startsWith("manifest:$frameStartTime:") }
+
+        manifestKeys.forEach { manifestMap.remove(it) }
+
+        // Clear completions
+        val completionKeys = completionMap.keys
+            .filter { it.startsWith("frame-$frameStartTime:") }
+
+        completionKeys.forEach { completionMap.remove(it) }
+
+        log.debug("Cleared {} manifests and {} completions for frame {}",
+            manifestKeys.size, completionKeys.size, frameStartTime)
     }
 
     private suspend fun pauseFrameProcessing(reason: String) {
@@ -389,44 +365,59 @@ class FrameCoordinatorVerticle @Inject constructor(
         }
 
         if (stillMissing.isNotEmpty()) {
-            // Mark missing workers as unhealthy
-            workerRegistry.markWorkersUnhealthy(stillMissing)
-
-            // Get incomplete operations from this frame
-            val incompleteOps = coordinatorState.getIncompleteOperations(frameStartTime, stillMissing)
+            // Check distributed map for completed operations
+            val incompleteOps = getIncompleteOperations(frameStartTime, stillMissing)
 
             if (incompleteOps.isNotEmpty()) {
-                log.warn("Redistributing {} incomplete operations from frame {}",
-                    incompleteOps.size, frameStartTime)
+                log.warn("Found {} incomplete operations from failed workers",
+                    incompleteOps.size)
 
-                // TODO: Redistribute to healthy workers in next frame
-                // For now, log for manual intervention
+                // Redistribute to healthy workers
+                val healthyWorkers = workerRegistry.getActiveWorkers() - stillMissing
+                if (healthyWorkers.isNotEmpty()) {
+                    val reassignments = distributeOperations(incompleteOps, healthyWorkers)
+                    writeManifestsToMap(frameStartTime,
+                        frameStartTime + frameConfig.frameDurationMs, reassignments)
+
+                    log.info("Redistributed operations to {} healthy workers",
+                        healthyWorkers.size)
+                }
+            }
+        }
+    }
+
+    private fun getIncompleteOperations(
+        frameStartTime: Long,
+        workerIds: Collection<String>
+    ): List<JsonObject> {
+        val incomplete = mutableListOf<JsonObject>()
+
+        workerIds.forEach { workerId ->
+            // Get the manifest for this worker
+            val manifestKey = "manifest:$frameStartTime:$workerId"
+            val manifest = manifestMap[manifestKey]
+
+            if (manifest != null) {
+                val operations = manifest.getJsonArray("operations", JsonArray())
+
+                // Check which operations were not completed
+                operations.forEach { op ->
+                    if (op is JsonObject) {
+                        val opId = op.getString("id")
+                        val completionKey = "frame-$frameStartTime:op-$opId"
+
+                        if (!completionMap.containsKey(completionKey)) {
+                            incomplete.add(op)
+                        }
+                    }
+                }
             }
         }
 
-        // Resume if we still have minimum workers
-        if (coordinatorState.hasMinimumWorkers()) {
-            resumeFrameProcessing()
-        } else {
-            log.error("Cannot resume - insufficient healthy workers")
-        }
-    }
-
-    private suspend fun resumeFrameProcessing() {
-        log.info("Resuming frame processing")
-        coordinatorState.isPaused = false
-
-        vertx.eventBus().publish(ADDRESS_FRAME_RESUME, JsonObject()
-            .put("timestamp", System.currentTimeMillis())
-        )
+        return incomplete
     }
 
     override suspend fun stop() {
-        // Cancel any pending frame timer
-        coordinatorState.nextFrameTimerId?.let {
-            vertx.cancelTimer(it)
-        }
-
         kafkaConsumer?.close()?.await()
         super.stop()
     }

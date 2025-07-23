@@ -6,14 +6,12 @@ import org.slf4j.LoggerFactory
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
-import java.util.concurrent.atomic.AtomicReference
 import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
  * Shared state for the Frame Coordinator system.
- * This allows event handlers and other components to interact with coordinator state
- * without needing direct access to the verticle.
+ * Simplified to work with distributed maps for manifest and completion tracking.
  */
 @Singleton
 class FrameCoordinatorState @Inject constructor(
@@ -24,26 +22,19 @@ class FrameCoordinatorState @Inject constructor(
 
     // Frame timing state
     private val _currentFrameStart = AtomicLong(0L)
-    private val _nextFrameTimerId = AtomicReference<Long?>(null)
     private val _isPaused = AtomicBoolean(false)
 
     // Operations buffered by frame start time
     private val operationsByFrame = ConcurrentHashMap<Long, MutableList<JsonObject>>()
 
-    // Frame assignments for tracking and recovery
-    private val frameAssignments = ConcurrentHashMap<Long, Map<String, List<JsonObject>>>()
-
-    // Completion tracking by frame start time
-    private val frameCompletions = ConcurrentHashMap<String, FrameCompletion>()
+    // Current frame completion tracking
+    private val currentFrameCompletions = ConcurrentHashMap<String, Long>()
+    private val _frameInProgress = AtomicLong(-1L)
 
     // Public properties
     var currentFrameStart: Long
         get() = _currentFrameStart.get()
         set(value) = _currentFrameStart.set(value)
-
-    var nextFrameTimerId: Long?
-        get() = _nextFrameTimerId.get()
-        set(value) = _nextFrameTimerId.set(value)
 
     var isPaused: Boolean
         get() = _isPaused.get()
@@ -66,91 +57,58 @@ class FrameCoordinatorState @Inject constructor(
     }
 
     /**
-     * Store frame assignments for recovery purposes
+     * Mark a frame as in progress
      */
-    fun storeFrameAssignments(frameStartTime: Long, assignments: Map<String, List<JsonObject>>) {
-        frameAssignments[frameStartTime] = assignments
+    fun setFrameInProgress(frameStartTime: Long) {
+        _frameInProgress.set(frameStartTime)
+        currentFrameCompletions.clear()
     }
 
     /**
-     * Get frame assignments for recovery
+     * Record that a worker has completed the current frame
      */
-    fun getFrameAssignments(frameStartTime: Long): Map<String, List<JsonObject>>? {
-        return frameAssignments[frameStartTime]
+    fun recordWorkerCompletion(workerId: String, frameStartTime: Long) {
+        // Only record if it's for the current frame
+        if (frameStartTime == _frameInProgress.get()) {
+            currentFrameCompletions[workerId] = System.currentTimeMillis()
+            log.debug("Worker {} completed frame {}", workerId, frameStartTime)
+        } else {
+            log.warn("Ignoring completion from worker {} for old frame {} (current: {})",
+                workerId, frameStartTime, _frameInProgress.get())
+        }
     }
 
     /**
-     * Remove frame assignments after successful completion
+     * Get all workers that have completed the current frame
      */
-    fun clearFrameAssignments(frameStartTime: Long) {
-        frameAssignments.remove(frameStartTime)
+    fun getCompletedWorkers(frameStartTime: Long): Set<String> {
+        return if (frameStartTime == _frameInProgress.get()) {
+            currentFrameCompletions.keys.toSet()
+        } else {
+            emptySet()
+        }
     }
 
     /**
-     * Record a frame completion from a worker
+     * Check if all expected workers have completed the current frame
      */
-    fun recordFrameCompletion(completion: FrameCompletion) {
-        frameCompletions[completion.workerId] = completion
-        log.debug("Recorded frame completion from worker {} for frame {}",
-            completion.workerId, completion.frameStartTime)
+    fun isFrameComplete(frameStartTime: Long): Boolean {
+        if (frameStartTime != _frameInProgress.get()) {
+            return false
+        }
+
+        val completed = currentFrameCompletions.keys
+        val expected = workerRegistry.getActiveWorkers()
+
+        return completed.containsAll(expected)
     }
 
     /**
-     * Get all workers that have completed a specific frame
+     * Get the frame start time for a given timestamp
      */
-    fun getFrameCompletions(frameStartTime: Long): Set<String> {
-        return frameCompletions.values
-            .filter { it.frameStartTime == frameStartTime }
-            .map { it.workerId }
-            .toSet()
-    }
-
-    /**
-     * Clear all frame completions (usually at start of new frame)
-     */
-    fun clearFrameCompletions() {
-        frameCompletions.clear()
-    }
-
-    /**
-     * Get incomplete operations for specific workers from a frame
-     */
-    fun getIncompleteOperations(frameStartTime: Long, workerIds: Collection<String>): List<JsonObject> {
-        return frameAssignments[frameStartTime]
-            ?.filterKeys { it in workerIds }
-            ?.values
-            ?.flatten()
-            ?: emptyList()
-    }
-
-    /**
-     * Check if frame loop is running
-     */
-    fun isFrameLoopRunning(): Boolean {
-        return nextFrameTimerId != null
-    }
-
-    /**
-     * Get all buffered operations (for monitoring)
-     */
-    fun getBufferedOperationCounts(): Map<Long, Int> {
-        return operationsByFrame.mapValues { it.value.size }
-    }
-
-    /**
-     * Get frame completion status for monitoring
-     */
-    fun getFrameCompletionStatus(): Map<String, FrameCompletion> {
-        return frameCompletions.toMap()
-    }
-
-    /**
-     * Check if frame loop should be started based on current state
-     */
-    fun shouldStartFrameLoop(): Boolean {
-        return !isPaused &&
-                !isFrameLoopRunning() &&
-                workerRegistry.hasMinimumWorkers()
+    fun getFrameStartTime(timestamp: Long): Long {
+        val frameLength = frameConfig.frameDurationMs + frameConfig.frameOffsetMs
+        return (timestamp / frameLength) * frameLength
     }
 
     /**
@@ -163,19 +121,10 @@ class FrameCoordinatorState @Inject constructor(
     }
 
     /**
-     * Get the frame start time for a given timestamp
+     * Check if frame loop should be started based on current state
      */
-    fun getFrameStartTime(timestamp: Long): Long {
-        val frameLength = frameConfig.frameDurationMs + frameConfig.frameOffsetMs
-        return (timestamp / frameLength) * frameLength
-    }
-
-    /**
-     * Calculate the frame deadline for completion tracking
-     */
-    fun calculateFrameDeadline(frameEndTime: Long): Long {
-        return frameEndTime +
-                (frameConfig.frameOffsetMs * frameConfig.coordinationWaitPeriod).toLong()
+    fun shouldStartFrameLoop(): Boolean {
+        return !isPaused && workerRegistry.hasMinimumWorkers()
     }
 
     /**
@@ -186,25 +135,46 @@ class FrameCoordinatorState @Inject constructor(
     }
 
     /**
+     * Get buffered operation counts by frame (for monitoring)
+     */
+    fun getBufferedOperationCounts(): Map<Long, Int> {
+        return operationsByFrame.mapValues { it.value.size }
+    }
+
+    /**
+     * Check if frame loop is running (for monitoring)
+     */
+    fun isFrameLoopRunning(): Boolean {
+        return _frameInProgress.get() != -1L
+    }
+
+    /**
+     * Get frame completion status (for monitoring)
+     */
+    fun getFrameCompletionStatus(): Map<String, Long> {
+        return currentFrameCompletions.toMap()
+    }
+
+    /**
+     * Get current frame status (for monitoring)
+     */
+    fun getCurrentFrameStatus(): JsonObject {
+        return JsonObject()
+            .put("frameInProgress", _frameInProgress.get())
+            .put("completedWorkers", currentFrameCompletions.size)
+            .put("totalWorkers", workerRegistry.getActiveWorkers().size)
+            .put("isPaused", isPaused)
+    }
+
+    /**
      * Reset all state (useful for testing or restart scenarios)
      */
     fun reset() {
         _currentFrameStart.set(0L)
-        _nextFrameTimerId.set(null)
+        _frameInProgress.set(-1L)
         _isPaused.set(false)
         operationsByFrame.clear()
-        frameAssignments.clear()
-        frameCompletions.clear()
+        currentFrameCompletions.clear()
         log.info("Frame coordinator state reset")
     }
 }
-
-/**
- * Data class for frame completion tracking
- */
-data class FrameCompletion(
-    val workerId: String,
-    val frameStartTime: Long,
-    val operationCount: Int,
-    val completedAt: Long
-)

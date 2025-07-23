@@ -2,6 +2,9 @@ package com.minare.config
 
 import com.google.inject.*
 import com.google.inject.name.Names
+import com.hazelcast.config.Config
+import com.hazelcast.core.Hazelcast
+import com.hazelcast.core.HazelcastInstance
 import com.minare.cache.ConnectionCache
 import com.minare.cache.InMemoryConnectionCache
 import com.minare.core.entity.ReflectionCache
@@ -33,7 +36,6 @@ import com.minare.persistence.StateStore
 import com.minare.persistence.WriteBehindStore
 import com.minare.pubsub.UpdateBatchCoordinator
 import com.minare.time.DockerTimeService
-import com.minare.time.FrameConfiguration
 import com.minare.time.TimeService
 import com.minare.worker.upsocket.CommandMessageHandler
 import kotlin.coroutines.CoroutineContext
@@ -157,6 +159,15 @@ class MinareModule : AbstractModule(), DatabaseNameProvider {
 
         val redis = Redis.createClient(vertx, redisOptions)
         return RedisAPI.api(redis)
+    }
+
+    @Provides
+    @Singleton
+    fun provideHazelcastInstance(): HazelcastInstance {
+        val config = Config()
+        config.clusterName = System.getenv("HAZELCAST_CLUSTER_NAME") ?: "minare-cluster"
+        // Add any other Hazelcast configuration
+        return Hazelcast.newHazelcastInstance(config)
     }
 
     override fun getDatabaseName(): String = "minare"
