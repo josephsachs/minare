@@ -141,6 +141,12 @@ abstract class MinareApplication : CoroutineVerticle() {
             coordinatorAdminOptions
         ).await()
         log.info("Coordinator admin interface deployed with ID: {} on port 9090", coordinatorAdminDeploymentId)
+
+        // Delegate application startup
+        log.info("Starting application...")
+        onApplicationStart()
+
+        log.info("Application startup completed.")
     }
 
     /**
@@ -245,11 +251,11 @@ abstract class MinareApplication : CoroutineVerticle() {
             log.error("Failed to initialize UpSocketVerticle router")
         }
 
-        registerConnectionEventHandlers()
-
+        // Delegate application routes setup
+        log.info("Setting up application routes...")
         setupApplicationRoutes()
 
-        onApplicationStart()
+        registerConnectionEventHandlers()
 
         vertx.eventBus().publish(ADDRESS_WORKER_STARTED, JsonObject()
             .put("workerId", System.getenv("HOSTNAME")))

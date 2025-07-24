@@ -124,7 +124,7 @@ class FrameCoordinatorState @Inject constructor(
      * Check if frame loop should be started based on current state
      */
     fun shouldStartFrameLoop(): Boolean {
-        return !isPaused && workerRegistry.hasMinimumWorkers()
+        return !isPaused // && workerRegistry.hasMinimumWorkers()
     }
 
     /**

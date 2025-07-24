@@ -80,14 +80,11 @@ class FrameCoordinatorVerticle @Inject constructor(
         setupEventBusConsumers()
         setupKafkaConsumer()
 
-        // Wait for initial workers before starting frames
+        // Always start frame processing after grace period
         vertx.setTimer(FRAME_STARTUP_GRACE_PERIOD) {
             launch {
-                if (coordinatorState.shouldStartFrameLoop()) {
-                    startFirstFrame()
-                } else {
-                    log.warn("Insufficient workers to start frame processing")
-                }
+                log.info("Starting frame processing loop")
+                startFirstFrame()
             }
         }
     }
@@ -184,28 +181,27 @@ class FrameCoordinatorVerticle @Inject constructor(
             workerRegistry.updateWorkerHealth(WORKER_HEARTBEAT_TIMEOUT)
 
             val activeWorkers = workerRegistry.getActiveWorkers()
+
+            // Log worker status but continue regardless
             if (activeWorkers.isEmpty()) {
-                log.error("No active workers available for frame {}", frameStartTime)
-                pauseFrameProcessing("No active workers")
-                return
+                log.debug("No active workers available for frame {}", frameStartTime)
+            } else {
+                log.debug("Frame {} has {} active workers", frameStartTime, activeWorkers.size)
             }
 
-            // 2. Get operations for this frame window
+            // 2. Get operations for this frame window (might be empty)
             val frameOperations = coordinatorState.extractFrameOperations(frameStartTime)
 
-            if (frameOperations.isNotEmpty()) {
-                // Distribute operations and write to distributed map
-                val assignments = distributeOperations(frameOperations, activeWorkers)
-                writeManifestsToMap(frameStartTime, frameEndTime, assignments)
-            } else {
-                // Even with no operations, workers need frame notification
-                writeEmptyManifests(frameStartTime, frameEndTime, activeWorkers)
-            }
+            // 3. Distribute operations (might result in empty manifests)
+            val assignments = distributeOperations(frameOperations, activeWorkers)
 
-            // 3. Broadcast frame timing to all workers
+            // 4. Always write manifests (empty or not)
+            writeManifestsToMap(frameStartTime, frameEndTime, assignments)
+
+            // 5. Broadcast frame timing to all workers
             broadcastFrameStart(frameStartTime, frameEndTime)
 
-            // 4. Start deadline monitor
+            // 6. Start deadline monitor
             startFrameDeadlineMonitor(frameStartTime, frameEndTime)
 
         } catch (e: Exception) {
@@ -218,6 +214,11 @@ class FrameCoordinatorVerticle @Inject constructor(
         operations: List<JsonObject>,
         workers: Set<String>
     ): Map<String, List<JsonObject>> {
+        if (workers.isEmpty()) {
+            // No workers - return empty map
+            return emptyMap()
+        }
+
         // Distribute operations using consistent hashing
         val workerList = workers.toList().sorted()
 
@@ -235,7 +236,13 @@ class FrameCoordinatorVerticle @Inject constructor(
         frameEndTime: Long,
         assignments: Map<String, List<JsonObject>>
     ) {
-        assignments.forEach { (workerId, operations) ->
+        // Get all active workers
+        val activeWorkers = workerRegistry.getActiveWorkers()
+
+        // Write manifest for each worker (empty if no operations assigned)
+        activeWorkers.forEach { workerId ->
+            val operations = assignments[workerId] ?: emptyList()
+
             val manifest = JsonObject()
                 .put("workerId", workerId)
                 .put("frameStartTime", frameStartTime)
@@ -245,25 +252,8 @@ class FrameCoordinatorVerticle @Inject constructor(
             val key = "manifest:$frameStartTime:$workerId"
             manifestMap[key] = manifest
 
-            log.debug("Wrote manifest for worker {} with {} operations",
+            log.trace("Wrote manifest for worker {} with {} operations",
                 workerId, operations.size)
-        }
-    }
-
-    private fun writeEmptyManifests(
-        frameStartTime: Long,
-        frameEndTime: Long,
-        workers: Set<String>
-    ) {
-        workers.forEach { workerId ->
-            val manifest = JsonObject()
-                .put("workerId", workerId)
-                .put("frameStartTime", frameStartTime)
-                .put("frameEndTime", frameEndTime)
-                .put("operations", JsonArray())
-
-            val key = "manifest:$frameStartTime:$workerId"
-            manifestMap[key] = manifest
         }
     }
 
@@ -372,52 +362,42 @@ class FrameCoordinatorVerticle @Inject constructor(
                 log.warn("Found {} incomplete operations from failed workers",
                     incompleteOps.size)
 
-                // Redistribute to healthy workers
-                val healthyWorkers = workerRegistry.getActiveWorkers() - stillMissing
-                if (healthyWorkers.isNotEmpty()) {
-                    val reassignments = distributeOperations(incompleteOps, healthyWorkers)
-                    writeManifestsToMap(frameStartTime,
-                        frameStartTime + frameConfig.frameDurationMs, reassignments)
-
-                    log.info("Redistributed operations to {} healthy workers",
-                        healthyWorkers.size)
-                }
+                // Could redistribute to healthy workers in future
+                // For now, just log and continue
             }
         }
+
+        // Continue with next frame regardless
+        onFrameComplete(frameStartTime)
     }
 
     private fun getIncompleteOperations(
         frameStartTime: Long,
-        workerIds: Collection<String>
+        failedWorkers: List<String>
     ): List<JsonObject> {
-        val incomplete = mutableListOf<JsonObject>()
+        val incompleteOps = mutableListOf<JsonObject>()
 
-        workerIds.forEach { workerId ->
-            // Get the manifest for this worker
+        failedWorkers.forEach { workerId ->
             val manifestKey = "manifest:$frameStartTime:$workerId"
             val manifest = manifestMap[manifestKey]
 
-            if (manifest != null) {
-                val operations = manifest.getJsonArray("operations", JsonArray())
+            manifest?.getJsonArray("operations")?.forEach { op ->
+                if (op is JsonObject) {
+                    val operationId = op.getString("id")
+                    val completionKey = "frame-$frameStartTime:op-$operationId"
 
-                // Check which operations were not completed
-                operations.forEach { op ->
-                    if (op is JsonObject) {
-                        val opId = op.getString("id")
-                        val completionKey = "frame-$frameStartTime:op-$opId"
-
-                        if (!completionMap.containsKey(completionKey)) {
-                            incomplete.add(op)
-                        }
+                    if (!completionMap.containsKey(completionKey)) {
+                        incompleteOps.add(op)
                     }
                 }
             }
         }
 
-        return incomplete
+        return incompleteOps
     }
 
     override suspend fun stop() {
+        log.info("Stopping FrameCoordinatorVerticle")
         kafkaConsumer?.close()?.await()
         super.stop()
     }
