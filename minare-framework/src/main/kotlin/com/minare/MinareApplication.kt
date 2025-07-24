@@ -117,17 +117,11 @@ abstract class MinareApplication : CoroutineVerticle() {
      * Initialize the coordinator
      */
     private suspend fun initializeCoordinator() {
-        val expectedWorkers = System.getenv("CLUSTER_WORKERS")
-            ?.split(",")
-            ?.toSet()
-            ?: throw IllegalStateException("CLUSTER_WORKERS must be set for coordinator")
-
         val frameCordinatorVerticleOptions = DeploymentOptions()
             .setInstances(1)
             .setConfig(
                 JsonObject()
                     .put("role", "coordinator")
-                    .put("expectedWorkers", JsonArray(expectedWorkers.toList()))
             )
 
         frameCoordinatorVerticleDeploymentId = vertx.deployVerticle(

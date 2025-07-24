@@ -13,8 +13,7 @@ import io.vertx.core.json.JsonObject
  * This event indicates that a worker has fully deployed all its verticles
  * and is ready to participate in frame processing.
  *
- * Repurposed from handling custom registration messages to using the
- * existing worker startup signal.
+ * Updated to handle workers that haven't been pre-registered via infrastructure.
  */
 class WorkerRegisterEvent @Inject constructor(
     private val eventBusUtils: EventBusUtils,
@@ -31,7 +30,13 @@ class WorkerRegisterEvent @Inject constructor(
                 mapOf("workerId" to workerId)
             )
 
-            // Transition worker from PENDING to ACTIVE
+            // Check if worker exists, if not add it
+            if (workerRegistry.getWorkerState(workerId) == null) {
+                vlog.logInfo("Worker $workerId not pre-registered, adding to registry")
+                workerRegistry.addWorker(workerId)
+            }
+
+            // Now activate the worker (transition from PENDING to ACTIVE)
             val activated = workerRegistry.activateWorker(workerId)
 
             if (activated) {
@@ -53,11 +58,8 @@ class WorkerRegisterEvent @Inject constructor(
                     )
                 )
             } else {
-                vlog.logVerticleError(
-                    "WORKER_ACTIVATION_FAILED",
-                    Exception("Worker not in PENDING state or not found"),
-                    mapOf("workerId" to workerId)
-                )
+                // This should now only happen in rare cases (e.g., worker in REMOVING state)
+                vlog.logInfo("Worker $workerId could not be activated: ${workerRegistry.getWorkerState(workerId)?.status?.toString()}")
             }
         }
     }

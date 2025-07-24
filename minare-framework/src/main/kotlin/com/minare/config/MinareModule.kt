@@ -82,10 +82,6 @@ class MinareModule : AbstractModule(), DatabaseNameProvider {
         bind(String::class.java).annotatedWith(Names.named("entities")).toInstance("entities")
         bind(String::class.java).annotatedWith(Names.named("connections")).toInstance("connections")
 
-        bind(Boolean::class.java)
-            .annotatedWith(Names.named("clusteringEnabled"))
-            .toInstance(false)
-
         bind(Int::class.java)
             .annotatedWith(Names.named("intervalMs"))
             .toInstance(100)
