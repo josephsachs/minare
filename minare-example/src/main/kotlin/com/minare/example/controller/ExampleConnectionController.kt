@@ -21,15 +21,13 @@ class ExampleConnectionController @Inject constructor(
     channelStore: ChannelStore,
     contextStore: ContextStore,
     entityStore: EntityStore,
-    reflectionCache: ReflectionCache,
     private val channelController: ExampleChannelController
 ) : ConnectionController(
     connectionStore,
     connectionCache,
     channelStore,
     contextStore,
-    entityStore,
-    reflectionCache
+    entityStore
 ) {
     private val log = LoggerFactory.getLogger(ExampleConnectionController::class.java)
 
@@ -40,7 +38,6 @@ class ExampleConnectionController @Inject constructor(
     override suspend fun onClientFullyConnected(connection: Connection) {
         log.info("Example client {} is now fully connected", connection._id)
 
-
         val defaultChannelId = channelController.getDefaultChannel()
 
         if (defaultChannelId == null) {
@@ -48,12 +45,8 @@ class ExampleConnectionController @Inject constructor(
             return
         }
 
-
         if (channelController.subscribeClientToChannel(defaultChannelId, connection._id)) {
-
             syncChannelToConnection(defaultChannelId, connection._id)
-
-
             sendInitialSyncComplete(connection._id)
         }
     }

@@ -92,11 +92,37 @@ services:
       - "4226"
       - "9090"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:9090/workers"]  # Changed to admin port
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 60s
+
+  # Infrastructure container
+  infra:
+    image: alpine:latest
+    container_name: minare-infra
+    hostname: infra
+    networks:
+      - minare_net
+    depends_on:
+      app-coordinator:
+        condition: service_healthy
+    volumes:
+      - ./scripts/infra:/scripts:ro
+    environment:
+      # Coordinator connection
+      - COORDINATOR_HOST=app-coordinator
+      - COORDINATOR_PORT=9090
+
+      # Worker configuration
+      - WORKER_IDS=app-worker
+
+      # Timing configuration
+      - STARTUP_DELAY=5
+      - RETRY_INTERVAL=2
+      - MAX_RETRIES=10
+    entrypoint: ["/scripts/infra-entrypoint.sh"]
 
   # Minare Application - Worker Instance
   app-worker:
