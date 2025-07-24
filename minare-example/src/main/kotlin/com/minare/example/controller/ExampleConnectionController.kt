@@ -45,7 +45,7 @@ class ExampleConnectionController @Inject constructor(
             return
         }
 
-        if (channelController.subscribeClientToChannel(defaultChannelId, connection._id)) {
+        if (channelController.subscribeClientToChannel(connection._id, defaultChannelId)) {
             syncChannelToConnection(defaultChannelId, connection._id)
             sendInitialSyncComplete(connection._id)
         }

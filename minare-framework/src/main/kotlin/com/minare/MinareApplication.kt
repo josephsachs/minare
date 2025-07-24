@@ -4,6 +4,8 @@ import com.google.inject.*
 import com.google.inject.name.Names
 import com.minare.MinareApplication.ConnectionEvents.ADDRESS_COORDINATOR_STARTED
 import com.minare.MinareApplication.ConnectionEvents.ADDRESS_WORKER_STARTED
+import com.minare.application.AppState
+import com.minare.application.ClusteredAppState
 import com.minare.config.*
 import com.minare.controller.ConnectionController
 import com.minare.worker.coordinator.FrameCoordinatorVerticle
@@ -33,6 +35,7 @@ import kotlinx.coroutines.runBlocking
 import org.slf4j.LoggerFactory
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
+import com.minare.config.AppStateProvider
 import kotlin.system.exitProcess
 
 /**
@@ -41,6 +44,8 @@ import kotlin.system.exitProcess
  */
 abstract class MinareApplication : CoroutineVerticle() {
     private val log = LoggerFactory.getLogger(MinareApplication::class.java)
+
+    // Dependency injections
     @Inject
     private lateinit var connectionController: ConnectionController
     @Inject
@@ -50,6 +55,10 @@ abstract class MinareApplication : CoroutineVerticle() {
     @Inject
     lateinit var injector: Injector
 
+    // Application utilities
+    protected lateinit var appState: AppState
+
+    // Verticle deployment information
     private var processorCount: Number? = null
     private var frameCoordinatorVerticleDeploymentId: String? = null
     private var mutationVerticleDeploymentId: String? = null
@@ -59,6 +68,7 @@ abstract class MinareApplication : CoroutineVerticle() {
     private var downSocketVerticleDeploymentId: String? = null
     private var messageQueueConsumerVerticleDeploymentId: String? = null
 
+    // Connection state
     private val pendingConnections = ConcurrentHashMap<String, ConnectionState>()
 
     private class ConnectionState {
@@ -67,6 +77,7 @@ abstract class MinareApplication : CoroutineVerticle() {
         var traceId: String? = null
     }
 
+    // Servers
     var httpServer: HttpServer? = null
 
     object ConnectionEvents {
@@ -141,6 +152,13 @@ abstract class MinareApplication : CoroutineVerticle() {
             coordinatorAdminOptions
         ).await()
         log.info("Coordinator admin interface deployed with ID: {} on port 9090", coordinatorAdminDeploymentId)
+
+        // Initialize clustered app state
+        val sharedMap = vertx.sharedData()
+            .getClusterWideMap<String, String>("app-state").await()
+        appState = ClusteredAppState(sharedMap)
+        AppStateProvider.setInstance(appState)
+        log.info("Initialized clustered app state for coordinator")
 
         // Delegate application startup
         log.info("Starting application...")
@@ -239,6 +257,14 @@ abstract class MinareApplication : CoroutineVerticle() {
 
         log.info("Frame worker verticle deployed with ID: {}", frameWorkerDeploymentId)
 
+        // Connect the clustered AppState
+        val sharedMap = vertx.sharedData()
+            .getClusterWideMap<String, String>("app-state").await()
+        appState = ClusteredAppState(sharedMap)
+        AppStateProvider.setInstance(appState)
+        log.info("Initialized clustered app state for worker")
+
+        // Register up socket initialize event
         val initResult = vertx.eventBus().request<JsonObject>(
             UpSocketVerticle.ADDRESS_UP_SOCKET_INITIALIZE,
             JsonObject()

@@ -5,6 +5,7 @@ import com.google.inject.name.Names
 import com.hazelcast.config.Config
 import com.hazelcast.core.Hazelcast
 import com.hazelcast.core.HazelcastInstance
+import com.minare.application.AppState
 import com.minare.cache.ConnectionCache
 import com.minare.cache.InMemoryConnectionCache
 import com.minare.core.entity.ReflectionCache
@@ -38,6 +39,7 @@ import com.minare.pubsub.UpdateBatchCoordinator
 import com.minare.time.DockerTimeService
 import com.minare.time.TimeService
 import com.minare.worker.upsocket.CommandMessageHandler
+import com.minare.config.AppStateProvider
 import kotlin.coroutines.CoroutineContext
 
 /**
@@ -73,6 +75,10 @@ class MinareModule : AbstractModule(), DatabaseNameProvider {
         bind(UpdateBatchCoordinator::class.java).`in`(Singleton::class.java)
         bind(CommandMessageHandler::class.java).`in`(Singleton::class.java)
 
+        // Providers
+        bind(AppState::class.java).toProvider(AppStateProvider::class.java).`in`(Singleton::class.java)
+
+        // String variables
         bind(String::class.java)
             .annotatedWith(Names.named("mongoConnectionString"))
             .toInstance(uri)
