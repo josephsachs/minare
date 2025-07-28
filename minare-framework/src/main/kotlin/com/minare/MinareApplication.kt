@@ -36,6 +36,7 @@ import org.slf4j.LoggerFactory
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import com.minare.config.AppStateProvider
+import com.minare.worker.coordinator.WorkerRegistryMap
 import kotlin.system.exitProcess
 
 /**
@@ -283,10 +284,38 @@ abstract class MinareApplication : CoroutineVerticle() {
 
         registerConnectionEventHandlers()
 
-        vertx.eventBus().publish(ADDRESS_WORKER_STARTED, JsonObject()
-            .put("workerId", System.getenv("HOSTNAME")))
+        workerGetRegistryMap()
 
         log.info("Worker instance deployed with ID: $deploymentID")
+    }
+
+    private fun workerGetRegistryMap() {
+        val workerId = System.getenv("HOSTNAME") ?: throw IllegalStateException("HOSTNAME not set")
+
+        // Get the worker registry map from dependency injection
+        val workerRegistryMap = injector.getInstance(WorkerRegistryMap::class.java)
+
+        // Check if worker was pre-registered by infrastructure
+        val existingState = workerRegistryMap.get(workerId)
+
+        if (existingState != null) {
+            // Update existing entry (likely PENDING → ACTIVE)
+            log.info("Updating pre-registered worker {} to ACTIVE status", workerId)
+            existingState.put("status", "ACTIVE")
+            existingState.put("lastHeartbeat", System.currentTimeMillis())
+            workerRegistryMap.put(workerId, existingState)
+        } else {
+            // Self-register if not pre-registered
+            log.info("Self-registering worker {} in distributed registry", workerId)
+            val newState = JsonObject()
+                .put("workerId", workerId)
+                .put("status", "ACTIVE")
+                .put("lastHeartbeat", System.currentTimeMillis())
+                .put("addedAt", System.currentTimeMillis())
+            workerRegistryMap.put(workerId, newState)
+        }
+
+        log.info("Worker {} registered in distributed map", workerId)
     }
 
     /**

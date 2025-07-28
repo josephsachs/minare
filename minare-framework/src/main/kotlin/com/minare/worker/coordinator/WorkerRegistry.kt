@@ -1,27 +1,54 @@
 package com.minare.worker.coordinator
 
+import io.vertx.core.json.JsonObject
 import org.slf4j.LoggerFactory
-import java.util.concurrent.ConcurrentHashMap
+import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
  * Manages the authoritative registry of workers in the cluster.
  * This is the single source of truth for which workers exist and their states.
+ *
+ * Updated to use Hazelcast distributed map instead of local storage.
  */
 @Singleton
-class WorkerRegistry {
+class WorkerRegistry @Inject constructor(
+    private val workerRegistryMap: WorkerRegistryMap
+) {
     private val log = LoggerFactory.getLogger(WorkerRegistry::class.java)
-
-    // The authoritative worker registry
-    private val workers = ConcurrentHashMap<String, WorkerState>()
 
     data class WorkerState(
         val workerId: String,
         val status: WorkerStatus,
         val lastHeartbeat: Long = System.currentTimeMillis(),
-        val addedAt: Long = System.currentTimeMillis(),
-        val completedFrames: MutableSet<Long> = ConcurrentHashMap.newKeySet()
-    )
+        val addedAt: Long = System.currentTimeMillis()
+        // completedFrames removed - not needed and saves distributed map traffic
+    ) {
+        /**
+         * Convert to JsonObject for distributed map storage
+         */
+        fun toJson(): JsonObject {
+            return JsonObject()
+                .put("workerId", workerId)
+                .put("status", status.name)
+                .put("lastHeartbeat", lastHeartbeat)
+                .put("addedAt", addedAt)
+        }
+
+        companion object {
+            /**
+             * Create WorkerState from JsonObject
+             */
+            fun fromJson(json: JsonObject): WorkerState {
+                return WorkerState(
+                    workerId = json.getString("workerId"),
+                    status = WorkerStatus.valueOf(json.getString("status")),
+                    lastHeartbeat = json.getLong("lastHeartbeat"),
+                    addedAt = json.getLong("addedAt")
+                )
+            }
+        }
+    }
 
     enum class WorkerStatus {
         PENDING,      // Added but not yet active
@@ -35,10 +62,11 @@ class WorkerRegistry {
      */
     fun addWorker(workerId: String) {
         log.info("Adding worker {} to registry", workerId)
-        workers[workerId] = WorkerState(
+        val state = WorkerState(
             workerId = workerId,
             status = WorkerStatus.PENDING
         )
+        workerRegistryMap.put(workerId, state.toJson())
     }
 
     /**
@@ -46,8 +74,10 @@ class WorkerRegistry {
      */
     fun scheduleWorkerRemoval(workerId: String) {
         log.info("Scheduling removal of worker {}", workerId)
-        workers[workerId]?.let {
-            workers[workerId] = it.copy(status = WorkerStatus.REMOVING)
+        val json = workerRegistryMap.get(workerId)
+        if (json != null) {
+            val state = WorkerState.fromJson(json)
+            workerRegistryMap.put(workerId, state.copy(status = WorkerStatus.REMOVING).toJson())
         }
     }
 
@@ -58,7 +88,8 @@ class WorkerRegistry {
      * @return true if activation was successful, false otherwise
      */
     fun activateWorker(workerId: String): Boolean {
-        val state = workers[workerId]
+        val json = workerRegistryMap.get(workerId)
+        val state = json?.let { WorkerState.fromJson(it) }
 
         return when {
             state == null -> {
@@ -67,17 +98,17 @@ class WorkerRegistry {
             }
             state.status == WorkerStatus.PENDING -> {
                 log.info("Worker {} activated successfully", workerId)
-                workers[workerId] = state.copy(
+                workerRegistryMap.put(workerId, state.copy(
                     status = WorkerStatus.ACTIVE,
                     lastHeartbeat = System.currentTimeMillis()
-                )
+                ).toJson())
                 true
             }
             state.status == WorkerStatus.ACTIVE -> {
                 log.debug("Worker {} already active, updating heartbeat", workerId)
-                workers[workerId] = state.copy(
+                workerRegistryMap.put(workerId, state.copy(
                     lastHeartbeat = System.currentTimeMillis()
-                )
+                ).toJson())
                 true
             }
             else -> {
@@ -91,8 +122,10 @@ class WorkerRegistry {
      * Update worker heartbeat
      */
     fun updateHeartbeat(workerId: String) {
-        workers[workerId]?.let { state ->
-            workers[workerId] = state.copy(
+        val json = workerRegistryMap.get(workerId)
+        if (json != null) {
+            val state = WorkerState.fromJson(json)
+            val updatedState = state.copy(
                 lastHeartbeat = System.currentTimeMillis(),
                 status = if (state.status == WorkerStatus.UNHEALTHY) {
                     log.info("Worker {} recovered from unhealthy state", workerId)
@@ -101,21 +134,17 @@ class WorkerRegistry {
                     state.status
                 }
             )
+            workerRegistryMap.put(workerId, updatedState.toJson())
         }
     }
 
     /**
      * Record frame completion for a worker
+     * Note: completedFrames tracking removed to reduce distributed map traffic
      */
     fun recordFrameCompletion(workerId: String, frameStartTime: Long) {
-        workers[workerId]?.let { state ->
-            state.completedFrames.add(frameStartTime)
-
-            // Also update heartbeat since completing a frame proves liveness
-            workers[workerId] = state.copy(
-                lastHeartbeat = System.currentTimeMillis()
-            )
-        }
+        // Just update heartbeat to prove liveness
+        updateHeartbeat(workerId)
     }
 
     /**
@@ -124,18 +153,22 @@ class WorkerRegistry {
     fun updateWorkerHealth(heartbeatTimeout: Long) {
         val now = System.currentTimeMillis()
 
-        workers.forEach { (workerId, state) ->
+        // Note: This iterates over distributed map entries
+        workerRegistryMap.entries().forEach { entry ->
+            val workerId = entry.key
+            val state = WorkerState.fromJson(entry.value)
+
             when (state.status) {
                 WorkerStatus.ACTIVE -> {
                     if (now - state.lastHeartbeat > heartbeatTimeout) {
                         log.warn("Worker {} is unhealthy (last heartbeat: {}ms ago)",
                             workerId, now - state.lastHeartbeat)
-                        workers[workerId] = state.copy(status = WorkerStatus.UNHEALTHY)
+                        workerRegistryMap.put(workerId, state.copy(status = WorkerStatus.UNHEALTHY).toJson())
                     }
                 }
                 WorkerStatus.REMOVING -> {
                     // Actually remove workers marked for removal
-                    workers.remove(workerId)
+                    workerRegistryMap.remove(workerId)
                     log.info("Removed worker {} from registry", workerId)
                 }
                 else -> {}
@@ -148,8 +181,10 @@ class WorkerRegistry {
      */
     fun markWorkersUnhealthy(workerIds: Collection<String>) {
         workerIds.forEach { workerId ->
-            workers[workerId]?.let { state ->
-                workers[workerId] = state.copy(status = WorkerStatus.UNHEALTHY)
+            val json = workerRegistryMap.get(workerId)
+            if (json != null) {
+                val state = WorkerState.fromJson(json)
+                workerRegistryMap.put(workerId, state.copy(status = WorkerStatus.UNHEALTHY).toJson())
                 log.warn("Marked worker {} as unhealthy", workerId)
             }
         }
@@ -161,7 +196,8 @@ class WorkerRegistry {
      * should receive frame manifests and be expected to complete frames.
      */
     fun getActiveWorkers(): Set<String> {
-        return workers.values
+        return workerRegistryMap.entries()
+            .map { WorkerState.fromJson(it.value) }
             .filter { it.status == WorkerStatus.ACTIVE }
             .map { it.workerId }
             .toSet()
@@ -190,28 +226,33 @@ class WorkerRegistry {
      * Get worker state
      */
     fun getWorkerState(workerId: String): WorkerState? {
-        return workers[workerId]
+        val json = workerRegistryMap.get(workerId)
+        return json?.let { WorkerState.fromJson(it) }
     }
 
     /**
      * Get all workers and their states (for monitoring)
      */
     fun getAllWorkers(): Map<String, WorkerState> {
-        return workers.toMap()
+        return workerRegistryMap.entries().associate {
+            it.key to WorkerState.fromJson(it.value)
+        }
     }
 
     /**
      * Check if a specific worker is healthy and active
      */
     fun isWorkerHealthy(workerId: String): Boolean {
-        return workers[workerId]?.status == WorkerStatus.ACTIVE
+        val json = workerRegistryMap.get(workerId)
+        return json?.let { WorkerState.fromJson(it).status == WorkerStatus.ACTIVE } ?: false
     }
 
     /**
      * Get count of workers by status (for monitoring)
      */
     fun getWorkerCountByStatus(): Map<WorkerStatus, Int> {
-        return workers.values
+        return workerRegistryMap.values()
+            .map { WorkerState.fromJson(it) }
             .groupBy { it.status }
             .mapValues { it.value.size }
     }
@@ -220,7 +261,7 @@ class WorkerRegistry {
      * Remove a worker immediately (used in testing or emergency scenarios)
      */
     fun removeWorkerImmediately(workerId: String): Boolean {
-        val removed = workers.remove(workerId)
+        val removed = workerRegistryMap.remove(workerId)
         if (removed != null) {
             log.warn("Worker {} removed immediately from registry", workerId)
             return true
@@ -230,18 +271,17 @@ class WorkerRegistry {
 
     /**
      * Clear all completed frame records (used between frames to save memory)
+     * Note: This method is now a no-op since we removed completedFrames tracking
      */
     fun clearFrameCompletionHistory() {
-        workers.values.forEach { state ->
-            state.completedFrames.clear()
-        }
+        // No-op - completedFrames removed
     }
 
     /**
      * Reset the registry (useful for testing)
      */
     fun reset() {
-        workers.clear()
+        workerRegistryMap.clear()
         log.info("Worker registry reset")
     }
 }

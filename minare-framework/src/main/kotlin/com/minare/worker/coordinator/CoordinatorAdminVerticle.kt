@@ -200,7 +200,6 @@ class CoordinatorAdminVerticle @Inject constructor(
                         .put("status", state.status.toString())
                         .put("lastHeartbeat", state.lastHeartbeat)
                         .put("addedAt", state.addedAt)
-                        .put("completedFrames", state.completedFrames.size)
                 }))
                 .put("summary", JsonObject()
                     .put("total", workers.size)

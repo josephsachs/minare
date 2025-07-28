@@ -24,6 +24,8 @@ import kotlin.coroutines.CoroutineContext
 class FrameCoordinatorVerticleModule : PrivateModule() {
     private val log = LoggerFactory.getLogger(MinareModule::class.java)
 
+// In FrameCoordinatorVerticleModule.configure() method:
+
     override fun configure() {
         bind(FrameCoordinatorVerticle::class.java)
         bind(CoordinatorAdminVerticle::class.java)
@@ -33,10 +35,6 @@ class FrameCoordinatorVerticleModule : PrivateModule() {
         bind(InfraRemoveWorkerEvent::class.java).`in`(Singleton::class.java)
         bind(WorkerFrameCompleteEvent::class.java).`in`(Singleton::class.java)
         bind(WorkerHeartbeatEvent::class.java).`in`(Singleton::class.java)
-        bind(WorkerRegisterEvent::class.java).`in`(Singleton::class.java)
-
-        // Message handlers
-        // ex. bind(CloseHandler::class.java).`in`(Singleton::class.java)
 
         // Request external dependencies that should be provided by parent injector
         requireBinding(Vertx::class.java)

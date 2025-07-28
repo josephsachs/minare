@@ -42,8 +42,7 @@ class FrameCoordinatorVerticle @Inject constructor(
     private val infraAddWorkerEvent: InfraAddWorkerEvent,
     private val infraRemoveWorkerEvent: InfraRemoveWorkerEvent,
     private val workerFrameCompleteEvent: WorkerFrameCompleteEvent,
-    private val workerHeartbeatEvent: WorkerHeartbeatEvent,
-    private val workerRegisterEvent: WorkerRegisterEvent
+    private val workerHeartbeatEvent: WorkerHeartbeatEvent
 ) : CoroutineVerticle() {
 
     private val log = LoggerFactory.getLogger(FrameCoordinatorVerticle::class.java)
@@ -96,7 +95,6 @@ class FrameCoordinatorVerticle @Inject constructor(
 
         // Worker lifecycle
         launch {
-            workerRegisterEvent.register()
             workerHeartbeatEvent.register()
             workerFrameCompleteEvent.register()
         }
