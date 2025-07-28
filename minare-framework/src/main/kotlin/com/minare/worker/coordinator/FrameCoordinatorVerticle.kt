@@ -182,9 +182,9 @@ class FrameCoordinatorVerticle @Inject constructor(
 
             // Log worker status but continue regardless
             if (activeWorkers.isEmpty()) {
-                log.debug("No active workers available for frame {}", frameStartTime)
+                log.info("No active workers available for frame {}", frameStartTime)
             } else {
-                log.debug("Frame {} has {} active workers", frameStartTime, activeWorkers.size)
+                log.info("Frame {} has {} active workers", frameStartTime, activeWorkers.size)
             }
 
             // 2. Get operations for this frame window (might be empty)
@@ -192,6 +192,12 @@ class FrameCoordinatorVerticle @Inject constructor(
 
             // 3. Distribute operations (might result in empty manifests)
             val assignments = distributeOperations(frameOperations, activeWorkers)
+
+            if (frameOperations.isEmpty() && activeWorkers.isEmpty()) {
+                log.info("Empty frame {} with no workers, completing immediately", frameStartTime)
+                onFrameComplete(frameStartTime)
+                return
+            }
 
             // 4. Always write manifests (empty or not)
             writeManifestsToMap(frameStartTime, frameEndTime, assignments)
