@@ -132,11 +132,17 @@ class FrameCoordinatorVerticle @Inject constructor(
                 try {
                     val operations = JsonArray(record.value())
 
-                    // Buffer operations by their frame
                     operations.forEach { op ->
                         if (op is JsonObject) {
                             val timestamp = op.getLong("timestamp") ?: System.currentTimeMillis()
-                            val frameStart = coordinatorState.getFrameStartTime(timestamp)
+                            val calculatedFrame = coordinatorState.getFrameStartTime(timestamp)
+
+                            // If the calculated frame is in the past, use the current/next frame
+                            val frameStart = if (calculatedFrame < coordinatorState.currentFrameStart) {
+                                coordinatorState.currentFrameStart
+                            } else {
+                                calculatedFrame
+                            }
 
                             coordinatorState.bufferOperation(op, frameStart)
                         }
@@ -303,18 +309,22 @@ class FrameCoordinatorVerticle @Inject constructor(
         clearFrameMaps(frameStartTime)
 
         // Calculate next frame time
-        coordinatorState.currentFrameStart = frameStartTime +
+        val nextFrameStart = frameStartTime +
                 frameConfig.frameDurationMs + frameConfig.frameOffsetMs
+        coordinatorState.currentFrameStart = nextFrameStart
 
-        // Check if we're behind schedule
+        // Wait until it's time for the next frame
         val now = System.currentTimeMillis()
-        val drift = now - coordinatorState.currentFrameStart
+        val waitTime = nextFrameStart - now
 
-        if (drift > frameConfig.frameOffsetMs) {
-            log.warn("Frame timing drift detected: {}ms behind schedule", drift)
+        if (waitTime > 0) {
+            log.debug("Waiting {}ms until next frame", waitTime)
+            delay(waitTime)
+        } else if (waitTime < -frameConfig.frameOffsetMs) {
+            log.warn("Frame timing drift detected: {}ms behind schedule", -waitTime)
         }
 
-        // Execute next frame
+        // Now execute next frame
         executeFrame()
     }
 
