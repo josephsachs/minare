@@ -28,7 +28,7 @@ class EventBusUtils(
     /**
      * Send a traced message to the event bus and await a reply
      */
-    suspend fun <T> sendWithTracing(
+    suspend fun <T> requestWithTracing(
         address: String,
         message: Any,
         parentTraceId: String? = null
@@ -63,6 +63,29 @@ class EventBusUtils(
             }
 
             throw e
+        }
+    }
+
+    /**
+     * Send a traced message to the event bus without expecting a reply (fire-and-forget)
+     */
+    fun sendWithTracing(
+        address: String,
+        message: Any,
+        parentTraceId: String? = null
+    ) {
+        val traceId = parentTraceId ?: eventLog.trace("EVENTBUS_SEND",
+            mapOf("address" to address, "component" to component))
+
+        eventLog.logSend(address, message, traceId)
+
+        val options = DeliveryOptions().addHeader("traceId", traceId)
+
+        vertx.eventBus().send(address, message, options)
+
+        if (parentTraceId == null) {
+            eventLog.endTrace(traceId, "EVENTBUS_SEND_COMPLETE",
+                mapOf("address" to address, "status" to "sent"))
         }
     }
 

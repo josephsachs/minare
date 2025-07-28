@@ -60,7 +60,7 @@ services:
       - KAFKA_PRODUCER_RETRIES=3
 
       # Kafka consumer configuration
-      - KAFKA_CONSUMER_GROUP=minare-mutation-processor
+      - KAFKA_CONSUMER_GROUP=minare-coordinator
       - KAFKA_SESSION_TIMEOUT_MS=30000
       - KAFKA_MAX_POLL_RECORDS=100
       - KAFKA_AUTO_OFFSET_RESET=earliest
@@ -157,12 +157,6 @@ services:
       - KAFKA_PRODUCER_ACKS=all
       - KAFKA_PRODUCER_COMPRESSION=gzip
       - KAFKA_PRODUCER_RETRIES=3
-
-      # Kafka consumer configuration
-      - KAFKA_CONSUMER_GROUP=minare-operation-processor
-      - KAFKA_SESSION_TIMEOUT_MS=30000
-      - KAFKA_MAX_POLL_RECORDS=100
-      - KAFKA_AUTO_OFFSET_RESET=earliest
 
       # Debug configuration (conditional)
       - JAVA_DEBUG=${JAVA_DEBUG:-false}

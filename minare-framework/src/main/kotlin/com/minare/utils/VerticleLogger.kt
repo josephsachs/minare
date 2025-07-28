@@ -69,17 +69,10 @@ class VerticleLogger @Inject constructor() {
     }
 
     /**
-     * Log verticle undeployment
+     * Log informarive message
      */
     fun logInfo(message: String) {
         checkVerticleInitialized()
-        eventLog!!.logStateChange(
-            verticle!!.javaClass.simpleName,
-            currentState,
-            "UNDEPLOYED",
-            mapOf("deploymentId" to (deploymentId ?: "unknown"))
-        )
-
         log!!.info("{}: {}", verticle!!.javaClass.simpleName, message)
     }
 
