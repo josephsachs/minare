@@ -24,7 +24,7 @@ data class FrameConfiguration constructor(
      * - Fast-paced action games (100-500ms)
      * - High-frequency trading systems (10-100ms)
      */
-    val frameDurationMs: Long = 10000,
+    val frameDurationMs: Long = 1000,
 
     /**
      * Gap between frames for coordination and pause/resume operations.
@@ -37,7 +37,7 @@ data class FrameConfiguration constructor(
      * - Brief pause/resume cycles
      * - Network latency buffer
      */
-    val frameOffsetMs: Long = 1000,
+    val frameOffsetMs: Long = 100,
 
     /**
      * Coordination timeout for failure detection.
@@ -75,7 +75,7 @@ data class FrameConfiguration constructor(
      * Default: 5000ms
      * Should accommodate typical NTP sync + network coordination
      */
-    val frameStartupOffsetMs: Long = 50000,
+    val frameStartupOffsetMs: Long = 5000,
 
     /**
      * Maximum clock drift tolerance before frame pause.
@@ -84,7 +84,7 @@ data class FrameConfiguration constructor(
      * Default: 100ms
      * Balances temporal precision vs operational stability
      */
-    val maxClockDriftMs: Long = 1000
+    val maxClockDriftMs: Long = 100
 ) {
     init {
         require(frameDurationMs > 0) { "Frame duration must be positive" }

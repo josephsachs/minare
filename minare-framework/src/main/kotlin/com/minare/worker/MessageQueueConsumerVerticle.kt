@@ -95,12 +95,15 @@ class MessageQueueConsumerVerticle @Inject constructor(
     /**
      * Process a single operation from the frame manifest
      */
+    /**
+     * Process a single operation from the frame manifest
+     */
     private suspend fun processOperation(operationJson: JsonObject, action: String) {
         try {
             val entityId = operationJson.getString("entityId")
             val operationId = operationJson.getString("id")
-            val values = operationJson.getJsonObject("values") ?: JsonObject()
-            val connectionId = values.getString("connectionId")
+            val connectionId = operationJson.getString("connectionId")
+            val entityType = operationJson.getString("entityType")
 
             log.debug("Processing {} operation {} for entity {}",
                 action, operationId, entityId)
@@ -112,7 +115,7 @@ class MessageQueueConsumerVerticle @Inject constructor(
                         .put("command", "mutate")
                         .put("entity", JsonObject()
                             .put("_id", entityId)
-                            .put("type", values.getString("entityType"))
+                            .put("type", entityType)
                             .put("version", operationJson.getLong("version"))
                             .put("state", operationJson.getJsonObject("delta") ?: JsonObject())
                         )
