@@ -50,7 +50,7 @@ class WorkerFrameCompleteEvent @Inject constructor(
                 vlog.logInfo("All workers completed frame $frameStartTime")
 
                 // Signal the coordinator that the frame is complete
-                eventBusUtils.sendWithTracing<Unit>(
+                eventBusUtils.sendWithTracing(
                     FrameCoordinatorVerticle.ADDRESS_FRAME_ALL_COMPLETE,
                     JsonObject().put("frameStartTime", frameStartTime),
                     traceId

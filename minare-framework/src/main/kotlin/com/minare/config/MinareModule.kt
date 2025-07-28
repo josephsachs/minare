@@ -5,8 +5,10 @@ import com.google.inject.name.Names
 import com.hazelcast.config.Config
 import com.hazelcast.core.Hazelcast
 import com.hazelcast.core.HazelcastInstance
+import com.hazelcast.map.IMap
 import com.minare.application.AppState
 import com.minare.cache.ConnectionCache
+import com.minare.cache.HazelcastInstanceHolder
 import com.minare.cache.InMemoryConnectionCache
 import com.minare.core.entity.ReflectionCache
 import com.minare.core.entity.EntityFactory
@@ -19,6 +21,8 @@ import com.minare.worker.CleanupVerticle
 import com.minare.worker.MutationVerticle
 import com.minare.worker.MinareVerticleFactory
 import com.minare.worker.RedisPubSubWorkerVerticle
+import com.minare.worker.coordinator.WorkerRegistryMap
+import com.minare.worker.coordinator.HazelcastWorkerRegistryMap
 import com.minare.persistence.*
 import com.minare.utils.VerticleLogger
 import io.vertx.core.Vertx
@@ -50,7 +54,7 @@ class MinareModule : AbstractModule(), DatabaseNameProvider {
     private val log = LoggerFactory.getLogger(MinareModule::class.java)
 
     val uri = System.getenv("MONGO_URI") ?:
-        throw IllegalStateException("MONGO_URI environment variable is required")
+    throw IllegalStateException("MONGO_URI environment variable is required")
 
     override fun configure() {
         // Internal services, do not permit override
@@ -166,10 +170,18 @@ class MinareModule : AbstractModule(), DatabaseNameProvider {
     @Provides
     @Singleton
     fun provideHazelcastInstance(): HazelcastInstance {
-        val config = Config()
-        config.clusterName = System.getenv("HAZELCAST_CLUSTER_NAME") ?: "minare-cluster"
-        // Add any other Hazelcast configuration
-        return Hazelcast.newHazelcastInstance(config)
+        return HazelcastInstanceHolder.getInstance()
+    }
+
+    /**
+     * Provides the distributed worker registry map
+     */
+    @Provides
+    @Singleton
+    fun provideWorkerRegistryMap(hazelcastInstance: HazelcastInstance): WorkerRegistryMap {
+        val map = hazelcastInstance.getMap<String, JsonObject>("worker-registry")
+        log.info("Initialized distributed worker registry map")
+        return HazelcastWorkerRegistryMap(map)
     }
 
     override fun getDatabaseName(): String = "minare"

@@ -42,8 +42,7 @@ class FrameCoordinatorVerticle @Inject constructor(
     private val infraAddWorkerEvent: InfraAddWorkerEvent,
     private val infraRemoveWorkerEvent: InfraRemoveWorkerEvent,
     private val workerFrameCompleteEvent: WorkerFrameCompleteEvent,
-    private val workerHeartbeatEvent: WorkerHeartbeatEvent,
-    private val workerRegisterEvent: WorkerRegisterEvent
+    private val workerHeartbeatEvent: WorkerHeartbeatEvent
 ) : CoroutineVerticle() {
 
     private val log = LoggerFactory.getLogger(FrameCoordinatorVerticle::class.java)
@@ -96,7 +95,6 @@ class FrameCoordinatorVerticle @Inject constructor(
 
         // Worker lifecycle
         launch {
-            workerRegisterEvent.register()
             workerHeartbeatEvent.register()
             workerFrameCompleteEvent.register()
         }
@@ -134,11 +132,17 @@ class FrameCoordinatorVerticle @Inject constructor(
                 try {
                     val operations = JsonArray(record.value())
 
-                    // Buffer operations by their frame
                     operations.forEach { op ->
                         if (op is JsonObject) {
                             val timestamp = op.getLong("timestamp") ?: System.currentTimeMillis()
-                            val frameStart = coordinatorState.getFrameStartTime(timestamp)
+                            val calculatedFrame = coordinatorState.getFrameStartTime(timestamp)
+
+                            // If the calculated frame is in the past, use the current/next frame
+                            val frameStart = if (calculatedFrame < coordinatorState.currentFrameStart) {
+                                coordinatorState.currentFrameStart
+                            } else {
+                                calculatedFrame
+                            }
 
                             coordinatorState.bufferOperation(op, frameStart)
                         }
@@ -184,9 +188,9 @@ class FrameCoordinatorVerticle @Inject constructor(
 
             // Log worker status but continue regardless
             if (activeWorkers.isEmpty()) {
-                log.debug("No active workers available for frame {}", frameStartTime)
+                log.info("No active workers available for frame {}", frameStartTime)
             } else {
-                log.debug("Frame {} has {} active workers", frameStartTime, activeWorkers.size)
+                log.info("Frame {} has {} active workers", frameStartTime, activeWorkers.size)
             }
 
             // 2. Get operations for this frame window (might be empty)
@@ -194,6 +198,12 @@ class FrameCoordinatorVerticle @Inject constructor(
 
             // 3. Distribute operations (might result in empty manifests)
             val assignments = distributeOperations(frameOperations, activeWorkers)
+
+            if (frameOperations.isEmpty() && activeWorkers.isEmpty()) {
+                log.info("Empty frame {} with no workers, completing immediately", frameStartTime)
+                onFrameComplete(frameStartTime)
+                return
+            }
 
             // 4. Always write manifests (empty or not)
             writeManifestsToMap(frameStartTime, frameEndTime, assignments)
@@ -299,18 +309,22 @@ class FrameCoordinatorVerticle @Inject constructor(
         clearFrameMaps(frameStartTime)
 
         // Calculate next frame time
-        coordinatorState.currentFrameStart = frameStartTime +
+        val nextFrameStart = frameStartTime +
                 frameConfig.frameDurationMs + frameConfig.frameOffsetMs
+        coordinatorState.currentFrameStart = nextFrameStart
 
-        // Check if we're behind schedule
+        // Wait until it's time for the next frame
         val now = System.currentTimeMillis()
-        val drift = now - coordinatorState.currentFrameStart
+        val waitTime = nextFrameStart - now
 
-        if (drift > frameConfig.frameOffsetMs) {
-            log.warn("Frame timing drift detected: {}ms behind schedule", drift)
+        if (waitTime > 0) {
+            log.debug("Waiting {}ms until next frame", waitTime)
+            delay(waitTime)
+        } else if (waitTime < -frameConfig.frameOffsetMs) {
+            log.warn("Frame timing drift detected: {}ms behind schedule", -waitTime)
         }
 
-        // Execute next frame
+        // Now execute next frame
         executeFrame()
     }
 
