@@ -6,6 +6,7 @@ import com.minare.MinareApplication.ConnectionEvents.ADDRESS_COORDINATOR_STARTED
 import com.minare.MinareApplication.ConnectionEvents.ADDRESS_WORKER_STARTED
 import com.minare.application.AppState
 import com.minare.application.ClusteredAppState
+import com.minare.cache.HazelcastInstanceHolder
 import com.minare.config.*
 import com.minare.controller.ConnectionController
 import com.minare.worker.coordinator.FrameCoordinatorVerticle
@@ -528,8 +529,9 @@ abstract class MinareApplication : CoroutineVerticle() {
 
             log.info("Clustering is enabled")
 
-            val clusterManager = HazelcastClusterManager()
+            val clusterManager = HazelcastConfigFactory.createConfiguredClusterManager()
             vertxOptions.clusterManager = clusterManager
+            HazelcastInstanceHolder.setClusterManager(clusterManager)
 
             Vertx.clusteredVertx(vertxOptions).onComplete { ar ->
                 if (ar.succeeded()) {

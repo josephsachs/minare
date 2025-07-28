@@ -8,6 +8,7 @@ import com.hazelcast.core.HazelcastInstance
 import com.hazelcast.map.IMap
 import com.minare.application.AppState
 import com.minare.cache.ConnectionCache
+import com.minare.cache.HazelcastInstanceHolder
 import com.minare.cache.InMemoryConnectionCache
 import com.minare.core.entity.ReflectionCache
 import com.minare.core.entity.EntityFactory
@@ -169,10 +170,7 @@ class MinareModule : AbstractModule(), DatabaseNameProvider {
     @Provides
     @Singleton
     fun provideHazelcastInstance(): HazelcastInstance {
-        val config = Config()
-        config.clusterName = System.getenv("HAZELCAST_CLUSTER_NAME") ?: "minare-cluster"
-        // Add any other Hazelcast configuration
-        return Hazelcast.newHazelcastInstance(config)
+        return HazelcastInstanceHolder.getInstance()
     }
 
     /**
