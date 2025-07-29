@@ -233,10 +233,12 @@ class FrameCoordinatorVerticle @Inject constructor(
         val workerList = workers.toList().sorted()
 
         return operations.groupBy { op ->
-            // Use entity ID for consistent hashing
-            val entityId = op.getString("entityId") ?: ""
+            // Use operation ID for consistent hashing
+            // This keeps the operation pipeline entity-agnostic and enables
+            // future multi-entity operations
+            val operationId = op.getString("id") ?: ""
 
-            val hash = abs(entityId.hashCode())
+            val hash = abs(operationId.hashCode())
             workerList[hash % workerList.size]
         }
     }
