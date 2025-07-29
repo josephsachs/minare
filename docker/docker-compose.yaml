@@ -43,7 +43,7 @@ services:
       - HAZELCAST_CLUSTER_NAME=minare-cluster
 
       # Database configuration
-      - RESET_DB=true # Development only
+      - RESET_STATE=true # Development only
       - MONGO_URI=mongodb://mongodb-rs:27017/minare?replicaSet=rs0
       - REDIS_URI=redis://redis:6379
 
