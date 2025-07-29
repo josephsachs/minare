@@ -252,4 +252,28 @@ class KafkaMessageQueue @Inject constructor(
             log.error("Error during Kafka client shutdown", e)
         }
     }
+
+
+    /**
+     * Delete all Minare-related Kafka topics
+     * Called by StateInitializer when RESET_STATE=true
+     */
+    suspend fun resetAllTopics() {
+        try {
+            val topics = adminClient.listTopics().await()
+            val minareTopics = topics.filter { it.startsWith("minare.") }
+
+            if (minareTopics.isNotEmpty()) {
+                log.warn("Deleting Kafka topics: {}", minareTopics)
+                adminClient.deleteTopics(minareTopics).await()
+                initializedTopics.clear()
+                log.info("Deleted {} Kafka topics", minareTopics.size)
+            } else {
+                log.debug("No Minare topics found to delete")
+            }
+        } catch (e: Exception) {
+            log.error("Failed to delete Kafka topics", e)
+            throw e
+        }
+    }
 }

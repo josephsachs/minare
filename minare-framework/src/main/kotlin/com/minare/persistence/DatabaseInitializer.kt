@@ -36,7 +36,7 @@ class DatabaseInitializer @Inject constructor(
             val shouldResetDb = checkResetDbFlag()
 
             if (shouldResetDb) {
-                log.warn("RESET_DB flag is set to true - dropping existing collections!")
+                log.warn("RESET_STATE flag is set to true - dropping existing collections!")
                 dropExistingCollections()
             }
 
@@ -63,10 +63,10 @@ class DatabaseInitializer @Inject constructor(
     }
 
     /**
-     * Check if the RESET_DB environment variable is set to true
+     * Check if the RESET_STATE environment variable is set to true
      */
     private fun checkResetDbFlag(): Boolean {
-        val resetDbValue = System.getenv("RESET_DB")?.lowercase() ?: "false"
+        val resetDbValue = System.getenv("RESET_STATE")?.lowercase() ?: "false"
         return resetDbValue == "true" || resetDbValue == "1" || resetDbValue == "yes"
     }
 

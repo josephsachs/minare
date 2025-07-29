@@ -1,0 +1,19 @@
+config:
+  target: "http://localhost:8080"
+  processor: "./color-wave-processor.js"
+  phases:
+    - duration: 60      # Same as simple-test.yml
+      arrivalRate: 1    # 1 user per second
+      name: "Sequential color wave test"
+
+scenarios:
+  - name: "Color Wave Test"
+    flow:
+      - log: "Starting color wave test"
+      - function: "connectCommandSocket"
+      - think: 2
+      - log: "Command socket connected, connecting to down socket"
+      - function: "connectDownSocket"
+      - think: 5  # Wait for initial sync
+      - log: "Starting color waves"
+      - function: "startColorWaves"

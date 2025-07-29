@@ -37,6 +37,7 @@ import org.slf4j.LoggerFactory
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import com.minare.config.AppStateProvider
+import com.minare.persistence.StateInitializer
 import com.minare.worker.coordinator.WorkerRegistryMap
 import kotlin.system.exitProcess
 
@@ -53,7 +54,7 @@ abstract class MinareApplication : CoroutineVerticle() {
     @Inject
     private lateinit var timeService: TimeService
     @Inject
-    lateinit var databaseInitializer: DatabaseInitializer
+    lateinit var stateInitializer: StateInitializer
     @Inject
     lateinit var injector: Injector
 
@@ -97,16 +98,15 @@ abstract class MinareApplication : CoroutineVerticle() {
      */
     override suspend fun start() {
         try {
-            timeService.syncTime()
-            log.info("Time synchronization complete")
-
-            databaseInitializer.initialize()
-            log.info("Database initialized successfully")
+            val instanceRole = System.getenv("INSTANCE_ROLE") ?:
+                throw IllegalStateException("INSTANCE_ROLE environment variable is required")
 
             processorCount = Runtime.getRuntime().availableProcessors()
 
-            val instanceRole = System.getenv("INSTANCE_ROLE") ?:
-                throw IllegalStateException("INSTANCE_ROLE environment variable is required")
+            timeService.syncTime()
+            log.info("Time synchronization complete")
+
+            if (instanceRole == "COORDINATOR") stateInitializer.initialize()
 
             vertx.registerVerticleFactory(MinareVerticleFactory(injector))
             log.info("Registered MinareVerticleFactory")
