@@ -98,16 +98,15 @@ abstract class MinareApplication : CoroutineVerticle() {
      */
     override suspend fun start() {
         try {
-            timeService.syncTime()
-            log.info("Time synchronization complete")
-
-            stateInitializer.initialize()
-            log.info("State initialization completed")
+            val instanceRole = System.getenv("INSTANCE_ROLE") ?:
+                throw IllegalStateException("INSTANCE_ROLE environment variable is required")
 
             processorCount = Runtime.getRuntime().availableProcessors()
 
-            val instanceRole = System.getenv("INSTANCE_ROLE") ?:
-                throw IllegalStateException("INSTANCE_ROLE environment variable is required")
+            timeService.syncTime()
+            log.info("Time synchronization complete")
+
+            if (instanceRole == "COORDINATOR") stateInitializer.initialize()
 
             vertx.registerVerticleFactory(MinareVerticleFactory(injector))
             log.info("Registered MinareVerticleFactory")
