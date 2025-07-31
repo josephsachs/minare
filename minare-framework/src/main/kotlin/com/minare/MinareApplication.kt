@@ -9,14 +9,11 @@ import com.minare.application.ClusteredAppState
 import com.minare.cache.HazelcastInstanceHolder
 import com.minare.config.*
 import com.minare.controller.ConnectionController
-import com.minare.worker.coordinator.FrameCoordinatorVerticle
 import com.minare.worker.upsocket.UpSocketVerticle
 import com.minare.worker.downsocket.DownSocketVerticle
 import com.minare.persistence.DatabaseInitializer
 import com.minare.time.TimeService
 import com.minare.worker.*
-import com.minare.worker.coordinator.CoordinatorAdminVerticle
-import com.minare.worker.coordinator.FrameWorkerVerticle
 import com.minare.worker.coordinator.config.FrameCoordinatorVerticleModule
 import com.minare.worker.downsocket.config.DownSocketVerticleModule
 import com.minare.worker.upsocket.config.UpSocketVerticleModule
@@ -38,7 +35,7 @@ import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import com.minare.config.AppStateProvider
 import com.minare.persistence.StateInitializer
-import com.minare.worker.coordinator.WorkerRegistryMap
+import com.minare.worker.coordinator.*
 import kotlin.system.exitProcess
 
 /**
@@ -69,6 +66,8 @@ abstract class MinareApplication : CoroutineVerticle() {
     private var redisPubSubWorkerDeploymentId: String? = null
     private var cleanupVerticleDeploymentId: String? = null
     private var downSocketVerticleDeploymentId: String? = null
+    private var coordinatorAdminDeploymentId: String? = null
+    private var frameHealthMonitorVerticleDeploymentId: String? = null
     private var messageQueueConsumerVerticleDeploymentId: String? = null
 
     // Connection state
@@ -145,11 +144,21 @@ abstract class MinareApplication : CoroutineVerticle() {
         vertx.eventBus().publish(ADDRESS_COORDINATOR_STARTED, JsonObject())
         log.info("Coordinator verticle deployed with ID: $frameCoordinatorVerticleDeploymentId")
 
+        val frameHealthMonitorVerticleOptions = DeploymentOptions()
+            .setInstances(1)
+            .setConfig(JsonObject().put("role", "coordinator-admin"))
+
+        frameHealthMonitorVerticleDeploymentId = vertx.deployVerticle(
+            "guice:" + FrameWorkerHealthMonitorVerticle::class.java.name,
+            frameHealthMonitorVerticleOptions
+        ).await()
+        log.info("Frame worker health monitor deployed with ID: {}", frameHealthMonitorVerticleDeploymentId)
+
         val coordinatorAdminOptions = DeploymentOptions()
             .setInstances(1)
             .setConfig(JsonObject().put("role", "coordinator-admin"))
 
-        val coordinatorAdminDeploymentId = vertx.deployVerticle(
+        coordinatorAdminDeploymentId = vertx.deployVerticle(
             "guice:" + CoordinatorAdminVerticle::class.java.name,
             coordinatorAdminOptions
         ).await()
