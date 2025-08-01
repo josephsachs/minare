@@ -58,37 +58,45 @@ class FrameManifestBuilder @Inject constructor(
      * Write manifests to Hazelcast distributed map.
      * Each worker gets a manifest even if it has no operations assigned.
      *
-     * @param frameStartTime The start time of the frame
-     * @param frameEndTime The end time of the frame
+     * UPDATED: Operations are now sorted by operation ID hash for deterministic
+     * ordering that doesn't favor any particular producer.
+     *
+     * @param frameStartTime The logical frame number (not wall clock!)
+     * @param frameEndTime Deprecated parameter - kept for compatibility
      * @param assignments Map of worker ID to assigned operations
      * @param activeWorkers Set of all active workers
      */
     fun writeManifestsToMap(
-        frameStartTime: Long,
-        frameEndTime: Long,
+        frameStartTime: Long,  // Now this is logical frame number
+        frameEndTime: Long,    // Deprecated
         assignments: Map<String, List<JsonObject>>,
         activeWorkers: Set<String>
     ) {
-
         // Write manifest for each worker (empty if no operations assigned)
         activeWorkers.forEach { workerId ->
             val operations = assignments[workerId] ?: emptyList()
 
+            // CRITICAL: Sort operations by ID hash for deterministic ordering
+            // This prevents any producer from gaining timing advantages
+            val sortedOperations = operations.sortedBy { op ->
+                val operationId = op.getString("id") ?: ""
+                operationId.hashCode()
+            }
+
             val manifest = JsonObject()
                 .put("workerId", workerId)
-                .put("frameStartTime", frameStartTime)
-                .put("frameEndTime", frameEndTime)
-                .put("operations", JsonArray(operations))
+                .put("logicalFrame", frameStartTime)  // Use logical frame
+                .put("operations", JsonArray(sortedOperations))
                 .put("createdAt", System.currentTimeMillis())
 
             val key = "manifest:$frameStartTime:$workerId"
             manifestMap[key] = manifest
 
-            log.trace("Wrote manifest for worker {} with {} operations",
-                workerId, operations.size)
+            log.trace("Wrote manifest for worker {} with {} operations for logical frame {}",
+                workerId, sortedOperations.size, frameStartTime)
         }
 
-        log.debug("Created manifests for frame {} with {} total operations distributed to {} workers",
+        log.debug("Created manifests for logical frame {} with {} total operations distributed to {} workers",
             frameStartTime, assignments.values.sumOf { it.size }, activeWorkers.size)
     }
 
@@ -112,6 +120,21 @@ class FrameManifestBuilder @Inject constructor(
     fun getManifest(frameStartTime: Long, workerId: String): JsonObject? {
         val key = "manifest:$frameStartTime:$workerId"
         return manifestMap[key]
+    }
+
+    /**
+     * Clear ALL manifests from the distributed map.
+     * Should be called when starting a new session to ensure clean state.
+     */
+    fun clearAllManifests() {
+        val keysToRemove = manifestMap.keys.filter { it.startsWith("manifest:") }
+
+        if (keysToRemove.isNotEmpty()) {
+            keysToRemove.forEach { manifestMap.remove(it) }
+            log.info("Cleared {} manifests from distributed map for new session", keysToRemove.size)
+        } else {
+            log.debug("No manifests to clear for new session")
+        }
     }
 
     /**

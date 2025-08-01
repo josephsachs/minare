@@ -11,7 +11,7 @@ import javax.inject.Singleton
 
 /**
  * Shared state for the Frame Coordinator system.
- * Simplified to work with distributed maps for manifest and completion tracking.
+ * Updated for logical frames with deterministic time windows.
  */
 @Singleton
 class FrameCoordinatorState @Inject constructor(
@@ -20,11 +20,17 @@ class FrameCoordinatorState @Inject constructor(
 ) {
     private val log = LoggerFactory.getLogger(FrameCoordinatorState::class.java)
 
-    // Frame timing state
-    private val _currentFrameStart = AtomicLong(0L)
+    // Session timing state (NEW)
+    @Volatile
+    var sessionStartTimestamp: Long = 0L
+        private set
+
+    // Frame progress tracking (UPDATED)
+    private val _lastProcessedFrame = AtomicLong(-1L)
+    private val _lastPreparedManifest = AtomicLong(-1L)
     private val _isPaused = AtomicBoolean(false)
 
-    // Operations buffered by frame start time
+    // Operations buffered by logical frame number (CHANGED FROM frame start time)
     private val operationsByFrame = ConcurrentHashMap<Long, MutableList<JsonObject>>()
 
     // Current frame completion tracking
@@ -32,57 +38,91 @@ class FrameCoordinatorState @Inject constructor(
     private val _frameInProgress = AtomicLong(-1L)
 
     // Public properties
-    var currentFrameStart: Long
-        get() = _currentFrameStart.get()
-        set(value) = _currentFrameStart.set(value)
+    var lastProcessedFrame: Long
+        get() = _lastProcessedFrame.get()
+        private set(value) = _lastProcessedFrame.set(value)
+
+    var lastPreparedManifest: Long
+        get() = _lastPreparedManifest.get()
+        set(value) = _lastPreparedManifest.set(value)
 
     var isPaused: Boolean
         get() = _isPaused.get()
         set(value) = _isPaused.set(value)
 
+    val frameInProgress: Long
+        get() = _frameInProgress.get()
+
+    // DEPRECATED - kept for compatibility during migration
+    @Deprecated("Use lastProcessedFrame instead")
+    var currentFrameStart: Long = 0L
+
     /**
-     * Buffer an operation for a specific frame
+     * Start a new session with a specific timestamp.
+     * Called on startup or resume.
      */
-    fun bufferOperation(operation: JsonObject, frameStartTime: Long) {
-        operationsByFrame.computeIfAbsent(frameStartTime) {
+    fun startNewSession(startTimestamp: Long = System.currentTimeMillis()) {
+        sessionStartTimestamp = startTimestamp
+        _lastProcessedFrame.set(-1L)
+        _lastPreparedManifest.set(-1L)
+        _frameInProgress.set(-1L)
+        operationsByFrame.clear()
+        currentFrameCompletions.clear()
+
+        log.info("Started new session at timestamp {}", startTimestamp)
+    }
+
+    /**
+     * Buffer an operation for a specific logical frame
+     */
+    fun bufferOperation(operation: JsonObject, logicalFrame: Long) {
+        operationsByFrame.computeIfAbsent(logicalFrame) {
             mutableListOf()
         }.add(operation)
     }
 
     /**
-     * Get and remove all operations for a frame
+     * Get and remove all operations for a logical frame
      */
-    fun extractFrameOperations(frameStartTime: Long): List<JsonObject> {
-        return operationsByFrame.remove(frameStartTime) ?: emptyList()
+    fun extractFrameOperations(logicalFrame: Long): List<JsonObject> {
+        return operationsByFrame.remove(logicalFrame) ?: emptyList()
     }
 
     /**
-     * Mark a frame as in progress
+     * Mark a logical frame as in progress
      */
-    fun setFrameInProgress(frameStartTime: Long) {
-        _frameInProgress.set(frameStartTime)
+    fun setFrameInProgress(logicalFrame: Long) {
+        _frameInProgress.set(logicalFrame)
         currentFrameCompletions.clear()
     }
 
     /**
      * Record that a worker has completed the current frame
      */
-    fun recordWorkerCompletion(workerId: String, frameStartTime: Long) {
+    fun recordWorkerCompletion(workerId: String, logicalFrame: Long) {
         // Only record if it's for the current frame
-        if (frameStartTime == _frameInProgress.get()) {
+        if (logicalFrame == _frameInProgress.get()) {
             currentFrameCompletions[workerId] = System.currentTimeMillis()
-            log.debug("Worker {} completed frame {}", workerId, frameStartTime)
+            log.debug("Worker {} completed logical frame {}", workerId, logicalFrame)
         } else {
             log.warn("Ignoring completion from worker {} for old frame {} (current: {})",
-                workerId, frameStartTime, _frameInProgress.get())
+                workerId, logicalFrame, _frameInProgress.get())
         }
+    }
+
+    /**
+     * Mark a frame as completely processed
+     */
+    fun markFrameProcessed(logicalFrame: Long) {
+        _lastProcessedFrame.set(logicalFrame)
+        log.debug("Marked logical frame {} as processed", logicalFrame)
     }
 
     /**
      * Get all workers that have completed the current frame
      */
-    fun getCompletedWorkers(frameStartTime: Long): Set<String> {
-        return if (frameStartTime == _frameInProgress.get()) {
+    fun getCompletedWorkers(logicalFrame: Long): Set<String> {
+        return if (logicalFrame == _frameInProgress.get()) {
             currentFrameCompletions.keys.toSet()
         } else {
             emptySet()
@@ -92,8 +132,8 @@ class FrameCoordinatorState @Inject constructor(
     /**
      * Check if all expected workers have completed the current frame
      */
-    fun isFrameComplete(frameStartTime: Long): Boolean {
-        if (frameStartTime != _frameInProgress.get()) {
+    fun isFrameComplete(logicalFrame: Long): Boolean {
+        if (logicalFrame != _frameInProgress.get()) {
             return false
         }
 
@@ -104,27 +144,30 @@ class FrameCoordinatorState @Inject constructor(
     }
 
     /**
-     * Get the frame start time for a given timestamp
+     * Get the logical frame for a given timestamp
+     * NO LONGER INCLUDES frameOffset!
      */
-    fun getFrameStartTime(timestamp: Long): Long {
-        val frameLength = frameConfig.frameDurationMs + frameConfig.frameOffsetMs
-        return (timestamp / frameLength) * frameLength
+    fun getLogicalFrame(timestamp: Long): Long {
+        if (sessionStartTimestamp == 0L) {
+            throw IllegalStateException("Session not started")
+        }
+
+        val relativeTimestamp = timestamp - sessionStartTimestamp
+        return if (relativeTimestamp < 0) {
+            -1L // Before session start
+        } else {
+            relativeTimestamp / frameConfig.frameDurationMs
+        }
     }
 
     /**
-     * Calculate the next frame start time aligned to frame boundaries
+     * Get the wall clock time when a logical frame should start
      */
-    fun calculateNextFrameStart(): Long {
-        val now = System.currentTimeMillis()
-        val frameLength = frameConfig.frameDurationMs + frameConfig.frameOffsetMs
-        return ((now / frameLength) + 1) * frameLength
-    }
-
-    /**
-     * Check if frame loop should be started based on current state
-     */
-    fun shouldStartFrameLoop(): Boolean {
-        return !isPaused // && workerRegistry.hasMinimumWorkers()
+    fun getFrameStartTime(logicalFrame: Long): Long {
+        if (sessionStartTimestamp == 0L) {
+            throw IllegalStateException("Session not started")
+        }
+        return sessionStartTimestamp + (logicalFrame * frameConfig.frameDurationMs)
     }
 
     /**
@@ -161,6 +204,9 @@ class FrameCoordinatorState @Inject constructor(
     fun getCurrentFrameStatus(): JsonObject {
         return JsonObject()
             .put("frameInProgress", _frameInProgress.get())
+            .put("lastProcessedFrame", _lastProcessedFrame.get())
+            .put("lastPreparedManifest", _lastPreparedManifest.get())
+            .put("sessionStartTimestamp", sessionStartTimestamp)
             .put("completedWorkers", currentFrameCompletions.size)
             .put("totalWorkers", workerRegistry.getActiveWorkers().size)
             .put("isPaused", isPaused)
@@ -170,7 +216,9 @@ class FrameCoordinatorState @Inject constructor(
      * Reset all state (useful for testing or restart scenarios)
      */
     fun reset() {
-        _currentFrameStart.set(0L)
+        sessionStartTimestamp = 0L
+        _lastProcessedFrame.set(-1L)
+        _lastPreparedManifest.set(-1L)
         _frameInProgress.set(-1L)
         _isPaused.set(false)
         operationsByFrame.clear()

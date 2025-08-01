@@ -3,25 +3,28 @@ package com.minare.worker.coordinator
 import com.hazelcast.core.HazelcastInstance
 import com.hazelcast.map.IMap
 import com.minare.operation.Operation
+import com.minare.time.FrameConfiguration
 import com.minare.utils.VerticleLogger
-import com.minare.worker.coordinator.FrameCoordinatorVerticle
-import com.minare.worker.coordinator.OperationCompletion
 import io.vertx.core.json.JsonArray
 import io.vertx.core.json.JsonObject
 import io.vertx.kotlin.coroutines.CoroutineVerticle
 import io.vertx.kotlin.coroutines.await
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.slf4j.LoggerFactory
 import javax.inject.Inject
 
 /**
  * Worker-side frame processing verticle.
- * Handles frame announcements, fetches manifests, processes operations,
- * and reports completions.
+ * Updated for logical frames:
+ * - Processes frames based on logical numbering
+ * - Maintains consistent frame pacing using delays
+ * - No dependency on wall clock for frame boundaries
  */
 class FrameWorkerVerticle @Inject constructor(
     private val vlog: VerticleLogger,
-    private val hazelcastInstance: HazelcastInstance
+    private val hazelcastInstance: HazelcastInstance,
+    private val frameConfig: FrameConfiguration
 ) : CoroutineVerticle() {
 
     private val log = LoggerFactory.getLogger(FrameWorkerVerticle::class.java)
@@ -30,8 +33,10 @@ class FrameWorkerVerticle @Inject constructor(
     private lateinit var manifestMap: IMap<String, JsonObject>
     private lateinit var completionMap: IMap<String, OperationCompletion>
 
-    // Track current frame to avoid processing old announcements
-    private var currentFrameStart: Long = -1L
+    // Session state
+    private var sessionStartTimestamp: Long = 0L
+    private var currentLogicalFrame: Long = -1L
+    private var processingActive = false
 
     companion object {
         const val ADDRESS_FRAME_MANIFEST = "worker.{workerId}.frame.manifest"
@@ -49,77 +54,140 @@ class FrameWorkerVerticle @Inject constructor(
         manifestMap = hazelcastInstance.getMap("frame-manifests")
         completionMap = hazelcastInstance.getMap("operation-completions")
 
-        // Listen for frame start announcements
-        vertx.eventBus().consumer<JsonObject>(FrameCoordinatorVerticle.ADDRESS_FRAME_START) { msg ->
+        // Listen for session start announcements
+        vertx.eventBus().consumer<JsonObject>(FrameCoordinatorVerticle.ADDRESS_SESSION_START) { msg ->
             launch {
-                handleFrameStart(msg.body())
+                handleSessionStart(msg.body())
             }
+        }
+
+        // Listen for pause events
+        vertx.eventBus().consumer<JsonObject>(FrameCoordinatorVerticle.ADDRESS_FRAME_PAUSE) { msg ->
+            log.info("Received pause event: {}", msg.body().getString("reason"))
+            processingActive = false
         }
 
         log.info("FrameWorkerVerticle started for worker {}", workerId)
     }
 
-    private suspend fun handleFrameStart(frameInfo: JsonObject) {
-        val frameStartTime = frameInfo.getLong("frameStartTime")
-        val frameEndTime = frameInfo.getLong("frameEndTime")
+    /**
+     * Handle new session announcement and start frame processing.
+     */
+    private suspend fun handleSessionStart(announcement: JsonObject) {
+        sessionStartTimestamp = announcement.getLong("sessionStartTimestamp")
+        val startsIn = announcement.getLong("firstFrameStartsIn")
+        val frameDuration = announcement.getLong("frameDuration")
 
-        // Ignore if we're already processing a newer frame
-        if (frameStartTime <= currentFrameStart) {
-            log.debug("Ignoring old frame announcement: {} (current: {})",
-                frameStartTime, currentFrameStart)
+        log.info("New session announced - starts at {} (in {}ms), frame duration {}ms",
+            sessionStartTimestamp, startsIn, frameDuration)
+
+        // Reset state for new session
+        currentLogicalFrame = -1L
+        processingActive = true
+
+        // Wait for session start
+        delay(startsIn)
+
+        // Start frame processing loop
+        launchFrameProcessingLoop()
+    }
+
+    /**
+     * Launch the frame processing loop with consistent pacing.
+     */
+    private fun launchFrameProcessingLoop() = launch {
+        log.info("Starting frame processing loop for session {}", sessionStartTimestamp)
+
+        var nextFrameTime = sessionStartTimestamp
+        var logicalFrame = 0L
+
+        while (processingActive) {
+            try {
+                // Process the current logical frame
+                processLogicalFrame(logicalFrame)
+
+                // Calculate next frame time
+                nextFrameTime += frameConfig.frameDurationMs
+                val now = System.currentTimeMillis()
+                val delayMs = nextFrameTime - now
+
+                if (delayMs > 0) {
+                    // On schedule - wait for next frame
+                    delay(delayMs)
+                } else if (delayMs < -frameConfig.frameDurationMs) {
+                    // More than one frame behind - we're in trouble
+                    log.error("Worker {} is {} frames behind schedule",
+                        workerId, (-delayMs / frameConfig.frameDurationMs))
+                    // Continue anyway - coordinator will handle if we're too slow
+                }
+
+                logicalFrame++
+
+            } catch (e: Exception) {
+                log.error("Error processing logical frame {}", logicalFrame, e)
+                // Continue with next frame
+                delay(100)  // Brief pause before retry
+            }
+        }
+
+        log.info("Frame processing loop stopped")
+    }
+
+    /**
+     * Process a single logical frame.
+     */
+    private suspend fun processLogicalFrame(logicalFrame: Long) {
+        currentLogicalFrame = logicalFrame
+
+        log.debug("Processing logical frame {}", logicalFrame)
+
+        // Fetch manifest from distributed map
+        val manifestKey = "manifest:$logicalFrame:$workerId"
+        val manifest = manifestMap[manifestKey]
+
+        if (manifest == null) {
+            log.trace("No manifest found for worker {} in logical frame {}",
+                workerId, logicalFrame)
+            // Still report completion with 0 operations
+            reportFrameCompletion(logicalFrame, 0)
             return
         }
 
-        currentFrameStart = frameStartTime
-        log.info("Starting frame {} processing", frameStartTime)
+        // Process the operations
+        val operations = manifest.getJsonArray("operations", JsonArray())
+        val operationCount = operations.size()
 
-        try {
-            // Fetch our manifest from the distributed map
-            val manifestKey = "manifest:$frameStartTime:$workerId"
-            val manifest = manifestMap[manifestKey]
+        if (operationCount > 0) {
+            log.debug("Processing {} operations for logical frame {}",
+                operationCount, logicalFrame)
+        }
 
-            if (manifest == null) {
-                log.warn("No manifest found for worker {} in frame {}",
-                    workerId, frameStartTime)
-                // Still report completion with 0 operations
-                reportFrameCompletion(frameStartTime, 0)
-                return
-            }
-
-            // Process the operations
-            val operations = manifest.getJsonArray("operations", JsonArray())
-            val operationCount = operations.size()
-
-            log.debug("Processing {} operations for frame {}",
-                operationCount, frameStartTime)
-
-            // Process each operation
-            var completedCount = 0
-            operations.forEach { op ->
-                if (op is JsonObject) {
-                    val success = processOperation(op, frameStartTime)
-                    if (success) {
-                        completedCount++
-                    }
+        // Process each operation
+        var completedCount = 0
+        operations.forEach { op ->
+            if (op is JsonObject) {
+                val success = processOperation(op, logicalFrame)
+                if (success) {
+                    completedCount++
                 }
             }
-
-            log.info("Completed {}/{} operations for frame {}",
-                completedCount, operationCount, frameStartTime)
-
-            // Report frame completion
-            reportFrameCompletion(frameStartTime, completedCount)
-
-        } catch (e: Exception) {
-            log.error("Error processing frame {}", frameStartTime, e)
-            // Still try to report what we completed
-            reportFrameCompletion(frameStartTime, 0)
         }
+
+        if (operationCount > 0) {
+            log.info("Completed {}/{} operations for logical frame {}",
+                completedCount, operationCount, logicalFrame)
+        }
+
+        // Report frame completion
+        reportFrameCompletion(logicalFrame, completedCount)
     }
 
+    /**
+     * Process a single operation.
+     */
     private suspend fun processOperation(
         operation: JsonObject,
-        frameStartTime: Long
+        logicalFrame: Long
     ): Boolean {
         val operationId = operation.getString("id")
         if (operationId == null) {
@@ -132,7 +200,6 @@ class FrameWorkerVerticle @Inject constructor(
             val op = Operation.fromJson(operation)
 
             // Send to the appropriate processor based on entity type
-            // This would route to MessageQueueConsumerVerticle or similar
             val processorAddress = "worker.process.${op.getAction()}"
 
             val result = vertx.eventBus()
@@ -141,7 +208,7 @@ class FrameWorkerVerticle @Inject constructor(
 
             if (result.body().getBoolean("success", false)) {
                 // Mark operation as complete in distributed map
-                val completionKey = "frame-$frameStartTime:op-$operationId"
+                val completionKey = "frame-$logicalFrame:op-$operationId"
                 completionMap[completionKey] = OperationCompletion(
                     operationId = operationId,
                     workerId = workerId
@@ -162,15 +229,19 @@ class FrameWorkerVerticle @Inject constructor(
         }
     }
 
+    /**
+     * Report frame completion to coordinator.
+     */
     private suspend fun reportFrameCompletion(
-        frameStartTime: Long,
+        logicalFrame: Long,
         operationCount: Int
     ) {
         try {
             val completion = JsonObject()
                 .put("workerId", workerId)
-                .put("frameStartTime", frameStartTime)
+                .put("logicalFrame", logicalFrame)  // Changed from frameStartTime
                 .put("operationCount", operationCount)
+                .put("completedAt", System.currentTimeMillis())
 
             // Send completion to coordinator
             vertx.eventBus().send(
@@ -178,8 +249,8 @@ class FrameWorkerVerticle @Inject constructor(
                 completion
             )
 
-            log.debug("Reported frame {} completion with {} operations",
-                frameStartTime, operationCount)
+            log.debug("Reported logical frame {} completion with {} operations",
+                logicalFrame, operationCount)
 
         } catch (e: Exception) {
             log.error("Failed to report frame completion", e)
@@ -188,6 +259,7 @@ class FrameWorkerVerticle @Inject constructor(
 
     override suspend fun stop() {
         log.info("Stopping FrameWorkerVerticle")
+        processingActive = false
         super.stop()
     }
 }

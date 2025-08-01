@@ -16,12 +16,15 @@ import javax.inject.Singleton
  * Handles Kafka consumption for the frame coordinator.
  * Responsible for setting up the Kafka consumer and buffering operations
  * into the appropriate logical frames.
+ *
+ * Updated to support logical frames and late operation handling.
  */
 @Singleton
 class MessageQueueOperationConsumer @Inject constructor(
     private val vertx: Vertx,
     private val frameConfig: FrameConfiguration,
-    private val coordinatorState: FrameCoordinatorState
+    private val coordinatorState: FrameCoordinatorState,
+    private val lateOperationHandler: LateOperationHandler
 ) {
     private val log = LoggerFactory.getLogger(MessageQueueOperationConsumer::class.java)
 
@@ -38,7 +41,7 @@ class MessageQueueOperationConsumer @Inject constructor(
      */
     suspend fun start(scope: CoroutineScope) {
         consumerScope = scope
-        setupmessageQueueConsumer()
+        setupMessageQueueConsumer()
     }
 
     /**
@@ -54,7 +57,7 @@ class MessageQueueOperationConsumer @Inject constructor(
     /**
      * Set up the Kafka consumer with appropriate configuration.
      */
-    private suspend fun setupmessageQueueConsumer() {
+    private suspend fun setupMessageQueueConsumer() {
         val config = createKafkaConfig()
 
         messageQueueConsumer = KafkaConsumer.create<String, String>(vertx, config)
@@ -110,27 +113,69 @@ class MessageQueueOperationConsumer @Inject constructor(
 
     /**
      * Buffer a single operation into the appropriate frame.
-     * This is where we'll implement the logical frame assignment.
+     * Now implements logical frame assignment with late operation detection.
      */
     private fun bufferOperation(operation: JsonObject) {
         val timestamp = operation.getLong("timestamp") ?: System.currentTimeMillis()
 
-        // Calculate the logical frame for this operation
-        val calculatedFrame = coordinatorState.getFrameStartTime(timestamp)
-
-        // FIXME: This is the bug! We need to check if the frame has already been processed
-        // For now, keeping the existing logic to maintain compatibility
-        val frameStart = if (calculatedFrame < coordinatorState.currentFrameStart) {
-            coordinatorState.currentFrameStart
-        } else {
-            calculatedFrame
+        // If we don't have a session start yet, we're not ready to process
+        val sessionStart = coordinatorState.sessionStartTimestamp
+        if (sessionStart == 0L) {
+            log.warn("No session start timestamp set, dropping operation {}",
+                operation.getString("id"))
+            return
         }
 
-        coordinatorState.bufferOperation(operation, frameStart)
+        // Calculate logical frame based on session start
+        val relativeTimestamp = timestamp - sessionStart
+        val logicalFrame = if (relativeTimestamp < 0) {
+            -1L // Before session start
+        } else {
+            relativeTimestamp / frameConfig.frameDurationMs
+        }
+
+        val lastProcessedFrame = coordinatorState.lastProcessedFrame
+        val frameInProgress = coordinatorState.frameInProgress
+
+        if (logicalFrame < 0 || logicalFrame <= lastProcessedFrame) {
+            // Late operation - use configured handler
+            if (log.isDebugEnabled) {
+                log.debug("Late operation detected - op timestamp: {}, logical frame: {}, last processed: {}",
+                    timestamp, logicalFrame, lastProcessedFrame)
+            }
+
+            val decision = lateOperationHandler.handleLateOperation(
+                operation,
+                logicalFrame,
+                frameInProgress
+            )
+
+            when (decision) {
+                is LateOperationDecision.Drop -> {
+                    // Already logged by handler
+                }
+                is LateOperationDecision.Delay -> {
+                    // Add to the target frame
+                    coordinatorState.bufferOperation(operation, decision.targetFrame)
+                    log.debug("Delayed operation {} to frame {}",
+                        operation.getString("id"), decision.targetFrame)
+                }
+                is LateOperationDecision.Replay -> {
+                    // Trigger replay - would need to emit an event
+                    log.error("Replay requested from frame {} - not yet implemented",
+                        decision.fromFrame)
+                    // TODO: Emit replay event
+                }
+            }
+            return
+        }
+
+        // Future frame - buffer normally
+        coordinatorState.bufferOperation(operation, logicalFrame)
 
         if (log.isTraceEnabled) {
-            log.trace("Buffered operation {} for frame {}",
-                operation.getString("id"), frameStart)
+            log.trace("Buffered operation {} for logical frame {}",
+                operation.getString("id"), logicalFrame)
         }
     }
 
@@ -142,5 +187,7 @@ class MessageQueueOperationConsumer @Inject constructor(
             .put("connected", messageQueueConsumer != null)
             .put("topic", OPERATIONS_TOPIC)
             .put("paused", coordinatorState.isPaused)
+            .put("sessionStart", coordinatorState.sessionStartTimestamp)
+            .put("lastProcessedFrame", coordinatorState.lastProcessedFrame)
     }
 }

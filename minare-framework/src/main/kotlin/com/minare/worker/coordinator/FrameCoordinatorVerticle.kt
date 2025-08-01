@@ -1,36 +1,26 @@
 package com.minare.worker.coordinator
 
 import com.hazelcast.core.HazelcastInstance
-import com.hazelcast.map.IMap
-import com.minare.worker.coordinator.FrameCoordinatorState
 import com.minare.time.FrameConfiguration
 import com.minare.time.TimeService
 import com.minare.utils.VerticleLogger
-import com.minare.worker.coordinator.events.InfraAddWorkerEvent
-import com.minare.worker.coordinator.events.InfraRemoveWorkerEvent
-import io.vertx.core.json.JsonArray
+import com.minare.worker.coordinator.events.*
 import io.vertx.core.json.JsonObject
-import io.vertx.kafka.client.consumer.KafkaConsumer
 import io.vertx.kotlin.coroutines.CoroutineVerticle
 import io.vertx.kotlin.coroutines.await
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.slf4j.LoggerFactory
 import javax.inject.Inject
-import com.minare.worker.coordinator.events.WorkerFrameCompleteEvent
-import com.minare.worker.coordinator.events.WorkerHeartbeatEvent
-import com.minare.worker.coordinator.events.WorkerRegisterEvent
-import kotlin.math.abs
 
 /**
  * Frame Coordinator - The central orchestrator for frame-based processing.
  *
- * Responsibilities:
- * - Consume operations from Kafka
- * - Group operations into frames based on timing
- * - Write frame manifests to distributed map
- * - Track frame completion across all workers
- * - Handle worker failures and frame recovery
+ * Updated for logical frames:
+ * - Continuous processing instead of scheduled execution
+ * - Logical frame numbering from session start
+ * - Manifest pre-computation for future frames
+ * - Deterministic operation ordering
  */
 class FrameCoordinatorVerticle @Inject constructor(
     private val frameConfig: FrameConfiguration,
@@ -55,10 +45,12 @@ class FrameCoordinatorVerticle @Inject constructor(
         const val ADDRESS_FRAME_START = "minare.coordinator.frame.start"
         const val ADDRESS_FRAME_PAUSE = "minare.coordinator.frame.pause"
         const val ADDRESS_FRAME_RESUME = "minare.coordinator.frame.resume"
+        const val ADDRESS_SESSION_START = "minare.coordinator.session.start"
         const val ADDRESS_FRAME_ALL_COMPLETE = "minare.coordinator.internal.frame-all-complete"
 
         // Configuration
         const val FRAME_STARTUP_GRACE_PERIOD = 5000L
+        const val MAX_FUTURE_MANIFESTS = 10  // How many frames ahead to prepare
     }
 
     override suspend fun start() {
@@ -68,11 +60,11 @@ class FrameCoordinatorVerticle @Inject constructor(
         setupEventBusConsumers()
         setupOperationConsumer()
 
-        // Always start frame processing after grace period
+        // Start a new session after grace period
         vertx.setTimer(FRAME_STARTUP_GRACE_PERIOD) {
             launch {
-                log.info("Starting frame processing loop")
-                startFirstFrame()
+                log.info("Starting new frame processing session")
+                startNewSession()
             }
         }
     }
@@ -91,241 +83,214 @@ class FrameCoordinatorVerticle @Inject constructor(
         // Internal event for when all workers complete a frame
         vertx.eventBus().consumer<JsonObject>(ADDRESS_FRAME_ALL_COMPLETE) { msg ->
             launch {
-                val frameStartTime = msg.body().getLong("frameStartTime")
-                onFrameComplete(frameStartTime)
+                val logicalFrame = msg.body().getLong("logicalFrame")
+                onFrameComplete(logicalFrame)
+            }
+        }
+
+        // Resume command
+        vertx.eventBus().consumer<JsonObject>(ADDRESS_FRAME_RESUME) { msg ->
+            launch {
+                val reason = msg.body().getString("reason", "Manual resume")
+                log.info("Received resume command: {}", reason)
+                startNewSession()
             }
         }
     }
 
     private suspend fun setupOperationConsumer() {
-        val config = mutableMapOf<String, String>()
-
-        // Kafka configuration
-        val bootstrapServers = System.getenv("KAFKA_BOOTSTRAP_SERVERS") ?: "localhost:9092"
-        config["bootstrap.servers"] = bootstrapServers
-        config["group.id"] = "minare-coordinator"
-        config["key.deserializer"] = "org.apache.kafka.common.serialization.StringDeserializer"
-        config["value.deserializer"] = "org.apache.kafka.common.serialization.StringDeserializer"
-        config["enable.auto.commit"] = "true"
-        config["auto.commit.interval.ms"] = "1000"
-        config["auto.offset.reset"] = "latest"
-
         messageQueueOperationConsumer.start(this)
     }
 
-    private suspend fun startFirstFrame() {
-        log.info("Starting frame loop with duration {}ms", frameConfig.frameDurationMs)
+    /**
+     * Start a new logical frame session.
+     * Called on startup or after resume.
+     */
+    private suspend fun startNewSession() {
+        // Calculate session start time with frame offset for announcement
+        val announcementTime = System.currentTimeMillis()
+        val sessionStartTime = announcementTime + frameConfig.frameOffsetMs
 
-        // Calculate first frame start aligned to clock
-        coordinatorState.currentFrameStart = coordinatorState.calculateNextFrameStart()
+        frameManifestBuilder.clearAllManifests()
+        frameCompletionTracker.clearAllCompletions()
 
-        // Execute first frame
-        executeFrame()
-    }
+        // Initialize coordinator state for new session
+        coordinatorState.startNewSession(sessionStartTime)
 
-    private suspend fun executeFrame() {
-        if (coordinatorState.isPaused) {
-            log.info("Frame processing is paused, not executing frame")
-            return
-        }
-
-        val frameStartTime = coordinatorState.currentFrameStart
-        val frameEndTime = frameStartTime + frameConfig.frameDurationMs
-
-        log.debug("Executing frame starting at {}", frameStartTime)
-
-        // Update state to indicate frame is in progress
-        coordinatorState.setFrameInProgress(frameStartTime)
-
-        try {
-            // 1. Check worker health
-            val healthCheckResult = requestHealthCheck(frameStartTime).await()
-
-            if (!healthCheckResult.getBoolean("healthy")) {
-                log.warn("Health check failed for frame {}: {}", frameStartTime, healthCheckResult.encode())
-                pauseFrameProcessing("Health check failed: ${healthCheckResult.encode()}")
-                return
-            }
-
-            val activeWorkers = workerRegistry.getActiveWorkers()
-
-            // Log worker status but continue regardless
-            if (activeWorkers.isEmpty()) {
-                log.info("No active workers available for frame {}", frameStartTime)
-            } else {
-                log.info("Frame {} has {} active workers", frameStartTime, activeWorkers.size)
-            }
-
-            // 2. Get operations for this frame window (might be empty)
-            val frameOperations = coordinatorState.extractFrameOperations(frameStartTime)
-
-            // 3. Distribute operations (might result in empty manifests)
-            val assignments = frameManifestBuilder.distributeOperations(frameOperations, activeWorkers)
-
-            if (frameOperations.isEmpty() && activeWorkers.isEmpty()) {
-                log.info("Empty frame {} with no workers, completing immediately", frameStartTime)
-                onFrameComplete(frameStartTime)
-                return
-            }
-
-            // 4. Always write manifests (empty or not)
-            frameManifestBuilder.writeManifestsToMap(frameStartTime, frameEndTime, assignments, activeWorkers)
-
-            // 5. Broadcast frame timing to all workers
-            broadcastFrameStart(frameStartTime, frameEndTime)
-
-            // 6. Start deadline monitor
-            startFrameDeadlineMonitor(frameStartTime, frameEndTime)
-
-        } catch (e: Exception) {
-            log.error("Error executing frame {}", frameStartTime, e)
-            pauseFrameProcessing("Frame execution error: ${e.message}")
-        }
-    }
-
-    private fun broadcastFrameStart(frameStartTime: Long, frameEndTime: Long) {
-        val frameStart = JsonObject()
-            .put("frameStartTime", frameStartTime)
-            .put("frameEndTime", frameEndTime)
+        // Announce session start with countdown
+        val announcement = JsonObject()
+            .put("sessionStartTimestamp", sessionStartTime)
+            .put("announcementTimestamp", announcementTime)
+            .put("firstFrameStartsIn", frameConfig.frameOffsetMs)
             .put("frameDuration", frameConfig.frameDurationMs)
 
-        vertx.eventBus().publish(ADDRESS_FRAME_START, frameStart)
-        log.info("Broadcast frame start for frame {}", frameStartTime)
-    }
+        vertx.eventBus().publish(ADDRESS_SESSION_START, announcement)
+        log.info("Announced new session starting at {} (in {}ms)",
+            sessionStartTime, frameConfig.frameOffsetMs)
 
-    private fun startFrameDeadlineMonitor(frameStartTime: Long, frameEndTime: Long) {
-        // Monitor at 80% of frame duration
-        val checkDelay = (frameConfig.frameDurationMs * 0.8).toLong()
+        // Wait for the announced start time
+        delay(frameConfig.frameOffsetMs)
 
-        vertx.setTimer(checkDelay) {
-            launch {
-                checkFrameProgress(frameStartTime)
-            }
-        }
-    }
-
-    private suspend fun checkFrameProgress(frameStartTime: Long) {
-        val missing = frameCompletionTracker.getMissingWorkers(frameStartTime)
-
-        if (missing.isNotEmpty()) {
-            log.warn("Frame {} progress check: {} workers incomplete at 80% mark",
-                frameStartTime, missing.size)
-        }
-    }
-
-    private suspend fun onFrameComplete(frameStartTime: Long) {
-        log.info("Frame {} completed successfully", frameStartTime)
-
-        // Clear distributed maps for this frame
-        clearFrameMaps(frameStartTime)
-
-        // Calculate next frame time
-        val nextFrameStart = frameStartTime +
-                frameConfig.frameDurationMs + frameConfig.frameOffsetMs
-        coordinatorState.currentFrameStart = nextFrameStart
-
-        // Wait until it's time for the next frame
-        val now = System.currentTimeMillis()
-        val waitTime = nextFrameStart - now
-
-        if (waitTime > 0) {
-            log.debug("Waiting {}ms until next frame", waitTime)
-            delay(waitTime)
-        } else if (waitTime < -frameConfig.frameOffsetMs) {
-            log.warn("Frame timing drift detected: {}ms behind schedule", -waitTime)
-        }
-
-        // Now execute next frame
-        executeFrame()
-    }
-
-    private fun clearFrameMaps(frameStartTime: Long) {
-        frameManifestBuilder.clearFrameManifests(frameStartTime)
-        frameCompletionTracker.clearFrameCompletions(frameStartTime)
-    }
-
-    private suspend fun pauseFrameProcessing(reason: String) {
-        log.warn("Pausing frame processing: {}", reason)
-        coordinatorState.isPaused = true
-
-        vertx.eventBus().publish(ADDRESS_FRAME_PAUSE, JsonObject()
-            .put("reason", reason)
-            .put("timestamp", System.currentTimeMillis())
-        )
-    }
-
-    private suspend fun attemptFrameRecovery(frameStartTime: Long, missingWorkers: Set<String>) {
-        val recoveryResult = frameRecoveryManager.attemptFrameRecovery(frameStartTime, missingWorkers)
-
-        if (!recoveryResult.success && recoveryResult.remainingMissing.isNotEmpty()) {
-            // Check for incomplete operations from failed workers
-            val incompleteOps = getIncompleteOperations(frameStartTime, recoveryResult.remainingMissing.toList())
-
-            if (incompleteOps.isNotEmpty()) {
-                log.warn("Found {} incomplete operations from failed workers", incompleteOps.size)
-                // Could redistribute to healthy workers in future
-            }
-        }
-
-        // Proceed based on recommendation
-        when (recoveryResult.recommendation) {
-            RecoveryRecommendation.CONTINUE -> {
-                onFrameComplete(frameStartTime)
-            }
-            RecoveryRecommendation.CONTINUE_DEGRADED -> {
-                log.warn("Continuing with degraded capacity")
-                onFrameComplete(frameStartTime)
-            }
-            RecoveryRecommendation.PAUSE_AND_WAIT -> {
-                frameRecoveryManager.pauseFrameProcessing(
-                    "Too many worker failures: ${recoveryResult.remainingMissing.size} workers still missing"
-                )
-            }
-            RecoveryRecommendation.RETRY_RECOVERY -> {
-                // Could implement retry logic here
-                onFrameComplete(frameStartTime)
-            }
-        }
-    }
-
-    private fun getIncompleteOperations(
-        frameStartTime: Long,
-        failedWorkers: List<String>
-    ): List<JsonObject> {
-        val incompleteOps = mutableListOf<JsonObject>()
-
-        failedWorkers.forEach { workerId ->
-            val manifest = frameManifestBuilder.getManifest(frameStartTime, workerId)
-
-            manifest?.getJsonArray("operations")?.forEach { op ->
-                if (op is JsonObject) {
-                    val operationId = op.getString("id")
-
-                    if (!frameCompletionTracker.isOperationCompleted(frameStartTime, operationId)) {
-                        incompleteOps.add(op)
-                    }
-                }
-            }
-        }
-
-        return incompleteOps
+        // Start the continuous frame processing loop
+        launchFrameProcessingLoop()
     }
 
     /**
-     * Request health check and wait for result.
+     * Launch the continuous frame processing loop.
+     * Prepares manifests ahead of time and tracks completions.
      */
-    private fun requestHealthCheck(frameStartTime: Long): io.vertx.core.Future<JsonObject> {
+    private fun launchFrameProcessingLoop() = launch {
+        log.info("Starting continuous frame processing loop")
+
+        while (!coordinatorState.isPaused) {
+            try {
+                // Prepare manifests for future frames
+                prepareUpcomingManifests()
+
+                // Check if we need to advance lastProcessedFrame
+                checkFrameCompletions()
+
+                // Brief pause to avoid spinning
+                delay(50)  // Check every 50ms
+
+            } catch (e: Exception) {
+                log.error("Error in frame processing loop", e)
+                coordinatorState.isPaused = true
+                frameRecoveryManager.pauseFrameProcessing("Processing loop error: ${e.message}")
+            }
+        }
+
+        log.info("Frame processing loop stopped (paused: {})", coordinatorState.isPaused)
+    }
+
+    /**
+     * Prepare manifests for upcoming logical frames.
+     * Stays ahead of processing by preparing multiple future frames.
+     */
+    private suspend fun prepareUpcomingManifests() {
+        val currentTime = System.currentTimeMillis()
+        val sessionStart = coordinatorState.sessionStartTimestamp
+
+        // Calculate which logical frame we should be preparing
+        val elapsedTime = currentTime - sessionStart
+        val currentLogicalFrame = if (elapsedTime >= 0) {
+            elapsedTime / frameConfig.frameDurationMs
+        } else {
+            return // Not time yet
+        }
+
+        val lastPrepared = coordinatorState.lastPreparedManifest
+        val targetFrame = minOf(
+            currentLogicalFrame + MAX_FUTURE_MANIFESTS,
+            lastPrepared + MAX_FUTURE_MANIFESTS
+        )
+
+        // Prepare manifests for frames we haven't prepared yet
+        for (frame in (lastPrepared + 1)..targetFrame) {
+            prepareManifestForFrame(frame)
+        }
+    }
+
+    /**
+     * Prepare and write manifest for a specific logical frame.
+     */
+    private suspend fun prepareManifestForFrame(logicalFrame: Long) {
+        log.debug("Preparing manifest for logical frame {}", logicalFrame)
+
+        // Get operations for this frame
+        val operations = coordinatorState.extractFrameOperations(logicalFrame)
+
+        // Get active workers
+        val activeWorkers = workerRegistry.getActiveWorkers()
+
+        if (activeWorkers.isEmpty() && operations.isNotEmpty()) {
+            log.warn("No active workers available for frame {} with {} operations",
+                logicalFrame, operations.size)
+        }
+
+        // Distribute operations among workers
+        val assignments = frameManifestBuilder.distributeOperations(operations, activeWorkers)
+
+        // Write manifests (even if empty)
+        frameManifestBuilder.writeManifestsToMap(
+            logicalFrame,  // Now using logical frame number
+            0L,  // frameEndTime deprecated
+            assignments,
+            activeWorkers
+        )
+
+        // Update last prepared manifest
+        coordinatorState.lastPreparedManifest = logicalFrame
+
+        // Broadcast that frame is ready
+        val frameReady = JsonObject()
+            .put("logicalFrame", logicalFrame)
+            .put("sessionStart", coordinatorState.sessionStartTimestamp)
+            .put("frameDuration", frameConfig.frameDurationMs)
+            .put("operationCount", operations.size)
+            .put("workerCount", activeWorkers.size)
+
+        vertx.eventBus().publish(ADDRESS_FRAME_START, frameReady)
+
+        log.info("Prepared frame {} with {} operations for {} workers",
+            logicalFrame, operations.size, activeWorkers.size)
+    }
+
+    /**
+     * Check frame completions and advance lastProcessedFrame.
+     */
+    private suspend fun checkFrameCompletions() {
+        val lastProcessed = coordinatorState.lastProcessedFrame
+        val nextFrame = lastProcessed + 1
+
+        // Check if the next frame is complete
+        if (coordinatorState.isFrameComplete(nextFrame)) {
+            onFrameComplete(nextFrame)
+        }
+
+        // Also check if we're falling behind
+        val currentTime = System.currentTimeMillis()
+        val expectedFrame = (currentTime - coordinatorState.sessionStartTimestamp) / frameConfig.frameDurationMs
+
+        if (expectedFrame - lastProcessed > 5) {
+            log.warn("Frame processing falling behind - expected frame {}, last processed {}",
+                expectedFrame, lastProcessed)
+            // Could trigger pause here if needed
+        }
+    }
+
+    /**
+     * Handle frame completion.
+     */
+    private suspend fun onFrameComplete(logicalFrame: Long) {
+        log.info("Logical frame {} completed successfully", logicalFrame)
+
+        // Mark frame as processed
+        coordinatorState.markFrameProcessed(logicalFrame)
+
+        // Clear distributed maps for this frame
+        frameManifestBuilder.clearAllManifests()
+        frameCompletionTracker.clearAllCompletions()
+
+        // Continue with next frame
+        log.debug("Ready to process frame {}", logicalFrame + 1)
+    }
+
+    /**
+     * Request health check from monitor.
+     * Updated to use logical frame numbers.
+     */
+    private fun requestHealthCheck(logicalFrame: Long): io.vertx.core.Future<JsonObject> {
         val promise = io.vertx.core.Promise.promise<JsonObject>()
 
-        // Calculate grace period from instance frameConfig
-        val healthCheckGracePeriod = (frameConfig.frameOffsetMs * frameConfig.coordinationWaitPeriod).toLong()
+        val healthCheckGracePeriod = (frameConfig.frameDurationMs * 0.2).toLong()
 
         // Set up one-time consumer for the response
         val consumer = vertx.eventBus().consumer<JsonObject>(
             FrameWorkerHealthMonitorVerticle.ADDRESS_HEALTH_CHECK_RESULT
         ) { message ->
             val result = message.body()
-            if (result.getLong("frameStartTime") == frameStartTime) {
+            if (result.getLong("logicalFrame") == logicalFrame) {
                 promise.complete(result)
             }
         }
@@ -333,7 +298,7 @@ class FrameCoordinatorVerticle @Inject constructor(
         // Request health check
         vertx.eventBus().send(
             FrameWorkerHealthMonitorVerticle.ADDRESS_HEALTH_CHECK_REQUEST,
-            JsonObject().put("frameStartTime", frameStartTime)
+            JsonObject().put("logicalFrame", logicalFrame)
         )
 
         // Timeout after grace period
@@ -349,6 +314,7 @@ class FrameCoordinatorVerticle @Inject constructor(
 
     override suspend fun stop() {
         log.info("Stopping FrameCoordinatorVerticle")
+        coordinatorState.isPaused = true
         messageQueueOperationConsumer.stop()
         super.stop()
     }
