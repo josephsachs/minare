@@ -1,7 +1,9 @@
 package com.minare.worker.coordinator
 
 import com.minare.time.FrameConfiguration
+import com.minare.utils.EventBusUtils
 import io.vertx.core.Vertx
+import io.vertx.core.eventbus.EventBus
 import io.vertx.core.json.JsonArray
 import io.vertx.core.json.JsonObject
 import io.vertx.kafka.client.consumer.KafkaConsumer
@@ -67,9 +69,7 @@ class MessageQueueOperationConsumer @Inject constructor(
 
         // Start consuming
         messageQueueConsumer!!.handler { record ->
-            if (!coordinatorState.isPaused) {
-                handleKafkaRecord(record)
-            }
+            handleKafkaRecord(record)
         }
 
         log.info("Kafka consumer started, subscribed to {}", OPERATIONS_TOPIC)
@@ -116,7 +116,8 @@ class MessageQueueOperationConsumer @Inject constructor(
      * Now implements logical frame assignment with late operation detection.
      */
     private fun bufferOperation(operation: JsonObject) {
-        val timestamp = operation.getLong("timestamp") ?: System.currentTimeMillis()
+        val timestamp = operation.getLong("timestamp")
+            ?: throw IllegalArgumentException("Operation missing timestamp")
 
         // If we don't have a session start yet, we're not ready to process
         val sessionStart = coordinatorState.sessionStartTimestamp
@@ -160,12 +161,12 @@ class MessageQueueOperationConsumer @Inject constructor(
                     log.debug("Delayed operation {} to frame {}",
                         operation.getString("id"), decision.targetFrame)
                 }
-                is LateOperationDecision.Replay -> {
-                    // Trigger replay - would need to emit an event
-                    log.error("Replay requested from frame {} - not yet implemented",
-                        decision.fromFrame)
-                    // TODO: Emit replay event
-                }
+                //is LateOperationDecision.Replay -> {
+                //    // Trigger replay - would need to emit an event
+                //    log.error("Replay requested from frame {} - not yet implemented",
+                //        decision.fromFrame)
+                //    // TODO: Emit replay event
+                //}
             }
             return
         }

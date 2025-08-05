@@ -47,7 +47,7 @@ class FrameManifestBuilder @Inject constructor(
         return operations.groupBy { op ->
             // Use operation ID for consistent hashing
             // This keeps the operation pipeline entity-agnostic
-            val operationId = op.getString("id") ?: ""
+            val operationId = op.getString("id")
 
             val hash = abs(operationId.hashCode())
             workerList[hash % workerList.size]
@@ -76,11 +76,8 @@ class FrameManifestBuilder @Inject constructor(
         activeWorkers.forEach { workerId ->
             val operations = assignments[workerId] ?: emptyList()
 
-            // CRITICAL: Sort operations by ID hash for deterministic ordering
-            // This prevents any producer from gaining timing advantages
             val sortedOperations = operations.sortedBy { op ->
-                val operationId = op.getString("id") ?: ""
-                operationId.hashCode()
+                op.getString("id")
             }
 
             val manifest = JsonObject()

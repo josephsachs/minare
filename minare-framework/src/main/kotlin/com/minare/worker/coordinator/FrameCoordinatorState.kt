@@ -3,7 +3,9 @@ package com.minare.worker.coordinator
 import com.minare.time.FrameConfiguration
 import io.vertx.core.json.JsonObject
 import org.slf4j.LoggerFactory
+import java.util.*
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 import javax.inject.Inject
@@ -30,8 +32,9 @@ class FrameCoordinatorState @Inject constructor(
     private val _lastPreparedManifest = AtomicLong(-1L)
     private val _isPaused = AtomicBoolean(false)
 
-    // Operations buffered by logical frame number (CHANGED FROM frame start time)
-    private val operationsByFrame = ConcurrentHashMap<Long, MutableList<JsonObject>>()
+    // Operations buffered by logical frame number
+    // Using concurrent structures in case Kafka consumer needs multi-thread
+    private val operationsByFrame = ConcurrentHashMap<Long, ConcurrentLinkedQueue<JsonObject>>()
 
     // Current frame completion tracking
     private val currentFrameCompletions = ConcurrentHashMap<String, Long>()
@@ -69,6 +72,8 @@ class FrameCoordinatorState @Inject constructor(
         operationsByFrame.clear()
         currentFrameCompletions.clear()
 
+        setFrameInProgress(0)  // Start tracking frame 0
+
         log.info("Started new session at timestamp {}", startTimestamp)
     }
 
@@ -77,15 +82,16 @@ class FrameCoordinatorState @Inject constructor(
      */
     fun bufferOperation(operation: JsonObject, logicalFrame: Long) {
         operationsByFrame.computeIfAbsent(logicalFrame) {
-            mutableListOf()
-        }.add(operation)
+            ConcurrentLinkedQueue()
+        }.offer(operation)
     }
 
     /**
      * Get and remove all operations for a logical frame
      */
     fun extractFrameOperations(logicalFrame: Long): List<JsonObject> {
-        return operationsByFrame.remove(logicalFrame) ?: emptyList()
+        val queue = operationsByFrame.remove(logicalFrame) ?: return emptyList()
+        return queue.toList()  // Creates a snapshot
     }
 
     /**

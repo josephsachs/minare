@@ -46,9 +46,7 @@ class FrameWorkerVerticle @Inject constructor(
         log.info("Starting FrameWorkerVerticle")
         vlog.setVerticle(this)
 
-        // Get worker ID from hostname or config
-        workerId = System.getenv("HOSTNAME") ?: config.getString("workerId") ?:
-                throw IllegalStateException("Worker ID not configured")
+        workerId = config.getString("workerId")
 
         // Initialize distributed maps
         manifestMap = hazelcastInstance.getMap("frame-manifests")

@@ -182,6 +182,9 @@ abstract class MinareApplication : CoroutineVerticle() {
      * Initialize a worker instance
      */
     private suspend fun initializeWorker() {
+        // Get worker ID from hostname or config
+        val workerId = System.getenv("HOSTNAME") ?: throw IllegalStateException("Worker ID not configured")
+
         val upSocketVerticleOptions = DeploymentOptions()
             .setWorker(true)
             .setWorkerPoolName("up-socket-pool")
@@ -259,7 +262,7 @@ abstract class MinareApplication : CoroutineVerticle() {
         // Deploy the frame worker verticle
         val frameWorkerOptions = DeploymentOptions()
             .setInstances(1)
-            .setConfig(JsonObject().put("workerId", System.getenv("HOSTNAME")))
+            .setConfig(JsonObject().put("workerId", workerId))
 
         val frameWorkerDeploymentId = vertx.deployVerticle(
             "guice:" + FrameWorkerVerticle::class.java.name,

@@ -268,9 +268,12 @@ class FrameCoordinatorVerticle @Inject constructor(
         // Mark frame as processed
         coordinatorState.markFrameProcessed(logicalFrame)
 
+        // Advance to next frame
+        coordinatorState.setFrameInProgress(logicalFrame + 1)
+
         // Clear distributed maps for this frame
-        frameManifestBuilder.clearAllManifests()
-        frameCompletionTracker.clearAllCompletions()
+        frameManifestBuilder.clearFrameManifests(logicalFrame)
+        frameCompletionTracker.clearFrameCompletions(logicalFrame)
 
         // Continue with next frame
         log.debug("Ready to process frame {}", logicalFrame + 1)
