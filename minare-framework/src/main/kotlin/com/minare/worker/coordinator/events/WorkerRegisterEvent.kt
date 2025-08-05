@@ -13,7 +13,8 @@ import io.vertx.core.json.JsonObject
  * This event indicates that a worker has fully deployed all its verticles
  * and is ready to participate in frame processing.
  *
- * Updated to handle workers that haven't been pre-registered via infrastructure.
+ * Updated to enforce strict worker registration - only pre-registered workers
+ * via infrastructure commands are allowed to join the cluster.
  */
 class WorkerRegisterEvent @Inject constructor(
     private val eventBusUtils: EventBusUtils,
@@ -30,13 +31,35 @@ class WorkerRegisterEvent @Inject constructor(
                 mapOf("workerId" to workerId)
             )
 
-            // Check if worker exists, if not add it
-            if (workerRegistry.getWorkerState(workerId) == null) {
-                vlog.logInfo("Worker $workerId not pre-registered, adding to registry")
-                workerRegistry.addWorker(workerId)
+            // Check if worker has been pre-registered via infrastructure
+            val workerState = workerRegistry.getWorkerState(workerId)
+            if (workerState == null) {
+                // Reject unregistered workers to maintain deterministic operation distribution
+                vlog.logInfo("Rejecting worker $workerId - not pre-registered in infrastructure")
+
+                vlog.getEventLogger().trace(
+                    "WORKER_REJECTED",
+                    mapOf(
+                        "workerId" to workerId,
+                        "reason" to "Not pre-registered"
+                    ),
+                    traceId
+                )
+
+                // Log for monitoring/alerting
+                vlog.logStartupStep(
+                    "UNREGISTERED_WORKER_REJECTED",
+                    mapOf(
+                        "workerId" to workerId,
+                        "activeWorkers" to workerRegistry.getActiveWorkers().size,
+                        "expectedWorkers" to workerRegistry.getExpectedWorkerCount()
+                    )
+                )
+
+                return@registerTracedConsumer
             }
 
-            // Now activate the worker (transition from PENDING to ACTIVE)
+            // Worker is pre-registered, proceed with activation
             val activated = workerRegistry.activateWorker(workerId)
 
             if (activated) {
@@ -54,12 +77,33 @@ class WorkerRegisterEvent @Inject constructor(
                     "WORKER_ACTIVATION_COMPLETE",
                     mapOf(
                         "workerId" to workerId,
-                        "activeWorkers" to workerRegistry.getActiveWorkers().size
+                        "activeWorkers" to workerRegistry.getActiveWorkers().size,
+                        "expectedWorkers" to workerRegistry.getExpectedWorkerCount()
                     )
                 )
+
+                // Check if we now have all expected workers
+                val activeCount = workerRegistry.getActiveWorkers().size
+                val expectedCount = workerRegistry.getExpectedWorkerCount()
+
+                if (activeCount == expectedCount) {
+                    vlog.logInfo("All expected workers now active: $activeCount/$expectedCount")
+                }
+
             } else {
-                // This should now only happen in rare cases (e.g., worker in REMOVING state)
-                vlog.logInfo("Worker $workerId could not be activated: ${workerRegistry.getWorkerState(workerId)?.status?.toString()}")
+                // Worker couldn't be activated (e.g., in REMOVING state)
+                val currentStatus = workerRegistry.getWorkerState(workerId)?.status?.toString() ?: "UNKNOWN"
+
+                vlog.logInfo("Worker $workerId could not be activated: $currentStatus")
+
+                vlog.getEventLogger().trace(
+                    "WORKER_ACTIVATION_FAILED",
+                    mapOf(
+                        "workerId" to workerId,
+                        "currentStatus" to currentStatus
+                    ),
+                    traceId
+                )
             }
         }
     }

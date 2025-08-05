@@ -16,11 +16,11 @@ import javax.inject.Inject
 /**
  * Frame Coordinator - The central orchestrator for frame-based processing.
  *
- * Updated for logical frames:
- * - Continuous processing instead of scheduled execution
- * - Logical frame numbering from session start
- * - Manifest pre-computation for future frames
- * - Deterministic operation ordering
+ * Event-driven implementation:
+ * - No polling loops
+ * - Manifest preparation triggered by events
+ * - Timer-based scheduling only for frame boundaries
+ * - Starts in paused state until workers ready
  */
 class FrameCoordinatorVerticle @Inject constructor(
     private val frameConfig: FrameConfiguration,
@@ -47,10 +47,10 @@ class FrameCoordinatorVerticle @Inject constructor(
         const val ADDRESS_FRAME_RESUME = "minare.coordinator.frame.resume"
         const val ADDRESS_SESSION_START = "minare.coordinator.session.start"
         const val ADDRESS_FRAME_ALL_COMPLETE = "minare.coordinator.internal.frame-all-complete"
+        const val ADDRESS_PREPARE_MANIFEST = "minare.coordinator.internal.prepare-manifest"
 
         // Configuration
         const val FRAME_STARTUP_GRACE_PERIOD = 5000L
-        const val MAX_FUTURE_MANIFESTS = 10  // How many frames ahead to prepare
     }
 
     override suspend fun start() {
@@ -60,11 +60,11 @@ class FrameCoordinatorVerticle @Inject constructor(
         setupEventBusConsumers()
         setupOperationConsumer()
 
-        // Start a new session after grace period
+        // Check for readiness after grace period
         vertx.setTimer(FRAME_STARTUP_GRACE_PERIOD) {
             launch {
-                log.info("Starting new frame processing session")
-                startNewSession()
+                log.info("Grace period complete, checking for worker readiness")
+                checkAndStartWhenReady()
             }
         }
     }
@@ -88,18 +88,87 @@ class FrameCoordinatorVerticle @Inject constructor(
             }
         }
 
+        // Manifest preparation requests (triggered by operation arrival)
+        vertx.eventBus().consumer<JsonObject>(ADDRESS_PREPARE_MANIFEST) { msg ->
+            launch {
+                val requestedFrame = msg.body().getLong("frame")
+                if (requestedFrame > coordinatorState.lastPreparedManifest) {
+                    preparePendingManifests()
+                }
+            }
+        }
+
         // Resume command
         vertx.eventBus().consumer<JsonObject>(ADDRESS_FRAME_RESUME) { msg ->
             launch {
                 val reason = msg.body().getString("reason", "Manual resume")
                 log.info("Received resume command: {}", reason)
-                startNewSession()
+                checkAndResumeWhenReady()
             }
         }
     }
 
     private suspend fun setupOperationConsumer() {
         messageQueueOperationConsumer.start(this)
+    }
+
+    /**
+     * Check if cluster is ready and start a new session.
+     * Called after startup grace period.
+     */
+    private suspend fun checkAndStartWhenReady() {
+        // Keep checking until we have the expected number of workers
+        while (true) {
+            val expectedWorkers = workerRegistry.getExpectedWorkerCount()
+            val activeWorkers = workerRegistry.getActiveWorkers()
+
+            log.info("Worker status: {}/{} active", activeWorkers.size, expectedWorkers)
+
+            if (activeWorkers.size == expectedWorkers) {
+                log.info("All expected workers active, starting new session")
+                coordinatorState.isPaused = false
+                startNewSession()
+                break
+            } else if (activeWorkers.size > expectedWorkers) {
+                log.error("Too many workers active! Expected {}, found {}",
+                    expectedWorkers, activeWorkers.size)
+                // Could pause here or alert operators
+                break
+            }
+
+            delay(1000) // Check every second
+        }
+    }
+
+    /**
+     * Check if workers have caught up and resume processing.
+     * Called after pause when resuming.
+     */
+    private suspend fun checkAndResumeWhenReady() {
+        val lastProcessed = coordinatorState.lastProcessedFrame
+        val expectedWorkers = workerRegistry.getExpectedWorkerCount()
+
+        // Wait for workers to catch up to the last processed frame
+        while (true) {
+            val caughtUpWorkers = coordinatorState.getCompletedWorkers(lastProcessed)
+
+            if (caughtUpWorkers.size == expectedWorkers) {
+                log.info("All workers caught up to frame {}, resuming", lastProcessed)
+                coordinatorState.isPaused = false
+                coordinatorState.setFrameInProgress(lastProcessed + 1)
+
+                // Catch up manifest preparation to current time
+                preparePendingManifests()
+
+                // Schedule next frame preparation
+                scheduleFramePreparation(lastProcessed + 1)
+                break
+            }
+
+            log.info("Waiting for workers to catch up: {}/{} ready",
+                caughtUpWorkers.size, expectedWorkers)
+            delay(1000)
+        }
     }
 
     /**
@@ -110,12 +179,13 @@ class FrameCoordinatorVerticle @Inject constructor(
         // Calculate session start time with frame offset for announcement
         val announcementTime = System.currentTimeMillis()
         val sessionStartTime = announcementTime + frameConfig.frameOffsetMs
+        val sessionStartNanos = System.nanoTime() + (frameConfig.frameOffsetMs * 1_000_000L)
 
         frameManifestBuilder.clearAllManifests()
         frameCompletionTracker.clearAllCompletions()
 
         // Initialize coordinator state for new session
-        coordinatorState.startNewSession(sessionStartTime)
+        coordinatorState.startNewSession(sessionStartTime, sessionStartNanos)
 
         // Announce session start with countdown
         val announcement = JsonObject()
@@ -131,63 +201,72 @@ class FrameCoordinatorVerticle @Inject constructor(
         // Wait for the announced start time
         delay(frameConfig.frameOffsetMs)
 
-        // Start the continuous frame processing loop
-        launchFrameProcessingLoop()
+        // Prepare initial frames
+        prepareManifestForFrame(0)
+        prepareManifestForFrame(1)
+
+        // Start frame scheduling
+        scheduleFramePreparation(2)
     }
 
     /**
-     * Launch the continuous frame processing loop.
-     * Prepares manifests ahead of time and tracks completions.
+     * Prepare manifests for all pending frames up to current time.
+     * Called when operations arrive or frames complete.
      */
-    private fun launchFrameProcessingLoop() = launch {
-        log.info("Starting continuous frame processing loop")
+    private suspend fun preparePendingManifests() {
+        val elapsedNanos = System.nanoTime() - coordinatorState.sessionStartNanos
+        val currentWallClockFrame = elapsedNanos / (frameConfig.frameDurationMs * 1_000_000L)
 
-        while (!coordinatorState.isPaused) {
-            try {
-                // Prepare manifests for future frames
-                prepareUpcomingManifests()
-
-                // Check if we need to advance lastProcessedFrame
-                checkFrameCompletions()
-
-                // Brief pause to avoid spinning
-                delay(50)  // Check every 50ms
-
-            } catch (e: Exception) {
-                log.error("Error in frame processing loop", e)
-                coordinatorState.isPaused = true
-                frameRecoveryManager.pauseFrameProcessing("Processing loop error: ${e.message}")
-            }
-        }
-
-        log.info("Frame processing loop stopped (paused: {})", coordinatorState.isPaused)
-    }
-
-    /**
-     * Prepare manifests for upcoming logical frames.
-     * Stays ahead of processing by preparing multiple future frames.
-     */
-    private suspend fun prepareUpcomingManifests() {
-        val currentTime = System.currentTimeMillis()
-        val sessionStart = coordinatorState.sessionStartTimestamp
-
-        // Calculate which logical frame we should be preparing
-        val elapsedTime = currentTime - sessionStart
-        val currentLogicalFrame = if (elapsedTime >= 0) {
-            elapsedTime / frameConfig.frameDurationMs
+        // Determine target frame based on pause state
+        val targetFrame = if (coordinatorState.isPaused) {
+            // During pause, allow buffering up to MAX_BUFFER_FRAMES ahead
+            val maxAllowed = coordinatorState.frameInProgress + frameConfig.maxBufferFrames
+            minOf(currentWallClockFrame, maxAllowed)
         } else {
-            return // Not time yet
+            // Normal operation: prepare slightly ahead
+            currentWallClockFrame + frameConfig.normalOperationLookahead
         }
 
+        // Prepare all outstanding frames
         val lastPrepared = coordinatorState.lastPreparedManifest
-        val targetFrame = minOf(
-            currentLogicalFrame + MAX_FUTURE_MANIFESTS,
-            lastPrepared + MAX_FUTURE_MANIFESTS
-        )
-
-        // Prepare manifests for frames we haven't prepared yet
         for (frame in (lastPrepared + 1)..targetFrame) {
             prepareManifestForFrame(frame)
+        }
+    }
+
+    /**
+     * Schedule preparation of a specific frame at its start time.
+     * Ensures empty frames get manifests for worker heartbeats.
+     */
+    private fun scheduleFramePreparation(frameNumber: Long) {
+        if (coordinatorState.isPaused) {
+            return // Don't schedule during pause
+        }
+
+        val frameStartNanos = coordinatorState.sessionStartNanos +
+                (frameNumber * frameConfig.frameDurationMs * 1_000_000L)
+        val delayMs = (frameStartNanos - System.nanoTime()) / 1_000_000L
+
+        if (delayMs > 0) {
+            vertx.setTimer(delayMs) {
+                launch {
+                    // Only prepare if not already done
+                    if (frameNumber > coordinatorState.lastPreparedManifest) {
+                        prepareManifestForFrame(frameNumber)
+                    }
+                    // Schedule next frame
+                    scheduleFramePreparation(frameNumber + 1)
+                }
+            }
+        } else {
+            // We're behind, prepare immediately and catch up
+            launch {
+                preparePendingManifests()
+                // Find next future frame to schedule
+                val currentFrame = (System.nanoTime() - coordinatorState.sessionStartNanos) /
+                        (frameConfig.frameDurationMs * 1_000_000L)
+                scheduleFramePreparation(currentFrame + 1)
+            }
         }
     }
 
@@ -211,9 +290,9 @@ class FrameCoordinatorVerticle @Inject constructor(
         // Distribute operations among workers
         val assignments = frameManifestBuilder.distributeOperations(operations, activeWorkers)
 
-        // Write manifests (even if empty)
+        // Write manifests (even if empty - workers need them for heartbeat)
         frameManifestBuilder.writeManifestsToMap(
-            logicalFrame,  // Now using logical frame number
+            logicalFrame,
             0L,  // frameEndTime deprecated
             assignments,
             activeWorkers
@@ -237,30 +316,8 @@ class FrameCoordinatorVerticle @Inject constructor(
     }
 
     /**
-     * Check frame completions and advance lastProcessedFrame.
-     */
-    private suspend fun checkFrameCompletions() {
-        val lastProcessed = coordinatorState.lastProcessedFrame
-        val nextFrame = lastProcessed + 1
-
-        // Check if the next frame is complete
-        if (coordinatorState.isFrameComplete(nextFrame)) {
-            onFrameComplete(nextFrame)
-        }
-
-        // Also check if we're falling behind
-        val currentTime = System.currentTimeMillis()
-        val expectedFrame = (currentTime - coordinatorState.sessionStartTimestamp) / frameConfig.frameDurationMs
-
-        if (expectedFrame - lastProcessed > 5) {
-            log.warn("Frame processing falling behind - expected frame {}, last processed {}",
-                expectedFrame, lastProcessed)
-            // Could trigger pause here if needed
-        }
-    }
-
-    /**
-     * Handle frame completion.
+     * Handle frame completion event.
+     * Triggered by WorkerFrameCompleteEvent when all workers finish.
      */
     private suspend fun onFrameComplete(logicalFrame: Long) {
         log.info("Logical frame {} completed successfully", logicalFrame)
@@ -271,48 +328,24 @@ class FrameCoordinatorVerticle @Inject constructor(
         // Advance to next frame
         coordinatorState.setFrameInProgress(logicalFrame + 1)
 
+        // Prepare any pending manifests up to current time
+        preparePendingManifests()
+
         // Clear distributed maps for this frame
         frameManifestBuilder.clearFrameManifests(logicalFrame)
         frameCompletionTracker.clearFrameCompletions(logicalFrame)
 
-        // Continue with next frame
+        // Check if we're falling behind
+        val elapsedNanos = System.nanoTime() - coordinatorState.sessionStartNanos
+        val expectedFrame = elapsedNanos / (frameConfig.frameDurationMs * 1_000_000L)
+
+        if (expectedFrame - logicalFrame > 5) {
+            log.warn("Frame processing falling behind - expected frame {}, just completed {}",
+                expectedFrame, logicalFrame)
+            // Could trigger pause here if needed
+        }
+
         log.debug("Ready to process frame {}", logicalFrame + 1)
-    }
-
-    /**
-     * Request health check from monitor.
-     * Updated to use logical frame numbers.
-     */
-    private fun requestHealthCheck(logicalFrame: Long): io.vertx.core.Future<JsonObject> {
-        val promise = io.vertx.core.Promise.promise<JsonObject>()
-
-        val healthCheckGracePeriod = (frameConfig.frameDurationMs * 0.2).toLong()
-
-        // Set up one-time consumer for the response
-        val consumer = vertx.eventBus().consumer<JsonObject>(
-            FrameWorkerHealthMonitorVerticle.ADDRESS_HEALTH_CHECK_RESULT
-        ) { message ->
-            val result = message.body()
-            if (result.getLong("logicalFrame") == logicalFrame) {
-                promise.complete(result)
-            }
-        }
-
-        // Request health check
-        vertx.eventBus().send(
-            FrameWorkerHealthMonitorVerticle.ADDRESS_HEALTH_CHECK_REQUEST,
-            JsonObject().put("logicalFrame", logicalFrame)
-        )
-
-        // Timeout after grace period
-        vertx.setTimer(healthCheckGracePeriod) {
-            consumer.unregister()
-            if (!promise.future().isComplete) {
-                promise.fail("Health check timeout")
-            }
-        }
-
-        return promise.future()
     }
 
     override suspend fun stop() {

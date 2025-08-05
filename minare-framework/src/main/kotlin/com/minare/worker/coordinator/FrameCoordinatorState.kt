@@ -13,7 +13,7 @@ import javax.inject.Singleton
 
 /**
  * Shared state for the Frame Coordinator system.
- * Updated for logical frames with deterministic time windows.
+ * Updated for event-driven coordination with monotonic time tracking.
  */
 @Singleton
 class FrameCoordinatorState @Inject constructor(
@@ -22,18 +22,21 @@ class FrameCoordinatorState @Inject constructor(
 ) {
     private val log = LoggerFactory.getLogger(FrameCoordinatorState::class.java)
 
-    // Session timing state (NEW)
+    // Session timing state
     @Volatile
     var sessionStartTimestamp: Long = 0L
         private set
 
-    // Frame progress tracking (UPDATED)
+    @Volatile
+    var sessionStartNanos: Long = 0L
+        private set
+
+    // Frame progress tracking
     private val _lastProcessedFrame = AtomicLong(-1L)
     private val _lastPreparedManifest = AtomicLong(-1L)
-    private val _isPaused = AtomicBoolean(false)
+    private val _isPaused = AtomicBoolean(true)  // Start paused until workers ready
 
     // Operations buffered by logical frame number
-    // Using concurrent structures in case Kafka consumer needs multi-thread
     private val operationsByFrame = ConcurrentHashMap<Long, ConcurrentLinkedQueue<JsonObject>>()
 
     // Current frame completion tracking
@@ -56,16 +59,17 @@ class FrameCoordinatorState @Inject constructor(
     val frameInProgress: Long
         get() = _frameInProgress.get()
 
-    // DEPRECATED - kept for compatibility during migration
-    @Deprecated("Use lastProcessedFrame instead")
-    var currentFrameStart: Long = 0L
-
     /**
-     * Start a new session with a specific timestamp.
+     * Start a new session with specific timestamps.
      * Called on startup or resume.
+     *
+     * @param startTimestamp Wall clock time for session start (for external communication)
+     * @param startNanos Monotonic nanos for internal frame calculations
      */
-    fun startNewSession(startTimestamp: Long = System.currentTimeMillis()) {
+    fun startNewSession(startTimestamp: Long = System.currentTimeMillis(),
+                        startNanos: Long = System.nanoTime()) {
         sessionStartTimestamp = startTimestamp
+        sessionStartNanos = startNanos
         _lastProcessedFrame.set(-1L)
         _lastPreparedManifest.set(-1L)
         _frameInProgress.set(-1L)
@@ -74,7 +78,8 @@ class FrameCoordinatorState @Inject constructor(
 
         setFrameInProgress(0)  // Start tracking frame 0
 
-        log.info("Started new session at timestamp {}", startTimestamp)
+        log.info("Started new session at timestamp {} (nanos: {})",
+            startTimestamp, startNanos)
     }
 
     /**
@@ -125,7 +130,7 @@ class FrameCoordinatorState @Inject constructor(
     }
 
     /**
-     * Get all workers that have completed the current frame
+     * Get all workers that have completed the specified frame
      */
     fun getCompletedWorkers(logicalFrame: Long): Set<String> {
         return if (logicalFrame == _frameInProgress.get()) {
@@ -150,8 +155,8 @@ class FrameCoordinatorState @Inject constructor(
     }
 
     /**
-     * Get the logical frame for a given timestamp
-     * NO LONGER INCLUDES frameOffset!
+     * Get the logical frame for a given timestamp.
+     * Uses monotonic time for accurate frame calculation.
      */
     fun getLogicalFrame(timestamp: Long): Long {
         if (sessionStartTimestamp == 0L) {
@@ -164,6 +169,19 @@ class FrameCoordinatorState @Inject constructor(
         } else {
             relativeTimestamp / frameConfig.frameDurationMs
         }
+    }
+
+    /**
+     * Get the current logical frame based on monotonic time.
+     * More accurate than using wall clock time.
+     */
+    fun getCurrentLogicalFrame(): Long {
+        if (sessionStartNanos == 0L) {
+            return -1L
+        }
+
+        val elapsedNanos = System.nanoTime() - sessionStartNanos
+        return elapsedNanos / (frameConfig.frameDurationMs * 1_000_000L)
     }
 
     /**
@@ -191,10 +209,17 @@ class FrameCoordinatorState @Inject constructor(
     }
 
     /**
+     * Get total buffered operations across all frames
+     */
+    fun getTotalBufferedOperations(): Int {
+        return operationsByFrame.values.sumOf { it.size }
+    }
+
+    /**
      * Check if frame loop is running (for monitoring)
      */
     fun isFrameLoopRunning(): Boolean {
-        return _frameInProgress.get() != -1L
+        return _frameInProgress.get() != -1L && !isPaused
     }
 
     /**
@@ -208,14 +233,35 @@ class FrameCoordinatorState @Inject constructor(
      * Get current frame status (for monitoring)
      */
     fun getCurrentFrameStatus(): JsonObject {
+        val currentFrame = if (sessionStartNanos != 0L) {
+            getCurrentLogicalFrame()
+        } else {
+            -1L
+        }
+
         return JsonObject()
             .put("frameInProgress", _frameInProgress.get())
             .put("lastProcessedFrame", _lastProcessedFrame.get())
             .put("lastPreparedManifest", _lastPreparedManifest.get())
+            .put("currentWallClockFrame", currentFrame)
             .put("sessionStartTimestamp", sessionStartTimestamp)
             .put("completedWorkers", currentFrameCompletions.size)
             .put("totalWorkers", workerRegistry.getActiveWorkers().size)
             .put("isPaused", isPaused)
+            .put("totalBufferedOperations", getTotalBufferedOperations())
+    }
+
+    /**
+     * Check if we're approaching buffer limits during pause
+     */
+    fun isApproachingBufferLimit(): Boolean {
+        if (!isPaused) return false
+
+        val bufferedFrames = operationsByFrame.keys.maxOrNull()?.let { maxFrame ->
+            maxFrame - _frameInProgress.get()
+        } ?: 0
+
+        return bufferedFrames >= frameConfig.maxBufferFrames - 2
     }
 
     /**
@@ -223,10 +269,11 @@ class FrameCoordinatorState @Inject constructor(
      */
     fun reset() {
         sessionStartTimestamp = 0L
+        sessionStartNanos = 0L
         _lastProcessedFrame.set(-1L)
         _lastPreparedManifest.set(-1L)
         _frameInProgress.set(-1L)
-        _isPaused.set(false)
+        _isPaused.set(true)  // Reset to paused
         operationsByFrame.clear()
         currentFrameCompletions.clear()
         log.info("Frame coordinator state reset")

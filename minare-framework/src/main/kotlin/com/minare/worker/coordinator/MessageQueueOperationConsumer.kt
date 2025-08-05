@@ -19,7 +19,7 @@ import javax.inject.Singleton
  * Responsible for setting up the Kafka consumer and buffering operations
  * into the appropriate logical frames.
  *
- * Updated to support logical frames and late operation handling.
+ * Updated with event-driven manifest preparation and backpressure handling.
  */
 @Singleton
 class MessageQueueOperationConsumer @Inject constructor(
@@ -35,6 +35,10 @@ class MessageQueueOperationConsumer @Inject constructor(
 
     companion object {
         const val OPERATIONS_TOPIC = "minare.operations"
+
+        // Buffer limits - operations count, not frame count
+        const val MAX_BUFFER_SIZE = 10000  // Maximum operations to buffer
+        const val BUFFER_WARNING_THRESHOLD = 8000  // Warn when approaching limit
     }
 
     /**
@@ -113,11 +117,25 @@ class MessageQueueOperationConsumer @Inject constructor(
 
     /**
      * Buffer a single operation into the appropriate frame.
-     * Now implements logical frame assignment with late operation detection.
+     * Now implements backpressure checking and triggers manifest preparation.
      */
     private fun bufferOperation(operation: JsonObject) {
         val timestamp = operation.getLong("timestamp")
             ?: throw IllegalArgumentException("Operation missing timestamp")
+
+        // Check buffer capacity before processing
+        val currentBufferSize = coordinatorState.getTotalBufferedOperations()
+
+        if (currentBufferSize >= MAX_BUFFER_SIZE) {
+            log.error("Operation buffer full ({} operations), dropping operation {}. " +
+                    "503 backpressure should be implemented here.",
+                currentBufferSize, operation.getString("id"))
+            // TODO: Implement actual 503 response mechanism to Kafka producers
+            return
+        } else if (currentBufferSize >= BUFFER_WARNING_THRESHOLD) {
+            log.warn("Operation buffer approaching limit: {} / {} operations",
+                currentBufferSize, MAX_BUFFER_SIZE)
+        }
 
         // If we don't have a session start yet, we're not ready to process
         val sessionStart = coordinatorState.sessionStartTimestamp
@@ -160,15 +178,24 @@ class MessageQueueOperationConsumer @Inject constructor(
                     coordinatorState.bufferOperation(operation, decision.targetFrame)
                     log.debug("Delayed operation {} to frame {}",
                         operation.getString("id"), decision.targetFrame)
+
+                    // Trigger manifest preparation for the delayed frame
+                    triggerManifestPreparation(decision.targetFrame)
                 }
-                //is LateOperationDecision.Replay -> {
-                //    // Trigger replay - would need to emit an event
-                //    log.error("Replay requested from frame {} - not yet implemented",
-                //        decision.fromFrame)
-                //    // TODO: Emit replay event
-                //}
             }
             return
+        }
+
+        // Check if operation is too far in the future (during pause)
+        if (coordinatorState.isPaused) {
+            val maxAllowedFrame = frameInProgress + FrameCoordinatorVerticle.MAX_BUFFER_FRAMES
+            if (logicalFrame > maxAllowedFrame) {
+                log.warn("Operation {} for frame {} exceeds buffer limit during pause (current frame: {}, max: {}). " +
+                        "503 backpressure should be implemented here.",
+                    operation.getString("id"), logicalFrame, frameInProgress, maxAllowedFrame)
+                // TODO: Implement actual 503 response mechanism
+                return
+            }
         }
 
         // Future frame - buffer normally
@@ -178,17 +205,48 @@ class MessageQueueOperationConsumer @Inject constructor(
             log.trace("Buffered operation {} for logical frame {}",
                 operation.getString("id"), logicalFrame)
         }
+
+        // Trigger manifest preparation if this frame hasn't been prepared yet
+        triggerManifestPreparation(logicalFrame)
+    }
+
+    /**
+     * Trigger manifest preparation for a specific frame.
+     * This is the key to event-driven manifest preparation.
+     */
+    private fun triggerManifestPreparation(logicalFrame: Long) {
+        // Only trigger if the manifest hasn't been prepared yet
+        if (logicalFrame > coordinatorState.lastPreparedManifest) {
+            vertx.eventBus().send(
+                FrameCoordinatorVerticle.ADDRESS_PREPARE_MANIFEST,
+                JsonObject().put("frame", logicalFrame)
+            )
+
+            if (log.isDebugEnabled) {
+                log.debug("Triggered manifest preparation for frame {}", logicalFrame)
+            }
+        }
     }
 
     /**
      * Get current consumer metrics for monitoring.
+     * Enhanced with buffer status information.
      */
     fun getMetrics(): JsonObject {
+        val bufferCounts = coordinatorState.getBufferedOperationCounts()
+        val totalBuffered = coordinatorState.getTotalBufferedOperations()
+        val bufferPercentage = (totalBuffered.toDouble() / MAX_BUFFER_SIZE * 100).toInt()
+
         return JsonObject()
             .put("connected", messageQueueConsumer != null)
             .put("topic", OPERATIONS_TOPIC)
             .put("paused", coordinatorState.isPaused)
             .put("sessionStart", coordinatorState.sessionStartTimestamp)
             .put("lastProcessedFrame", coordinatorState.lastProcessedFrame)
+            .put("bufferedOperations", totalBuffered)
+            .put("bufferCapacity", MAX_BUFFER_SIZE)
+            .put("bufferPercentage", bufferPercentage)
+            .put("frameBufferCounts", bufferCounts)
+            .put("isApproachingLimit", coordinatorState.isApproachingBufferLimit())
     }
 }
