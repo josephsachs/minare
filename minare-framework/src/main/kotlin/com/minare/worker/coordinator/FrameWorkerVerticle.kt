@@ -16,10 +16,10 @@ import javax.inject.Inject
 
 /**
  * Worker-side frame processing verticle.
- * Updated for logical frames:
+ * Updated for logical frames with nanoTime-based pacing:
  * - Processes frames based on logical numbering
- * - Maintains consistent frame pacing using delays
- * - No dependency on wall clock for frame boundaries
+ * - Uses System.nanoTime() for drift-free frame pacing
+ * - Immune to wall clock adjustments
  */
 class FrameWorkerVerticle @Inject constructor(
     private val vlog: VerticleLogger,
@@ -33,8 +33,9 @@ class FrameWorkerVerticle @Inject constructor(
     private lateinit var manifestMap: IMap<String, JsonObject>
     private lateinit var completionMap: IMap<String, OperationCompletion>
 
-    // Session state
-    private var sessionStartTimestamp: Long = 0L
+    // Session state - now tracking both wall clock and nano time
+    private var sessionStartTimestamp: Long = 0L  // Wall clock for external communication
+    private var sessionStartNanos: Long = 0L      // Nanos for accurate frame pacing
     private var currentLogicalFrame: Long = -1L
     private var processingActive = false
 
@@ -70,6 +71,7 @@ class FrameWorkerVerticle @Inject constructor(
 
     /**
      * Handle new session announcement and start frame processing.
+     * Now captures nanoTime reference for accurate pacing.
      */
     private suspend fun handleSessionStart(announcement: JsonObject) {
         sessionStartTimestamp = announcement.getLong("sessionStartTimestamp")
@@ -86,45 +88,56 @@ class FrameWorkerVerticle @Inject constructor(
         // Wait for session start
         delay(startsIn)
 
+        // Capture nanoTime at actual session start for frame pacing
+        sessionStartNanos = System.nanoTime()
+
         // Start frame processing loop
         launchFrameProcessingLoop()
     }
 
     /**
-     * Launch the frame processing loop with consistent pacing.
+     * Launch the frame processing loop with nanoTime-based pacing.
+     * This is immune to wall clock adjustments and provides more accurate timing.
      */
     private fun launchFrameProcessingLoop() = launch {
-        log.info("Starting frame processing loop for session {}", sessionStartTimestamp)
+        log.info("Starting frame processing loop for session {} (nanos: {})",
+            sessionStartTimestamp, sessionStartNanos)
 
-        var nextFrameTime = sessionStartTimestamp
         var logicalFrame = 0L
+        val frameDurationNanos = frameConfig.frameDurationMs * 1_000_000L
 
         while (processingActive) {
             try {
+                val frameStartNanos = System.nanoTime()
+
                 // Process the current logical frame
                 processLogicalFrame(logicalFrame)
 
-                // Calculate next frame time
-                nextFrameTime += frameConfig.frameDurationMs
-                val now = System.currentTimeMillis()
-                val delayMs = nextFrameTime - now
+                // Calculate when next frame should start
+                val expectedNextFrameNanos = sessionStartNanos + ((logicalFrame + 1) * frameDurationNanos)
+                val currentNanos = System.nanoTime()
+                val delayNanos = expectedNextFrameNanos - currentNanos
 
-                if (delayMs > 0) {
+                if (delayNanos > 0) {
                     // On schedule - wait for next frame
-                    delay(delayMs)
-                } else if (delayMs < -frameConfig.frameDurationMs) {
-                    // More than one frame behind - we're in trouble
-                    log.error("Worker {} is {} frames behind schedule",
-                        workerId, (-delayMs / frameConfig.frameDurationMs))
-                    // Continue anyway - coordinator will handle if we're too slow
+                    delay(delayNanos / 1_000_000L)  // Convert to milliseconds
+                } else if (delayNanos < -frameDurationNanos) {
+                    // More than one frame behind - log but continue
+                    val framesBehind = -delayNanos / frameDurationNanos
+                    log.error("Worker {} is {} frames behind schedule", workerId, framesBehind)
+
+                    // TODO: We probably want to alert the coordinator here!
+                    // Ideally it noticed the slow worker before we got behind
+                    // If it didn't, we probably need to pause and replay from N - framesBehind
                 }
 
                 logicalFrame++
 
             } catch (e: Exception) {
+                // TODO: Problematic, not good having fixed time delay
                 log.error("Error processing logical frame {}", logicalFrame, e)
-                // Continue with next frame
-                delay(100)  // Brief pause before retry
+                // Continue with next frame after brief
+                delay(100)
             }
         }
 
@@ -133,55 +146,57 @@ class FrameWorkerVerticle @Inject constructor(
 
     /**
      * Process a single logical frame.
+     * Fetches manifest from Hazelcast and processes all assigned operations.
      */
     private suspend fun processLogicalFrame(logicalFrame: Long) {
         currentLogicalFrame = logicalFrame
+        val frameStartTime = System.currentTimeMillis()
 
-        log.debug("Processing logical frame {}", logicalFrame)
+        try {
+            // Fetch manifest from Hazelcast
+            val manifestKey = FrameManifest.makeKey(logicalFrame, workerId)
+            val manifestJson = manifestMap[manifestKey]
 
-        // Fetch manifest from distributed map
-        val manifestKey = "manifest:$logicalFrame:$workerId"
-        val manifest = manifestMap[manifestKey]
+            if (manifestJson == null) {
+                log.debug("No manifest found for logical frame {} - sending heartbeat", logicalFrame)
+                reportFrameCompletion(logicalFrame, 0)
+                return
+            }
 
-        if (manifest == null) {
-            log.trace("No manifest found for worker {} in logical frame {}",
-                workerId, logicalFrame)
-            // Still report completion with 0 operations
-            reportFrameCompletion(logicalFrame, 0)
-            return
-        }
+            val manifest = FrameManifest.fromJson(manifestJson)
+            val operations = manifest.operations
 
-        // Process the operations
-        val operations = manifest.getJsonArray("operations", JsonArray())
-        val operationCount = operations.size()
+            log.debug("Processing logical frame {} with {} operations",
+                logicalFrame, operations.size)
 
-        if (operationCount > 0) {
-            log.debug("Processing {} operations for logical frame {}",
-                operationCount, logicalFrame)
-        }
-
-        // Process each operation
-        var completedCount = 0
-        operations.forEach { op ->
-            if (op is JsonObject) {
-                val success = processOperation(op, logicalFrame)
-                if (success) {
-                    completedCount++
+            // Process operations sequentially
+            var successCount = 0
+            for (operation in operations) {
+                if (processOperation(operation, logicalFrame)) {
+                    successCount++
                 }
             }
-        }
 
-        if (operationCount > 0) {
-            log.info("Completed {}/{} operations for logical frame {}",
-                completedCount, operationCount, logicalFrame)
-        }
+            // Report completion
+            reportFrameCompletion(logicalFrame, successCount)
 
-        // Report frame completion
-        reportFrameCompletion(logicalFrame, completedCount)
+            val processingTime = System.currentTimeMillis() - frameStartTime
+            if (processingTime > frameConfig.frameDurationMs * 0.8) {
+                log.warn("Frame {} processing took {}ms ({}% of frame duration)",
+                    logicalFrame, processingTime,
+                    (processingTime * 100 / frameConfig.frameDurationMs))
+            }
+
+        } catch (e: Exception) {
+            log.error("Error processing frame {}", logicalFrame, e)
+            // Still report completion to avoid coordinator deadlock
+            reportFrameCompletion(logicalFrame, 0)
+        }
     }
 
     /**
-     * Process a single operation.
+     * Process a single operation within a frame.
+     * Returns true if successful, false otherwise.
      */
     private suspend fun processOperation(
         operation: JsonObject,
@@ -229,6 +244,7 @@ class FrameWorkerVerticle @Inject constructor(
 
     /**
      * Report frame completion to coordinator.
+     * Critical for coordinator to know when to advance frames.
      */
     private suspend fun reportFrameCompletion(
         logicalFrame: Long,
@@ -237,7 +253,7 @@ class FrameWorkerVerticle @Inject constructor(
         try {
             val completion = JsonObject()
                 .put("workerId", workerId)
-                .put("logicalFrame", logicalFrame)  // Changed from frameStartTime
+                .put("logicalFrame", logicalFrame)
                 .put("operationCount", operationCount)
                 .put("completedAt", System.currentTimeMillis())
 
@@ -253,6 +269,33 @@ class FrameWorkerVerticle @Inject constructor(
         } catch (e: Exception) {
             log.error("Failed to report frame completion", e)
         }
+    }
+
+    /**
+     * Get current frame processing metrics.
+     * Useful for monitoring worker health and performance.
+     */
+    fun getMetrics(): JsonObject {
+        val elapsedNanos = if (sessionStartNanos > 0) {
+            System.nanoTime() - sessionStartNanos
+        } else {
+            0L
+        }
+
+        val expectedFrame = if (sessionStartNanos > 0) {
+            elapsedNanos / (frameConfig.frameDurationMs * 1_000_000L)
+        } else {
+            -1L
+        }
+
+        return JsonObject()
+            .put("workerId", workerId)
+            .put("currentLogicalFrame", currentLogicalFrame)
+            .put("expectedLogicalFrame", expectedFrame)
+            .put("framesBehind", expectedFrame - currentLogicalFrame)
+            .put("sessionStartTimestamp", sessionStartTimestamp)
+            .put("processingActive", processingActive)
+            .put("elapsedSeconds", elapsedNanos / 1_000_000_000L)
     }
 
     override suspend fun stop() {
