@@ -42,7 +42,7 @@ class FrameWorkerVerticle @Inject constructor(
     companion object {
         const val ADDRESS_FRAME_MANIFEST = "worker.{workerId}.frame.manifest"
         const val ADDRESS_LAG_ALERT = "minare.coordinator.worker.lag.alert"
-        const val LAG_ALERT_THRESHOLD = 3L  // Alert coordinator if behind by this many frames
+        const val LAG_ALERT_THRESHOLD = 1L  // Alert coordinator if behind by this many frames
     }
 
     override suspend fun start() {
