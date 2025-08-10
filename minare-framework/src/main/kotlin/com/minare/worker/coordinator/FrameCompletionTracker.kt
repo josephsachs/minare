@@ -65,7 +65,7 @@ class FrameCompletionTracker @Inject constructor(
      */
     fun getMissingWorkers(logicalFrame: Long): Set<String> {
         val completed = getCompletedWorkers(logicalFrame)
-        val expected = workerRegistry.getActiveWorkers()
+        val expected = workerRegistry.getActiveWorkers().toSet()  // Convert List to Set
         return expected - completed
     }
 

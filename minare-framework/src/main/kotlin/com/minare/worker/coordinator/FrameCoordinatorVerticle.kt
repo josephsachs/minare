@@ -280,7 +280,7 @@ class FrameCoordinatorVerticle @Inject constructor(
         val operations = coordinatorState.extractFrameOperations(logicalFrame)
 
         // Get active workers
-        val activeWorkers = workerRegistry.getActiveWorkers()
+        val activeWorkers = workerRegistry.getActiveWorkers().toSet()
 
         if (activeWorkers.isEmpty() && operations.isNotEmpty()) {
             log.warn("No active workers available for frame {} with {} operations",

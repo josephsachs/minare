@@ -188,7 +188,7 @@ class MessageQueueOperationConsumer @Inject constructor(
 
         // Check if operation is too far in the future (during pause)
         if (coordinatorState.isPaused) {
-            val maxAllowedFrame = frameInProgress + FrameCoordinatorVerticle.MAX_BUFFER_FRAMES
+            val maxAllowedFrame = frameInProgress + frameConfig.maxBufferFrames.toLong()  // Use frameConfig, convert Int to Long
             if (logicalFrame > maxAllowedFrame) {
                 log.warn("Operation {} for frame {} exceeds buffer limit during pause (current frame: {}, max: {}). " +
                         "503 backpressure should be implemented here.",

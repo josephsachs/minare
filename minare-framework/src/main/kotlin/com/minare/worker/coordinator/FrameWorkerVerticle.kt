@@ -41,6 +41,8 @@ class FrameWorkerVerticle @Inject constructor(
 
     companion object {
         const val ADDRESS_FRAME_MANIFEST = "worker.{workerId}.frame.manifest"
+        const val ADDRESS_LAG_ALERT = "minare.coordinator.worker.lag.alert"
+        const val LAG_ALERT_THRESHOLD = 3L  // Alert coordinator if behind by this many frames
     }
 
     override suspend fun start() {
@@ -126,18 +128,29 @@ class FrameWorkerVerticle @Inject constructor(
                     val framesBehind = -delayNanos / frameDurationNanos
                     log.error("Worker {} is {} frames behind schedule", workerId, framesBehind)
 
-                    // TODO: We probably want to alert the coordinator here!
-                    // Ideally it noticed the slow worker before we got behind
-                    // If it didn't, we probably need to pause and replay from N - framesBehind
+                    // Alert coordinator about falling behind
+                    if (framesBehind >= LAG_ALERT_THRESHOLD) {
+                        alertCoordinatorOfLag(logicalFrame, framesBehind)
+                    }
+
+                    // As you noted - no point trying to catch up
+                    // The worker is already processing as fast as it can
                 }
 
                 logicalFrame++
 
             } catch (e: Exception) {
-                // TODO: Problematic, not good having fixed time delay
                 log.error("Error processing logical frame {}", logicalFrame, e)
-                // Continue with next frame after brief
-                delay(100)
+
+                // Calculate proper delay to stay on schedule despite error
+                val expectedNextFrameNanos = sessionStartNanos + ((logicalFrame + 1) * frameDurationNanos)
+                val currentNanos = System.nanoTime()
+                val delayNanos = expectedNextFrameNanos - currentNanos
+
+                if (delayNanos > 0) {
+                    delay(delayNanos / 1_000_000L)
+                }
+                // If we're already behind, continue immediately
             }
         }
 
@@ -296,6 +309,29 @@ class FrameWorkerVerticle @Inject constructor(
             .put("sessionStartTimestamp", sessionStartTimestamp)
             .put("processingActive", processingActive)
             .put("elapsedSeconds", elapsedNanos / 1_000_000_000L)
+    }
+
+    /**
+     * Alert coordinator that this worker is falling behind.
+     * This allows the coordinator to make system-wide decisions about pausing or recovery.
+     */
+    private suspend fun alertCoordinatorOfLag(currentFrame: Long, framesBehind: Long) {
+        try {
+            val alert = JsonObject()
+                .put("workerId", workerId)
+                .put("currentFrame", currentFrame)
+                .put("framesBehind", framesBehind)
+                .put("timestamp", System.currentTimeMillis())
+
+            vertx.eventBus().send(
+                ADDRESS_LAG_ALERT,
+                alert
+            )
+
+            log.warn("Alerted coordinator about {} frame lag", framesBehind)
+        } catch (e: Exception) {
+            log.error("Failed to alert coordinator about lag", e)
+        }
     }
 
     override suspend fun stop() {
