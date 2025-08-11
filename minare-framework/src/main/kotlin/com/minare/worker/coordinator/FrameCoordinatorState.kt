@@ -1,6 +1,7 @@
 package com.minare.worker.coordinator
 
 import com.minare.time.FrameConfiguration
+import com.minare.time.FrameCalculator
 import io.vertx.core.json.JsonObject
 import org.slf4j.LoggerFactory
 import java.util.*
@@ -18,6 +19,7 @@ import javax.inject.Singleton
 @Singleton
 class FrameCoordinatorState @Inject constructor(
     private val workerRegistry: WorkerRegistry,
+    private val frameCalculator: FrameCalculator,
     private val frameConfig: FrameConfiguration
 ) {
     private val log = LoggerFactory.getLogger(FrameCoordinatorState::class.java)
@@ -206,16 +208,7 @@ class FrameCoordinatorState @Inject constructor(
      * Uses wall clock time to match operation timestamps from Kafka.
      */
     fun getLogicalFrame(timestamp: Long): Long {
-        if (sessionStartTimestamp == 0L) {
-            throw IllegalStateException("Session not started")
-        }
-
-        val relativeTimestamp = timestamp - sessionStartTimestamp
-        return if (relativeTimestamp < 0) {
-            -1L // Before session start
-        } else {
-            relativeTimestamp / frameConfig.frameDurationMs
-        }
+        return frameCalculator.timestampToLogicalFrame(timestamp, sessionStartTimestamp)
     }
 
     /**
@@ -223,12 +216,7 @@ class FrameCoordinatorState @Inject constructor(
      * More accurate than using wall clock time.
      */
     fun getCurrentLogicalFrame(): Long {
-        if (sessionStartNanos == 0L) {
-            return -1L
-        }
-
-        val elapsedNanos = System.nanoTime() - sessionStartNanos
-        return elapsedNanos / (frameConfig.frameDurationMs * 1_000_000L)
+        return frameCalculator.getCurrentLogicalFrame(sessionStartNanos)
     }
 
     /**
@@ -280,11 +268,7 @@ class FrameCoordinatorState @Inject constructor(
      * Get current frame status (for monitoring)
      */
     fun getCurrentFrameStatus(): JsonObject {
-        val currentFrame = if (sessionStartNanos != 0L) {
-            getCurrentLogicalFrame()
-        } else {
-            -1L
-        }
+        val currentFrame = getCurrentLogicalFrame()
 
         return JsonObject()
             .put("frameInProgress", _frameInProgress.get())
@@ -308,22 +292,7 @@ class FrameCoordinatorState @Inject constructor(
             maxFrame - _frameInProgress.get()
         } ?: 0
 
-        return bufferedFrames >= frameConfig.maxBufferFrames - 2
-    }
-
-    /**
-     * Reset all state (useful for testing or restart scenarios)
-     */
-    fun reset() {
-        sessionStartTimestamp = 0L
-        sessionStartNanos = 0L
-        _lastProcessedFrame.set(-1L)
-        _lastPreparedManifest.set(-1L)
-        _frameInProgress.set(-1L)
-        _isPaused.set(true)  // Reset to paused
-        operationsByFrame.clear()
-        currentFrameCompletions.clear()
-        pendingOperations.clear()
-        log.info("Frame coordinator state reset")
+        // Warn if we're buffering more than 80% of max allowed frames
+        return bufferedFrames > (frameConfig.maxBufferFrames * 0.8)
     }
 }

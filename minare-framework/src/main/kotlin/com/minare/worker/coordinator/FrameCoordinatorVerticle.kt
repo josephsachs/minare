@@ -30,7 +30,6 @@ class FrameCoordinatorVerticle @Inject constructor(
     private val vlog: VerticleLogger,
     private val workerRegistry: WorkerRegistry,
     private val coordinatorState: FrameCoordinatorState,
-    private val hazelcastInstance: HazelcastInstance,
     private val messageQueue: MessageQueue,
     private val messageQueueOperationConsumer: MessageQueueOperationConsumer,
     private val frameManifestBuilder: FrameManifestBuilder,

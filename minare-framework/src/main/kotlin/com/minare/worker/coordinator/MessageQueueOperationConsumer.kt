@@ -2,6 +2,7 @@ package com.minare.worker.coordinator
 
 import com.minare.time.FrameConfiguration
 import com.minare.utils.EventBusUtils
+import com.minare.utils.FrameCalculator
 import io.vertx.core.Vertx
 import io.vertx.core.eventbus.EventBus
 import io.vertx.core.json.JsonArray
@@ -25,6 +26,7 @@ import javax.inject.Singleton
 class MessageQueueOperationConsumer @Inject constructor(
     private val vertx: Vertx,
     private val frameConfig: FrameConfiguration,
+    private val frameCalculator: FrameCalculator,
     private val coordinatorState: FrameCoordinatorState,
     private val lateOperationHandler: LateOperationHandler
 ) {
@@ -87,113 +89,98 @@ class MessageQueueOperationConsumer @Inject constructor(
         val config = mutableMapOf<String, String>()
 
         val bootstrapServers = System.getenv("KAFKA_BOOTSTRAP_SERVERS") ?: "localhost:9092"
+        val groupId = System.getenv("KAFKA_GROUP_ID") ?: "minare-coordinator"
+
         config["bootstrap.servers"] = bootstrapServers
-        config["group.id"] = "minare-coordinator"
+        config["group.id"] = groupId
+        config["auto.offset.reset"] = "earliest"
+        config["enable.auto.commit"] = "false"
         config["key.deserializer"] = "org.apache.kafka.common.serialization.StringDeserializer"
         config["value.deserializer"] = "org.apache.kafka.common.serialization.StringDeserializer"
-        config["enable.auto.commit"] = "true"
-        config["auto.commit.interval.ms"] = "1000"
-        config["auto.offset.reset"] = "latest"
 
         return config
     }
 
     /**
-     * Handle a single Kafka record containing operations.
+     * Handle a single Kafka record by buffering it to the appropriate frame.
+     * This is the main integration point between Kafka and frame processing.
      */
     private fun handleKafkaRecord(record: io.vertx.kafka.client.consumer.KafkaConsumerRecord<String, String>) {
         try {
-            val operations = JsonArray(record.value())
+            val operation = JsonObject(record.value())
+            val timestamp = operation.getLong("timestamp")
 
-            operations.forEach { op ->
-                if (op is JsonObject) {
-                    bufferOperation(op)
-                }
+            if (timestamp == null) {
+                log.error("Operation missing timestamp, cannot assign to frame: {}",
+                    operation.encode())
+                return
             }
+
+            // Check buffer limits first
+            val totalBuffered = coordinatorState.getTotalBufferedOperations()
+            if (totalBuffered >= MAX_BUFFER_SIZE) {
+                log.error("Operation buffer full ({}/{} operations), dropping operation",
+                    totalBuffered, MAX_BUFFER_SIZE)
+                // TODO: Implement proper backpressure/503 response
+                return
+            }
+
+            if (totalBuffered >= BUFFER_WARNING_THRESHOLD) {
+                log.warn("Operation buffer approaching limit: {}/{} operations",
+                    totalBuffered, MAX_BUFFER_SIZE)
+            }
+
+            // Route to appropriate handler based on session state
+            if (coordinatorState.sessionStartTimestamp == 0L) {
+                handlePreSessionOperation(operation)
+            } else {
+                handleSessionOperation(operation, timestamp)
+            }
+
+            // Commit offset after successful processing
+            messageQueueConsumer?.commit()
+
         } catch (e: Exception) {
             log.error("Error processing Kafka record", e)
         }
     }
 
     /**
-     * Buffer a single operation into the appropriate frame.
-     * Now implements backpressure checking and triggers manifest preparation.
+     * Handle operations that arrive before a session starts.
+     * These are buffered as "pending" operations.
      */
-    private fun bufferOperation(operation: JsonObject) {
-        val timestamp = operation.getLong("timestamp")
-            ?: throw IllegalArgumentException("Operation missing timestamp")
+    private fun handlePreSessionOperation(operation: JsonObject) {
+        coordinatorState.bufferPendingOperation(operation)
 
-        // Check buffer capacity before processing
-        val currentBufferSize = coordinatorState.getTotalBufferedOperations()
-
-        if (currentBufferSize >= MAX_BUFFER_SIZE) {
-            log.error("Operation buffer full ({} operations), dropping operation {}. " +
-                    "503 backpressure should be implemented here.",
-                currentBufferSize, operation.getString("id"))
-            // TODO: Implement actual 503 response mechanism to Kafka producers
-            return
-        } else if (currentBufferSize >= BUFFER_WARNING_THRESHOLD) {
-            log.warn("Operation buffer approaching limit: {} / {} operations",
-                currentBufferSize, MAX_BUFFER_SIZE)
+        if (log.isDebugEnabled) {
+            log.debug("Buffered pre-session operation {} (total pending: {})",
+                operation.getString("id"), coordinatorState.getPendingOperationCount())
         }
+    }
 
-        // If we don't have a session start yet, buffer as pending
-        val sessionStart = coordinatorState.sessionStartTimestamp
-        if (sessionStart == 0L) {
-            log.debug("Session not started, buffering operation {} as pending",
-                operation.getString("id"))
-            coordinatorState.bufferPendingOperation(operation)
-            return
-        }
+    /**
+     * Handle operations during an active session.
+     * Routes to appropriate frame based on timestamp.
+     */
+    private fun handleSessionOperation(operation: JsonObject, timestamp: Long) {
+        val logicalFrame = coordinatorState.getLogicalFrame(timestamp)
 
-        // Calculate logical frame based on session start
-        val relativeTimestamp = timestamp - sessionStart
-        val logicalFrame = if (relativeTimestamp < 0) {
-            -1L // Before session start
-        } else {
-            relativeTimestamp / frameConfig.frameDurationMs
-        }
-
-        val lastProcessedFrame = coordinatorState.lastProcessedFrame
+        // Check if this is a late operation (before current frame)
         val frameInProgress = coordinatorState.frameInProgress
-
-        if (logicalFrame < 0 || logicalFrame <= lastProcessedFrame) {
-            // Late operation - use configured handler
-            if (log.isDebugEnabled) {
-                log.debug("Late operation detected - op timestamp: {}, logical frame: {}, last processed: {}",
-                    timestamp, logicalFrame, lastProcessedFrame)
-            }
-
-            val decision = lateOperationHandler.handleLateOperation(
-                operation,
-                logicalFrame,
-                frameInProgress
-            )
-
-            when (decision) {
-                is LateOperationDecision.Drop -> {
-                    // Already logged by handler
-                }
-                is LateOperationDecision.Delay -> {
-                    // Add to the target frame
-                    coordinatorState.bufferOperation(operation, decision.targetFrame)
-                    log.debug("Delayed operation {} to frame {}",
-                        operation.getString("id"), decision.targetFrame)
-
-                    // Trigger manifest preparation for the delayed frame
-                    triggerManifestPreparation(decision.targetFrame)
-                }
-            }
+        if (logicalFrame < frameInProgress) {
+            lateOperationHandler.handleLateOperation(operation, logicalFrame, frameInProgress)
             return
         }
 
-        // Check if operation is too far in the future (during pause)
+        // Check if operation is too far in the future
         if (coordinatorState.isPaused) {
-            val maxAllowedFrame = frameInProgress + frameConfig.maxBufferFrames.toLong()
-            if (logicalFrame > maxAllowedFrame) {
-                log.warn("Operation {} for frame {} exceeds buffer limit during pause (current frame: {}, max: {}). " +
+            // During pause, enforce strict buffer limits
+            if (!frameCalculator.isFrameWithinBufferLimit(logicalFrame, frameInProgress)) {
+                log.error("Operation {} targets frame {} which exceeds pause buffer limit " +
+                        "(current: {}, max allowed: {}). " +
                         "503 backpressure should be implemented here.",
-                    operation.getString("id"), logicalFrame, frameInProgress, maxAllowedFrame)
+                    operation.getString("id"), logicalFrame, frameInProgress,
+                    frameInProgress + frameConfig.maxBufferFrames)
                 // TODO: Implement actual 503 response mechanism
                 return
             }

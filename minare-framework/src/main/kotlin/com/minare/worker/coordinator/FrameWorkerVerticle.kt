@@ -5,8 +5,8 @@ import com.hazelcast.core.HazelcastInstance
 import com.hazelcast.map.IMap
 import com.minare.operation.Operation
 import com.minare.time.FrameConfiguration
+import com.minare.time.FrameCalculator
 import com.minare.utils.VerticleLogger
-import io.vertx.core.json.JsonArray
 import io.vertx.core.json.JsonObject
 import io.vertx.kotlin.coroutines.CoroutineVerticle
 import io.vertx.kotlin.coroutines.await
@@ -26,6 +26,7 @@ import javax.inject.Inject
 class FrameWorkerVerticle @Inject constructor(
     private val vlog: VerticleLogger,
     private val hazelcastInstance: HazelcastInstance,
+    private val frameCalculator: FrameCalculator,
     private val frameConfig: FrameConfiguration
 ) : CoroutineVerticle() {
 
@@ -106,29 +107,24 @@ class FrameWorkerVerticle @Inject constructor(
             sessionStartTimestamp, sessionStartNanos)
 
         var logicalFrame = 0L
-        val frameDurationNanos = frameConfig.frameDurationMs * 1_000_000L
 
         while (processingActive) {
             try {
                 // Process current frame
                 processLogicalFrame(logicalFrame)
 
-                // Find our position relative to session start time
-                val nextFrameStartNanos = sessionStartNanos + ((logicalFrame + 1) * frameDurationNanos)
-                val currentNanos = System.nanoTime()
-                val nanosUntilNextFrame = nextFrameStartNanos - currentNanos
+                // Calculate how long until next frame
+                val nanosUntilNextFrame = frameCalculator.nanosUntilFrame(logicalFrame + 1, sessionStartNanos)
 
                 if (nanosUntilNextFrame > 0) {
                     // We finished early - wait for next frame
-                    delay(nanosUntilNextFrame / 1_000_000L)
+                    delay(nanosUntilNextFrame / FrameCalculator.NANOS_PER_MS)
                 } else {
                     // Detect if lagging
                     val nanosLate = -nanosUntilNextFrame
-                    val frameLagThreshold = frameDurationNanos / 2  // 50% into next frame
 
-                    if (nanosLate > frameLagThreshold) {
+                    if (frameCalculator.isLaggingBeyondThreshold(nanosLate)) {
                         log.error("Worker {} is {} nanoseconds behind schedule", workerId, nanosLate)
-
                         reportWorkerLagged(logicalFrame, nanosLate)
                     }
                 }
@@ -138,15 +134,13 @@ class FrameWorkerVerticle @Inject constructor(
             } catch (e: Exception) {
                 log.error("Error processing logical frame {}", logicalFrame, e)
 
-                val expectedNextFrameNanos = sessionStartNanos + ((logicalFrame + 1) * frameDurationNanos)
-                val currentNanos = System.nanoTime()
-                val delayNanos = expectedNextFrameNanos - currentNanos
+                val delayMs = frameCalculator.msUntilFrame(logicalFrame + 1, sessionStartNanos)
 
                 reportFrameError()
 
-                if (delayNanos > 0) {
+                if (delayMs > 0) {
                     // Wait until the next frame and resume
-                    delay(delayNanos / 1_000_000L)
+                    delay(delayMs)
                 }
             }
         }
@@ -164,7 +158,7 @@ class FrameWorkerVerticle @Inject constructor(
 
         try {
             // Fetch manifest from Hazelcast
-            val manifestKey = FrameManifest.makeKey(logicalFrame, workerId)
+            val manifestKey = frameCalculator.makeManifestKey(logicalFrame, workerId)
             val manifestJson = manifestMap[manifestKey]
 
             if (manifestJson == null) {
@@ -242,7 +236,7 @@ class FrameWorkerVerticle @Inject constructor(
 
             if (result.body().getBoolean("success", false)) {
                 // Mark operation as complete in distributed map
-                val completionKey = "frame-$logicalFrame:op-$operationId"
+                val completionKey = frameCalculator.makeOperationCompletionKey(logicalFrame, operationId)
                 completionMap[completionKey] = OperationCompletion(
                     operationId = operationId,
                     workerId = workerId
@@ -336,20 +330,17 @@ class FrameWorkerVerticle @Inject constructor(
             0L
         }
 
-        val expectedFrame = if (sessionStartNanos > 0) {
-            elapsedNanos / (frameConfig.frameDurationMs * 1_000_000L)
-        } else {
-            -1L
-        }
+        val expectedFrame = frameCalculator.nanosToLogicalFrame(elapsedNanos)
+        val framesBehind = expectedFrame - currentLogicalFrame
 
         return JsonObject()
             .put("workerId", workerId)
             .put("currentLogicalFrame", currentLogicalFrame)
             .put("expectedLogicalFrame", expectedFrame)
-            .put("framesBehind", expectedFrame - currentLogicalFrame)
+            .put("framesBehind", framesBehind)
             .put("sessionStartTimestamp", sessionStartTimestamp)
             .put("processingActive", processingActive)
-            .put("elapsedSeconds", elapsedNanos / 1_000_000_000L)
+            .put("elapsedSeconds", elapsedNanos / FrameCalculator.NANOS_PER_SECOND)
     }
 
     override suspend fun stop() {
