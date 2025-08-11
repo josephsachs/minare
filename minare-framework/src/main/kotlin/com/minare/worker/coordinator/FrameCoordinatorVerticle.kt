@@ -187,17 +187,15 @@ class FrameCoordinatorVerticle @Inject constructor(
         frameManifestBuilder.clearAllManifests()
         frameCompletionTracker.clearAllCompletions()
 
-        // Initialize coordinator state for new session
+        val operationsByOldFrame = extractBufferedOperations()
+
+        // Initialize coordinator state for new session (this clears all buffers)
         coordinatorState.startNewSession(sessionStartTime, sessionStartNanos)
 
-        // Move all pending operations to frame 0
-        coordinatorState.assignPendingOperationsToFrame(0)
-        prepareManifestForFrame(0)
-        prepareManifestForFrame(1)
+        val newFrame = createNewFrameBuffer(operationsByOldFrame)
 
         // Get active workers for session event
         val activeWorkers = workerRegistry.getActiveWorkers()
-        val pendingOperationCount = coordinatorState.getPendingOperationCount()
 
         // Publish session start event to Kafka for audit trail
         try {
@@ -210,7 +208,7 @@ class FrameCoordinatorVerticle @Inject constructor(
                 .put("workerCount", activeWorkers.size)
                 .put("workerIds", JsonArray(activeWorkers.toList()))
                 .put("coordinatorInstance", "coordinator-${System.currentTimeMillis()}") // TODO: Use a more stable ID
-                .put("pendingOperationCount", pendingOperationCount)
+                .put("framesWithOperations", newFrame)
 
             // Send to Kafka system events topic for audit trail
             // Wrap in JsonArray as Kafka expects batches
@@ -230,14 +228,71 @@ class FrameCoordinatorVerticle @Inject constructor(
             .put("frameDuration", frameConfig.frameDurationMs)
 
         vertx.eventBus().publish(ADDRESS_SESSION_START, announcement)
-        log.info("Announced new session starting at {} (in {}ms) with {} workers and {} pending operations",
-            sessionStartTime, frameConfig.frameOffsetMs, activeWorkers.size, pendingOperationCount)
+        log.info("Announced new session starting at {} (in {}ms) with {} workers",
+            sessionStartTime, frameConfig.frameOffsetMs, activeWorkers.size)
 
         // Wait for the announced start time
         delay(frameConfig.frameOffsetMs)
 
-        // Start frame scheduling
-        scheduleFramePreparation(2)
+        // Start frame scheduling from the next unprepared frame
+        val nextFrameToSchedule = coordinatorState.lastPreparedManifest + 1
+        scheduleFramePreparation(nextFrameToSchedule)
+    }
+
+    /**
+     *
+     */
+    private suspend fun extractBufferedOperations(): MutableMap<Long, List<JsonObject>> {
+        // Get current buffered frame numbers before resetting state
+        val oldFrameNumbers = coordinatorState.getBufferedOperationCounts().keys.sorted()
+
+        // Extract all buffered operations while preserving their groupings
+        val operationsByOldFrame = mutableMapOf<Long, List<JsonObject>>()
+        oldFrameNumbers.forEach { oldFrame ->
+            operationsByOldFrame[oldFrame] = coordinatorState.extractFrameOperations(oldFrame)
+        }
+
+        return operationsByOldFrame
+    }
+
+    private suspend fun createNewFrameBuffer(operationsByOldFrame: MutableMap<Long, List<JsonObject>>): Long {
+        // Re-buffer operations with new frame numbers, preserving groupings
+        var newFrame = 0L
+        operationsByOldFrame.forEach { (_, operations) ->
+            operations.forEach { op ->
+                coordinatorState.bufferOperation(op, newFrame)
+            }
+            if (operations.isNotEmpty()) {
+                log.debug("Renumbered {} operations from old frame to new frame {}",
+                    operations.size, newFrame)
+            }
+            newFrame++
+        }
+
+        // Handle any pending operations (those that arrived before session started)
+        val pendingCount = coordinatorState.getPendingOperationCount()
+        if (pendingCount > 0) {
+            coordinatorState.assignPendingOperationsToFrame(newFrame)
+            log.info("Assigned {} pending operations to frame {}", pendingCount, newFrame)
+            newFrame++
+        }
+
+        // Prepare manifests for all frames we have operations for
+        val framesToPrepare = minOf(newFrame, frameConfig.maxBufferFrames.toLong())
+        for (frame in 0 until framesToPrepare) {
+            prepareManifestForFrame(frame)
+        }
+
+        // If no operations at all, prepare at least frames 0 and 1
+        if (newFrame == 0L) {
+            prepareManifestForFrame(0)
+            prepareManifestForFrame(1)
+        }
+
+        log.info("Session start: renumbered {} old frames to frames 0-{}, prepared {} manifests",
+            operationsByOldFrame.size, newFrame - 1, framesToPrepare)
+
+        return newFrame
     }
 
     /**
