@@ -177,6 +177,8 @@ class FrameCoordinatorVerticle @Inject constructor(
     /**
      * Start a new session with announcements and manifest preparation.
      * Called on startup or after resume.
+     * Operations placed into the buffer during pause will be assigned to
+     * new logical frames according to the time of receipt.
      */
     private suspend fun startNewSession() {
         // Calculate session start time with frame offset for announcement
@@ -187,12 +189,14 @@ class FrameCoordinatorVerticle @Inject constructor(
         frameManifestBuilder.clearAllManifests()
         frameCompletionTracker.clearAllCompletions()
 
+        // Get all buffered operations
         val operationsByOldFrame = extractBufferedOperations()
 
         // Initialize coordinator state for new session (this clears all buffers)
         coordinatorState.startNewSession(sessionStartTime, sessionStartNanos)
 
-        val newFrame = createNewFrameBuffer(operationsByOldFrame)
+        // Create logical frame manifests for buffered operations
+        val newFrame = assignBufferedOperations(operationsByOldFrame)
 
         // Get active workers for session event
         val activeWorkers = workerRegistry.getActiveWorkers()
@@ -211,8 +215,8 @@ class FrameCoordinatorVerticle @Inject constructor(
                 .put("framesWithOperations", newFrame)
 
             // Send to Kafka system events topic for audit trail
-            // Wrap in JsonArray as Kafka expects batches
-            messageQueue.send("minare.system.events", JsonArray().add(sessionEvent))
+            // workerCount tells us how many workers we had during this session, which protects deterministic distribution
+            messageQueue.send("minare.system.events", JsonArray().add(sessionEvent)) // Wrap in JsonArray as Kafka expects batches
 
             log.info("Published session start event to Kafka")
         } catch (e: Exception) {
@@ -240,7 +244,7 @@ class FrameCoordinatorVerticle @Inject constructor(
     }
 
     /**
-     *
+     * Get all the operations we buffered during pause
      */
     private suspend fun extractBufferedOperations(): MutableMap<Long, List<JsonObject>> {
         // Get current buffered frame numbers before resetting state
@@ -255,7 +259,10 @@ class FrameCoordinatorVerticle @Inject constructor(
         return operationsByOldFrame
     }
 
-    private suspend fun createNewFrameBuffer(operationsByOldFrame: MutableMap<Long, List<JsonObject>>): Long {
+    /**
+     * Assign buffered operations to logical frames by time
+     */
+    private suspend fun assignBufferedOperations(operationsByOldFrame: MutableMap<Long, List<JsonObject>>): Long {
         // Re-buffer operations with new frame numbers, preserving groupings
         var newFrame = 0L
         operationsByOldFrame.forEach { (_, operations) ->
@@ -296,37 +303,65 @@ class FrameCoordinatorVerticle @Inject constructor(
     }
 
     /**
-     * Prepare manifests for all pending frames up to current time.
-     * Called when operations arrive or frames complete.
+     * Schedule preparation of a specific frame at its start time.
+     * Ensures empty frames get manifests so workers can maintain
+     * sequential frame processing and completion reporting.
      */
     private suspend fun preparePendingManifests() {
-        val elapsedNanos = System.nanoTime() - coordinatorState.sessionStartNanos
-        val currentWallClockFrame = elapsedNanos / (frameConfig.frameDurationMs * 1_000_000L)
-
-        // Determine target frame based on pause state
-        val targetFrame = if (coordinatorState.isPaused) {
-            // During pause, allow buffering up to MAX_BUFFER_FRAMES ahead
-            val maxAllowed = coordinatorState.frameInProgress + frameConfig.maxBufferFrames
-            minOf(currentWallClockFrame, maxAllowed)
-        } else {
-            // Normal operation: prepare slightly ahead (using default if not configured)
-            currentWallClockFrame + (frameConfig.normalOperationLookahead ?: 2)
-        }
-
-        // Prepare all outstanding frames
         val lastPrepared = coordinatorState.lastPreparedManifest
-        for (frame in (lastPrepared + 1)..targetFrame) {
-            prepareManifestForFrame(frame)
+
+        if (coordinatorState.isPaused) {
+            // During pause: prepare frames up to buffer limit
+            val frameInProgress = coordinatorState.frameInProgress
+            val maxAllowed = frameInProgress + frameConfig.maxBufferFrames
+
+            // Find highest frame with buffered operations (don't prepare empty future frames)
+            val bufferedFrames = coordinatorState.getBufferedOperationCounts().keys
+            val highestBuffered = bufferedFrames.maxOrNull() ?: lastPrepared
+
+            // Prepare up to the lesser of: highest buffered frame or max allowed
+            val targetFrame = minOf(highestBuffered, maxAllowed)
+
+            if (targetFrame > lastPrepared) {
+                log.debug("During pause: preparing frames {}-{} (buffer limit: {})",
+                    lastPrepared + 1, targetFrame, maxAllowed)
+
+                for (frame in (lastPrepared + 1)..targetFrame) {
+                    prepareManifestForFrame(frame)
+                }
+            }
+        } else {
+            // Normal operation: stay ahead by normalOperationLookahead
+            val elapsedNanos = System.nanoTime() - coordinatorState.sessionStartNanos
+            val currentWallClockFrame = elapsedNanos / (frameConfig.frameDurationMs * 1_000_000L)
+            val targetFrame = currentWallClockFrame + frameConfig.normalOperationLookahead
+
+            if (targetFrame > lastPrepared) {
+                log.debug("Normal operation: preparing frames {}-{} (current wall clock: {})",
+                    lastPrepared + 1, targetFrame, currentWallClockFrame)
+
+                for (frame in (lastPrepared + 1)..targetFrame) {
+                    prepareManifestForFrame(frame)
+                }
+            }
         }
     }
 
     /**
      * Schedule preparation of a specific frame at its start time.
      * Ensures empty frames get manifests for worker heartbeats.
+     *
+     * This is a backup mechanism - primary manifest preparation is event-driven
+     * via operation arrival. This ensures frames without operations still get
+     * manifests for worker heartbeats and frame progression.
      */
     private fun scheduleFramePreparation(frameNumber: Long) {
-        if (coordinatorState.isPaused) {
-            return // Don't schedule during pause
+        // Don't schedule if this frame is already prepared
+        if (frameNumber <= coordinatorState.lastPreparedManifest) {
+            // Find the next unprepared frame
+            val nextUnprepared = coordinatorState.lastPreparedManifest + 1
+            scheduleFramePreparation(nextUnprepared)
+            return
         }
 
         val frameStartNanos = coordinatorState.sessionStartNanos +
@@ -334,24 +369,61 @@ class FrameCoordinatorVerticle @Inject constructor(
         val delayMs = (frameStartNanos - System.nanoTime()) / 1_000_000L
 
         if (delayMs > 0) {
+            // Schedule preparation at the exact frame start time
             vertx.setTimer(delayMs) {
                 launch {
-                    // Only prepare if not already done
+                    // Only prepare if still not done (operation arrival might have triggered it)
                     if (frameNumber > coordinatorState.lastPreparedManifest) {
-                        prepareManifestForFrame(frameNumber)
+                        if (coordinatorState.isPaused) {
+                            // During pause, only prepare this frame if within buffer limits
+                            val frameInProgress = coordinatorState.frameInProgress
+                            val maxAllowed = frameInProgress + frameConfig.maxBufferFrames
+
+                            if (frameNumber <= maxAllowed) {
+                                prepareManifestForFrame(frameNumber)
+                                // Continue scheduling during pause to ensure empty frames are handled
+                                scheduleFramePreparation(frameNumber + 1)
+                            } else {
+                                log.debug("Not scheduling frame {} during pause - exceeds buffer limit", frameNumber)
+                            }
+                        } else {
+                            // Normal operation - prepare frame and schedule next
+                            prepareManifestForFrame(frameNumber)
+                            scheduleFramePreparation(frameNumber + 1)
+                        }
                     }
-                    // Schedule next frame
-                    scheduleFramePreparation(frameNumber + 1)
                 }
             }
         } else {
-            // We're behind, prepare immediately and catch up
+            // We're behind schedule
             launch {
-                preparePendingManifests()
-                // Find next future frame to schedule
-                val currentFrame = (System.nanoTime() - coordinatorState.sessionStartNanos) /
-                        (frameConfig.frameDurationMs * 1_000_000L)
-                scheduleFramePreparation(currentFrame + 1)
+                if (coordinatorState.isPaused) {
+                    // During pause, catch up but respect buffer limits
+                    val frameInProgress = coordinatorState.frameInProgress
+                    val maxAllowed = frameInProgress + frameConfig.maxBufferFrames
+                    val currentFrame = (System.nanoTime() - coordinatorState.sessionStartNanos) /
+                            (frameConfig.frameDurationMs * 1_000_000L)
+                    val targetFrame = minOf(currentFrame, maxAllowed)
+
+                    // Prepare all frames up to target
+                    val lastPrepared = coordinatorState.lastPreparedManifest
+                    for (frame in (lastPrepared + 1)..targetFrame) {
+                        prepareManifestForFrame(frame)
+                    }
+
+                    // Schedule next frame within limits
+                    if (targetFrame < maxAllowed) {
+                        scheduleFramePreparation(targetFrame + 1)
+                    }
+                } else {
+                    // Normal operation - catch up to current time
+                    preparePendingManifests()
+
+                    // Find next future frame to schedule
+                    val currentFrame = (System.nanoTime() - coordinatorState.sessionStartNanos) /
+                            (frameConfig.frameDurationMs * 1_000_000L)
+                    scheduleFramePreparation(currentFrame + 1)
+                }
             }
         }
     }
