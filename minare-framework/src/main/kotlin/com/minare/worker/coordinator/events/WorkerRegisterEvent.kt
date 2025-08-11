@@ -72,15 +72,16 @@ class WorkerRegisterEvent @Inject constructor(
                     traceId
                 )
 
-                // Log activation success
-                vlog.logStartupStep(
-                    "WORKER_ACTIVATION_COMPLETE",
-                    mapOf(
-                        "workerId" to workerId,
-                        "activeWorkers" to workerRegistry.getActiveWorkers().size,
-                        "expectedWorkers" to workerRegistry.getExpectedWorkerCount()
-                    )
+                // Emit event for other components to react to successful activation
+                eventBusUtils.sendWithTracing(
+                    ADDRESS_WORKER_ACTIVATED,
+                    JsonObject()
+                        .put("workerId", workerId)
+                        .put("activeWorkers", workerRegistry.getActiveWorkers().size)
+                        .put("expectedWorkers", workerRegistry.getExpectedWorkerCount()),
+                    traceId
                 )
+
 
                 // Check if we now have all expected workers
                 val activeCount = workerRegistry.getActiveWorkers().size
@@ -109,6 +110,6 @@ class WorkerRegisterEvent @Inject constructor(
     }
 
     companion object {
-        // No internal constants needed
+        const val ADDRESS_WORKER_ACTIVATED = "minare.coordinator.worker.activated"
     }
 }

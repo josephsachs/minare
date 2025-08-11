@@ -39,7 +39,10 @@ class FrameCoordinatorVerticle @Inject constructor(
     private val infraAddWorkerEvent: InfraAddWorkerEvent,
     private val infraRemoveWorkerEvent: InfraRemoveWorkerEvent,
     private val workerFrameCompleteEvent: WorkerFrameCompleteEvent,
-    private val workerHeartbeatEvent: WorkerHeartbeatEvent
+    private val workerHeartbeatEvent: WorkerHeartbeatEvent,
+    private val workerReadinessEvent: WorkerReadinessEvent,
+    private val frameCatchUpEvent: FrameCatchUpEvent,
+    private val workerHealthChangeEvent: WorkerHealthChangeEvent
 ) : CoroutineVerticle() {
 
     private val log = LoggerFactory.getLogger(FrameCoordinatorVerticle::class.java)
@@ -51,9 +54,8 @@ class FrameCoordinatorVerticle @Inject constructor(
         const val ADDRESS_SESSION_START = "minare.coordinator.session.start"
         const val ADDRESS_FRAME_ALL_COMPLETE = "minare.coordinator.internal.frame-all-complete"
         const val ADDRESS_PREPARE_MANIFEST = "minare.coordinator.internal.prepare-manifest"
-
-        // Configuration
-        const val FRAME_STARTUP_GRACE_PERIOD = 5000L
+        const val ADDRESS_ALL_WORKERS_READY = "minare.coordinator.all.workers.ready"
+        const val ADDRESS_WORKERS_CAUGHT_UP = "minare.coordinator.workers.caught.up"
     }
 
     override suspend fun start() {
@@ -62,14 +64,6 @@ class FrameCoordinatorVerticle @Inject constructor(
 
         setupEventBusConsumers()
         setupOperationConsumer()
-
-        // Check for readiness after grace period
-        vertx.setTimer(FRAME_STARTUP_GRACE_PERIOD) {
-            launch {
-                log.info("Grace period complete, checking for worker readiness")
-                checkAndStartWhenReady()
-            }
-        }
     }
 
     private fun setupEventBusConsumers() {
@@ -79,8 +73,11 @@ class FrameCoordinatorVerticle @Inject constructor(
 
         // Worker lifecycle
         launch {
+            frameCatchUpEvent.register()
             workerHeartbeatEvent.register()
             workerFrameCompleteEvent.register()
+            workerReadinessEvent.register()
+            workerHealthChangeEvent.register()
         }
 
         // Internal event for when all workers complete a frame
@@ -106,72 +103,38 @@ class FrameCoordinatorVerticle @Inject constructor(
             launch {
                 val reason = msg.body().getString("reason", "Manual resume")
                 log.info("Received resume command: {}", reason)
-                checkAndResumeWhenReady()
+                // Resume happens via FrameCatchUpEvent when workers are ready
+                // Just log that we've received the request
+            }
+        }
+
+        vertx.eventBus().consumer<JsonObject>(ADDRESS_ALL_WORKERS_READY) { msg ->
+            launch {
+                log.info("All workers ready, starting new session")
+                coordinatorState.isPaused = false
+                startNewSession()
+            }
+        }
+
+        vertx.eventBus().consumer<JsonObject>(ADDRESS_WORKERS_CAUGHT_UP) { msg ->
+            launch {
+                val resumeFrame = msg.body().getLong("resumeFrame")
+                log.info("All workers caught up, resuming at frame {}", resumeFrame)
+
+                coordinatorState.isPaused = false
+                coordinatorState.setFrameInProgress(resumeFrame)
+
+                // Catch up manifest preparation to current time
+                preparePendingManifests()
+
+                // Schedule next frame preparation
+                scheduleFramePreparation(resumeFrame)
             }
         }
     }
 
     private suspend fun setupOperationConsumer() {
         messageQueueOperationConsumer.start(this)
-    }
-
-    /**
-     * Check if cluster is ready and start a new session.
-     * Called after startup grace period.
-     */
-    private suspend fun checkAndStartWhenReady() {
-        // Keep checking until we have the expected number of workers
-        while (true) {
-            val expectedWorkers = workerRegistry.getExpectedWorkerCount()
-            val activeWorkers = workerRegistry.getActiveWorkers()
-
-            log.info("Worker status: {}/{} active", activeWorkers.size, expectedWorkers)
-
-            if (activeWorkers.size == expectedWorkers) {
-                log.info("All expected workers active, starting new session")
-                coordinatorState.isPaused = false
-                startNewSession()
-                break
-            } else if (activeWorkers.size > expectedWorkers) {
-                log.error("Too many workers active! Expected {}, found {}",
-                    expectedWorkers, activeWorkers.size)
-                // Could pause here or alert operators
-                break
-            }
-
-            delay(1000) // Check every second
-        }
-    }
-
-    /**
-     * Check if workers have caught up and resume processing.
-     * Called after pause when resuming.
-     */
-    private suspend fun checkAndResumeWhenReady() {
-        val lastProcessed = coordinatorState.lastProcessedFrame
-        val expectedWorkers = workerRegistry.getExpectedWorkerCount()
-
-        // Wait for workers to catch up to the last processed frame
-        while (true) {
-            val caughtUpWorkers = coordinatorState.getCompletedWorkers(lastProcessed)
-
-            if (caughtUpWorkers.size == expectedWorkers) {
-                log.info("All workers caught up to frame {}, resuming", lastProcessed)
-                coordinatorState.isPaused = false
-                coordinatorState.setFrameInProgress(lastProcessed + 1)
-
-                // Catch up manifest preparation to current time
-                preparePendingManifests()
-
-                // Schedule next frame preparation
-                scheduleFramePreparation(lastProcessed + 1)
-                break
-            }
-
-            log.info("Waiting for workers to catch up: {}/{} ready",
-                caughtUpWorkers.size, expectedWorkers)
-            delay(1000)
-        }
     }
 
     /**

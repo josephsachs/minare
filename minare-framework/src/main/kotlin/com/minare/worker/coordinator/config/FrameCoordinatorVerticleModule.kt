@@ -7,14 +7,10 @@ import com.minare.config.MinareModule
 import com.minare.worker.coordinator.FrameCoordinatorVerticle
 import com.minare.utils.EventBusUtils
 import com.minare.worker.coordinator.CoordinatorAdminVerticle
-import com.minare.worker.coordinator.events.InfraAddWorkerEvent
-import com.minare.worker.coordinator.events.InfraRemoveWorkerEvent
+import com.minare.worker.coordinator.events.*
 import io.vertx.core.Vertx
 import io.vertx.core.impl.logging.LoggerFactory
 import kotlinx.coroutines.CoroutineScope
-import com.minare.worker.coordinator.events.WorkerFrameCompleteEvent
-import com.minare.worker.coordinator.events.WorkerHeartbeatEvent
-import com.minare.worker.coordinator.events.WorkerRegisterEvent
 import kotlin.coroutines.CoroutineContext
 
 /**
@@ -35,6 +31,9 @@ class FrameCoordinatorVerticleModule : PrivateModule() {
         bind(InfraRemoveWorkerEvent::class.java).`in`(Singleton::class.java)
         bind(WorkerFrameCompleteEvent::class.java).`in`(Singleton::class.java)
         bind(WorkerHeartbeatEvent::class.java).`in`(Singleton::class.java)
+        bind(FrameCatchUpEvent::class.java).`in`(Singleton::class.java)
+        bind(WorkerHealthChangeEvent::class.java).`in`(Singleton::class.java)
+        bind(WorkerReadinessEvent::class.java).`in`(Singleton::class.java)
 
         // Request external dependencies that should be provided by parent injector
         requireBinding(Vertx::class.java)
