@@ -2,6 +2,7 @@ package com.minare.worker.coordinator
 
 import com.hazelcast.core.HazelcastInstance
 import com.minare.operation.MessageQueue
+import com.minare.time.FrameCalculator
 import com.minare.time.FrameConfiguration
 import com.minare.time.TimeService
 import com.minare.utils.VerticleLogger
@@ -27,6 +28,7 @@ import javax.inject.Inject
 class FrameCoordinatorVerticle @Inject constructor(
     private val frameConfig: FrameConfiguration,
     private val timeService: TimeService,
+    private val frameCalculator: FrameCalculator,
     private val vlog: VerticleLogger,
     private val workerRegistry: WorkerRegistry,
     private val coordinatorState: FrameCoordinatorState,
@@ -146,7 +148,7 @@ class FrameCoordinatorVerticle @Inject constructor(
         // Calculate session start time with frame offset for announcement
         val announcementTime = System.currentTimeMillis()
         val sessionStartTime = announcementTime + frameConfig.frameOffsetMs
-        val sessionStartNanos = System.nanoTime() + (frameConfig.frameOffsetMs * 1_000_000L)
+        val sessionStartNanos = System.nanoTime() + (frameConfig.frameOffsetMs * FrameCalculator.NANOS_PER_MS)
 
         frameManifestBuilder.clearAllManifests()
         frameCompletionTracker.clearAllCompletions()
@@ -294,8 +296,7 @@ class FrameCoordinatorVerticle @Inject constructor(
             }
         } else {
             // Normal operation: stay ahead by normalOperationLookahead
-            val elapsedNanos = System.nanoTime() - coordinatorState.sessionStartNanos
-            val currentWallClockFrame = elapsedNanos / (frameConfig.frameDurationMs * 1_000_000L)
+            val currentWallClockFrame = frameCalculator.getCurrentLogicalFrame(coordinatorState.sessionStartNanos)
             val targetFrame = currentWallClockFrame + frameConfig.normalOperationLookahead
 
             if (targetFrame > lastPrepared) {
@@ -326,9 +327,7 @@ class FrameCoordinatorVerticle @Inject constructor(
             return
         }
 
-        val frameStartNanos = coordinatorState.sessionStartNanos +
-                (frameNumber * frameConfig.frameDurationMs * 1_000_000L)
-        val delayMs = (frameStartNanos - System.nanoTime()) / 1_000_000L
+        val delayMs = frameCalculator.msUntilFrame(frameNumber, coordinatorState.sessionStartNanos)
 
         if (delayMs > 0) {
             // Schedule preparation at the exact frame start time
@@ -363,8 +362,7 @@ class FrameCoordinatorVerticle @Inject constructor(
                     // During pause, catch up but respect buffer limits
                     val frameInProgress = coordinatorState.frameInProgress
                     val maxAllowed = frameInProgress + frameConfig.maxBufferFrames
-                    val currentFrame = (System.nanoTime() - coordinatorState.sessionStartNanos) /
-                            (frameConfig.frameDurationMs * 1_000_000L)
+                    val currentFrame = frameCalculator.getCurrentLogicalFrame(coordinatorState.sessionStartNanos)
                     val targetFrame = minOf(currentFrame, maxAllowed)
 
                     // Prepare all frames up to target
@@ -383,7 +381,7 @@ class FrameCoordinatorVerticle @Inject constructor(
 
                     // Find next future frame to schedule
                     val currentFrame = (System.nanoTime() - coordinatorState.sessionStartNanos) /
-                            (frameConfig.frameDurationMs * 1_000_000L)
+                            (frameConfig.frameDurationMs * FrameCalculator.NANOS_PER_MS)
                     scheduleFramePreparation(currentFrame + 1)
                 }
             }
@@ -456,8 +454,7 @@ class FrameCoordinatorVerticle @Inject constructor(
         frameCompletionTracker.clearFrameCompletions(logicalFrame)
 
         // Check if we're falling behind
-        val elapsedNanos = System.nanoTime() - coordinatorState.sessionStartNanos
-        val expectedFrame = elapsedNanos / (frameConfig.frameDurationMs * 1_000_000L)
+        val expectedFrame = frameCalculator.getCurrentLogicalFrame(coordinatorState.sessionStartNanos)
 
         if (expectedFrame - logicalFrame > 5) {
             log.warn("Frame processing falling behind - expected frame {}, just completed {}",

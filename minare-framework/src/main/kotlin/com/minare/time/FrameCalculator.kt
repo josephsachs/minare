@@ -1,4 +1,4 @@
-package com.minare.utils
+package com.minare.time
 
 import com.minare.time.FrameConfiguration
 import javax.inject.Inject
