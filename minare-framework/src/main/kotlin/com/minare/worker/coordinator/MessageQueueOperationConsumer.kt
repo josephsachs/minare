@@ -137,11 +137,12 @@ class MessageQueueOperationConsumer @Inject constructor(
                 currentBufferSize, MAX_BUFFER_SIZE)
         }
 
-        // If we don't have a session start yet, we're not ready to process
+        // If we don't have a session start yet, buffer as pending
         val sessionStart = coordinatorState.sessionStartTimestamp
         if (sessionStart == 0L) {
-            log.warn("No session start timestamp set, dropping operation {}",
+            log.debug("Session not started, buffering operation {} as pending",
                 operation.getString("id"))
+            coordinatorState.bufferPendingOperation(operation)
             return
         }
 
@@ -188,7 +189,7 @@ class MessageQueueOperationConsumer @Inject constructor(
 
         // Check if operation is too far in the future (during pause)
         if (coordinatorState.isPaused) {
-            val maxAllowedFrame = frameInProgress + frameConfig.maxBufferFrames.toLong()  // Use frameConfig, convert Int to Long
+            val maxAllowedFrame = frameInProgress + frameConfig.maxBufferFrames.toLong()
             if (logicalFrame > maxAllowedFrame) {
                 log.warn("Operation {} for frame {} exceeds buffer limit during pause (current frame: {}, max: {}). " +
                         "503 backpressure should be implemented here.",

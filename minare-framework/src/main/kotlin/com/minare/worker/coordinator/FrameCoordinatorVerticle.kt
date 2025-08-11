@@ -1,10 +1,12 @@
 package com.minare.worker.coordinator
 
 import com.hazelcast.core.HazelcastInstance
+import com.minare.operation.MessageQueue
 import com.minare.time.FrameConfiguration
 import com.minare.time.TimeService
 import com.minare.utils.VerticleLogger
 import com.minare.worker.coordinator.events.*
+import io.vertx.core.json.JsonArray
 import io.vertx.core.json.JsonObject
 import io.vertx.kotlin.coroutines.CoroutineVerticle
 import io.vertx.kotlin.coroutines.await
@@ -29,6 +31,7 @@ class FrameCoordinatorVerticle @Inject constructor(
     private val workerRegistry: WorkerRegistry,
     private val coordinatorState: FrameCoordinatorState,
     private val hazelcastInstance: HazelcastInstance,
+    private val messageQueue: MessageQueue,
     private val messageQueueOperationConsumer: MessageQueueOperationConsumer,
     private val frameManifestBuilder: FrameManifestBuilder,
     private val frameCompletionTracker: FrameCompletionTracker,
@@ -172,7 +175,7 @@ class FrameCoordinatorVerticle @Inject constructor(
     }
 
     /**
-     * Start a new logical frame session.
+     * Start a new session with announcements and manifest preparation.
      * Called on startup or after resume.
      */
     private suspend fun startNewSession() {
@@ -187,6 +190,38 @@ class FrameCoordinatorVerticle @Inject constructor(
         // Initialize coordinator state for new session
         coordinatorState.startNewSession(sessionStartTime, sessionStartNanos)
 
+        // Move all pending operations to frame 0
+        coordinatorState.assignPendingOperationsToFrame(0)
+        prepareManifestForFrame(0)
+        prepareManifestForFrame(1)
+
+        // Get active workers for session event
+        val activeWorkers = workerRegistry.getActiveWorkers()
+        val pendingOperationCount = coordinatorState.getPendingOperationCount()
+
+        // Publish session start event to Kafka for audit trail
+        try {
+            val sessionEvent = JsonObject()
+                .put("eventType", "SESSION_START")
+                .put("sessionStartTimestamp", sessionStartTime)
+                .put("announcementTimestamp", announcementTime)
+                .put("frameDuration", frameConfig.frameDurationMs)
+                .put("frameOffset", frameConfig.frameOffsetMs)
+                .put("workerCount", activeWorkers.size)
+                .put("workerIds", JsonArray(activeWorkers.toList()))
+                .put("coordinatorInstance", "coordinator-${System.currentTimeMillis()}") // TODO: Use a more stable ID
+                .put("pendingOperationCount", pendingOperationCount)
+
+            // Send to Kafka system events topic for audit trail
+            // Wrap in JsonArray as Kafka expects batches
+            messageQueue.send("minare.system.events", JsonArray().add(sessionEvent))
+
+            log.info("Published session start event to Kafka")
+        } catch (e: Exception) {
+            log.error("Failed to publish session start event", e)
+            // Continue anyway - this is just for audit
+        }
+
         // Announce session start with countdown
         val announcement = JsonObject()
             .put("sessionStartTimestamp", sessionStartTime)
@@ -195,15 +230,11 @@ class FrameCoordinatorVerticle @Inject constructor(
             .put("frameDuration", frameConfig.frameDurationMs)
 
         vertx.eventBus().publish(ADDRESS_SESSION_START, announcement)
-        log.info("Announced new session starting at {} (in {}ms)",
-            sessionStartTime, frameConfig.frameOffsetMs)
+        log.info("Announced new session starting at {} (in {}ms) with {} workers and {} pending operations",
+            sessionStartTime, frameConfig.frameOffsetMs, activeWorkers.size, pendingOperationCount)
 
         // Wait for the announced start time
         delay(frameConfig.frameOffsetMs)
-
-        // Prepare initial frames
-        prepareManifestForFrame(0)
-        prepareManifestForFrame(1)
 
         // Start frame scheduling
         scheduleFramePreparation(2)
@@ -223,8 +254,8 @@ class FrameCoordinatorVerticle @Inject constructor(
             val maxAllowed = coordinatorState.frameInProgress + frameConfig.maxBufferFrames
             minOf(currentWallClockFrame, maxAllowed)
         } else {
-            // Normal operation: prepare slightly ahead
-            currentWallClockFrame + frameConfig.normalOperationLookahead
+            // Normal operation: prepare slightly ahead (using default if not configured)
+            currentWallClockFrame + (frameConfig.normalOperationLookahead ?: 2)
         }
 
         // Prepare all outstanding frames
