@@ -1,4 +1,4 @@
-package kotlin.com.minare.worker.coordinator
+package com.minare.worker.coordinator
 
 import com.google.inject.Inject
 import com.google.inject.Singleton
