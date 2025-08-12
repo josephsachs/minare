@@ -158,7 +158,7 @@ class FrameWorkerVerticle @Inject constructor(
 
         try {
             // Fetch manifest from Hazelcast
-            val manifestKey = frameCalculator.makeManifestKey(logicalFrame, workerId)
+            val manifestKey = FrameManifest.makeKey(logicalFrame, workerId)
             val manifestJson = manifestMap[manifestKey]
 
             if (manifestJson == null) {
@@ -236,7 +236,7 @@ class FrameWorkerVerticle @Inject constructor(
 
             if (result.body().getBoolean("success", false)) {
                 // Mark operation as complete in distributed map
-                val completionKey = frameCalculator.makeOperationCompletionKey(logicalFrame, operationId)
+                val completionKey = "frame-$logicalFrame:op-$operationId"
                 completionMap[completionKey] = OperationCompletion(
                     operationId = operationId,
                     workerId = workerId

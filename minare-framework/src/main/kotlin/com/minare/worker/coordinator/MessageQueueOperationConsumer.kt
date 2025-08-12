@@ -1,16 +1,12 @@
 package com.minare.worker.coordinator
 
 import com.minare.time.FrameConfiguration
-import com.minare.utils.EventBusUtils
-import com.minare.utils.FrameCalculator
+import com.minare.time.FrameCalculator
 import io.vertx.core.Vertx
-import io.vertx.core.eventbus.EventBus
-import io.vertx.core.json.JsonArray
 import io.vertx.core.json.JsonObject
 import io.vertx.kafka.client.consumer.KafkaConsumer
 import io.vertx.kotlin.coroutines.await
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.launch
 import org.slf4j.LoggerFactory
 import javax.inject.Inject
 import javax.inject.Singleton
