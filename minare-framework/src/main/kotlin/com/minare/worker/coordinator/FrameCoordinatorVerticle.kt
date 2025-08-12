@@ -93,7 +93,6 @@ class FrameCoordinatorVerticle @Inject constructor(
             launch {
                 val requestedFrame = msg.body().getLong("frame")
                 if (requestedFrame > coordinatorState.lastPreparedManifest) {
-                    // PRESERVED: Original behavior - prepare ALL pending frames, not just requested
                     preparePendingManifests()
                 }
             }
@@ -125,7 +124,7 @@ class FrameCoordinatorVerticle @Inject constructor(
                 coordinatorState.isPaused = false
                 coordinatorState.setFrameInProgress(resumeFrame)
 
-                // Clear backpressure if active (as discussed)
+                // Clear backpressure if active
                 if (backpressureManager.isActive()) {
                     log.info("Clearing backpressure on resume from pause")
                     backpressureManager.deactivate()
