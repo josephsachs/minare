@@ -15,6 +15,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.slf4j.LoggerFactory
 import javax.inject.Inject
+import kotlin.com.minare.worker.coordinator.BackpressureManager
 
 /**
  * Frame Coordinator - The central orchestrator for frame-based processing.
@@ -32,6 +33,7 @@ class FrameCoordinatorVerticle @Inject constructor(
     private val vlog: VerticleLogger,
     private val workerRegistry: WorkerRegistry,
     private val coordinatorState: FrameCoordinatorState,
+    private val backpressureManager: BackpressureManager,
     private val messageQueue: MessageQueue,
     private val messageQueueOperationConsumer: MessageQueueOperationConsumer,
     private val frameManifestBuilder: FrameManifestBuilder,
@@ -434,6 +436,10 @@ class FrameCoordinatorVerticle @Inject constructor(
      * Handle frame completion event.
      * Triggered by WorkerFrameCompleteEvent when all workers finish.
      */
+    /**
+     * Handle frame completion event.
+     * Triggered by WorkerFrameCompleteEvent when all workers finish.
+     */
     private suspend fun onFrameComplete(logicalFrame: Long) {
         log.info("Logical frame {} completed successfully", logicalFrame)
 
@@ -442,6 +448,44 @@ class FrameCoordinatorVerticle @Inject constructor(
 
         // Advance to next frame
         coordinatorState.setFrameInProgress(logicalFrame + 1)
+
+        // Check if we should deactivate backpressure
+        if (backpressureManager.isActive()) {
+            val backpressureState = backpressureManager.getBackpressureState()
+            if (backpressureState != null) {
+                val framesSinceActivation = logicalFrame - backpressureState.activatedAtFrame
+                val currentBuffered = coordinatorState.getTotalBufferedOperations()
+
+                log.debug("Backpressure check - frames since activation: {}, current buffer: {}/{}",
+                    framesSinceActivation, currentBuffered, backpressureState.maxBufferSize)
+
+                // Deactivate if we've completed enough catch-up frames
+                if (framesSinceActivation >= frameConfig.catchupFramesBeforeResume.toLong()) {
+                    log.info("Deactivating backpressure after {} catchup frames completed. Buffer: {}/{}",
+                        framesSinceActivation, currentBuffered, backpressureState.maxBufferSize)
+
+                    backpressureManager.deactivate()
+
+                    // Resume Kafka consumption
+                    messageQueueOperationConsumer.resumeConsumption()
+
+                    // Broadcast backpressure deactivated event
+                    vertx.eventBus().publish(
+                        "minare.backpressure.deactivated",
+                        JsonObject()
+                            .put("deactivatedAtFrame", logicalFrame)
+                            .put("framesCompleted", framesSinceActivation)
+                            .put("currentBufferSize", currentBuffered)
+                            .put("maxBufferSize", backpressureState.maxBufferSize)
+                            .put("timestamp", System.currentTimeMillis())
+                    )
+                } else {
+                    val framesRemaining = frameConfig.catchupFramesBeforeResume.toLong() - framesSinceActivation
+                    log.info("Backpressure remains active - {} more frames needed for catchup",
+                        framesRemaining)
+                }
+            }
+        }
 
         // Prepare any pending manifests up to current time
         preparePendingManifests()

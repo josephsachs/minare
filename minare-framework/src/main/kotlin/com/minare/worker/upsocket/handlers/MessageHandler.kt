@@ -10,6 +10,7 @@ import com.minare.controller.OperationController
 import com.minare.worker.upsocket.SyncCommandHandler
 import io.vertx.core.http.ServerWebSocket
 import io.vertx.core.json.JsonObject
+import kotlin.com.minare.exception.BackpressureException
 
 /**
  * Handles incoming messages from WebSocket connections.
@@ -68,7 +69,21 @@ class MessageHandler @Inject constructor(
                 else -> {
                     // Add connectionId to the message for downstream processing
                     message.put("connectionId", connectionId)
-                    operationController.process(message)
+
+                    // All other messages produce to Kafka
+                    try {
+                        operationController.process(message)
+
+                    } catch (e: BackpressureException) {
+                        // Send 503 to client
+                        val errorResponse = JsonObject()
+                            .put("type", "error")
+                            .put("code", 503)
+                            .put("message", "Service temporarily unavailable - system at capacity")
+                            .put("retry_after", 5) // seconds
+
+                        websocket.writeTextMessage(errorResponse.encode())
+                    }
                 }
             }
 

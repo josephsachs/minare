@@ -10,6 +10,7 @@ import kotlinx.coroutines.CoroutineScope
 import org.slf4j.LoggerFactory
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.com.minare.worker.coordinator.BackpressureManager
 
 /**
  * Handles Kafka consumption for the frame coordinator.
@@ -24,7 +25,8 @@ class MessageQueueOperationConsumer @Inject constructor(
     private val frameConfig: FrameConfiguration,
     private val frameCalculator: FrameCalculator,
     private val coordinatorState: FrameCoordinatorState,
-    private val lateOperationHandler: LateOperationHandler
+    private val lateOperationHandler: LateOperationHandler,
+    private val backpressureManager: BackpressureManager
 ) {
     private val log = LoggerFactory.getLogger(MessageQueueOperationConsumer::class.java)
 
@@ -103,6 +105,14 @@ class MessageQueueOperationConsumer @Inject constructor(
      */
     private fun handleKafkaRecord(record: io.vertx.kafka.client.consumer.KafkaConsumerRecord<String, String>) {
         try {
+            // Check if backpressure is already active
+            if (backpressureManager.isActive()) {
+                // Don't consume new records while backpressure is active
+                log.debug("Backpressure active - pausing consumption")
+                messageQueueConsumer?.pause()
+                return
+            }
+
             val operation = JsonObject(record.value())
             val timestamp = operation.getLong("timestamp")
 
@@ -112,12 +122,32 @@ class MessageQueueOperationConsumer @Inject constructor(
                 return
             }
 
-            // Check buffer limits first
+            // Check buffer limits before processing
             val totalBuffered = coordinatorState.getTotalBufferedOperations()
             if (totalBuffered >= MAX_BUFFER_SIZE) {
-                log.error("Operation buffer full ({}/{} operations), dropping operation",
+                log.error("Operation buffer full ({}/{} operations), activating backpressure",
                     totalBuffered, MAX_BUFFER_SIZE)
-                // TODO: Implement proper backpressure/503 response
+
+                // Activate backpressure
+                backpressureManager.activate(
+                    frame = coordinatorState.frameInProgress,
+                    bufferedOps = totalBuffered,
+                    maxBuffer = MAX_BUFFER_SIZE
+                )
+
+                // Pause Kafka consumer
+                messageQueueConsumer?.pause()
+
+                // Broadcast backpressure activated event
+                vertx.eventBus().publish(
+                    "minare.backpressure.activated",
+                    JsonObject()
+                        .put("frameInProgress", coordinatorState.frameInProgress)
+                        .put("bufferedOperations", totalBuffered)
+                        .put("maxBufferSize", MAX_BUFFER_SIZE)
+                        .put("timestamp", System.currentTimeMillis())
+                )
+
                 return
             }
 
@@ -215,6 +245,14 @@ class MessageQueueOperationConsumer @Inject constructor(
                 log.debug("Triggered manifest preparation for frame {}", logicalFrame)
             }
         }
+    }
+
+    /**
+     * Resume Kafka consumption after backpressure is cleared
+     */
+    fun resumeConsumption() {
+        log.info("Resuming Kafka consumption after backpressure cleared")
+        messageQueueConsumer?.resume()
     }
 
     /**

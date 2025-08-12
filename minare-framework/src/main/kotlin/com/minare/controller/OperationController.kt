@@ -7,6 +7,8 @@ import io.vertx.core.json.JsonArray
 import io.vertx.core.json.JsonObject
 import org.slf4j.LoggerFactory
 import javax.inject.Inject
+import kotlin.com.minare.exception.BackpressureException
+import kotlin.com.minare.worker.coordinator.BackpressureManager
 
 /**
  * Controller for the operation event queue.
@@ -19,7 +21,8 @@ import javax.inject.Inject
  * - Applications can extend this class to customize behavior
  */
 abstract class OperationController @Inject constructor(
-    private val messageQueue: MessageQueue
+    private val messageQueue: MessageQueue,
+    private val backpressureManager: BackpressureManager
 ) {
     private val log = LoggerFactory.getLogger(OperationController::class.java)
 
@@ -91,6 +94,10 @@ abstract class OperationController @Inject constructor(
         if (message.isEmpty) {
             log.debug("Skipping empty operation set")
             return
+        }
+
+        if (backpressureManager.isActive()) {
+            throw BackpressureException("System overloaded - please retry")
         }
 
         log.debug("Sending {} operations to Kafka topic {}", message.size(), OPERATIONS_TOPIC)

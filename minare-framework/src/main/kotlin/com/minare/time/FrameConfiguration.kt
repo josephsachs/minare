@@ -91,7 +91,14 @@ data class FrameConfiguration(
      * Default: 2 frames
      * Balances low latency with operational buffer
      */
-    val normalOperationLookahead: Int = 2
+    val normalOperationLookahead: Int = 2,
+
+    /**
+     * Number of frames to complete after backpressure activation
+     * before resuming normal operation.
+     * Default: 3 (30% of maxBufferFrames)
+     */
+    val catchupFramesBeforeResume: Int = 3
 ) {
     init {
         require(frameDurationMs > 0) { "Frame duration must be positive" }
