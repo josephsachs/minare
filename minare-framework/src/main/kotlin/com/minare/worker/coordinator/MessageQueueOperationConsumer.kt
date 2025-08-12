@@ -164,6 +164,11 @@ class MessageQueueOperationConsumer @Inject constructor(
         // Check if this is a late operation (before current frame)
         val frameInProgress = coordinatorState.frameInProgress
         if (logicalFrame < frameInProgress) {
+            val framesLate = frameInProgress - logicalFrame
+
+            log.warn("Late operation detected: operation targets frame {} but current frame is {} ({} frames late)",
+                logicalFrame, frameInProgress, framesLate)
+
             lateOperationHandler.handleLateOperation(operation, logicalFrame, frameInProgress)
             return
         }

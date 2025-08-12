@@ -148,7 +148,7 @@ class FrameCoordinatorVerticle @Inject constructor(
         // Calculate session start time with frame offset for announcement
         val announcementTime = System.currentTimeMillis()
         val sessionStartTime = announcementTime + frameConfig.frameOffsetMs
-        val sessionStartNanos = System.nanoTime() + (frameConfig.frameOffsetMs * FrameCalculator.NANOS_PER_MS)
+        val sessionStartNanos = System.nanoTime() + frameCalculator.msToNanos(frameConfig.frameOffsetMs)
 
         frameManifestBuilder.clearAllManifests()
         frameCompletionTracker.clearAllCompletions()
@@ -338,9 +338,8 @@ class FrameCoordinatorVerticle @Inject constructor(
                         if (coordinatorState.isPaused) {
                             // During pause, only prepare this frame if within buffer limits
                             val frameInProgress = coordinatorState.frameInProgress
-                            val maxAllowed = frameInProgress + frameConfig.maxBufferFrames
 
-                            if (frameNumber <= maxAllowed) {
+                            if (frameCalculator.isFrameWithinBufferLimit(frameNumber, frameInProgress)) {
                                 prepareManifestForFrame(frameNumber)
                                 // Continue scheduling during pause to ensure empty frames are handled
                                 scheduleFramePreparation(frameNumber + 1)
@@ -379,9 +378,7 @@ class FrameCoordinatorVerticle @Inject constructor(
                     // Normal operation - catch up to current time
                     preparePendingManifests()
 
-                    // Find next future frame to schedule
-                    val currentFrame = (System.nanoTime() - coordinatorState.sessionStartNanos) /
-                            (frameConfig.frameDurationMs * FrameCalculator.NANOS_PER_MS)
+                    val currentFrame = frameCalculator.getCurrentLogicalFrame(coordinatorState.sessionStartNanos)
                     scheduleFramePreparation(currentFrame + 1)
                 }
             }

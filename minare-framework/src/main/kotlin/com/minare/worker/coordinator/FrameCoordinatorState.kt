@@ -292,7 +292,6 @@ class FrameCoordinatorState @Inject constructor(
             maxFrame - _frameInProgress.get()
         } ?: 0
 
-        // Warn if we're buffering more than 80% of max allowed frames
-        return bufferedFrames > (frameConfig.maxBufferFrames * 0.8)
+        return frameCalculator.isApproachingBufferLimit(bufferedFrames, _frameInProgress.get())
     }
 }

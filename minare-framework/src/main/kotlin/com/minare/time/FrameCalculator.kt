@@ -15,6 +15,14 @@ class FrameCalculator @Inject constructor(
     companion object {
         const val NANOS_PER_MS = 1_000_000L
         const val NANOS_PER_SECOND = 1_000_000_000L
+
+        // Buffer warning threshold as a percentage
+        const val BUFFER_WARNING_THRESHOLD_PERCENT = 0.8
+
+        // Frame lag thresholds for severity levels
+        // In our real-time system, any lag is significant
+        const val FRAME_LAG_WARNING_THRESHOLD = 0L  // Even 1 frame behind is a warning
+        const val FRAME_LAG_CRITICAL_THRESHOLD = 1L // More than 1 frame is critical
     }
 
     // Cached for performance
@@ -72,7 +80,7 @@ class FrameCalculator @Inject constructor(
      * Calculate milliseconds until a specific frame starts
      */
     fun msUntilFrame(logicalFrame: Long, sessionStartNanos: Long): Long {
-        return nanosUntilFrame(logicalFrame, sessionStartNanos) / NANOS_PER_MS
+        return nanosToMs(nanosUntilFrame(logicalFrame, sessionStartNanos))
     }
 
     /**
@@ -122,4 +130,120 @@ class FrameCalculator @Inject constructor(
         val framesPerSecond = 1000.0 / frameConfig.frameDurationMs
         return (operationsPerFrame * framesPerSecond).toInt()
     }
+
+    /**
+     * Convert nanoseconds to milliseconds
+     */
+    fun nanosToMs(nanos: Long): Long {
+        return nanos / NANOS_PER_MS
+    }
+
+    /**
+     * Convert nanoseconds to seconds (with decimal precision)
+     */
+    fun nanosToSeconds(nanos: Long): Double {
+        return nanos.toDouble() / NANOS_PER_SECOND
+    }
+
+    /**
+     * Convert milliseconds to nanoseconds
+     */
+    fun msToNanos(ms: Long): Long {
+        return ms * NANOS_PER_MS
+    }
+
+    /**
+     * Get the buffer warning threshold (number of frames)
+     * Returns 80% of the maximum buffer frames configuration
+     */
+    fun getBufferWarningThreshold(): Int {
+        return (frameConfig.maxBufferFrames * BUFFER_WARNING_THRESHOLD_PERCENT).toInt()
+    }
+
+    /**
+     * Check if buffered frames are approaching the configured limit
+     * @param bufferedFrames Number of frames currently buffered
+     * @param frameInProgress Current frame being processed
+     * @return true if buffered frames exceed 80% of max allowed
+     */
+    fun isApproachingBufferLimit(bufferedFrames: Long, frameInProgress: Long): Boolean {
+        val maxFrame = frameInProgress + bufferedFrames
+        val maxAllowedFrame = frameInProgress + frameConfig.maxBufferFrames
+        val threshold = frameInProgress + getBufferWarningThreshold()
+
+        return maxFrame > threshold
+    }
+
+    /**
+     * Determine the severity of frame lag
+     * In our real-time system, any lag is concerning
+     * @param framesBehind Number of frames behind expected (negative means ahead)
+     * @return Severity level of the lag
+     */
+    fun getFrameLagSeverity(framesBehind: Long): LagSeverity {
+        return when {
+            framesBehind < 0 -> LagSeverity.INVALID  // Should never be ahead
+            framesBehind == 0L -> LagSeverity.NONE
+            framesBehind == 1L -> LagSeverity.WARNING
+            else -> LagSeverity.CRITICAL
+        }
+    }
+
+    /**
+     * Check if frame processing is healthy based on lag
+     * @param framesBehind Number of frames behind expected
+     * @return true if exactly on schedule (0 frames behind)
+     */
+    fun isFrameProcessingHealthy(framesBehind: Long): Boolean {
+        return framesBehind == 0L
+    }
+
+    /**
+     * Get comprehensive frame processing status
+     * @param currentFrame Frame currently being processed
+     * @param expectedFrame Frame that should be processed based on time
+     * @return Detailed status of frame processing
+     */
+    fun getFrameProcessingStatus(currentFrame: Long, expectedFrame: Long): FrameProcessingStatus {
+        val framesBehind = expectedFrame - currentFrame
+        val severity = getFrameLagSeverity(framesBehind)
+        val isHealthy = isFrameProcessingHealthy(framesBehind)
+
+        return FrameProcessingStatus(
+            currentFrame = currentFrame,
+            expectedFrame = expectedFrame,
+            framesBehind = framesBehind,
+            lagSeverity = severity,
+            isHealthy = isHealthy,
+            recommendedAction = when (severity) {
+                LagSeverity.NONE -> "Normal operation"
+                LagSeverity.WARNING -> "Frame processing delayed - investigate immediately"
+                LagSeverity.CRITICAL -> "Critical lag detected - system recovery needed"
+                LagSeverity.INVALID -> "Invalid state: processing ahead of schedule"
+            }
+        )
+    }
+
+    /**
+     * Lag severity levels for frame processing
+     * In our real-time system, we have strict requirements
+     */
+    enum class LagSeverity {
+        NONE,      // Exactly on schedule (0 frames behind)
+        WARNING,   // 1 frame behind - immediate attention needed
+        CRITICAL,  // More than 1 frame behind - system recovery required
+        INVALID    // Ahead of schedule - should never happen
+    }
+
+    /**
+     * Comprehensive frame processing status
+     */
+    data class FrameProcessingStatus(
+        val currentFrame: Long,
+        val expectedFrame: Long,
+        val framesBehind: Long,
+        val lagSeverity: LagSeverity,
+        val isHealthy: Boolean,
+        val recommendedAction: String
+    )
 }

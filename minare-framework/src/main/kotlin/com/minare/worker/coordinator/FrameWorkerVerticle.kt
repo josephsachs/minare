@@ -118,7 +118,7 @@ class FrameWorkerVerticle @Inject constructor(
 
                 if (nanosUntilNextFrame > 0) {
                     // We finished early - wait for next frame
-                    delay(nanosUntilNextFrame / FrameCalculator.NANOS_PER_MS)
+                    delay(frameCalculator.nanosToMs(nanosUntilNextFrame))
                 } else {
                     // Detect if lagging
                     val nanosLate = -nanosUntilNextFrame
@@ -331,16 +331,19 @@ class FrameWorkerVerticle @Inject constructor(
         }
 
         val expectedFrame = frameCalculator.nanosToLogicalFrame(elapsedNanos)
-        val framesBehind = expectedFrame - currentLogicalFrame
+        val status = frameCalculator.getFrameProcessingStatus(currentLogicalFrame, expectedFrame)
 
         return JsonObject()
+            .put("framesBehind", status.framesBehind)
+            .put("lagSeverity", status.lagSeverity.name)
+            .put("isHealthy", status.isHealthy)
+            .put("recommendedAction", status.recommendedAction)
             .put("workerId", workerId)
             .put("currentLogicalFrame", currentLogicalFrame)
             .put("expectedLogicalFrame", expectedFrame)
-            .put("framesBehind", framesBehind)
             .put("sessionStartTimestamp", sessionStartTimestamp)
             .put("processingActive", processingActive)
-            .put("elapsedSeconds", elapsedNanos / FrameCalculator.NANOS_PER_SECOND)
+            .put("elapsedSeconds", frameCalculator.nanosToSeconds(elapsedNanos))
     }
 
     override suspend fun stop() {

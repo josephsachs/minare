@@ -1,5 +1,6 @@
 package com.minare.worker.coordinator
 
+import com.minare.time.FrameCalculator
 import com.minare.utils.VerticleLogger
 import com.minare.worker.coordinator.events.InfraAddWorkerEvent
 import com.minare.worker.coordinator.events.InfraRemoveWorkerEvent
@@ -27,7 +28,8 @@ class CoordinatorAdminVerticle @Inject constructor(
     private val workerRegistry: WorkerRegistry,
     private val frameCoordinatorState: FrameCoordinatorState,
     private val frameRecoveryManager: FrameRecoveryManager,
-    private val messageQueueOperationConsumer: MessageQueueOperationConsumer
+    private val messageQueueOperationConsumer: MessageQueueOperationConsumer,
+    private val frameCalculator: FrameCalculator
 ) : CoroutineVerticle() {
 
     private val log = LoggerFactory.getLogger(CoordinatorAdminVerticle::class.java)
@@ -130,8 +132,6 @@ class CoordinatorAdminVerticle @Inject constructor(
             val lastProcessed = frameCoordinatorState.lastProcessedFrame
             val lastPrepared = frameCoordinatorState.lastPreparedManifest
 
-            val frameLag = if (currentFrame >= 0) currentFrame - frameInProgress else 0
-
             val frameStatus = JsonObject()
                 .put("running", frameCoordinatorState.isFrameLoopRunning())
                 .put("paused", frameCoordinatorState.isPaused)
@@ -139,10 +139,25 @@ class CoordinatorAdminVerticle @Inject constructor(
                 .put("frameInProgress", frameInProgress)
                 .put("lastProcessedFrame", lastProcessed)
                 .put("lastPreparedManifest", lastPrepared)
-                .put("frameLag", frameLag)
                 .put("sessionStartTimestamp", frameCoordinatorState.sessionStartTimestamp)
                 .put("bufferedOperations", frameCoordinatorState.getBufferedOperationCounts())
                 .put("totalBufferedOperations", frameCoordinatorState.getTotalBufferedOperations())
+
+            // Add rich frame processing status if session is active
+            if (currentFrame >= 0 && frameInProgress >= 0) {
+                val processingStatus = frameCalculator.getFrameProcessingStatus(frameInProgress, currentFrame)
+                frameStatus
+                    .put("frameLag", processingStatus.framesBehind)
+                    .put("lagSeverity", processingStatus.lagSeverity.name)
+                    .put("isHealthy", processingStatus.isHealthy)
+                    .put("recommendedAction", processingStatus.recommendedAction)
+            } else {
+                frameStatus
+                    .put("frameLag", 0)
+                    .put("lagSeverity", FrameCalculator.LagSeverity.NONE.name)
+                    .put("isHealthy", true)
+                    .put("recommendedAction", "Session not started")
+            }
 
             ctx.response()
                 .putHeader("content-type", "application/json")
