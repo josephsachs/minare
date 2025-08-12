@@ -1,14 +1,9 @@
 package com.minare.worker
 
-import com.minare.worker.upsocket.CommandMessageHandler
 import io.vertx.core.Vertx
-import io.vertx.core.json.JsonArray
 import io.vertx.core.json.JsonObject
-import io.vertx.kafka.client.consumer.KafkaConsumer
-import io.vertx.kafka.client.consumer.KafkaConsumerRecord
 import io.vertx.kotlin.coroutines.CoroutineVerticle
 import io.vertx.kotlin.coroutines.await
-import io.vertx.kotlin.coroutines.dispatcher
 import kotlinx.coroutines.launch
 import org.slf4j.LoggerFactory
 import javax.inject.Inject
@@ -22,42 +17,18 @@ import kotlin.system.measureTimeMillis
  * - The coordinator buffers operations by frame
  * - Workers process operations via FrameWorkerVerticle
  */
-class MessageQueueConsumerVerticle @Inject constructor(
+class WorkerOperationHandlerVerticle @Inject constructor(
     private val vertx: Vertx
 ) : CoroutineVerticle() {
 
-    private val log = LoggerFactory.getLogger(MessageQueueConsumerVerticle::class.java)
-
-    companion object {
-        private const val OPERATIONS_TOPIC = "minare.operations"
-        private const val CONSUMER_GROUP = "minare-operation-processor"
-
-        // Internal event bus address for operation processing
-        const val ADDRESS_PROCESS_OPERATION = "worker.process.operation"
-    }
-
-    // Configuration from environment
-    private val bootstrapServers = System.getenv("KAFKA_BOOTSTRAP_SERVERS") ?: "localhost:9092"
-    private val consumerGroup = System.getenv("KAFKA_CONSUMER_GROUP") ?: CONSUMER_GROUP
-    private val sessionTimeoutMs = System.getenv("KAFKA_SESSION_TIMEOUT_MS") ?: "30000"
-    private val maxPollRecords = System.getenv("KAFKA_MAX_POLL_RECORDS") ?: "100"
-    private val autoOffsetReset = System.getenv("KAFKA_AUTO_OFFSET_RESET") ?: "earliest"
-
-    private var consumer: KafkaConsumer<String, String>? = null
+    private val log = LoggerFactory.getLogger(WorkerOperationHandlerVerticle::class.java)
 
     override suspend fun start() {
-        log.info("Starting MessageQueueConsumerVerticle")
-
-        // Only start consumer on worker instances
-        val instanceRole = System.getenv("INSTANCE_ROLE")
-        if (instanceRole != "WORKER") {
-            log.info("Not starting Kafka consumer on non-worker instance (role: {})", instanceRole)
-            return
-        }
+        log.info("Starting WorkerOperationHandlerVerticle")
 
         setupOperationHandlers()
 
-        log.info("MessageQueueConsumerVerticle started - operation handlers registered")
+        log.info("WorkerOperationHandlerVerticle started - operation handlers registered")
     }
 
     /**
@@ -159,7 +130,7 @@ class MessageQueueConsumerVerticle @Inject constructor(
     }
 
     override suspend fun stop() {
-        log.info("Stopping MessageQueueConsumerVerticle")
+        log.info("Stopping WorkerOperationHandlerVerticle")
         super.stop()
     }
 }
