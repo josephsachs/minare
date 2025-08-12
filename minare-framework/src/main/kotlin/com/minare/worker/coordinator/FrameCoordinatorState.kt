@@ -86,7 +86,7 @@ class FrameCoordinatorState @Inject constructor(
         val completed = currentFrameCompletions.keys
         val expected = workerRegistry.getActiveWorkers()
 
-        return completed.containsAll(expected)
+        return expected.isNotEmpty() && completed.containsAll(expected)  // Added empty check
     }
 
     /**
@@ -192,18 +192,6 @@ class FrameCoordinatorState @Inject constructor(
     }
 
     /**
-     * Check if all workers have completed the current frame
-     */
-    fun allWorkersCompletedFrame(frameNumber: Long): Boolean {
-        val activeWorkers = workerRegistry.getActiveWorkers()
-        if (activeWorkers.isEmpty()) return false
-
-        return activeWorkers.all { workerId ->
-            currentFrameCompletions.containsKey(workerId)
-        }
-    }
-
-    /**
      * Get the logical frame for a given timestamp.
      * Uses wall clock time to match operation timestamps from Kafka.
      */
@@ -217,23 +205,6 @@ class FrameCoordinatorState @Inject constructor(
      */
     fun getCurrentLogicalFrame(): Long {
         return frameCalculator.getCurrentLogicalFrame(sessionStartNanos)
-    }
-
-    /**
-     * Get the wall clock time when a logical frame should start
-     */
-    fun getFrameStartTime(logicalFrame: Long): Long {
-        if (sessionStartTimestamp == 0L) {
-            throw IllegalStateException("Session not started")
-        }
-        return sessionStartTimestamp + (logicalFrame * frameConfig.frameDurationMs)
-    }
-
-    /**
-     * Check if we have enough workers to process frames
-     */
-    fun hasMinimumWorkers(): Boolean {
-        return workerRegistry.hasMinimumWorkers()
     }
 
     /**
@@ -255,13 +226,6 @@ class FrameCoordinatorState @Inject constructor(
      */
     fun isFrameLoopRunning(): Boolean {
         return _frameInProgress.get() != -1L && !isPaused
-    }
-
-    /**
-     * Get frame completion status (for monitoring)
-     */
-    fun getFrameCompletionStatus(): Map<String, Long> {
-        return currentFrameCompletions.toMap()
     }
 
     /**

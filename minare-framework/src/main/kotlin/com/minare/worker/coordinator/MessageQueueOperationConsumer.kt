@@ -10,7 +10,6 @@ import kotlinx.coroutines.CoroutineScope
 import org.slf4j.LoggerFactory
 import javax.inject.Inject
 import javax.inject.Singleton
-import kotlin.com.minare.worker.coordinator.BackpressureManager
 
 /**
  * Handles Kafka consumption for the frame coordinator.

@@ -47,12 +47,12 @@ class WorkerFrameCompleteEvent @Inject constructor(
             frameCompletionTracker.recordWorkerCompletion(workerId, logicalFrame, operationCount)
 
             // Check if all workers have completed this frame
-            val completedWorkers = coordinatorState.getCompletedWorkers(logicalFrame)
-            val activeWorkers = workerRegistry.getActiveWorkers()
+            if (coordinatorState.isFrameComplete(logicalFrame)) {
+                val completedWorkers = coordinatorState.getCompletedWorkers(logicalFrame)
+                val activeWorkers = workerRegistry.getActiveWorkers()
 
-            vlog.logInfo("Frame $logicalFrame progress: ${completedWorkers.size}/${activeWorkers.size} workers complete")
+                vlog.logInfo("Frame $logicalFrame progress: ${completedWorkers.size}/${activeWorkers.size} workers complete")
 
-            if (completedWorkers.containsAll(activeWorkers)) {
                 // All workers complete - notify coordinator
                 vlog.getEventLogger().trace(
                     "ALL_WORKERS_COMPLETE",

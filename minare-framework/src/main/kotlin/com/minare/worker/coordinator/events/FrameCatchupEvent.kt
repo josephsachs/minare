@@ -29,35 +29,32 @@ class FrameCatchUpEvent @Inject constructor(
             val targetFrame = coordinatorState.lastProcessedFrame
 
             // Only care about completions for the target catch-up frame
-            if (logicalFrame == targetFrame) {
+            if (logicalFrame == targetFrame && frameCompletionTracker.isFrameComplete(targetFrame)) {
                 val activeWorkers = workerRegistry.getActiveWorkers()
                 val completedWorkers = frameCompletionTracker.getCompletedWorkers(targetFrame)
 
                 vlog.logInfo("Catch-up progress for frame ${targetFrame}: ${completedWorkers.size}/${activeWorkers.size} workers complete",)
 
-                // Check if all active workers have caught up
-                if (completedWorkers.containsAll(activeWorkers)) {
-                    vlog.getEventLogger().trace(
-                        "WORKERS_CAUGHT_UP",
-                        mapOf(
-                            "targetFrame" to targetFrame,
-                            "completedWorkers" to completedWorkers.size,
-                            "activeWorkers" to activeWorkers.size
-                        ),
-                        traceId
-                    )
+                vlog.getEventLogger().trace(
+                    "WORKERS_CAUGHT_UP",
+                    mapOf(
+                        "targetFrame" to targetFrame,
+                        "completedWorkers" to completedWorkers.size,
+                        "activeWorkers" to activeWorkers.size
+                    ),
+                    traceId
+                )
 
-                    // Notify coordinator to resume
-                    eventBusUtils.sendWithTracing(
-                        ADDRESS_WORKERS_CAUGHT_UP,
-                        JsonObject()
-                            .put("lastProcessedFrame", targetFrame)
-                            .put("resumeFrame", targetFrame + 1)
-                            .put("completedWorkers", completedWorkers.toList())
-                            .put("activeWorkers", activeWorkers),
-                        traceId
-                    )
-                }
+                // Notify coordinator to resume
+                eventBusUtils.sendWithTracing(
+                    ADDRESS_WORKERS_CAUGHT_UP,
+                    JsonObject()
+                        .put("lastProcessedFrame", targetFrame)
+                        .put("resumeFrame", targetFrame + 1)
+                        .put("completedWorkers", completedWorkers.toList())
+                        .put("activeWorkers", activeWorkers),
+                    traceId
+                )
             }
         }
     }
