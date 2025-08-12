@@ -35,7 +35,6 @@ class FrameCoordinatorVerticle @Inject constructor(
     private val messageQueueOperationConsumer: MessageQueueOperationConsumer,
     private val frameManifestBuilder: FrameManifestBuilder,
     private val frameCompletionTracker: FrameCompletionTracker,
-    private val frameRecoveryManager: FrameRecoveryManager,
     private val frameScheduler: FrameScheduler,  // NEW
     private val infraAddWorkerEvent: InfraAddWorkerEvent,
     private val infraRemoveWorkerEvent: InfraRemoveWorkerEvent,

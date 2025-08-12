@@ -110,18 +110,15 @@ class FrameWorkerVerticle @Inject constructor(
 
         while (processingActive) {
             try {
-                // Process current frame
                 processLogicalFrame(logicalFrame)
 
-                // Calculate how long until next frame
                 val nanosUntilNextFrame = frameCalculator.nanosUntilFrame(logicalFrame + 1, sessionStartNanos)
 
                 if (nanosUntilNextFrame > 0) {
                     // We finished early - wait for next frame
                     delay(frameCalculator.nanosToMs(nanosUntilNextFrame))
                 } else {
-                    // Detect if lagging
-                    val nanosLate = -nanosUntilNextFrame
+                    val nanosLate = -nanosUntilNextFrame // Detect if lagging
 
                     if (frameCalculator.isLaggingBeyondThreshold(nanosLate)) {
                         log.error("Worker {} is {} nanoseconds behind schedule", workerId, nanosLate)
@@ -135,12 +132,10 @@ class FrameWorkerVerticle @Inject constructor(
                 log.error("Error processing logical frame {}", logicalFrame, e)
 
                 val delayMs = frameCalculator.msUntilFrame(logicalFrame + 1, sessionStartNanos)
-
                 reportFrameError()
 
                 if (delayMs > 0) {
-                    // Wait until the next frame and resume
-                    delay(delayMs)
+                    delay(delayMs) // Wait until the next frame and resume
                 }
             }
         }

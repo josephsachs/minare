@@ -1,7 +1,9 @@
 package com.minare.worker.coordinator
 
 import com.minare.time.FrameCalculator
+import com.minare.utils.EventBusUtils
 import com.minare.utils.VerticleLogger
+import com.minare.worker.coordinator.FrameCoordinatorVerticle.Companion.ADDRESS_FRAME_PAUSE
 import com.minare.worker.coordinator.events.InfraAddWorkerEvent
 import com.minare.worker.coordinator.events.InfraRemoveWorkerEvent
 import io.vertx.core.http.HttpServer
@@ -25,9 +27,9 @@ import javax.inject.Inject
  */
 class CoordinatorAdminVerticle @Inject constructor(
     private val vlog: VerticleLogger,
+    private val eventBusUtils: EventBusUtils,
     private val workerRegistry: WorkerRegistry,
     private val frameCoordinatorState: FrameCoordinatorState,
-    private val frameRecoveryManager: FrameRecoveryManager,
     private val messageQueueOperationConsumer: MessageQueueOperationConsumer,
     private val frameCalculator: FrameCalculator
 ) : CoroutineVerticle() {
@@ -67,7 +69,6 @@ class CoordinatorAdminVerticle @Inject constructor(
         router.get("/status").handler { ctx ->
             val workerCounts = workerRegistry.getWorkerCountByStatus()
             val frameStatus = frameCoordinatorState.getCurrentFrameStatus()
-            val recoveryStatus = frameRecoveryManager.getRecoveryStatus()
             val consumerMetrics = messageQueueOperationConsumer.getMetrics()
 
             val status = JsonObject()
@@ -86,7 +87,6 @@ class CoordinatorAdminVerticle @Inject constructor(
                     .put("totalOperations", frameCoordinatorState.getTotalBufferedOperations())
                     .put("frameDistribution", frameCoordinatorState.getBufferedOperationCounts())
                     .put("approachingLimit", frameCoordinatorState.isApproachingBufferLimit()))
-                .put("recovery", recoveryStatus)
                 .put("consumer", consumerMetrics)
 
             ctx.response()
@@ -288,40 +288,6 @@ class CoordinatorAdminVerticle @Inject constructor(
                             .encode()
                         )
                 }
-            }
-        }
-
-        // Frame control endpoints
-        router.post("/frames/pause").handler { ctx ->
-            launch {
-                val reason = ctx.body().asJsonObject()?.getString("reason") ?: "Manual pause via admin API"
-                frameRecoveryManager.pauseFrameProcessing(reason)
-
-                ctx.response()
-                    .putHeader("content-type", "application/json")
-                    .end(JsonObject()
-                        .put("success", true)
-                        .put("message", "Frame processing pause requested")
-                        .put("reason", reason)
-                        .encode()
-                    )
-            }
-        }
-
-        router.post("/frames/resume").handler { ctx ->
-            launch {
-                val reason = ctx.body().asJsonObject()?.getString("reason") ?: "Manual resume via admin API"
-                frameRecoveryManager.requestFrameResume(reason)
-
-                ctx.response()
-                    .putHeader("content-type", "application/json")
-                    .end(JsonObject()
-                        .put("success", true)
-                        .put("message", "Frame processing resume requested")
-                        .put("reason", reason)
-                        .put("note", "Resume will occur when all workers are ready")
-                        .encode()
-                    )
             }
         }
 
