@@ -235,10 +235,7 @@ class MessageQueueOperationConsumer @Inject constructor(
     private fun triggerManifestPreparation(logicalFrame: Long) {
         // Only trigger if the manifest hasn't been prepared yet
         if (logicalFrame > coordinatorState.lastPreparedManifest) {
-            vertx.eventBus().send(
-                FrameCoordinatorVerticle.ADDRESS_PREPARE_MANIFEST,
-                JsonObject().put("frame", logicalFrame)
-            )
+            vertx.eventBus().send(FrameCoordinatorVerticle.ADDRESS_PREPARE_MANIFEST, JsonObject())
 
             if (log.isDebugEnabled) {
                 log.debug("Triggered manifest preparation for frame {}", logicalFrame)

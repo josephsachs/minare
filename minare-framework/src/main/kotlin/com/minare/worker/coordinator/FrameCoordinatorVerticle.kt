@@ -89,13 +89,8 @@ class FrameCoordinatorVerticle @Inject constructor(
         }
 
         // Manifest preparation requests (triggered by operation arrival)
-        vertx.eventBus().consumer<JsonObject>(ADDRESS_PREPARE_MANIFEST) { msg ->
-            launch {
-                val requestedFrame = msg.body().getLong("frame")
-                if (requestedFrame > coordinatorState.lastPreparedManifest) {
-                    preparePendingManifests()
-                }
-            }
+        vertx.eventBus().consumer<JsonObject>(ADDRESS_PREPARE_MANIFEST) { _ ->
+            launch { preparePendingManifests() }
         }
 
         // Resume command
