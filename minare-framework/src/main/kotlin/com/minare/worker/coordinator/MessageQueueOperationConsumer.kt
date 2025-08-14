@@ -66,6 +66,10 @@ class MessageQueueOperationConsumer @Inject constructor(
     private suspend fun setupMessageQueueConsumer() {
         val config = createKafkaConfig()
 
+        // TEMPORARY DEBUG
+        log.warn("DEBUG: Kafka consumer config - bootstrap: {}, topic: {}, group: {}",
+            config["bootstrap.servers"], OPERATIONS_TOPIC, config["group.id"])
+
         messageQueueConsumer = KafkaConsumer.create<String, String>(vertx, config)
 
         // Subscribe to operations topic
@@ -107,59 +111,53 @@ class MessageQueueOperationConsumer @Inject constructor(
      * Updated to handle both single operations (JsonObject) and batched operations (JsonArray).
      */
     private fun handleKafkaRecord(record: io.vertx.kafka.client.consumer.KafkaConsumerRecord<String, String>) {
-        log.warn("DEBUG: Received Kafka record: {}", record.value().take(200))
+
+        // TEMPORARY DEBUG
+        log.warn("DEBUG: Kafka record received - topic: {}, partition: {}, offset: {}, value length: {}",
+            record.topic(), record.partition(), record.offset(), record.value()?.length ?: 0)
 
         try {
-            // Check if backpressure is already active
-            if (backpressureManager.isActive()) {
-                // Commit this record without processing to avoid replay
-                messageQueueConsumer?.commit()
-
-                // Pause further consumption
-                log.debug("Backpressure active - pausing consumption")
-                messageQueueConsumer?.pause()
+            val value = record.value()
+            if (value.isNullOrEmpty()) {
+                log.warn("Received empty Kafka message")
                 return
             }
 
-            val recordValue = record.value()
-
-            val operations = try {
-                val array = JsonArray(recordValue)
-                // Convert JsonArray to list of JsonObjects
-                array.mapNotNull {
-                    when (it) {
-                        is JsonObject -> it
-                        else -> {
-                            log.warn("Skipping non-object element in operation array: {}", it)
-                            null
-                        }
-                    }
-                }
-            } catch (e: io.vertx.core.json.DecodeException) {
-                // Not an array, try as single object for backward compatibility
+            // Try parsing as JsonObject first (single operation)
+            val parsed = try {
+                JsonObject(value)
+            } catch (e: Exception) {
+                // If that fails, try JsonArray (batch of operations)
                 try {
-                    listOf(JsonObject(recordValue))
+                    JsonArray(value)
                 } catch (e2: Exception) {
-                    log.error("Failed to parse Kafka record as either JsonArray or JsonObject: {}", recordValue, e2)
+                    log.error("Failed to parse Kafka message as JSON: {}", value)
                     return
                 }
             }
 
-            // Process each operation in the batch sequentially
-            var backpressureTriggered = false
-            for (operation in operations) {
-                if (!processOperation(operation)) {
-                    // Backpressure was triggered, but continue to mark offset as processed
-                    backpressureTriggered = true
-                    break
+            // Process based on type
+            when (parsed) {
+                is JsonObject -> {
+                    if (!processOperation(parsed)) {
+                        // Backpressure activated, stop processing
+                        return
+                    }
+                }
+                is JsonArray -> {
+                    // Process batch of operations
+                    for (i in 0 until parsed.size()) {
+                        val operation = parsed.getJsonObject(i)
+                        if (!processOperation(operation)) {
+                            // Backpressure activated, stop processing
+                            return
+                        }
+                    }
                 }
             }
 
+            // Commit after successful processing
             messageQueueConsumer?.commit()
-
-            if (backpressureTriggered) {
-                log.debug("Backpressure triggered during batch processing")
-            }
 
         } catch (e: Exception) {
             log.error("Error processing Kafka record", e)
@@ -167,7 +165,17 @@ class MessageQueueOperationConsumer @Inject constructor(
     }
 
     /**
-     * Process a single operation from the Kafka record.
+     * Resume consumption after backpressure was activated.
+     * Called by the coordinator when buffer space is available.
+     */
+    fun resumeConsumption() {
+        messageQueueConsumer?.resume()
+        log.info("Resumed Kafka consumption after backpressure release")
+    }
+
+    /**
+     * Process a single operation, checking buffer limits and routing to frames.
+     * Updated to properly enforce frame-based buffer limits.
      *
      * Note: This method does not control Kafka commits. We always commit to avoid
      * duplicate operations. Atomicity and idempotency must be handled at the operation level.
@@ -183,17 +191,20 @@ class MessageQueueOperationConsumer @Inject constructor(
             return true // Continue processing other operations
         }
 
-        // Check buffer limits before processing
-        val totalBuffered = coordinatorState.getTotalBufferedOperations()
-        if (totalBuffered >= MAX_BUFFER_SIZE) {
-            log.error("Operation buffer full ({}/{} operations), activating backpressure",
-                totalBuffered, MAX_BUFFER_SIZE)
+        // Check FRAME buffer limits before processing
+        val bufferedFrameCount = coordinatorState.getBufferedFrameCount()
+
+        if (bufferedFrameCount >= frameConfig.maxBufferFrames) {
+            val totalBuffered = coordinatorState.getTotalBufferedOperations()
+            log.error("Frame buffer limit exceeded: {} frames buffered (max: {}), " +
+                    "containing {} total operations. Activating backpressure",
+                bufferedFrameCount, frameConfig.maxBufferFrames, totalBuffered)
 
             // Activate backpressure
             backpressureManager.activate(
                 frame = coordinatorState.frameInProgress,
                 bufferedOps = totalBuffered,
-                maxBuffer = MAX_BUFFER_SIZE
+                maxBuffer = frameConfig.maxBufferFrames
             )
 
             // Pause Kafka consumer
@@ -204,17 +215,19 @@ class MessageQueueOperationConsumer @Inject constructor(
                 "minare.backpressure.activated",
                 JsonObject()
                     .put("frameInProgress", coordinatorState.frameInProgress)
+                    .put("bufferedFrames", bufferedFrameCount)
+                    .put("maxBufferFrames", frameConfig.maxBufferFrames)
                     .put("bufferedOperations", totalBuffered)
-                    .put("maxBufferSize", MAX_BUFFER_SIZE)
                     .put("timestamp", System.currentTimeMillis())
             )
 
             return false // Stop processing
         }
 
-        if (totalBuffered >= BUFFER_WARNING_THRESHOLD) {
-            log.warn("Operation buffer approaching limit: {}/{} operations",
-                totalBuffered, MAX_BUFFER_SIZE)
+        // Warn when approaching frame buffer limit
+        if (bufferedFrameCount >= frameCalculator.getBufferWarningThreshold()) {
+            log.warn("Frame buffer approaching limit: {} frames buffered (max: {})",
+                bufferedFrameCount, frameConfig.maxBufferFrames)
         }
 
         // Route to appropriate handler based on session state
@@ -281,71 +294,71 @@ class MessageQueueOperationConsumer @Inject constructor(
                 log.error("Operation {} targets frame {} which exceeds pause buffer limit " +
                         "(current: {}, max allowed: {}). " +
                         "503 backpressure should be implemented here.",
-                    operation.getString("id"), logicalFrame, frameInProgress,
-                    frameInProgress + frameConfig.maxBufferFrames)
-                // TODO: Implement actual 503 response mechanism
+                    operation.getString("id"), logicalFrame,
+                    frameInProgress, frameInProgress + frameConfig.maxBufferFrames)
+
+                // Note: We should return 503 to HTTP clients here, but since this is
+                // Kafka consumption, we handle it via backpressure activation above
                 return
             }
         }
 
-        // Future frame - buffer normally
+        // Buffer the operation to its target frame
         coordinatorState.bufferOperation(operation, logicalFrame)
 
-        // TEMPORARY DEBUG: Add this line
-        log.warn("DEBUG: Buffered operation {} for logical frame {} (total buffered: {})",
-            operation.getString("id"), logicalFrame, coordinatorState.getTotalBufferedOperations())
+        // TEMPORARY DEBUG
+        log.warn("DEBUG: Buffered operation {} to frame {}", operation.getString("id"), logicalFrame)
 
-        if (log.isTraceEnabled) {
-            log.warn("Buffered operation {} for logical frame {}",
-                operation.getString("id"), logicalFrame)
+        // Trigger manifest preparation if needed
+        if (shouldTriggerManifestPreparation(logicalFrame)) {
+            triggerManifestPreparation(logicalFrame)
+        }
+    }
+
+    /**
+     * Determine if we should trigger manifest preparation for a frame.
+     * This provides event-driven manifest preparation when operations arrive.
+     */
+    private fun shouldTriggerManifestPreparation(logicalFrame: Long): Boolean {
+        // Already prepared?
+        if (logicalFrame <= coordinatorState.lastPreparedManifest) {
+            return false
         }
 
-        // Trigger manifest preparation if this frame hasn't been prepared yet
-        triggerManifestPreparation(logicalFrame)
+        // During pause, respect buffer limits
+        if (coordinatorState.isPaused) {
+            val frameInProgress = coordinatorState.frameInProgress
+            return frameCalculator.isFrameWithinBufferLimit(logicalFrame, frameInProgress)
+        }
+
+        // Normal operation - prepare if within lookahead window
+        val currentFrame = frameCalculator.getCurrentLogicalFrame(coordinatorState.sessionStartNanos)
+        return logicalFrame <= currentFrame + frameConfig.normalOperationLookahead
     }
 
     /**
      * Trigger manifest preparation for a specific frame.
-     * This is the key to event-driven manifest preparation.
+     * Sends event to coordinator to prepare the manifest.
      */
     private fun triggerManifestPreparation(logicalFrame: Long) {
-        // Only trigger if the manifest hasn't been prepared yet
-        if (logicalFrame > coordinatorState.lastPreparedManifest) {
-            vertx.eventBus().send(FrameCoordinatorVerticle.ADDRESS_PREPARE_MANIFEST, JsonObject())
-
-            if (log.isDebugEnabled) {
-                log.debug("Triggered manifest preparation for frame {}", logicalFrame)
-            }
-        }
+        vertx.eventBus().send(
+            FrameCoordinatorVerticle.ADDRESS_PREPARE_MANIFEST,
+            JsonObject()
+                .put("logicalFrame", logicalFrame)
+                .put("trigger", "operation_arrival")
+        )
     }
 
     /**
-     * Resume Kafka consumption after backpressure is cleared
-     */
-    fun resumeConsumption() {
-        log.info("Resuming Kafka consumption after backpressure cleared")
-        messageQueueConsumer?.resume()
-    }
-
-    /**
-     * Get current consumer metrics for monitoring.
-     * Enhanced with buffer status information.
+     * Get current metrics for monitoring
      */
     fun getMetrics(): JsonObject {
-        val bufferCounts = coordinatorState.getBufferedOperationCounts()
-        val totalBuffered = coordinatorState.getTotalBufferedOperations()
-        val bufferPercentage = (totalBuffered.toDouble() / MAX_BUFFER_SIZE * 100).toInt()
+        val isActive = messageQueueConsumer != null
 
         return JsonObject()
-            .put("connected", messageQueueConsumer != null)
             .put("topic", OPERATIONS_TOPIC)
-            .put("paused", coordinatorState.isPaused)
-            .put("sessionStart", coordinatorState.sessionStartTimestamp)
-            .put("lastProcessedFrame", coordinatorState.lastProcessedFrame)
-            .put("bufferedOperations", totalBuffered)
-            .put("bufferCapacity", MAX_BUFFER_SIZE)
-            .put("bufferPercentage", bufferPercentage)
-            .put("frameBufferCounts", bufferCounts)
-            .put("isApproachingLimit", coordinatorState.isApproachingBufferLimit())
+            .put("consumerActive", isActive)
+            .put("bufferWarningThreshold", BUFFER_WARNING_THRESHOLD)
+            .put("maxBufferSize", MAX_BUFFER_SIZE)
     }
 }

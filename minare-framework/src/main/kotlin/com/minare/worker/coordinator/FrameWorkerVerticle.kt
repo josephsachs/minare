@@ -10,6 +10,7 @@ import com.minare.utils.VerticleLogger
 import io.vertx.core.json.JsonObject
 import io.vertx.kotlin.coroutines.CoroutineVerticle
 import io.vertx.kotlin.coroutines.await
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.slf4j.LoggerFactory
@@ -41,8 +42,11 @@ class FrameWorkerVerticle @Inject constructor(
     private var currentLogicalFrame: Long = -1L
     private var processingActive = false
 
+    // Track the current frame processing job for clean cancellation
+    private var currentFrameProcessingJob: Job? = null
+
     companion object {
-        const val ADDRESS_FRAME_MANIFEST = "worker.{workerId}.frame.manifest"
+        const val ADDRESS_FRAME_MANIFEST = "worker.frame.manifest"
         const val ADDRESS_WORKER_FRAME_COMPLETE = "minare.coordinator.worker.frame.complete"
         const val ADDRESS_WORKER_FRAME_DELAYED = "minare.coordinator.worker.frame.delayed"
         const val ADDRESS_WORKER_FRAME_ERROR = "minare.coordinator.worker.frame.error"
@@ -67,25 +71,69 @@ class FrameWorkerVerticle @Inject constructor(
 
         // Listen for pause events
         vertx.eventBus().consumer<JsonObject>(FrameCoordinatorVerticle.ADDRESS_FRAME_PAUSE) { msg ->
-            log.info("Received pause event: {}", msg.body().getString("reason"))
-            processingActive = false
+            launch {
+                handlePause(msg.body())
+            }
         }
 
         log.info("FrameWorkerVerticle started for worker {}", workerId)
     }
 
     /**
+     * Handle pause event by stopping frame processing cleanly.
+     */
+    private suspend fun handlePause(pauseMessage: JsonObject) {
+        val reason = pauseMessage.getString("reason", "unknown")
+        log.info("Received pause event: {}", reason)
+
+        // Stop processing
+        processingActive = false
+
+        // Cancel the current frame processing job if it exists
+        currentFrameProcessingJob?.let { job ->
+            log.info("Cancelling frame processing job for pause")
+            job.cancel()
+            currentFrameProcessingJob = null
+        }
+    }
+
+    /**
      * Handle new session announcement and start frame processing.
+     * Ensures any existing processing is cleanly terminated first.
      */
     private suspend fun handleSessionStart(announcement: JsonObject) {
-        sessionStartTimestamp = announcement.getLong("sessionStartTimestamp")
+        val newSessionStart = announcement.getLong("sessionStartTimestamp")
         val startsIn = announcement.getLong("firstFrameStartsIn")
         val frameDuration = announcement.getLong("frameDuration")
 
         log.info("New session announced - starts at {} (in {}ms), frame duration {}ms",
-            sessionStartTimestamp, startsIn, frameDuration)
+            newSessionStart, startsIn, frameDuration)
+
+        // CRITICAL: Stop any existing processing first
+        if (processingActive || currentFrameProcessingJob != null) {
+            log.warn("Stopping existing frame processing before starting new session")
+            processingActive = false
+
+            // Cancel and wait for the job to complete
+            currentFrameProcessingJob?.let { job ->
+                try {
+                    job.cancel()
+                    job.join()
+                } catch (e: Exception) {
+                    log.error("Error cancelling previous frame processing job", e)
+                }
+                currentFrameProcessingJob = null
+            }
+
+            // Give a bit more time for cleanup
+            delay(frameConfig.frameDurationMs / 2)
+        }
+
+        // Clear any stale state in Hazelcast for this worker
+        clearWorkerManifests()
 
         // Reset state for new session
+        sessionStartTimestamp = newSessionStart
         currentLogicalFrame = -1L
         processingActive = true
 
@@ -95,14 +143,57 @@ class FrameWorkerVerticle @Inject constructor(
         // Capture nanoTime at actual session start for frame pacing
         sessionStartNanos = System.nanoTime()
 
-        // Start frame processing loop
-        launchFrameProcessingLoop()
+        // Start frame processing loop and track the job
+        currentFrameProcessingJob = launchFrameProcessingLoop()
+    }
+
+    /**
+     * Clear any stale manifests or completions for this worker.
+     * Called when starting a new session to ensure clean state.
+     */
+    private suspend fun clearWorkerManifests() {
+        try {
+            // Clear any manifests for this worker
+            val keysToRemove = mutableListOf<String>()
+            manifestMap.keys.forEach { key ->
+                if (key.contains(workerId)) {
+                    keysToRemove.add(key)
+                }
+            }
+
+            keysToRemove.forEach { key ->
+                manifestMap.remove(key)
+            }
+
+            if (keysToRemove.isNotEmpty()) {
+                log.info("Cleared {} stale manifests for worker {}", keysToRemove.size, workerId)
+            }
+
+            // Clear any completions for this worker
+            val completionKeysToRemove = mutableListOf<String>()
+            completionMap.keys.forEach { key ->
+                if (key.contains(workerId)) {
+                    completionKeysToRemove.add(key)
+                }
+            }
+
+            completionKeysToRemove.forEach { key ->
+                completionMap.remove(key)
+            }
+
+            if (completionKeysToRemove.isNotEmpty()) {
+                log.info("Cleared {} stale completions for worker {}", completionKeysToRemove.size, workerId)
+            }
+        } catch (e: Exception) {
+            log.error("Error clearing worker state in Hazelcast", e)
+        }
     }
 
     /**
      * Launch the frame processing loop with nanoTime-based pacing.
+     * Returns the Job so it can be tracked and cancelled if needed.
      */
-    private fun launchFrameProcessingLoop() = launch {
+    private fun launchFrameProcessingLoop(): Job = launch {
         log.info("Starting frame processing loop for session {} (nanos: {})",
             sessionStartTimestamp, sessionStartNanos)
 
@@ -222,7 +313,7 @@ class FrameWorkerVerticle @Inject constructor(
             // Convert to Operation for easier handling
             val op = Operation.fromJson(operation)
 
-            // Send to the appropriate processor based on entity type
+            // Send to the appropriate processor based on action type
             val processorAddress = "worker.process.${op.getAction()}"
 
             val result = vertx.eventBus()
@@ -253,97 +344,56 @@ class FrameWorkerVerticle @Inject constructor(
     }
 
     /**
-     * Report frame completion to coordinator.
-     * Critical for coordinator to know when to advance frames.
+     * Report frame completion to the coordinator.
+     * Includes heartbeat for frames with no operations.
      */
-    private suspend fun reportFrameCompletion(
-        logicalFrame: Long,
-        operationCount: Int
-    ) {
-        try {
-            val completion = JsonObject()
-                .put("workerId", workerId)
-                .put("logicalFrame", logicalFrame)
-                .put("operationCount", operationCount)
-                .put("completedAt", System.currentTimeMillis())
-
-            // Send completion to coordinator
-            vertx.eventBus().send(
-                ADDRESS_WORKER_FRAME_COMPLETE,
-                completion
-            )
-
-            log.debug("Reported logical frame {} completion with {} operations",
-                logicalFrame, operationCount)
-
-        } catch (e: Exception) {
-            log.error("Failed to report frame completion", e)
-        }
-    }
-
-    /**
-     * Alert coordinator that this worker is falling behind.
-     * This allows the coordinator to make system-wide decisions about pausing or recovery.
-     */
-    private suspend fun reportWorkerLagged(currentFrame: Long, nanosLate: Long) {
-        try {
-            val alert = JsonObject()
-                .put("workerId", workerId)
-                .put("currentFrame", currentFrame)
-                .put("nanosLate", nanosLate)
-                .put("timestamp", System.currentTimeMillis())
-
-            vertx.eventBus().send(
-                ADDRESS_WORKER_FRAME_DELAYED,
-                alert
-            )
-
-            log.warn("Alerted coordinator about {} frame lag", nanosLate)
-        } catch (e: Exception) {
-            log.error("Failed to alert coordinator about lag", e)
-        }
-    }
-
-    /**
-     *
-     */
-    private suspend fun reportFrameError() {
-        vertx.eventBus().send(
-            ADDRESS_WORKER_FRAME_ERROR,
-            getMetrics()
-        )
-    }
-
-    /**
-     * Get current frame processing metrics.
-     * Useful for monitoring worker health and performance.
-     */
-    fun getMetrics(): JsonObject {
-        val elapsedNanos = if (sessionStartNanos > 0) {
-            System.nanoTime() - sessionStartNanos
-        } else {
-            0L
-        }
-
-        val expectedFrame = frameCalculator.nanosToLogicalFrame(elapsedNanos)
-        val status = frameCalculator.getFrameProcessingStatus(currentLogicalFrame, expectedFrame)
-
-        return JsonObject()
-            .put("framesBehind", status.framesBehind)
-            .put("lagSeverity", status.lagSeverity.name)
-            .put("isHealthy", status.isHealthy)
-            .put("recommendedAction", status.recommendedAction)
+    private fun reportFrameCompletion(logicalFrame: Long, operationsProcessed: Int) {
+        val completionEvent = JsonObject()
             .put("workerId", workerId)
-            .put("currentLogicalFrame", currentLogicalFrame)
-            .put("expectedLogicalFrame", expectedFrame)
-            .put("sessionStartTimestamp", sessionStartTimestamp)
-            .put("processingActive", processingActive)
-            .put("elapsedSeconds", frameCalculator.nanosToSeconds(elapsedNanos))
+            .put("logicalFrame", logicalFrame)
+            .put("operationCount", operationsProcessed)
+            .put("completedAt", System.currentTimeMillis())
+
+        vertx.eventBus().send(ADDRESS_WORKER_FRAME_COMPLETE, completionEvent)
+
+        log.debug("Reported logical frame {} completion with {} operations",
+            logicalFrame, operationsProcessed)
+    }
+
+    /**
+     * Report that this worker is lagging behind schedule
+     */
+    private fun reportWorkerLagged(logicalFrame: Long, nanosLate: Long) {
+        val lagEvent = JsonObject()
+            .put("workerId", workerId)
+            .put("logicalFrame", logicalFrame)
+            .put("nanosLate", nanosLate)
+            .put("msLate", frameCalculator.nanosToMs(nanosLate))
+            .put("timestamp", System.currentTimeMillis())
+
+        vertx.eventBus().send(ADDRESS_WORKER_FRAME_DELAYED, lagEvent)
+    }
+
+    /**
+     * Report a frame processing error
+     */
+    private fun reportFrameError() {
+        val errorEvent = JsonObject()
+            .put("workerId", workerId)
+            .put("logicalFrame", currentLogicalFrame)
+            .put("timestamp", System.currentTimeMillis())
+
+        vertx.eventBus().send(ADDRESS_WORKER_FRAME_ERROR, errorEvent)
     }
 
     override suspend fun stop() {
         log.info("Stopping FrameWorkerVerticle")
         processingActive = false
+
+        // Cancel frame processing job
+        currentFrameProcessingJob?.cancel()
+        currentFrameProcessingJob = null
+
         super.stop()
     }
 }

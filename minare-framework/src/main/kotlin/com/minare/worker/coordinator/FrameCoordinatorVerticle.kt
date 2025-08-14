@@ -178,6 +178,10 @@ class FrameCoordinatorVerticle @Inject constructor(
         // Extract and renumber buffered operations
         val operationsByOldFrame = extractBufferedOperations()
         coordinatorState.startNewSession(sessionStartTime, sessionStartNanos)
+
+        // Reset frame in progress
+        coordinatorState.setFrameInProgress(0)
+
         val newFrame = assignBufferedOperations(operationsByOldFrame)
 
         // Publish session event and announce to workers

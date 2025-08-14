@@ -91,89 +91,88 @@ class FrameCoordinatorState @Inject constructor(
 
     /**
      * Start a new session with specific timestamps.
-     * Called on startup or resume.
-     *
-     * @param startTimestamp Wall clock time for session start (for external communication)
-     * @param startNanos Monotonic nanos for internal frame calculations
+     * Resets frame tracking to begin from frame -1.
      */
-    fun startNewSession(startTimestamp: Long = System.currentTimeMillis(),
-                        startNanos: Long = System.nanoTime()) {
-        sessionStartTimestamp = startTimestamp
-        sessionStartNanos = startNanos
+    fun startNewSession(sessionStartTimestamp: Long, sessionStartNanos: Long) {
+        this.sessionStartTimestamp = sessionStartTimestamp
+        this.sessionStartNanos = sessionStartNanos
         _lastProcessedFrame.set(-1L)
         _lastPreparedManifest.set(-1L)
         _frameInProgress.set(-1L)
-        operationsByFrame.clear()
         currentFrameCompletions.clear()
-        // Note: pendingOperations are NOT cleared - they'll be moved to frame 0
-
-        setFrameInProgress(0)  // Start tracking frame 0
 
         log.info("Started new session at timestamp {} (nanos: {})",
-            startTimestamp, startNanos)
+            sessionStartTimestamp, sessionStartNanos)
     }
 
     /**
-     * Buffer an operation before session starts.
-     * These will all go into frame 0 when the session begins.
+     * Buffer an operation before session starts
      */
     fun bufferPendingOperation(operation: JsonObject) {
         pendingOperations.offer(operation)
     }
 
     /**
-     * Get count of pending operations waiting for session start.
+     * Get count of pending operations
      */
     fun getPendingOperationCount(): Int = pendingOperations.size
 
     /**
-     * Move all pending operations to frame 0.
-     * Called when starting a new session.
+     * Assign all pending operations to a specific frame
      */
     fun assignPendingOperationsToFrame(targetFrame: Long) {
-        val frameQueue = operationsByFrame.computeIfAbsent(targetFrame) {
-            ConcurrentLinkedQueue()
-        }
+        val queue = operationsByFrame.computeIfAbsent(targetFrame) { ConcurrentLinkedQueue() }
 
-        var count = 0
-        while (true) {
-            val op = pendingOperations.poll() ?: break
-            frameQueue.offer(op)
-            count++
+        while (pendingOperations.isNotEmpty()) {
+            val op = pendingOperations.poll()
+            if (op != null) {
+                queue.offer(op)
+            }
         }
-
-        log.info("Moved {} pending operations to frame {}", count, targetFrame)
     }
 
     /**
-     * Buffer an operation for a specific logical frame
+     * Buffer an operation to a specific logical frame
      */
     fun bufferOperation(operation: JsonObject, logicalFrame: Long) {
-        operationsByFrame.computeIfAbsent(logicalFrame) {
-            ConcurrentLinkedQueue()
-        }.offer(operation)
+        val queue = operationsByFrame.computeIfAbsent(logicalFrame) { ConcurrentLinkedQueue() }
+        queue.offer(operation)
+
+        if (log.isDebugEnabled) {
+            log.debug("Buffered operation {} to logical frame {} (queue size: {})",
+                operation.getString("id"), logicalFrame, queue.size)
+        }
     }
 
     /**
-     * Get and remove all operations for a logical frame
+     * Extract all operations for a specific frame.
+     * Removes and returns the operations.
      */
     fun extractFrameOperations(logicalFrame: Long): List<JsonObject> {
         // TEMPORARY DEBUG
-        log.warn("DEBUG: extractFrameOperations called for frame {} (frames with ops: {})",
+        log.warn("DEBUG: Extracting operations for frame {}, available frames: {}",
             logicalFrame, operationsByFrame.keys.sorted())
 
-        // TEMPORARY
-        //val queue = operationsByFrame.remove(logicalFrame) ?: emptyList()
+        // Include pending operations if this is frame 0
+        val pendingOps = if (logicalFrame == 0L && pendingOperations.isNotEmpty()) {
+            val ops = mutableListOf<JsonObject>()
+            while (pendingOperations.isNotEmpty()) {
+                pendingOperations.poll()?.let { ops.add(it) }
+            }
+            ops
+        } else emptyList()
+
+        // Get regular buffered operations
         val queue = operationsByFrame.remove(logicalFrame)
         if (queue == null) {
             log.warn("DEBUG: No operations found for frame {}", logicalFrame)
-            return emptyList()
+            return pendingOps
         }
 
         // TEMPORARY DEBUG
         log.warn("DEBUG: Found {} operations for frame {}", queue.size, logicalFrame)
 
-        return queue.toList()
+        return pendingOps + queue.toList()
     }
 
     /**
@@ -236,6 +235,29 @@ class FrameCoordinatorState @Inject constructor(
     }
 
     /**
+     * Get the number of frames that have buffered operations.
+     * This is used to enforce frame buffer limits.
+     *
+     * @return The count of frames beyond frameInProgress that have operations buffered
+     */
+    fun getBufferedFrameCount(): Int {
+        if (_frameInProgress.get() < 0) {
+            // Session hasn't started yet, count all frames
+            return operationsByFrame.size
+        }
+
+        val currentFrame = _frameInProgress.get()
+        val bufferedFrames = operationsByFrame.keys.filter { it >= currentFrame }
+
+        return if (bufferedFrames.isEmpty()) {
+            0
+        } else {
+            val maxBufferedFrame = bufferedFrames.maxOrNull() ?: currentFrame
+            (maxBufferedFrame - currentFrame + 1).toInt()
+        }
+    }
+
+    /**
      * Check if frame loop is running (for monitoring)
      */
     fun isFrameLoopRunning(): Boolean {
@@ -258,6 +280,7 @@ class FrameCoordinatorState @Inject constructor(
             .put("totalWorkers", workerRegistry.getActiveWorkers().size)
             .put("isPaused", isPaused)
             .put("totalBufferedOperations", getTotalBufferedOperations())
+            .put("bufferedFrameCount", getBufferedFrameCount())
     }
 
     /**
@@ -271,5 +294,30 @@ class FrameCoordinatorState @Inject constructor(
         } ?: 0
 
         return frameCalculator.isApproachingBufferLimit(bufferedFrames, _frameInProgress.get())
+    }
+
+    /**
+     * Clear all operations buffered for a specific frame.
+     * Used after frame manifest has been prepared.
+     */
+    fun clearFrameOperations(logicalFrame: Long) {
+        operationsByFrame.remove(logicalFrame)
+    }
+
+    /**
+     * Get all buffered operations as a map for session restart.
+     * Does not remove the operations.
+     */
+    fun getAllBufferedOperations(): Map<Long, List<JsonObject>> {
+        return operationsByFrame.mapValues { it.value.toList() }
+    }
+
+    /**
+     * Clear all buffered operations.
+     * Used when starting a fresh session.
+     */
+    fun clearAllBufferedOperations() {
+        operationsByFrame.clear()
+        pendingOperations.clear()
     }
 }
