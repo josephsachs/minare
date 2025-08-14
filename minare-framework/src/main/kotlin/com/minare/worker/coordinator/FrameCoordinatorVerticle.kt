@@ -306,13 +306,20 @@ class FrameCoordinatorVerticle @Inject constructor(
      * Prepare and write manifest for a specific logical frame.
      */
     private suspend fun prepareManifestForFrame(logicalFrame: Long) {
-        log.debug("Preparing manifest for logical frame {}", logicalFrame)
+        // TEMPORARY DEBUG, revert elevated logging level
+        log.warn("Preparing manifest for logical frame {}", logicalFrame)
 
         // Get operations for this frame
         val operations = coordinatorState.extractFrameOperations(logicalFrame)
 
+        // TEMPORARY DEBUG
+        log.warn("DEBUG: After extractFrameOperations, got {} operations", operations.size)
+
         // Get active workers
         val activeWorkers = workerRegistry.getActiveWorkers().toSet()
+
+        // TEMPORARY DEBUG
+        log.warn("DEBUG: Active workers: {}", activeWorkers)
 
         if (activeWorkers.isEmpty() && operations.isNotEmpty()) {
             log.warn("No active workers available for frame {} with {} operations",

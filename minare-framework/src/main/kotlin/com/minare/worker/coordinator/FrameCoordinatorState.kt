@@ -158,7 +158,21 @@ class FrameCoordinatorState @Inject constructor(
      * Get and remove all operations for a logical frame
      */
     fun extractFrameOperations(logicalFrame: Long): List<JsonObject> {
-        val queue = operationsByFrame.remove(logicalFrame) ?: return emptyList()
+        // TEMPORARY DEBUG
+        log.warn("DEBUG: extractFrameOperations called for frame {} (frames with ops: {})",
+            logicalFrame, operationsByFrame.keys.sorted())
+
+        // TEMPORARY
+        //val queue = operationsByFrame.remove(logicalFrame) ?: emptyList()
+        val queue = operationsByFrame.remove(logicalFrame)
+        if (queue == null) {
+            log.warn("DEBUG: No operations found for frame {}", logicalFrame)
+            return emptyList()
+        }
+
+        // TEMPORARY DEBUG
+        log.warn("DEBUG: Found {} operations for frame {}", queue.size, logicalFrame)
+
         return queue.toList()
     }
 

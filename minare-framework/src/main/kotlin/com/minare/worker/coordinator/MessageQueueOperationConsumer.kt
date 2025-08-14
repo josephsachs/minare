@@ -107,6 +107,8 @@ class MessageQueueOperationConsumer @Inject constructor(
      * Updated to handle both single operations (JsonObject) and batched operations (JsonArray).
      */
     private fun handleKafkaRecord(record: io.vertx.kafka.client.consumer.KafkaConsumerRecord<String, String>) {
+        log.warn("DEBUG: Received Kafka record: {}", record.value().take(200))
+
         try {
             // Check if backpressure is already active
             if (backpressureManager.isActive()) {
@@ -245,16 +247,31 @@ class MessageQueueOperationConsumer @Inject constructor(
     private fun handleSessionOperation(operation: JsonObject, timestamp: Long) {
         val logicalFrame = coordinatorState.getLogicalFrame(timestamp)
 
+        // TEMPORARY DEBUG
+        log.warn("DEBUG: Processing operation {} with timestamp {} -> logical frame {}",
+            operation.getString("id"), timestamp, logicalFrame)
+
         // Check if this is a late operation (before current frame)
         val frameInProgress = coordinatorState.frameInProgress
+
+        // TEMPORARY DEBUG
+        log.warn("DEBUG: frameInProgress = {}, logicalFrame = {}", frameInProgress, logicalFrame)
+
         if (logicalFrame < frameInProgress) {
             val framesLate = frameInProgress - logicalFrame
 
             log.warn("Late operation detected: operation targets frame {} but current frame is {} ({} frames late)",
                 logicalFrame, frameInProgress, framesLate)
 
-            lateOperationHandler.handleLateOperation(operation, logicalFrame, frameInProgress)
-            return
+            val decision = lateOperationHandler.handleLateOperation(operation, logicalFrame, frameInProgress)
+
+            when (decision) {
+                is LateOperationDecision.Drop -> return
+                is LateOperationDecision.Delay -> {
+                    coordinatorState.bufferOperation(operation, decision.targetFrame)
+                    // Let the normal scheduling handle manifest preparation
+                }
+            }
         }
 
         // Check if operation is too far in the future
@@ -274,8 +291,12 @@ class MessageQueueOperationConsumer @Inject constructor(
         // Future frame - buffer normally
         coordinatorState.bufferOperation(operation, logicalFrame)
 
+        // TEMPORARY DEBUG: Add this line
+        log.warn("DEBUG: Buffered operation {} for logical frame {} (total buffered: {})",
+            operation.getString("id"), logicalFrame, coordinatorState.getTotalBufferedOperations())
+
         if (log.isTraceEnabled) {
-            log.trace("Buffered operation {} for logical frame {}",
+            log.warn("Buffered operation {} for logical frame {}",
                 operation.getString("id"), logicalFrame)
         }
 
