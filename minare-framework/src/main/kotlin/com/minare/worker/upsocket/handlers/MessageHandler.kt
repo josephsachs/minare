@@ -7,10 +7,10 @@ import com.minare.utils.HeartbeatManager
 import com.minare.utils.VerticleLogger
 import com.minare.utils.WebSocketUtils
 import com.minare.controller.OperationController
+import com.minare.exception.BackpressureException
 import com.minare.worker.upsocket.SyncCommandHandler
 import io.vertx.core.http.ServerWebSocket
 import io.vertx.core.json.JsonObject
-import kotlin.com.minare.exception.BackpressureException
 
 /**
  * Handles incoming messages from WebSocket connections.
@@ -69,21 +69,7 @@ class MessageHandler @Inject constructor(
                 else -> {
                     // Add connectionId to the message for downstream processing
                     message.put("connectionId", connectionId)
-
-                    // All other messages produce to Kafka
-                    try {
-                        operationController.process(message)
-
-                    } catch (e: BackpressureException) {
-                        // Send 503 to client
-                        val errorResponse = JsonObject()
-                            .put("type", "error")
-                            .put("code", 503)
-                            .put("message", "Service temporarily unavailable - system at capacity")
-                            .put("retry_after", 5) // seconds
-
-                        websocket.writeTextMessage(errorResponse.encode())
-                    }
+                    operationController.process(message)
                 }
             }
 
@@ -93,6 +79,12 @@ class MessageHandler @Inject constructor(
                     "command" to message.getString("command", "unknown"),
                     "connectionId" to connectionId
                 ), msgTraceId
+            )
+        } catch (e: BackpressureException) {
+            vlog.logInfo("Backpressure active, rejecting message from connection ${connectionId}")
+            WebSocketUtils.sendErrorResponse(
+                websocket,
+                e, null, vlog
             )
         } catch (e: Exception) {
             vlog.logVerticleError("MESSAGE_HANDLING", e)

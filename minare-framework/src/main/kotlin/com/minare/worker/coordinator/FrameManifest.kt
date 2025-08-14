@@ -10,8 +10,8 @@ import java.io.Serializable
  */
 data class FrameManifest(
     val workerId: String,
-    val frameStartTime: Long,
-    val frameEndTime: Long,
+    val logicalFrame: Long,
+    val createdAt: Long,
     val operations: List<JsonObject>
 ) : Serializable {
 
@@ -21,8 +21,8 @@ data class FrameManifest(
     fun toJson(): JsonObject {
         return JsonObject()
             .put("workerId", workerId)
-            .put("frameStartTime", frameStartTime)
-            .put("frameEndTime", frameEndTime)
+            .put("logicalFrame", logicalFrame)
+            .put("createdAt", createdAt)
             .put("operations", JsonArray(operations))
     }
 
@@ -56,9 +56,9 @@ data class FrameManifest(
             return FrameManifest(
                 workerId = json.getString("workerId")
                     ?: throw IllegalArgumentException("Missing workerId"),
-                frameStartTime = json.getLong("frameStartTime")
-                    ?: throw IllegalArgumentException("Missing frameStartTime"),
-                frameEndTime = json.getLong("frameEndTime")
+                logicalFrame = json.getLong("logicalFrame")
+                    ?: throw IllegalArgumentException("Missing logicalFrame"),
+                createdAt = json.getLong("createdAt")
                     ?: throw IllegalArgumentException("Missing frameEndTime"),
                 operations = operations
             )

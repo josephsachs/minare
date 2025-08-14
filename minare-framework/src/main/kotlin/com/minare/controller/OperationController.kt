@@ -7,8 +7,8 @@ import io.vertx.core.json.JsonArray
 import io.vertx.core.json.JsonObject
 import org.slf4j.LoggerFactory
 import javax.inject.Inject
-import kotlin.com.minare.exception.BackpressureException
-import kotlin.com.minare.worker.coordinator.BackpressureManager
+import com.minare.exception.BackpressureException
+import com.minare.worker.coordinator.BackpressureManager
 
 /**
  * Controller for the operation event queue.

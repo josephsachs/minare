@@ -299,6 +299,11 @@ abstract class MinareApplication : CoroutineVerticle() {
 
         workerGetRegistryMap()
 
+        // Announce worker is ready
+        vertx.eventBus().publish(ADDRESS_WORKER_STARTED, JsonObject()
+            .put("workerId", workerId))
+        log.info("Published worker started event for {}", workerId)
+
         log.info("Worker instance deployed with ID: $deploymentID")
     }
 

@@ -1,3 +1,3 @@
-package kotlin.com.minare.exception
+package com.minare.exception
 
 class BackpressureException(message: String) : Exception(message)

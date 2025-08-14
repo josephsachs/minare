@@ -61,14 +61,12 @@ class FrameManifestBuilder @Inject constructor(
      * UPDATED: Operations are now sorted by operation ID hash for deterministic
      * ordering that doesn't favor any particular producer.
      *
-     * @param frameStartTime The logical frame number (not wall clock!)
-     * @param frameEndTime Deprecated parameter - kept for compatibility
+     * @param logicalFrame The logical frame number (not wall clock!)
      * @param assignments Map of worker ID to assigned operations
      * @param activeWorkers Set of all active workers
      */
     fun writeManifestsToMap(
-        frameStartTime: Long,  // Now this is logical frame number
-        frameEndTime: Long,    // Deprecated
+        logicalFrame: Long,  // Now this is logical frame number
         assignments: Map<String, List<JsonObject>>,
         activeWorkers: Set<String>
     ) {
@@ -82,40 +80,40 @@ class FrameManifestBuilder @Inject constructor(
 
             val manifest = JsonObject()
                 .put("workerId", workerId)
-                .put("logicalFrame", frameStartTime)  // Use logical frame
+                .put("logicalFrame", logicalFrame)  // Use logical frame
                 .put("operations", JsonArray(sortedOperations))
                 .put("createdAt", System.currentTimeMillis())
 
-            val key = "manifest:$frameStartTime:$workerId"
+            val key = "manifest:$logicalFrame:$workerId"
             manifestMap[key] = manifest
 
             log.trace("Wrote manifest for worker {} with {} operations for logical frame {}",
-                workerId, sortedOperations.size, frameStartTime)
+                workerId, sortedOperations.size, logicalFrame)
         }
 
         log.debug("Created manifests for logical frame {} with {} total operations distributed to {} workers",
-            frameStartTime, assignments.values.sumOf { it.size }, activeWorkers.size)
+            logicalFrame, assignments.values.sumOf { it.size }, activeWorkers.size)
     }
 
     /**
      * Clear manifests for a completed frame.
      * Should be called after frame completion to free memory.
      */
-    fun clearFrameManifests(frameStartTime: Long) {
+    fun clearFrameManifests(logicalFrame: Long) {
         val manifestKeys = manifestMap.keys
-            .filter { it.startsWith("manifest:$frameStartTime:") }
+            .filter { it.startsWith("manifest:$logicalFrame:") }
 
         manifestKeys.forEach { manifestMap.remove(it) }
 
-        log.debug("Cleared {} manifests for frame {}", manifestKeys.size, frameStartTime)
+        log.debug("Cleared {} manifests for frame {}", manifestKeys.size, logicalFrame)
     }
 
     /**
      * Get manifest for a specific worker and frame.
      * Used by workers to fetch their assigned operations.
      */
-    fun getManifest(frameStartTime: Long, workerId: String): JsonObject? {
-        val key = "manifest:$frameStartTime:$workerId"
+    fun getManifest(logicalFrame: Long, workerId: String): JsonObject? {
+        val key = "manifest:$logicalFrame:$workerId"
         return manifestMap[key]
     }
 
@@ -138,9 +136,9 @@ class FrameManifestBuilder @Inject constructor(
      * Get all manifests for a frame.
      * Useful for monitoring and debugging.
      */
-    fun getFrameManifests(frameStartTime: Long): Map<String, JsonObject> {
+    fun getFrameManifests(logicalFrame: Long): Map<String, JsonObject> {
         return manifestMap.entries
-            .filter { it.key.startsWith("manifest:$frameStartTime:") }
+            .filter { it.key.startsWith("manifest:$logicalFrame:") }
             .associate {
                 val workerId = it.key.substringAfterLast(":")
                 workerId to it.value

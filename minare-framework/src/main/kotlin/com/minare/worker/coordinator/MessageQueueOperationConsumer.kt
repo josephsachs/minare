@@ -3,6 +3,7 @@ package com.minare.worker.coordinator
 import com.minare.time.FrameConfiguration
 import com.minare.time.FrameCalculator
 import io.vertx.core.Vertx
+import io.vertx.core.json.JsonArray
 import io.vertx.core.json.JsonObject
 import io.vertx.kafka.client.consumer.KafkaConsumer
 import io.vertx.kotlin.coroutines.await
@@ -98,76 +99,130 @@ class MessageQueueOperationConsumer @Inject constructor(
         return config
     }
 
+
     /**
      * Handle a single Kafka record by buffering it to the appropriate frame.
      * This is the main integration point between Kafka and frame processing.
+     *
+     * Updated to handle both single operations (JsonObject) and batched operations (JsonArray).
      */
     private fun handleKafkaRecord(record: io.vertx.kafka.client.consumer.KafkaConsumerRecord<String, String>) {
         try {
             // Check if backpressure is already active
             if (backpressureManager.isActive()) {
-                // Don't consume new records while backpressure is active
+                // Commit this record without processing to avoid replay
+                messageQueueConsumer?.commit()
+
+                // Pause further consumption
                 log.debug("Backpressure active - pausing consumption")
                 messageQueueConsumer?.pause()
                 return
             }
 
-            val operation = JsonObject(record.value())
-            val timestamp = operation.getLong("timestamp")
+            val recordValue = record.value()
 
-            if (timestamp == null) {
-                log.error("Operation missing timestamp, cannot assign to frame: {}",
-                    operation.encode())
-                return
+            val operations = try {
+                val array = JsonArray(recordValue)
+                // Convert JsonArray to list of JsonObjects
+                array.mapNotNull {
+                    when (it) {
+                        is JsonObject -> it
+                        else -> {
+                            log.warn("Skipping non-object element in operation array: {}", it)
+                            null
+                        }
+                    }
+                }
+            } catch (e: io.vertx.core.json.DecodeException) {
+                // Not an array, try as single object for backward compatibility
+                try {
+                    listOf(JsonObject(recordValue))
+                } catch (e2: Exception) {
+                    log.error("Failed to parse Kafka record as either JsonArray or JsonObject: {}", recordValue, e2)
+                    return
+                }
             }
 
-            // Check buffer limits before processing
-            val totalBuffered = coordinatorState.getTotalBufferedOperations()
-            if (totalBuffered >= MAX_BUFFER_SIZE) {
-                log.error("Operation buffer full ({}/{} operations), activating backpressure",
-                    totalBuffered, MAX_BUFFER_SIZE)
-
-                // Activate backpressure
-                backpressureManager.activate(
-                    frame = coordinatorState.frameInProgress,
-                    bufferedOps = totalBuffered,
-                    maxBuffer = MAX_BUFFER_SIZE
-                )
-
-                // Pause Kafka consumer
-                messageQueueConsumer?.pause()
-
-                // Broadcast backpressure activated event
-                vertx.eventBus().publish(
-                    "minare.backpressure.activated",
-                    JsonObject()
-                        .put("frameInProgress", coordinatorState.frameInProgress)
-                        .put("bufferedOperations", totalBuffered)
-                        .put("maxBufferSize", MAX_BUFFER_SIZE)
-                        .put("timestamp", System.currentTimeMillis())
-                )
-
-                return
+            // Process each operation in the batch sequentially
+            var backpressureTriggered = false
+            for (operation in operations) {
+                if (!processOperation(operation)) {
+                    // Backpressure was triggered, but continue to mark offset as processed
+                    backpressureTriggered = true
+                    break
+                }
             }
 
-            if (totalBuffered >= BUFFER_WARNING_THRESHOLD) {
-                log.warn("Operation buffer approaching limit: {}/{} operations",
-                    totalBuffered, MAX_BUFFER_SIZE)
-            }
-
-            // Route to appropriate handler based on session state
-            if (coordinatorState.sessionStartTimestamp == 0L) {
-                handlePreSessionOperation(operation)
-            } else {
-                handleSessionOperation(operation, timestamp)
-            }
-
-            // Commit offset after successful processing
             messageQueueConsumer?.commit()
+
+            if (backpressureTriggered) {
+                log.debug("Backpressure triggered during batch processing")
+            }
 
         } catch (e: Exception) {
             log.error("Error processing Kafka record", e)
         }
+    }
+
+    /**
+     * Process a single operation from the Kafka record.
+     *
+     * Note: This method does not control Kafka commits. We always commit to avoid
+     * duplicate operations. Atomicity and idempotency must be handled at the operation level.
+     *
+     * @return true if processing should continue, false if backpressure was activated
+     */
+    private fun processOperation(operation: JsonObject): Boolean {
+        val timestamp = operation.getLong("timestamp")
+
+        if (timestamp == null) {
+            log.error("Operation missing timestamp, cannot assign to frame: {}",
+                operation.encode())
+            return true // Continue processing other operations
+        }
+
+        // Check buffer limits before processing
+        val totalBuffered = coordinatorState.getTotalBufferedOperations()
+        if (totalBuffered >= MAX_BUFFER_SIZE) {
+            log.error("Operation buffer full ({}/{} operations), activating backpressure",
+                totalBuffered, MAX_BUFFER_SIZE)
+
+            // Activate backpressure
+            backpressureManager.activate(
+                frame = coordinatorState.frameInProgress,
+                bufferedOps = totalBuffered,
+                maxBuffer = MAX_BUFFER_SIZE
+            )
+
+            // Pause Kafka consumer
+            messageQueueConsumer?.pause()
+
+            // Broadcast backpressure activated event
+            vertx.eventBus().publish(
+                "minare.backpressure.activated",
+                JsonObject()
+                    .put("frameInProgress", coordinatorState.frameInProgress)
+                    .put("bufferedOperations", totalBuffered)
+                    .put("maxBufferSize", MAX_BUFFER_SIZE)
+                    .put("timestamp", System.currentTimeMillis())
+            )
+
+            return false // Stop processing
+        }
+
+        if (totalBuffered >= BUFFER_WARNING_THRESHOLD) {
+            log.warn("Operation buffer approaching limit: {}/{} operations",
+                totalBuffered, MAX_BUFFER_SIZE)
+        }
+
+        // Route to appropriate handler based on session state
+        if (coordinatorState.sessionStartTimestamp == 0L) {
+            handlePreSessionOperation(operation)
+        } else {
+            handleSessionOperation(operation, timestamp)
+        }
+
+        return true // Continue processing
     }
 
     /**

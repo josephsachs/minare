@@ -40,6 +40,7 @@ class FrameCoordinatorVerticle @Inject constructor(
     private val infraRemoveWorkerEvent: InfraRemoveWorkerEvent,
     private val workerFrameCompleteEvent: WorkerFrameCompleteEvent,
     private val workerHeartbeatEvent: WorkerHeartbeatEvent,
+    private val workerRegisterEvent: WorkerRegisterEvent,
     private val workerReadinessEvent: WorkerReadinessEvent,
     private val frameCatchUpEvent: FrameCatchUpEvent,
     private val workerHealthChangeEvent: WorkerHealthChangeEvent
@@ -64,6 +65,8 @@ class FrameCoordinatorVerticle @Inject constructor(
 
         setupEventBusConsumers()
         setupOperationConsumer()
+
+        tryStartSession()
     }
 
     private fun setupEventBusConsumers() {
@@ -76,6 +79,7 @@ class FrameCoordinatorVerticle @Inject constructor(
             frameCatchUpEvent.register()
             workerHeartbeatEvent.register()
             workerFrameCompleteEvent.register()
+            workerRegisterEvent.register()
             workerReadinessEvent.register()
             workerHealthChangeEvent.register()
         }
@@ -103,14 +107,6 @@ class FrameCoordinatorVerticle @Inject constructor(
             }
         }
 
-        vertx.eventBus().consumer<JsonObject>(ADDRESS_ALL_WORKERS_READY) { msg ->
-            launch {
-                log.info("All workers ready, starting new session")
-                coordinatorState.isPaused = false
-                startNewSession()
-            }
-        }
-
         vertx.eventBus().consumer<JsonObject>(ADDRESS_WORKERS_CAUGHT_UP) { msg ->
             launch {
                 val resumeFrame = msg.body().getLong("resumeFrame")
@@ -119,7 +115,6 @@ class FrameCoordinatorVerticle @Inject constructor(
                 coordinatorState.isPaused = false
                 coordinatorState.setFrameInProgress(resumeFrame)
 
-                // Clear backpressure if active
                 if (backpressureManager.isActive()) {
                     log.info("Clearing backpressure on resume from pause")
                     backpressureManager.deactivate()
@@ -129,16 +124,41 @@ class FrameCoordinatorVerticle @Inject constructor(
                 // Catch up manifest preparation to current time
                 preparePendingManifests()
 
-                // Schedule next frame preparation
                 frameScheduler.scheduleFramePreparation(resumeFrame, this) { frame ->
                     prepareManifestForFrame(frame)
                 }
+            }
+        }
+
+        vertx.eventBus().consumer<JsonObject>(ADDRESS_ALL_WORKERS_READY) { msg ->
+            launch {
+                log.info("All workers ready, starting new session")
+                coordinatorState.isPaused = false
+                startNewSession()
             }
         }
     }
 
     private suspend fun setupOperationConsumer() {
         messageQueueOperationConsumer.start(this)
+    }
+
+    /**
+     * If all registered workers have already posted, unpause and start session
+     */
+    private suspend fun tryStartSession() {
+        val existingWorkers = workerRegistry.getActiveWorkers()
+        if (existingWorkers.isNotEmpty()) {
+            log.info("Found {} active workers already registered", existingWorkers.size)
+
+            if (existingWorkers.size == workerRegistry.getExpectedWorkerCount()) {
+                log.info("All expected workers already active, starting session")
+                coordinatorState.isPaused = false
+                launch {
+                    startNewSession()
+                }
+            }
+        }
     }
 
     /**
@@ -305,7 +325,6 @@ class FrameCoordinatorVerticle @Inject constructor(
         // Write manifests (even if empty - workers need them for heartbeat)
         frameManifestBuilder.writeManifestsToMap(
             logicalFrame,
-            0L,  // frameEndTime deprecated
             assignments,
             activeWorkers
         )
