@@ -4,6 +4,7 @@ import com.google.inject.Inject
 import com.google.inject.Singleton
 import com.hazelcast.core.HazelcastInstance
 import com.hazelcast.map.IMap
+import java.io.Serializable
 
 @Singleton
 class BackpressureManager @Inject constructor(
@@ -20,7 +21,7 @@ class BackpressureManager @Inject constructor(
         val reason: String,
         val bufferedOperations: Int,
         val maxBufferSize: Int
-    )
+    ): Serializable
 
     fun isActive(): Boolean {
         return backpressureMap["global"]?.active ?: false
