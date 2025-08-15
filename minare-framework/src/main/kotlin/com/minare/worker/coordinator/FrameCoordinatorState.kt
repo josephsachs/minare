@@ -162,7 +162,7 @@ class FrameCoordinatorState @Inject constructor(
      */
     fun extractFrameOperations(logicalFrame: Long): List<JsonObject> {
         // TEMPORARY DEBUG
-        log.warn("DEBUG: Extracting operations for frame {}, available frames: {}",
+        log.info("DEBUG: Extracting operations for frame {}, available frames: {}",
             logicalFrame, operationsByFrame.keys.sorted())
 
         // Include pending operations if this is frame 0
@@ -180,9 +180,6 @@ class FrameCoordinatorState @Inject constructor(
             log.warn("DEBUG: No operations found for frame {}", logicalFrame)
             return pendingOps
         }
-
-        // TEMPORARY DEBUG
-        log.warn("DEBUG: Found {} operations for frame {}", queue.size, logicalFrame)
 
         return pendingOps + queue.toList()
     }

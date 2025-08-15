@@ -66,10 +66,6 @@ class MessageQueueOperationConsumer @Inject constructor(
     private suspend fun setupMessageQueueConsumer() {
         val config = createKafkaConfig()
 
-        // TEMPORARY DEBUG
-        log.warn("DEBUG: Kafka consumer config - bootstrap: {}, topic: {}, group: {}",
-            config["bootstrap.servers"], OPERATIONS_TOPIC, config["group.id"])
-
         messageQueueConsumer = KafkaConsumer.create<String, String>(vertx, config)
 
         // Subscribe to operations topic
@@ -111,11 +107,6 @@ class MessageQueueOperationConsumer @Inject constructor(
      * Updated to handle both single operations (JsonObject) and batched operations (JsonArray).
      */
     private fun handleKafkaRecord(record: io.vertx.kafka.client.consumer.KafkaConsumerRecord<String, String>) {
-
-        // TEMPORARY DEBUG
-        log.warn("DEBUG: Kafka record received - topic: {}, partition: {}, offset: {}, value length: {}",
-            record.topic(), record.partition(), record.offset(), record.value()?.length ?: 0)
-
         try {
             val value = record.value()
             if (value.isNullOrEmpty()) {
@@ -259,10 +250,6 @@ class MessageQueueOperationConsumer @Inject constructor(
      */
     private fun handleSessionOperation(operation: JsonObject, timestamp: Long) {
         val logicalFrame = coordinatorState.getLogicalFrame(timestamp)
-
-        // TEMPORARY DEBUG
-        log.warn("DEBUG: Processing operation {} with timestamp {} -> logical frame {}",
-            operation.getString("id"), timestamp, logicalFrame)
 
         // Check if this is a late operation (before current frame)
         val frameInProgress = coordinatorState.frameInProgress
