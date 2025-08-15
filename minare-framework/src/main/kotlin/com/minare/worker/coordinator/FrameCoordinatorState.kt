@@ -93,7 +93,7 @@ class FrameCoordinatorState @Inject constructor(
      * Start a new session with specific timestamps.
      * Resets frame tracking to begin from frame -1.
      */
-    fun startNewSession(sessionStartTimestamp: Long, sessionStartNanos: Long) {
+    fun resetSessionState(sessionStartTimestamp: Long, sessionStartNanos: Long) {
         this.sessionStartTimestamp = sessionStartTimestamp
         this.sessionStartNanos = sessionStartNanos
         _lastProcessedFrame.set(-1L)

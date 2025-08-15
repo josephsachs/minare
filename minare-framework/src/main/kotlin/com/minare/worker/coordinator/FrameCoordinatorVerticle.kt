@@ -4,6 +4,7 @@ import com.minare.operation.MessageQueue
 import com.minare.time.FrameCalculator
 import com.minare.time.FrameConfiguration
 import com.minare.time.TimeService
+import com.minare.utils.EventBusUtils
 import com.minare.utils.VerticleLogger
 import com.minare.worker.coordinator.events.*
 import io.vertx.core.json.JsonArray
@@ -28,6 +29,7 @@ class FrameCoordinatorVerticle @Inject constructor(
     private val timeService: TimeService,
     private val frameCalculator: FrameCalculator,
     private val vlog: VerticleLogger,
+    private val eventBusUtils: EventBusUtils,
     private val workerRegistry: WorkerRegistry,
     private val coordinatorState: FrameCoordinatorState,
     private val backpressureManager: BackpressureManager,
@@ -85,7 +87,7 @@ class FrameCoordinatorVerticle @Inject constructor(
         }
 
         // Internal event for when all workers complete a frame
-        vertx.eventBus().consumer<JsonObject>(ADDRESS_FRAME_ALL_COMPLETE) { msg ->
+        eventBusUtils.registerTracedConsumer<JsonObject>(ADDRESS_FRAME_ALL_COMPLETE) { msg, traceId ->
             launch {
                 val logicalFrame = msg.body().getLong("logicalFrame")
                 onFrameComplete(logicalFrame)
@@ -93,12 +95,12 @@ class FrameCoordinatorVerticle @Inject constructor(
         }
 
         // Manifest preparation requests (triggered by operation arrival)
-        vertx.eventBus().consumer<JsonObject>(ADDRESS_PREPARE_MANIFEST) { _ ->
+        eventBusUtils.registerTracedConsumer<JsonObject>(ADDRESS_PREPARE_MANIFEST) { _, traceId ->
             launch { preparePendingManifests() }
         }
 
         // Resume command
-        vertx.eventBus().consumer<JsonObject>(ADDRESS_FRAME_RESUME) { msg ->
+        eventBusUtils.registerTracedConsumer<JsonObject>(ADDRESS_FRAME_RESUME) { msg, traceId ->
             launch {
                 val reason = msg.body().getString("reason", "Manual resume")
                 log.info("Received resume command: {}", reason)
@@ -107,7 +109,7 @@ class FrameCoordinatorVerticle @Inject constructor(
             }
         }
 
-        vertx.eventBus().consumer<JsonObject>(ADDRESS_WORKERS_CAUGHT_UP) { msg ->
+        eventBusUtils.registerTracedConsumer<JsonObject>(ADDRESS_WORKERS_CAUGHT_UP) { msg, traceId ->
             launch {
                 val resumeFrame = msg.body().getLong("resumeFrame")
                 log.info("All workers caught up, resuming at frame {}", resumeFrame)
@@ -130,11 +132,16 @@ class FrameCoordinatorVerticle @Inject constructor(
             }
         }
 
-        vertx.eventBus().consumer<JsonObject>(ADDRESS_ALL_WORKERS_READY) { msg ->
+        eventBusUtils.registerTracedConsumer<JsonObject>(ADDRESS_ALL_WORKERS_READY) { msg, traceId ->
             launch {
-                log.info("All workers ready, starting new session")
+                log.info("All workers ready")
                 coordinatorState.isPaused = false
-                startNewSession()
+
+                // Only start session on startup
+                if (coordinatorState.sessionStartTimestamp == 0L) { // TODO: Come up with a clearer way to identify startup state
+                    log.info("No existing session, starting new session")
+                    startNewSession()
+                }
             }
         }
     }
@@ -177,7 +184,7 @@ class FrameCoordinatorVerticle @Inject constructor(
 
         // Extract and renumber buffered operations
         val operationsByOldFrame = extractBufferedOperations()
-        coordinatorState.startNewSession(sessionStartTime, sessionStartNanos)
+        coordinatorState.resetSessionState(sessionStartTime, sessionStartNanos)
 
         // Reset frame in progress
         coordinatorState.setFrameInProgress(0)
