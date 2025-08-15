@@ -45,7 +45,8 @@ class FrameCoordinatorVerticle @Inject constructor(
     private val workerRegisterEvent: WorkerRegisterEvent,
     private val workerReadinessEvent: WorkerReadinessEvent,
     private val frameCatchUpEvent: FrameCatchUpEvent,
-    private val workerHealthChangeEvent: WorkerHealthChangeEvent
+    private val workerHealthChangeEvent: WorkerHealthChangeEvent,
+    private val nextFrameEvent: NextFrameEvent
 ) : CoroutineVerticle() {
 
     private val log = LoggerFactory.getLogger(FrameCoordinatorVerticle::class.java)
@@ -59,6 +60,7 @@ class FrameCoordinatorVerticle @Inject constructor(
         const val ADDRESS_PREPARE_MANIFEST = "minare.coordinator.internal.prepare-manifest"
         const val ADDRESS_ALL_WORKERS_READY = "minare.coordinator.all.workers.ready"
         const val ADDRESS_WORKERS_CAUGHT_UP = "minare.coordinator.workers.caught.up"
+        const val ADDRESS_NEXT_FRAME = "minare.coordinator.next.frame"  // NEW
     }
 
     override suspend fun start() {
@@ -126,6 +128,10 @@ class FrameCoordinatorVerticle @Inject constructor(
                 // Catch up manifest preparation to current time
                 preparePendingManifests()
 
+                // Broadcast next frame event to resume processing  // NEW
+                log.info("Broadcasting next frame event to resume at frame {}", resumeFrame)
+                vertx.eventBus().publish(ADDRESS_NEXT_FRAME, JsonObject())
+
                 frameScheduler.scheduleFramePreparation(resumeFrame, this) { frame ->
                     prepareManifestForFrame(frame)
                 }
@@ -186,6 +192,9 @@ class FrameCoordinatorVerticle @Inject constructor(
         val operationsByOldFrame = extractBufferedOperations()
         coordinatorState.resetSessionState(sessionStartTime, sessionStartNanos)
 
+        // Initialize frame progress in Hazelcast
+        coordinatorState.initializeFrameProgress()  // NEW - initializes to 0
+
         // Reset frame in progress
         coordinatorState.setFrameInProgress(0)
 
@@ -197,6 +206,10 @@ class FrameCoordinatorVerticle @Inject constructor(
 
         // Wait for the announced start time
         delay(frameConfig.frameOffsetMs)
+
+        // Broadcast initial next frame event for frame 0  // NEW
+        log.info("Broadcasting initial next frame event for frame 0")
+        vertx.eventBus().publish(ADDRESS_NEXT_FRAME, JsonObject())
 
         // Start frame scheduling from the next unprepared frame
         val nextFrameToSchedule = coordinatorState.lastPreparedManifest + 1
@@ -376,6 +389,11 @@ class FrameCoordinatorVerticle @Inject constructor(
         log.info("Logical frame {} completed successfully", logicalFrame)
 
         markFrameComplete(logicalFrame)
+
+        // Broadcast next frame event to all workers  // NEW
+        log.info("Broadcasting next frame event after completing frame {}", logicalFrame)
+        vertx.eventBus().publish(ADDRESS_NEXT_FRAME, JsonObject())
+
         checkAndHandleBackpressure(logicalFrame)
         prepareUpcomingFrames()
         cleanupCompletedFrame(logicalFrame)

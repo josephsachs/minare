@@ -2,11 +2,14 @@ package com.minare.worker.coordinator
 
 import com.hazelcast.core.HazelcastException
 import com.hazelcast.core.HazelcastInstance
+import com.hazelcast.cp.IAtomicLong
 import com.hazelcast.map.IMap
 import com.minare.operation.Operation
 import com.minare.time.FrameConfiguration
 import com.minare.time.FrameCalculator
 import com.minare.utils.VerticleLogger
+import com.minare.worker.coordinator.events.NextFrameEvent
+import com.minare.worker.coordinator.events.NextFrameEvent.Companion
 import io.vertx.core.json.JsonObject
 import io.vertx.kotlin.coroutines.CoroutineVerticle
 import io.vertx.kotlin.coroutines.await
@@ -27,7 +30,6 @@ import javax.inject.Inject
 class FrameWorkerVerticle @Inject constructor(
     private val vlog: VerticleLogger,
     private val hazelcastInstance: HazelcastInstance,
-    private val frameCalculator: FrameCalculator,
     private val frameConfig: FrameConfiguration
 ) : CoroutineVerticle() {
 
@@ -37,9 +39,13 @@ class FrameWorkerVerticle @Inject constructor(
     private lateinit var manifestMap: IMap<String, JsonObject>
     private lateinit var completionMap: IMap<String, OperationCompletion>
 
+    // Distributed frame progress from Hazelcast
+    private val frameProgress: IAtomicLong by lazy {
+        hazelcastInstance.getCPSubsystem().getAtomicLong("frame-progress")
+    }
+
     private var sessionStartTimestamp: Long = 0L  // Wall clock for external communication
     private var sessionStartNanos: Long = 0L      // Nanos for accurate frame pacing
-    private var currentLogicalFrame: Long = -1L
     private var processingActive = false
 
     // Track the current frame processing job for clean cancellation
@@ -50,6 +56,7 @@ class FrameWorkerVerticle @Inject constructor(
         const val ADDRESS_WORKER_FRAME_COMPLETE = "minare.coordinator.worker.frame.complete"
         const val ADDRESS_WORKER_FRAME_DELAYED = "minare.coordinator.worker.frame.delayed"
         const val ADDRESS_WORKER_FRAME_ERROR = "minare.coordinator.worker.frame.error"
+        const val ADDRESS_NEXT_FRAME = "minare.coordinator.next.frame"
     }
 
     override suspend fun start() {
@@ -62,6 +69,16 @@ class FrameWorkerVerticle @Inject constructor(
         manifestMap = hazelcastInstance.getMap("frame-manifests")
         completionMap = hazelcastInstance.getMap("operation-completions")
 
+        vertx.eventBus().consumer<JsonObject>(NextFrameEvent.ADDRESS_NEXT_FRAME) { message ->
+            vlog.getEventLogger().trace(
+                "NEXT_FRAME_EVENT",
+                mapOf(
+                    "timestamp" to System.currentTimeMillis()
+                )
+            )
+            // Workers handle this event in FrameWorkerVerticle.handleNextFrame()
+        }
+
         // Listen for session start announcements
         vertx.eventBus().consumer<JsonObject>(FrameCoordinatorVerticle.ADDRESS_SESSION_START) { msg ->
             launch {
@@ -73,6 +90,15 @@ class FrameWorkerVerticle @Inject constructor(
         vertx.eventBus().consumer<JsonObject>(FrameCoordinatorVerticle.ADDRESS_FRAME_PAUSE) { msg ->
             launch {
                 handlePause(msg.body())
+            }
+        }
+
+        // Listen for next frame events
+        vertx.eventBus().consumer<JsonObject>(ADDRESS_NEXT_FRAME) { msg ->
+            launch {
+                if (processingActive) {
+                    handleNextFrame()
+                }
             }
         }
 
@@ -134,7 +160,6 @@ class FrameWorkerVerticle @Inject constructor(
 
         // Reset state for new session
         sessionStartTimestamp = newSessionStart
-        currentLogicalFrame = -1L
         processingActive = true
 
         // Wait for session start
@@ -143,95 +168,54 @@ class FrameWorkerVerticle @Inject constructor(
         // Capture nanoTime at actual session start for frame pacing
         sessionStartNanos = System.nanoTime()
 
-        // Start frame processing loop and track the job
-        currentFrameProcessingJob = launchFrameProcessingLoop()
+        // Process frame 0 immediately
+        log.info("Worker {} processing initial frame 0", workerId)
+        handleNextFrame()
+
+        // Now wait for subsequent frame advancement events
+        log.info("Worker {} ready for frame advancement events", workerId)
+    }
+
+    /**
+     * Handle next frame event from coordinator.
+     * Pull current frame from Hazelcast and process it.
+     */
+    private suspend fun handleNextFrame() {
+        if (!processingActive) {
+            log.debug("Ignoring next frame event - processing not active")
+            return
+        }
+
+        val frameToProcess = frameProgress.get()
+        log.debug("Processing frame {} as directed by coordinator", frameToProcess)
+
+        try {
+            processLogicalFrame(frameToProcess)
+        } catch (e: Exception) {
+            log.error("Error processing frame {}", frameToProcess, e)
+            reportFrameError(frameToProcess)
+            // Still report completion so coordinator can advance
+            reportFrameCompletion(frameToProcess, 0)
+        }
     }
 
     /**
      * Clear any stale manifests or completions for this worker.
      * Called when starting a new session to ensure clean state.
      */
-    private suspend fun clearWorkerManifests() {
+    private fun clearWorkerManifests() {
         try {
-            // Clear any manifests for this worker
-            val keysToRemove = mutableListOf<String>()
-            manifestMap.keys.forEach { key ->
-                if (key.contains(workerId)) {
-                    keysToRemove.add(key)
-                }
+            // Clear any completion records for this worker
+            val completionKeys = completionMap.keys.filter { key ->
+                key.contains(workerId)
             }
+            completionKeys.forEach { completionMap.remove(it) }
 
-            keysToRemove.forEach { key ->
-                manifestMap.remove(key)
-            }
-
-            if (keysToRemove.isNotEmpty()) {
-                log.info("Cleared {} stale manifests for worker {}", keysToRemove.size, workerId)
-            }
-
-            // Clear any completions for this worker
-            val completionKeysToRemove = mutableListOf<String>()
-            completionMap.keys.forEach { key ->
-                if (key.contains(workerId)) {
-                    completionKeysToRemove.add(key)
-                }
-            }
-
-            completionKeysToRemove.forEach { key ->
-                completionMap.remove(key)
-            }
-
-            if (completionKeysToRemove.isNotEmpty()) {
-                log.info("Cleared {} stale completions for worker {}", completionKeysToRemove.size, workerId)
-            }
+            log.debug("Cleared {} stale completion records for worker {}",
+                completionKeys.size, workerId)
         } catch (e: Exception) {
-            log.error("Error clearing worker state in Hazelcast", e)
+            log.warn("Error clearing worker state in Hazelcast", e)
         }
-    }
-
-    /**
-     * Launch the frame processing loop with nanoTime-based pacing.
-     * Returns the Job so it can be tracked and cancelled if needed.
-     */
-    private fun launchFrameProcessingLoop(): Job = launch {
-        log.info("Starting frame processing loop for session {} (nanos: {})",
-            sessionStartTimestamp, sessionStartNanos)
-
-        var logicalFrame = 0L
-
-        while (processingActive) {
-            try {
-                processLogicalFrame(logicalFrame)
-
-                val nanosUntilNextFrame = frameCalculator.nanosUntilFrame(logicalFrame + 1, sessionStartNanos)
-
-                if (nanosUntilNextFrame > 0) {
-                    // We finished early - wait for next frame
-                    delay(frameCalculator.nanosToMs(nanosUntilNextFrame))
-                } else {
-                    val nanosLate = -nanosUntilNextFrame // Detect if lagging
-
-                    if (frameCalculator.isLaggingBeyondThreshold(nanosLate)) {
-                        log.error("Worker {} is {} nanoseconds behind schedule", workerId, nanosLate)
-                        reportWorkerLagged(logicalFrame, nanosLate)
-                    }
-                }
-
-                logicalFrame++
-
-            } catch (e: Exception) {
-                log.error("Error processing logical frame {}", logicalFrame, e)
-
-                val delayMs = frameCalculator.msUntilFrame(logicalFrame + 1, sessionStartNanos)
-                reportFrameError()
-
-                if (delayMs > 0) {
-                    delay(delayMs) // Wait until the next frame and resume
-                }
-            }
-        }
-
-        log.info("Frame processing loop stopped")
     }
 
     /**
@@ -239,7 +223,6 @@ class FrameWorkerVerticle @Inject constructor(
      * Fetches manifest from Hazelcast and processes all assigned operations.
      */
     private suspend fun processLogicalFrame(logicalFrame: Long) {
-        currentLogicalFrame = logicalFrame
         val frameStartTime = System.currentTimeMillis()
 
         try {
@@ -279,12 +262,12 @@ class FrameWorkerVerticle @Inject constructor(
 
         } catch (e: HazelcastException) {
             log.error("Hazelcast error in frame {}", logicalFrame, e)
-            reportFrameError()
+            reportFrameError(logicalFrame)
             reportFrameCompletion(logicalFrame, 0)
 
         } catch (e: TimeoutException) {
             log.error("Timeout processing frame {}", logicalFrame, e)
-            reportFrameError()
+            reportFrameError(logicalFrame)
             reportFrameCompletion(logicalFrame, 0)
 
         } catch (e: Exception) {
@@ -361,26 +344,12 @@ class FrameWorkerVerticle @Inject constructor(
     }
 
     /**
-     * Report that this worker is lagging behind schedule
-     */
-    private fun reportWorkerLagged(logicalFrame: Long, nanosLate: Long) {
-        val lagEvent = JsonObject()
-            .put("workerId", workerId)
-            .put("logicalFrame", logicalFrame)
-            .put("nanosLate", nanosLate)
-            .put("msLate", frameCalculator.nanosToMs(nanosLate))
-            .put("timestamp", System.currentTimeMillis())
-
-        vertx.eventBus().send(ADDRESS_WORKER_FRAME_DELAYED, lagEvent)
-    }
-
-    /**
      * Report a frame processing error
      */
-    private fun reportFrameError() {
+    private fun reportFrameError(logicalFrame: Long) {
         val errorEvent = JsonObject()
             .put("workerId", workerId)
-            .put("logicalFrame", currentLogicalFrame)
+            .put("logicalFrame", logicalFrame)
             .put("timestamp", System.currentTimeMillis())
 
         vertx.eventBus().send(ADDRESS_WORKER_FRAME_ERROR, errorEvent)

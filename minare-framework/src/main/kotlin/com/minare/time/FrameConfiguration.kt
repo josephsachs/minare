@@ -79,10 +79,10 @@ data class FrameConfiguration(
      * When paused, operations continue arriving and are buffered
      * up to this many frames ahead.
      *
-     * Default: 10 frames (1 second at 100ms frames)
+     * Default: 1000 frames (1 second at 100ms frames)
      * After this, backpressure (503) should be applied
      */
-    val maxBufferFrames: Int = 10,
+    val maxBufferFrames: Int = 1000,
 
     /**
      * How many frames ahead to prepare during normal operation.

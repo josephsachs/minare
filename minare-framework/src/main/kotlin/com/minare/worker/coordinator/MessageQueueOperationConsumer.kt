@@ -283,6 +283,7 @@ class MessageQueueOperationConsumer @Inject constructor(
                 is LateOperationDecision.Delay -> {
                     coordinatorState.bufferOperation(operation, decision.targetFrame)
                     // Let the normal scheduling handle manifest preparation
+                    return  // ADD THIS RETURN
                 }
             }
         }

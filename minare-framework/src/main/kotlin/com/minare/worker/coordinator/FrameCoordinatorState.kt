@@ -1,5 +1,7 @@
 package com.minare.worker.coordinator
 
+import com.hazelcast.core.HazelcastInstance
+import com.hazelcast.cp.IAtomicLong
 import com.minare.time.FrameConfiguration
 import com.minare.time.FrameCalculator
 import io.vertx.core.json.JsonObject
@@ -20,7 +22,8 @@ import javax.inject.Singleton
 class FrameCoordinatorState @Inject constructor(
     private val workerRegistry: WorkerRegistry,
     private val frameCalculator: FrameCalculator,
-    private val frameConfig: FrameConfiguration
+    private val frameConfig: FrameConfiguration,
+    private val hazelcastInstance: HazelcastInstance
 ) {
     private val log = LoggerFactory.getLogger(FrameCoordinatorState::class.java)
 
@@ -46,7 +49,9 @@ class FrameCoordinatorState @Inject constructor(
 
     // Current frame completion tracking
     private val currentFrameCompletions = ConcurrentHashMap<String, Long>()
-    private val _frameInProgress = AtomicLong(-1L)
+
+    // Distributed frame progress in Hazelcast
+    private val frameProgress: IAtomicLong = hazelcastInstance.getCPSubsystem().getAtomicLong("frame-progress")
 
     // Public properties
     var lastProcessedFrame: Long
@@ -62,13 +67,20 @@ class FrameCoordinatorState @Inject constructor(
         set(value) = _isPaused.set(value)
 
     val frameInProgress: Long
-        get() = _frameInProgress.get()
+        get() = frameProgress.get()
+
+    /**
+     * Initialize frame progress for a new session
+     */
+    fun initializeFrameProgress() {
+        frameProgress.set(0L)
+    }
 
     /**
      * Get all workers that have completed the specified frame
      */
     fun getCompletedWorkers(logicalFrame: Long): Set<String> {
-        return if (logicalFrame == _frameInProgress.get()) {
+        return if (logicalFrame == frameProgress.get()) {
             currentFrameCompletions.keys.toSet()
         } else {
             emptySet()
@@ -79,7 +91,7 @@ class FrameCoordinatorState @Inject constructor(
      * Check if all expected workers have completed the current frame
      */
     fun isFrameComplete(logicalFrame: Long): Boolean {
-        if (logicalFrame != _frameInProgress.get()) {
+        if (logicalFrame != frameProgress.get()) {
             return false
         }
 
@@ -98,7 +110,7 @@ class FrameCoordinatorState @Inject constructor(
         this.sessionStartNanos = sessionStartNanos
         _lastProcessedFrame.set(-1L)
         _lastPreparedManifest.set(-1L)
-        _frameInProgress.set(-1L)
+        frameProgress.set(-1L)
         currentFrameCompletions.clear()
 
         log.info("Started new session at timestamp {} (nanos: {})",
@@ -179,7 +191,7 @@ class FrameCoordinatorState @Inject constructor(
      * Set the frame currently in progress
      */
     fun setFrameInProgress(frameNumber: Long) {
-        _frameInProgress.set(frameNumber)
+        frameProgress.set(frameNumber)
         currentFrameCompletions.clear()
     }
 
@@ -195,12 +207,12 @@ class FrameCoordinatorState @Inject constructor(
      */
     fun recordWorkerCompletion(workerId: String, frameNumber: Long) {
         // Only record if it's for the current frame
-        if (frameNumber == _frameInProgress.get()) {
+        if (frameNumber == frameProgress.get()) {
             currentFrameCompletions[workerId] = System.currentTimeMillis()
             log.debug("Worker {} completed logical frame {}", workerId, frameNumber)
         } else {
             log.warn("Ignoring completion from worker {} for old frame {} (current: {})",
-                workerId, frameNumber, _frameInProgress.get())
+                workerId, frameNumber, frameProgress.get())
         }
     }
 
@@ -241,12 +253,12 @@ class FrameCoordinatorState @Inject constructor(
      * @return The count of frames beyond frameInProgress that have operations buffered
      */
     fun getBufferedFrameCount(): Int {
-        if (_frameInProgress.get() < 0) {
+        if (frameProgress.get() < 0) {
             // Session hasn't started yet, count all frames
             return operationsByFrame.size
         }
 
-        val currentFrame = _frameInProgress.get()
+        val currentFrame = frameProgress.get()
         val bufferedFrames = operationsByFrame.keys.filter { it >= currentFrame }
 
         return if (bufferedFrames.isEmpty()) {
@@ -261,7 +273,7 @@ class FrameCoordinatorState @Inject constructor(
      * Check if frame loop is running (for monitoring)
      */
     fun isFrameLoopRunning(): Boolean {
-        return _frameInProgress.get() != -1L && !isPaused
+        return frameProgress.get() != -1L && !isPaused
     }
 
     /**
@@ -271,7 +283,7 @@ class FrameCoordinatorState @Inject constructor(
         val currentFrame = getCurrentLogicalFrame()
 
         return JsonObject()
-            .put("frameInProgress", _frameInProgress.get())
+            .put("frameInProgress", frameProgress.get())
             .put("lastProcessedFrame", _lastProcessedFrame.get())
             .put("lastPreparedManifest", _lastPreparedManifest.get())
             .put("currentWallClockFrame", currentFrame)
@@ -290,31 +302,22 @@ class FrameCoordinatorState @Inject constructor(
         if (!isPaused) return false
 
         val bufferedFrames = operationsByFrame.keys.maxOrNull()?.let { maxFrame ->
-            maxFrame - _frameInProgress.get()
+            maxFrame - frameProgress.get()
         } ?: 0
 
-        return frameCalculator.isApproachingBufferLimit(bufferedFrames, _frameInProgress.get())
+        return bufferedFrames > frameConfig.maxBufferFrames * 0.8
     }
 
     /**
-     * Clear all operations buffered for a specific frame.
-     * Used after frame manifest has been prepared.
-     */
-    fun clearFrameOperations(logicalFrame: Long) {
-        operationsByFrame.remove(logicalFrame)
-    }
-
-    /**
-     * Get all buffered operations as a map for session restart.
-     * Does not remove the operations.
+     * Get all buffered operations (used during session start)
+     * Preserves original groupings by frame.
      */
     fun getAllBufferedOperations(): Map<Long, List<JsonObject>> {
-        return operationsByFrame.mapValues { it.value.toList() }
+        return operationsByFrame.mapValues { (_, queue) -> queue.toList() }
     }
 
     /**
-     * Clear all buffered operations.
-     * Used when starting a fresh session.
+     * Clear all buffered operations (used during session reset)
      */
     fun clearAllBufferedOperations() {
         operationsByFrame.clear()
