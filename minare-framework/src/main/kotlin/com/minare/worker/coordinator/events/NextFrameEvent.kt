@@ -16,7 +16,7 @@ class NextFrameEvent @Inject constructor(
     private val eventBusUtils: EventBusUtils,
     private val vlog: VerticleLogger
 ) {
-    suspend fun register() {
+    /**suspend fun register() {
         eventBusUtils.registerTracedConsumer<JsonObject>(ADDRESS_NEXT_FRAME) { message, traceId ->
             vlog.getEventLogger().trace(
                 "NEXT_FRAME_EVENT",
@@ -27,7 +27,7 @@ class NextFrameEvent @Inject constructor(
             )
             // Workers handle this event in FrameWorkerVerticle.handleNextFrame()
         }
-    }
+    }**/
 
     companion object {
         const val ADDRESS_NEXT_FRAME = "minare.coordinator.next.frame"

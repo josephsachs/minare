@@ -20,7 +20,6 @@ import kotlin.coroutines.CoroutineContext
 class FrameCoordinatorVerticleModule : PrivateModule() {
     private val log = LoggerFactory.getLogger(MinareModule::class.java)
 
-// In FrameCoordinatorVerticleModule.configure() method:
 
     override fun configure() {
         bind(FrameCoordinatorVerticle::class.java)

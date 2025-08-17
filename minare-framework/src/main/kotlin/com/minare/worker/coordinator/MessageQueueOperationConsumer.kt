@@ -182,10 +182,9 @@ class MessageQueueOperationConsumer @Inject constructor(
             return true // Continue processing other operations
         }
 
-        // Check FRAME buffer limits before processing
         val bufferedFrameCount = coordinatorState.getBufferedFrameCount()
 
-        if (bufferedFrameCount >= frameConfig.maxBufferFrames) {
+        /**if (bufferedFrameCount >= frameConfig.maxBufferFrames) {
             val totalBuffered = coordinatorState.getTotalBufferedOperations()
             log.error("Frame buffer limit exceeded: {} frames buffered (max: {}), " +
                     "containing {} total operations. Activating backpressure",
@@ -213,7 +212,7 @@ class MessageQueueOperationConsumer @Inject constructor(
             )
 
             return false // Stop processing
-        }
+        }**/
 
         // Warn when approaching frame buffer limit
         if (bufferedFrameCount >= frameCalculator.getBufferWarningThreshold()) {
@@ -276,7 +275,7 @@ class MessageQueueOperationConsumer @Inject constructor(
         }
 
         // Check if operation is too far in the future
-        if (coordinatorState.isPaused) {
+        /**if (coordinatorState.isPaused) {
             // During pause, enforce strict buffer limits
             if (!frameCalculator.isFrameWithinBufferLimit(logicalFrame, frameInProgress)) {
                 log.error("Operation {} targets frame {} which exceeds pause buffer limit " +
@@ -289,7 +288,7 @@ class MessageQueueOperationConsumer @Inject constructor(
                 // Kafka consumption, we handle it via backpressure activation above
                 return
             }
-        }
+        }**/
 
         // Buffer the operation to its target frame
         coordinatorState.bufferOperation(operation, logicalFrame)
