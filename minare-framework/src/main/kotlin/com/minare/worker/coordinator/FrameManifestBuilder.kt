@@ -70,10 +70,6 @@ class FrameManifestBuilder @Inject constructor(
         assignments: Map<String, List<JsonObject>>,
         activeWorkers: Set<String>
     ) {
-        // TEMPORARY DEBUG
-        log.warn("Writing manifests for frame {} to map: {}", logicalFrame, manifestMap.name) // ADD THIS
-
-        // Write manifest for each worker (empty if no operations assigned)
         activeWorkers.forEach { workerId ->
             val operations = assignments[workerId] ?: emptyList()
 
@@ -89,10 +85,6 @@ class FrameManifestBuilder @Inject constructor(
 
             val key = "manifest:$logicalFrame:$workerId"
             manifestMap[key] = manifest
-
-            // TEMPORARY DEBUG
-            log.warn("Wrote manifest with key: {}, map size now: {}", key, manifestMap.size) // ADD THIS
-            //log.warn("All manifest keys in map: {}", manifestMap.keys.sorted())
 
             log.trace("Wrote manifest for worker {} with {} operations for logical frame {}",
                 workerId, sortedOperations.size, logicalFrame)

@@ -52,9 +52,7 @@ class FrameWorkerVerticle @Inject constructor(
     private var currentFrameProcessingJob: Job? = null
 
     companion object {
-        const val ADDRESS_FRAME_MANIFEST = "worker.frame.manifest"
         const val ADDRESS_WORKER_FRAME_COMPLETE = "minare.coordinator.worker.frame.complete"
-        const val ADDRESS_WORKER_FRAME_DELAYED = "minare.coordinator.worker.frame.delayed"
         const val ADDRESS_WORKER_FRAME_ERROR = "minare.coordinator.worker.frame.error"
         const val ADDRESS_NEXT_FRAME = "minare.coordinator.next.frame"
     }
@@ -178,10 +176,8 @@ class FrameWorkerVerticle @Inject constructor(
         //    log.debug("Ignoring next frame event - processing not active")
         //    return
         //}
-        log.warn("handleNextFrame...")
 
         val frameToProcess = frameProgress.get()
-        log.warn("Processing frame {} as directed by coordinator", frameToProcess)
 
         try {
             processLogicalFrame(frameToProcess)
@@ -217,9 +213,6 @@ class FrameWorkerVerticle @Inject constructor(
      * Fetches manifest from Hazelcast and processes all assigned operations.
      */
     private suspend fun processLogicalFrame(logicalFrame: Long) {
-        // TEMPORARY DEBUG
-        log.warn("Processing logical frame...")
-
         val frameStartTime = System.currentTimeMillis()
 
         try {
@@ -242,16 +235,11 @@ class FrameWorkerVerticle @Inject constructor(
                 manifestJson = manifestMap[manifestKey]
             }
 
-            log.warn("step 4...")
             val manifest = FrameManifest.fromJson(manifestJson)
-
-            log.warn("step 5...")
             val operations = manifest.operations
 
-            log.debug("Processing logical frame {} with {} operations",
+            log.info("Processing logical frame {} with {} operations",
                 logicalFrame, operations.size)
-
-            log.warn("step 6...")
 
             // Process operations sequentially
             var successCount = 0
@@ -261,12 +249,7 @@ class FrameWorkerVerticle @Inject constructor(
                 }
             }
 
-            log.warn("step 7...")
-
-            // Report completion
             reportFrameCompletion(logicalFrame, successCount)
-
-            log.warn("step 8...")
 
             val processingTime = System.currentTimeMillis() - frameStartTime
             if (processingTime > frameConfig.frameDurationMs * 0.8) {
@@ -274,8 +257,6 @@ class FrameWorkerVerticle @Inject constructor(
                     logicalFrame, processingTime,
                     (processingTime * 100 / frameConfig.frameDurationMs))
             }
-
-            log.warn("step 9...")
 
         } catch (e: HazelcastException) {
             log.error("Hazelcast error in frame {}", logicalFrame, e)
@@ -348,9 +329,6 @@ class FrameWorkerVerticle @Inject constructor(
      * Includes heartbeat for frames with no operations.
      */
     private fun reportFrameCompletion(logicalFrame: Long, operationsProcessed: Int) {
-        // TEMPORARY DEBUG
-        log.warn("Reporting frame completion for {}", logicalFrame)
-
         val completionEvent = JsonObject()
             .put("workerId", workerId)
             .put("logicalFrame", logicalFrame)

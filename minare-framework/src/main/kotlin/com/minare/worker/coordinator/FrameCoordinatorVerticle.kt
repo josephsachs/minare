@@ -337,13 +337,7 @@ class FrameCoordinatorVerticle @Inject constructor(
      * Prepare and write manifest for a specific logical frame.
      */
     private suspend fun prepareManifestForFrame(logicalFrame: Long) {
-        // TEMPORARY DEBUG, revert elevated logging level
-        log.info("Preparing manifest for logical frame {}", logicalFrame)
-
-        // Get operations for this frame
         val operations = coordinatorState.extractFrameOperations(logicalFrame)
-
-        // Get active workers
         val activeWorkers = workerRegistry.getActiveWorkers().toSet()
 
         if (activeWorkers.isEmpty() && operations.isNotEmpty()) {
@@ -351,20 +345,15 @@ class FrameCoordinatorVerticle @Inject constructor(
                 logicalFrame, operations.size)
         }
 
-        // Distribute operations among workers
         val assignments = frameManifestBuilder.distributeOperations(operations, activeWorkers)
 
-        // Write manifests (even if empty - workers need them for heartbeat)
         frameManifestBuilder.writeManifestsToMap(
             logicalFrame,
             assignments,
             activeWorkers
         )
 
-        // Update last prepared manifest
         coordinatorState.lastPreparedManifest = logicalFrame
-
-        // Broadcast that frame is ready
         broadcastFrameReady(logicalFrame, operations.size, activeWorkers.size)
     }
 

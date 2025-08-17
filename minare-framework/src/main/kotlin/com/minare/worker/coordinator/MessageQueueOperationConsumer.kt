@@ -107,6 +107,8 @@ class MessageQueueOperationConsumer @Inject constructor(
      * Updated to handle both single operations (JsonObject) and batched operations (JsonArray).
      */
     private fun handleKafkaRecord(record: io.vertx.kafka.client.consumer.KafkaConsumerRecord<String, String>) {
+        log.info("DEBUG: Received Kafka record {}", record.toString())
+
         try {
             val value = record.value()
             if (value.isNullOrEmpty()) {
@@ -254,12 +256,12 @@ class MessageQueueOperationConsumer @Inject constructor(
         val frameInProgress = coordinatorState.frameInProgress
 
         // TEMPORARY DEBUG
-        log.warn("DEBUG: frameInProgress = {}, logicalFrame = {}", frameInProgress, logicalFrame)
+        log.info("frameInProgress = {}, logicalFrame = {}", frameInProgress, logicalFrame)
 
         if (logicalFrame < frameInProgress) {
             val framesLate = frameInProgress - logicalFrame
 
-            log.warn("Late operation detected: operation targets frame {} but current frame is {} ({} frames late)",
+            log.info("Late operation detected: operation targets frame {} but current frame is {} ({} frames late)",
                 logicalFrame, frameInProgress, framesLate)
 
             val decision = lateOperationHandler.handleLateOperation(operation, logicalFrame, frameInProgress)
@@ -293,8 +295,7 @@ class MessageQueueOperationConsumer @Inject constructor(
         // Buffer the operation to its target frame
         coordinatorState.bufferOperation(operation, logicalFrame)
 
-        // TEMPORARY DEBUG
-        log.warn("DEBUG: Buffered operation {} to frame {}", operation.getString("id"), logicalFrame)
+        log.info("DEBUG: Buffered operation {} to frame {}", operation.getString("id"), logicalFrame)
 
         // Trigger manifest preparation if needed
         if (shouldTriggerManifestPreparation(logicalFrame)) {

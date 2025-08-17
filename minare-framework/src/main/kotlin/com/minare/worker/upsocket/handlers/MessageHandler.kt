@@ -31,6 +31,9 @@ class MessageHandler @Inject constructor(
      * Handle an incoming message from a client
      */
     suspend fun handle(websocket: ServerWebSocket, message: JsonObject) {
+        // TEMPORARY DEBUG
+        vlog.logInfo("Message handler received message ${message.getString("command")}")
+
         val connectionId = connectionTracker.getConnectionId(websocket)
         if (connectionId == null) {
             WebSocketUtils.sendErrorResponse(
@@ -39,6 +42,8 @@ class MessageHandler @Inject constructor(
             )
             return
         }
+
+        vlog.logInfo("Message handler handling message...")
 
         val traceId = connectionTracker.getTraceId(connectionId)
         val msgTraceId = vlog.getEventLogger().trace(
