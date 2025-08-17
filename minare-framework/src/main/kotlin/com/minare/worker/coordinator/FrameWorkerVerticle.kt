@@ -165,10 +165,6 @@ class FrameWorkerVerticle @Inject constructor(
         // Capture nanoTime at actual session start for frame pacing
         sessionStartNanos = System.nanoTime()
 
-        // Process frame 0 immediately
-        log.info("Worker {} processing initial frame 0", workerId)
-        handleNextFrame()
-
         // Now wait for subsequent frame advancement events
         log.info("Worker {} ready for frame advancement events", workerId)
     }
@@ -227,18 +223,23 @@ class FrameWorkerVerticle @Inject constructor(
         val frameStartTime = System.currentTimeMillis()
 
         try {
-            log.warn("step 1...")
             // Fetch manifest from Hazelcast
             val manifestKey = FrameManifest.makeKey(logicalFrame, workerId)
 
-            log.warn("step 2...")
-            val manifestJson = manifestMap[manifestKey]
+            // Keep trying until we find the manifest
+            var manifestJson = manifestMap[manifestKey]
+            var attempt = 0
 
-            log.warn("step 3...")
-            if (manifestJson == null) {
-                log.warn("No manifest found for logical frame {} - sending heartbeat", logicalFrame)
-                reportFrameCompletion(logicalFrame, 0)
-                return
+            while (manifestJson == null) {
+                attempt++
+                if (attempt == 1) {
+                    log.warn("Manifest not found for frame {}, waiting...", logicalFrame)
+                } else if (attempt % 20 == 0) { // Log every second at 50ms delays
+                    log.warn("Still waiting for manifest for frame {} (attempt {})", logicalFrame, attempt)
+                }
+
+                delay(50)
+                manifestJson = manifestMap[manifestKey]
             }
 
             log.warn("step 4...")
@@ -347,6 +348,9 @@ class FrameWorkerVerticle @Inject constructor(
      * Includes heartbeat for frames with no operations.
      */
     private fun reportFrameCompletion(logicalFrame: Long, operationsProcessed: Int) {
+        // TEMPORARY DEBUG
+        log.warn("Reporting frame completion for {}", logicalFrame)
+
         val completionEvent = JsonObject()
             .put("workerId", workerId)
             .put("logicalFrame", logicalFrame)

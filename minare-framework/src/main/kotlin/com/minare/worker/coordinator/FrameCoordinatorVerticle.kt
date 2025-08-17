@@ -80,7 +80,7 @@ class FrameCoordinatorVerticle @Inject constructor(
 
         // Worker lifecycle
         launch {
-            frameCatchUpEvent.register()
+            //frameCatchUpEvent.register()
             workerHeartbeatEvent.register()
             workerFrameCompleteEvent.register()
             workerRegisterEvent.register()
@@ -193,29 +193,42 @@ class FrameCoordinatorVerticle @Inject constructor(
         coordinatorState.resetSessionState(sessionStartTime, sessionStartNanos)
 
         // Initialize frame progress in Hazelcast
-        coordinatorState.initializeFrameProgress()  // NEW - initializes to 0
+        coordinatorState.initializeFrameProgress()
 
         // Reset frame in progress
         coordinatorState.setFrameInProgress(0)
 
         val newFrame = assignBufferedOperations(operationsByOldFrame)
 
+        // Prepare additional manifests beyond what assignBufferedOperations did
+        val minFramesToPrepare = 20L // Ensure at least 20 frames ready
+        for (frame in (coordinatorState.lastPreparedManifest + 1) until minFramesToPrepare) {
+            prepareManifestForFrame(frame)
+        }
+
         // Publish session event and announce to workers
         publishSessionStartEvent(sessionStartTime, announcementTime)
         announceSessionToWorkers(sessionStartTime, announcementTime)
 
+        // Start the periodic manifest preparation BEFORE waiting
+        val manifestPrepTimer = vertx.setPeriodic(frameConfig.frameDurationMs) {
+            launch {
+                val currentFrame = frameCalculator.getCurrentLogicalFrame(coordinatorState.sessionStartNanos)
+                val targetFrame = currentFrame + frameConfig.normalOperationLookahead
+
+                // Prepare any missing manifests up to target
+                for (frame in (coordinatorState.lastPreparedManifest + 1)..targetFrame) {
+                    prepareManifestForFrame(frame)
+                }
+            }
+        }
+
         // Wait for the announced start time
         delay(frameConfig.frameOffsetMs)
 
-        // Broadcast initial next frame event for frame 0  // NEW
+        // NOW broadcast - manifests should be ready
         log.info("Broadcasting initial next frame event for frame 0")
         vertx.eventBus().publish(ADDRESS_NEXT_FRAME, JsonObject())
-
-        // Start frame scheduling from the next unprepared frame
-        val nextFrameToSchedule = coordinatorState.lastPreparedManifest + 1
-        frameScheduler.scheduleFramePreparation(nextFrameToSchedule, this) { frame ->
-            prepareManifestForFrame(frame)
-        }
     }
 
     private fun clearPreviousSessionState() {
@@ -300,12 +313,6 @@ class FrameCoordinatorVerticle @Inject constructor(
         val framesToPrepare = minOf(newFrame, frameConfig.maxBufferFrames.toLong())
         for (frame in 0 until framesToPrepare) {
             prepareManifestForFrame(frame)
-        }
-
-        // If no operations at all, prepare at least frames 0 and 1
-        if (newFrame == 0L) {
-            prepareManifestForFrame(0)
-            prepareManifestForFrame(1)
         }
 
         log.info("Session start: renumbered {} old frames to frames 0-{}, prepared {} manifests",
