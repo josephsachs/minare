@@ -118,7 +118,7 @@ class DownSocketVerticle @Inject constructor(
     }
 
     /**
-     * ADDED: Register consumer for batched updates from UpdateBatchCoordinator
+     * Register consumer for batched updates from UpdateBatchCoordinator
      */
     private fun registerBatchedUpdateConsumer() {
         vertx.eventBus().consumer<JsonObject>(UpdateBatchCoordinator.ADDRESS_BATCHED_UPDATES) { message ->
@@ -133,11 +133,17 @@ class DownSocketVerticle @Inject constructor(
     }
 
     /**
-     * ADDED: Forward a batched update to all connected clients managed by this verticle
+     * Forward a batched update to all connected clients managed by this verticle
      */
     private fun forwardUpdateToClients(batchedUpdate: JsonObject) {
         val connections = connectionTracker.getAllConnectionIds()
+
+        // TEMPORARY DEBUG
+        log.info("Forwarding batch to {} connections", connections.size)
+
         for (connectionId in connections) {
+            // TEMPORARY DEBUG
+            log.info("Sending batch to connection: {}", connectionId)
             sendUpdate(connectionId, batchedUpdate)
         }
     }
@@ -366,6 +372,8 @@ class DownSocketVerticle @Inject constructor(
         return if (socket != null && !socket.isClosed()) {
             try {
                 socket.writeTextMessage(update.encode())
+                //TEMPORARY DEBUG
+                log.info("Sent update to websocket: {}", update.encode())
                 true
             } catch (e: Exception) {
                 log.error("Failed to send update to {}", connectionId, e)

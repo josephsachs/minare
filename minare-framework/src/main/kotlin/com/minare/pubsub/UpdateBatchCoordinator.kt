@@ -167,6 +167,10 @@ class UpdateBatchCoordinator @Inject constructor(
 
         // Create a snapshot of current updates and clear pending queue
         val updatesBatch = HashMap(pendingUpdates)
+
+        //TEMPORARY DEBUG
+        log.info("Distributing batch with {} updates", updatesBatch.size)
+
         pendingUpdates.clear()
 
         // Create the update message in the same format as DownSocketVerticle currently uses

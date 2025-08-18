@@ -224,6 +224,9 @@ class RedisPubSubWorkerVerticle @Inject constructor(
      * for batched distribution via the UpdateBatchCoordinator.
      */
     private suspend fun handleRedisMessage(message: String) {
+        // TEMPORARY DEBUG
+        log.info("RedisPubSubWorker received update: {}", message)
+
         try {
             // Parse the Redis message
             val messageJson = JsonObject(message)
