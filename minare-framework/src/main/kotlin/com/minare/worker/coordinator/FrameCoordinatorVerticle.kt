@@ -119,11 +119,11 @@ class FrameCoordinatorVerticle @Inject constructor(
                 coordinatorState.isPaused = false
                 coordinatorState.setFrameInProgress(resumeFrame)
 
-                if (backpressureManager.isActive()) {
-                    log.info("Clearing backpressure on resume from pause")
-                    backpressureManager.deactivate()
-                    messageQueueOperationConsumer.resumeConsumption()
-                }
+                //if (backpressureManager.isActive()) {
+                //    log.info("Clearing backpressure on resume from pause")
+                //    backpressureManager.deactivate()
+                //    messageQueueOperationConsumer.resumeConsumption()
+                //}
 
                 // Catch up manifest preparation to current time
                 preparePendingManifests()
@@ -384,7 +384,7 @@ class FrameCoordinatorVerticle @Inject constructor(
         log.info("Broadcasting next frame event after completing frame {}", logicalFrame)
         vertx.eventBus().publish(ADDRESS_NEXT_FRAME, JsonObject())
 
-        checkAndHandleBackpressure(logicalFrame)
+        //checkAndHandleBackpressure(logicalFrame)
         prepareUpcomingFrames()
         cleanupCompletedFrame(logicalFrame)
         checkFrameLag(logicalFrame)
@@ -396,9 +396,9 @@ class FrameCoordinatorVerticle @Inject constructor(
     }
 
     private suspend fun checkAndHandleBackpressure(logicalFrame: Long) {
-        if (!backpressureManager.isActive()) {
-            return
-        }
+        //if (!backpressureManager.isActive()) {
+        //    return
+        //}
 
         val backpressureState = backpressureManager.getBackpressureState() ?: return
 

@@ -96,9 +96,9 @@ abstract class OperationController @Inject constructor(
             return
         }
 
-        if (backpressureManager.isActive()) {
-            throw BackpressureException("System overloaded - please retry")
-        }
+        //if (backpressureManager.isActive()) {
+        //    throw BackpressureException("System overloaded - please retry")
+        //}
 
         log.debug("Sending {} operations to Kafka topic {}", message.size(), OPERATIONS_TOPIC)
         messageQueue.send(OPERATIONS_TOPIC, message)
