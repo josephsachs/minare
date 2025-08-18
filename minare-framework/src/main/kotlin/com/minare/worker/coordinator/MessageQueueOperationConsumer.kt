@@ -107,8 +107,6 @@ class MessageQueueOperationConsumer @Inject constructor(
      * Updated to handle both single operations (JsonObject) and batched operations (JsonArray).
      */
     private fun handleKafkaRecord(record: io.vertx.kafka.client.consumer.KafkaConsumerRecord<String, String>) {
-        log.info("DEBUG: Received Kafka record {}", record.toString())
-
         try {
             val value = record.value()
             if (value.isNullOrEmpty()) {

@@ -22,8 +22,6 @@ class WorkerFrameCompleteEvent @Inject constructor(
 ) {
     suspend fun register() {
         eventBusUtils.registerTracedConsumer<JsonObject>(ADDRESS_WORKER_FRAME_COMPLETE) { message, traceId ->
-            vlog.logInfo("Received worker frame complete...")
-
             val workerId = message.body().getString("workerId")
             val logicalFrame = message.body().getLong("logicalFrame")  // Changed from frameStartTime
             val operationCount = message.body().getInteger("operationCount", 0)

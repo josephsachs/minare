@@ -86,7 +86,7 @@ class FrameManifestBuilder @Inject constructor(
             val key = "manifest:$logicalFrame:$workerId"
             manifestMap[key] = manifest
 
-            log.trace("Wrote manifest for worker {} with {} operations for logical frame {}",
+            log.debug("Wrote manifest for worker {} with {} operations for logical frame {}",
                 workerId, sortedOperations.size, logicalFrame)
         }
 
@@ -125,7 +125,7 @@ class FrameManifestBuilder @Inject constructor(
 
         if (keysToRemove.isNotEmpty()) {
             keysToRemove.forEach { manifestMap.remove(it) }
-            log.info("Cleared {} manifests from distributed map for new session", keysToRemove.size)
+            log.debug("Cleared {} manifests from distributed map for new session", keysToRemove.size)
         } else {
             log.debug("No manifests to clear for new session")
         }

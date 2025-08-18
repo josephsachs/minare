@@ -161,7 +161,7 @@ class FrameCoordinatorState @Inject constructor(
      * Removes and returns the operations.
      */
     fun extractFrameOperations(logicalFrame: Long): List<JsonObject> {
-        log.info("DEBUG: Extracting operations for frame {}, available frames: {}",
+        log.debug("DEBUG: Extracting operations for frame {}, available frames: {}",
             logicalFrame, operationsByFrame.keys.sorted())
 
         // Include pending operations if this is frame 0
@@ -176,7 +176,7 @@ class FrameCoordinatorState @Inject constructor(
         // Get regular buffered operations
         val queue = operationsByFrame.remove(logicalFrame)
         if (queue == null) {
-            log.warn("No operations found for frame {}", logicalFrame)
+            log.debug("No operations found for frame {}", logicalFrame)
             return pendingOps
         }
 
@@ -205,7 +205,7 @@ class FrameCoordinatorState @Inject constructor(
         // Only record if it's for the current frame
         if (frameNumber == frameProgress.get()) {
             currentFrameCompletions[workerId] = System.currentTimeMillis()
-            log.info("Worker {} completed logical frame {}", workerId, frameNumber)
+            log.debug("Worker {} completed logical frame {}", workerId, frameNumber)
         } else {
             log.warn("Ignoring completion from worker {} for old frame {} (current: {})",
                 workerId, frameNumber, frameProgress.get())

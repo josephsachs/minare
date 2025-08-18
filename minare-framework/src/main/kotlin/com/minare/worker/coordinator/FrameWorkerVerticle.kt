@@ -127,7 +127,7 @@ class FrameWorkerVerticle @Inject constructor(
         val startsIn = announcement.getLong("firstFrameStartsIn")
         val frameDuration = announcement.getLong("frameDuration")
 
-        log.info("New session announced - starts at {} (in {}ms), frame duration {}ms",
+        log.debug("New session announced - starts at {} (in {}ms), frame duration {}ms",
             newSessionStart, startsIn, frameDuration)
 
         // CRITICAL: Stop any existing processing first

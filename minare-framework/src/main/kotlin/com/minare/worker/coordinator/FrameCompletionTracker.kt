@@ -132,7 +132,7 @@ class FrameCompletionTracker @Inject constructor(
 
         if (keysToRemove.isNotEmpty()) {
             keysToRemove.forEach { completionMap.remove(it) }
-            log.info("Cleared {} completion records from distributed map for new session", keysToRemove.size)
+            log.debug("Cleared {} completion records from distributed map for new session", keysToRemove.size)
         } else {
             log.debug("No completion records to clear for new session")
         }

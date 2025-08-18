@@ -128,8 +128,7 @@ class FrameCoordinatorVerticle @Inject constructor(
                 // Catch up manifest preparation to current time
                 preparePendingManifests()
 
-                // Broadcast next frame event to resume processing  // NEW
-                log.info("Broadcasting next frame event to resume at frame {}", resumeFrame)
+                log.debug("Broadcasting next frame event to resume at frame {}", resumeFrame)
                 vertx.eventBus().publish(ADDRESS_NEXT_FRAME, JsonObject())
 
                 frameScheduler.scheduleFramePreparation(resumeFrame, this) { frame ->
@@ -140,7 +139,6 @@ class FrameCoordinatorVerticle @Inject constructor(
 
         eventBusUtils.registerTracedConsumer<JsonObject>(ADDRESS_ALL_WORKERS_READY) { msg, traceId ->
             launch {
-                log.info("All workers ready")
                 coordinatorState.isPaused = false
 
                 // Only start session on startup
@@ -162,10 +160,10 @@ class FrameCoordinatorVerticle @Inject constructor(
     private suspend fun tryStartSession() {
         val existingWorkers = workerRegistry.getActiveWorkers()
         if (existingWorkers.isNotEmpty()) {
-            log.info("Found {} active workers already registered", existingWorkers.size)
+            log.debug("Found {} active workers already registered", existingWorkers.size)
 
             if (existingWorkers.size == workerRegistry.getExpectedWorkerCount()) {
-                log.info("All expected workers already active, starting session")
+                log.debug("All expected workers already active, starting session")
                 coordinatorState.isPaused = false
                 launch {
                     startNewSession()
@@ -185,17 +183,12 @@ class FrameCoordinatorVerticle @Inject constructor(
         val sessionStartTime = announcementTime + frameConfig.frameOffsetMs
         val sessionStartNanos = System.nanoTime() + frameCalculator.msToNanos(frameConfig.frameOffsetMs)
 
-        // Clear previous session state
         clearPreviousSessionState()
 
-        // Extract and renumber buffered operations
         val operationsByOldFrame = extractBufferedOperations()
         coordinatorState.resetSessionState(sessionStartTime, sessionStartNanos)
 
-        // Initialize frame progress in Hazelcast
         coordinatorState.initializeFrameProgress()
-
-        // Reset frame in progress
         coordinatorState.setFrameInProgress(0)
 
         val newFrame = assignBufferedOperations(operationsByOldFrame)
@@ -206,11 +199,9 @@ class FrameCoordinatorVerticle @Inject constructor(
             prepareManifestForFrame(frame)
         }
 
-        // Publish session event and announce to workers
         publishSessionStartEvent(sessionStartTime, announcementTime)
         announceSessionToWorkers(sessionStartTime, announcementTime)
 
-        // Start the periodic manifest preparation BEFORE waiting
         val manifestPrepTimer = vertx.setPeriodic(frameConfig.frameDurationMs) {
             launch {
                 val currentFrame = frameCalculator.getCurrentLogicalFrame(coordinatorState.sessionStartNanos)
@@ -223,11 +214,9 @@ class FrameCoordinatorVerticle @Inject constructor(
             }
         }
 
-        // Wait for the announced start time
         delay(frameConfig.frameOffsetMs)
 
-        // NOW broadcast - manifests should be ready
-        log.info("Broadcasting initial next frame event for frame 0")
+        log.debug("Broadcasting initial next frame event for frame 0")
         vertx.eventBus().publish(ADDRESS_NEXT_FRAME, JsonObject())
     }
 
