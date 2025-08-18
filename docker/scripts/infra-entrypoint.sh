@@ -45,6 +45,29 @@ send_event() {
         }"
 }
 
+# Function to create Kafka topics
+create_kafka_topics() {
+    log_info "Creating Kafka topics..."
+
+    # Wait for Kafka to be ready
+    while ! docker exec kafka kafka-topics --list --bootstrap-server localhost:9092 >/dev/null 2>&1; do
+        log_info "Waiting for Kafka to be ready..."
+        sleep 2
+    done
+
+    # Create topics
+    for topic in "minare.operations" "minare.system.events"; do
+        log_info "Creating topic: ${topic}"
+        docker exec kafka kafka-topics --create --if-not-exists \
+            --bootstrap-server localhost:9092 \
+            --topic "${topic}" \
+            --partitions 3 \
+            --replication-factor 1 || log_warn "Topic ${topic} may already exist"
+    done
+
+    log_info "Kafka topics created successfully"
+}
+
 # Function to add a worker
 add_worker() {
     local worker_id=$1
@@ -103,6 +126,9 @@ main() {
         log_info "Installing required tools..."
         apk add --no-cache curl jq
     fi
+
+    # Setup Kafka topic
+    create_kafka_topics
 
     # Wait for coordinator to be ready
     log_info "Waiting ${STARTUP_DELAY}s for coordinator to stabilize..."

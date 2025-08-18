@@ -92,53 +92,37 @@ class KafkaMessageQueue @Inject constructor(
         val config = mutableMapOf<String, String>()
         config["bootstrap.servers"] = bootstrapServers
         config["client.id"] = "minare-admin-${System.getenv("HOSTNAME") ?: "unknown"}"
-        config["request.timeout.ms"] = "30000"
-
-        log.debug("Creating Kafka admin client")
 
         return KafkaAdminClient.create(vertx, config)
     }
 
     /**
-     * Ensure topic exists before sending messages
+     * Ensure a topic exists, creating it if necessary.
+     * Thread-safe with mutex protection.
      */
     private suspend fun ensureTopicExists(topic: String) {
-        // Quick check without lock
+        // Fast path - if we've already initialized this topic, skip
         if (initializedTopics.contains(topic)) {
             return
         }
 
-        // Acquire lock for initialization
+        // Slow path - use mutex to ensure only one thread creates the topic
         initMutex.withLock {
-            // Double-check inside lock
+            // Double-check inside mutex
             if (initializedTopics.contains(topic)) {
                 return
             }
 
             try {
-                log.info("Checking if topic {} exists", topic)
-
-                // List existing topics
-                val topics = adminClient.listTopics().await()
-
-                if (topics.contains(topic)) {
-                    log.debug("Topic {} already exists", topic)
-                    initializedTopics.add(topic)
-                    return
-                }
-
-                // Create topic
-                log.info("Creating topic {} with {} partitions and replication factor {}",
-                    topic, topicPartitions, topicReplicationFactor)
+                log.debug("Ensuring topic {} exists", topic)
 
                 val newTopic = NewTopic(topic, topicPartitions, topicReplicationFactor).apply {
-                    // Topic configuration
-                    config = mapOf(
-                        "retention.ms" to (7 * 24 * 60 * 60 * 1000).toString(), // 7 days
-                        "segment.ms" to (60 * 60 * 1000).toString(), // 1 hour
+                    // Set topic-level configs
+                    setConfig(mapOf(
+                        "retention.ms" to "86400000", // 24 hours
                         "compression.type" to "producer", // Use producer's compression
                         "min.insync.replicas" to "1"
-                    )
+                    ))
                 }
 
                 adminClient.createTopics(listOf(newTopic)).await()
@@ -161,7 +145,6 @@ class KafkaMessageQueue @Inject constructor(
 
     override suspend fun send(topic: String, message: JsonArray) {
         try {
-            // Ensure topic exists
             ensureTopicExists(topic)
 
             val record = KafkaProducerRecord.create<String, String>(
@@ -177,18 +160,12 @@ class KafkaMessageQueue @Inject constructor(
                 log.debug("Sending message to topic {}: {}", topic, message.encodePrettily())
             }
 
-            // Send with callback for production monitoring
-            producer.send(record) { asyncResult ->
-                if (asyncResult.failed()) {
-                    log.error("Failed to send message to topic {} - {}", topic, asyncResult.cause().message, asyncResult.cause())
-                    // In production, you might want to send this to a metrics system
-                } else {
-                    val metadata = asyncResult.result()
-                    if (log.isTraceEnabled) {
-                        log.trace("Message sent to topic {} partition {} offset {}",
-                            metadata.topic, metadata.partition, metadata.offset)
-                    }
-                }
+            // Send and await result
+            val metadata = producer.send(record).await()
+
+            if (log.isTraceEnabled) {
+                log.trace("Message sent to topic {} partition {} offset {}",
+                    metadata.topic, metadata.partition, metadata.offset)
             }
 
         } catch (e: Exception) {
@@ -219,18 +196,12 @@ class KafkaMessageQueue @Inject constructor(
                     topic, key, message.encodePrettily())
             }
 
-            // Send with callback
-            producer.send(record) { asyncResult ->
-                if (asyncResult.failed()) {
-                    log.error("Failed to send keyed message to topic {} with key {} - {}",
-                        topic, key, asyncResult.cause().message, asyncResult.cause())
-                } else {
-                    val metadata = asyncResult.result()
-                    if (log.isTraceEnabled) {
-                        log.trace("Keyed message sent to topic {} partition {} offset {} with key {}",
-                            metadata.topic, metadata.partition, metadata.offset, key)
-                    }
-                }
+            // Send and await result
+            val metadata = producer.send(record).await()
+
+            if (log.isTraceEnabled) {
+                log.trace("Keyed message sent to topic {} partition {} offset {} with key {}",
+                    metadata.topic, metadata.partition, metadata.offset, key)
             }
 
         } catch (e: Exception) {

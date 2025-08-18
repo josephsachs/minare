@@ -1,6 +1,9 @@
 package com.minare.worker.coordinator
 
+import com.minare.time.FrameCalculator
+import com.minare.utils.EventBusUtils
 import com.minare.utils.VerticleLogger
+import com.minare.worker.coordinator.FrameCoordinatorVerticle.Companion.ADDRESS_FRAME_PAUSE
 import com.minare.worker.coordinator.events.InfraAddWorkerEvent
 import com.minare.worker.coordinator.events.InfraRemoveWorkerEvent
 import io.vertx.core.http.HttpServer
@@ -19,20 +22,24 @@ import javax.inject.Inject
  * Admin HTTP interface for the Frame Coordinator.
  * Provides endpoints for infrastructure management and monitoring.
  *
+ * Enhanced with comprehensive monitoring for event-driven coordination.
  * This runs on port 9090 and should be firewalled from public access.
  */
 class CoordinatorAdminVerticle @Inject constructor(
     private val vlog: VerticleLogger,
+    private val eventBusUtils: EventBusUtils,
     private val workerRegistry: WorkerRegistry,
-    private val frameCoordinatorState: FrameCoordinatorState
+    private val frameCoordinatorState: FrameCoordinatorState,
+    private val messageQueueOperationConsumer: MessageQueueOperationConsumer,
+    private val frameCalculator: FrameCalculator
 ) : CoroutineVerticle() {
 
     private val log = LoggerFactory.getLogger(CoordinatorAdminVerticle::class.java)
     private var httpServer: HttpServer? = null
 
     companion object {
-        const val ADMIN_PORT = 9090
         const val ADMIN_HOST = "0.0.0.0"
+        const val ADMIN_PORT = 9090
     }
 
     override suspend fun start() {
@@ -41,54 +48,148 @@ class CoordinatorAdminVerticle @Inject constructor(
 
         val router = createRouter()
         startHttpServer(router)
-
-        log.info("CoordinatorAdminVerticle started successfully")
     }
 
     private fun createRouter(): Router {
         val router = Router.router(vertx)
-
-        // Add body handler for POST requests
         router.route().handler(BodyHandler.create())
 
-        // Health endpoint
+        // Health check endpoint
         router.get("/health").handler { ctx ->
             val health = JsonObject()
-                .put("status", "ok")
-                .put("component", "coordinator-admin")
+                .put("status", if (frameCoordinatorState.isFrameLoopRunning()) "UP" else "DOWN")
                 .put("timestamp", System.currentTimeMillis())
-                .put("frameLoop", JsonObject()
-                    .put("running", frameCoordinatorState.isFrameLoopRunning())
-                    .put("paused", frameCoordinatorState.isPaused)
-                    .put("currentFrame", frameCoordinatorState.currentFrameStart)
-                )
-                .put("workers", JsonObject()
-                    .put("active", workerRegistry.getActiveWorkers().size)
-                    .put("total", workerRegistry.getAllWorkers().size)
-                )
 
             ctx.response()
                 .putHeader("content-type", "application/json")
                 .end(health.encode())
         }
 
-        // Event bus endpoint - forwards messages to the event bus
+        // Comprehensive status endpoint
+        router.get("/status").handler { ctx ->
+            val workerCounts = workerRegistry.getWorkerCountByStatus()
+            val frameStatus = frameCoordinatorState.getCurrentFrameStatus()
+            val consumerMetrics = messageQueueOperationConsumer.getMetrics()
+
+            val status = JsonObject()
+                .put("coordinator", JsonObject()
+                    .put("state", if (frameCoordinatorState.isPaused) "PAUSED" else "RUNNING")
+                    .put("sessionStarted", frameCoordinatorState.sessionStartTimestamp > 0)
+                    .put("frameStatus", frameStatus))
+                .put("workers", JsonObject()
+                    .put("expected", workerRegistry.getExpectedWorkerCount())
+                    .put("active", workerCounts[WorkerRegistry.WorkerStatus.ACTIVE] ?: 0)
+                    .put("pending", workerCounts[WorkerRegistry.WorkerStatus.PENDING] ?: 0)
+                    .put("unhealthy", workerCounts[WorkerRegistry.WorkerStatus.UNHEALTHY] ?: 0)
+                    .put("removing", workerCounts[WorkerRegistry.WorkerStatus.REMOVING] ?: 0)
+                    .put("ready", workerRegistry.getActiveWorkers().size == workerRegistry.getExpectedWorkerCount()))
+                .put("buffer", JsonObject()
+                    .put("totalOperations", frameCoordinatorState.getTotalBufferedOperations())
+                    .put("frameDistribution", frameCoordinatorState.getBufferedOperationCounts())
+                    .put("approachingLimit", frameCoordinatorState.isApproachingBufferLimit()))
+                .put("consumer", consumerMetrics)
+
+            ctx.response()
+                .putHeader("content-type", "application/json")
+                .end(status.encode())
+        }
+
+        // Worker status with enhanced details
+        router.get("/workers").handler { ctx ->
+            val workers = workerRegistry.getAllWorkers()
+            val expectedCount = workerRegistry.getExpectedWorkerCount()
+            val activeWorkers = workerRegistry.getActiveWorkers()
+
+            val response = JsonObject()
+                .put("expected", expectedCount)
+                .put("ready", activeWorkers.size == expectedCount)
+                .put("summary", JsonObject()
+                    .put("active", workers.values.count { it.status == WorkerRegistry.WorkerStatus.ACTIVE })
+                    .put("pending", workers.values.count { it.status == WorkerRegistry.WorkerStatus.PENDING })
+                    .put("unhealthy", workers.values.count { it.status == WorkerRegistry.WorkerStatus.UNHEALTHY })
+                    .put("removing", workers.values.count { it.status == WorkerRegistry.WorkerStatus.REMOVING })
+                )
+                .put("workers", JsonArray(
+                    workers.map { (id, state) ->
+                        JsonObject()
+                            .put("id", id)
+                            .put("status", state.status.toString())
+                            .put("lastHeartbeat", state.lastHeartbeat)
+                            .put("heartbeatAge", System.currentTimeMillis() - state.lastHeartbeat)
+                            .put("addedAt", state.addedAt)
+                    }
+                ))
+
+            ctx.response()
+                .putHeader("content-type", "application/json")
+                .end(response.encode())
+        }
+
+        // Frame processing status
+        router.get("/frames").handler { ctx ->
+            val currentFrame = frameCoordinatorState.getCurrentLogicalFrame()
+            val frameInProgress = frameCoordinatorState.frameInProgress
+            val lastProcessed = frameCoordinatorState.lastProcessedFrame
+            val lastPrepared = frameCoordinatorState.lastPreparedManifest
+
+            val frameStatus = JsonObject()
+                .put("running", frameCoordinatorState.isFrameLoopRunning())
+                .put("paused", frameCoordinatorState.isPaused)
+                .put("currentWallClockFrame", currentFrame)
+                .put("frameInProgress", frameInProgress)
+                .put("lastProcessedFrame", lastProcessed)
+                .put("lastPreparedManifest", lastPrepared)
+                .put("sessionStartTimestamp", frameCoordinatorState.sessionStartTimestamp)
+                .put("bufferedOperations", frameCoordinatorState.getBufferedOperationCounts())
+                .put("totalBufferedOperations", frameCoordinatorState.getTotalBufferedOperations())
+
+            // Add rich frame processing status if session is active
+            if (currentFrame >= 0 && frameInProgress >= 0) {
+                val processingStatus = frameCalculator.getFrameProcessingStatus(frameInProgress, currentFrame)
+                frameStatus
+                    .put("frameLag", processingStatus.framesBehind)
+                    .put("lagSeverity", processingStatus.lagSeverity.name)
+                    .put("isHealthy", processingStatus.isHealthy)
+                    .put("recommendedAction", processingStatus.recommendedAction)
+            } else {
+                frameStatus
+                    .put("frameLag", 0)
+                    .put("lagSeverity", FrameCalculator.LagSeverity.NONE.name)
+                    .put("isHealthy", true)
+                    .put("recommendedAction", "Session not started")
+            }
+
+            ctx.response()
+                .putHeader("content-type", "application/json")
+                .end(frameStatus.encode())
+        }
+
+        // Buffer status endpoint
+        router.get("/buffer").handler { ctx ->
+            val bufferCounts = frameCoordinatorState.getBufferedOperationCounts()
+            val totalBuffered = frameCoordinatorState.getTotalBufferedOperations()
+
+            val bufferStatus = JsonObject()
+                .put("totalOperations", totalBuffered)
+                .put("approachingLimit", frameCoordinatorState.isApproachingBufferLimit())
+                .put("isPaused", frameCoordinatorState.isPaused)
+                .put("frameDistribution", bufferCounts)
+                .put("bufferedFrameCount", bufferCounts.size)
+                .put("oldestBufferedFrame", bufferCounts.keys.minOrNull() ?: -1)
+                .put("newestBufferedFrame", bufferCounts.keys.maxOrNull() ?: -1)
+
+            ctx.response()
+                .putHeader("content-type", "application/json")
+                .end(bufferStatus.encode())
+        }
+
+        // Event bus message endpoint (existing)
         router.post("/eventbus").handler { ctx ->
             launch {
                 try {
                     val body = ctx.body().asJsonObject()
                     val address = body.getString("address")
                     val message = body.getJsonObject("body")
-
-                    if (address == null || message == null) {
-                        ctx.response()
-                            .setStatusCode(400)
-                            .end(JsonObject()
-                                .put("error", "Missing required fields: address, body")
-                                .encode()
-                            )
-                        return@launch
-                    }
 
                     // Send to event bus and await reply
                     val reply = vertx.eventBus()
@@ -188,66 +289,6 @@ class CoordinatorAdminVerticle @Inject constructor(
                         )
                 }
             }
-        }
-
-        // Worker status endpoint
-        router.get("/workers").handler { ctx ->
-            val workers = workerRegistry.getAllWorkers()
-            val response = JsonObject()
-                .put("workers", JsonArray(workers.map { (id, state) ->
-                    JsonObject()
-                        .put("id", id)
-                        .put("status", state.status.toString())
-                        .put("lastHeartbeat", state.lastHeartbeat)
-                        .put("addedAt", state.addedAt)
-                }))
-                .put("summary", JsonObject()
-                    .put("total", workers.size)
-                    .put("active", workers.values.count { it.status == WorkerRegistry.WorkerStatus.ACTIVE })
-                    .put("pending", workers.values.count { it.status == WorkerRegistry.WorkerStatus.PENDING })
-                    .put("unhealthy", workers.values.count { it.status == WorkerRegistry.WorkerStatus.UNHEALTHY })
-                )
-
-            ctx.response()
-                .putHeader("content-type", "application/json")
-                .end(response.encode())
-        }
-
-        // Frame status endpoint
-        router.get("/frames").handler { ctx ->
-            val frameStatus = JsonObject()
-                .put("running", frameCoordinatorState.isFrameLoopRunning())
-                .put("paused", frameCoordinatorState.isPaused)
-                .put("currentFrameStart", frameCoordinatorState.currentFrameStart)
-                .put("bufferedOperations", frameCoordinatorState.getBufferedOperationCounts())
-                .put("frameCompletions", frameCoordinatorState.getFrameCompletionStatus().size)
-
-            ctx.response()
-                .putHeader("content-type", "application/json")
-                .end(frameStatus.encode())
-        }
-
-        // Frame control endpoints
-        router.post("/frames/pause").handler { ctx ->
-            frameCoordinatorState.isPaused = true
-            ctx.response()
-                .putHeader("content-type", "application/json")
-                .end(JsonObject()
-                    .put("success", true)
-                    .put("message", "Frame processing paused")
-                    .encode()
-                )
-        }
-
-        router.post("/frames/resume").handler { ctx ->
-            frameCoordinatorState.isPaused = false
-            ctx.response()
-                .putHeader("content-type", "application/json")
-                .end(JsonObject()
-                    .put("success", true)
-                    .put("message", "Frame processing resumed")
-                    .encode()
-                )
         }
 
         return router

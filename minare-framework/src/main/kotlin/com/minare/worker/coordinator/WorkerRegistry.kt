@@ -22,7 +22,6 @@ class WorkerRegistry @Inject constructor(
         val status: WorkerStatus,
         val lastHeartbeat: Long = System.currentTimeMillis(),
         val addedAt: Long = System.currentTimeMillis()
-        // completedFrames removed - not needed and saves distributed map traffic
     ) {
         /**
          * Convert to JsonObject for distributed map storage
@@ -122,29 +121,11 @@ class WorkerRegistry @Inject constructor(
      * Update worker heartbeat
      */
     fun updateHeartbeat(workerId: String) {
-        val json = workerRegistryMap.get(workerId)
-        if (json != null) {
-            val state = WorkerState.fromJson(json)
-            val updatedState = state.copy(
-                lastHeartbeat = System.currentTimeMillis(),
-                status = if (state.status == WorkerStatus.UNHEALTHY) {
-                    log.info("Worker {} recovered from unhealthy state", workerId)
-                    WorkerStatus.ACTIVE
-                } else {
-                    state.status
-                }
-            )
-            workerRegistryMap.put(workerId, updatedState.toJson())
-        }
-    }
-
-    /**
-     * Record frame completion for a worker
-     * Note: completedFrames tracking removed to reduce distributed map traffic
-     */
-    fun recordFrameCompletion(workerId: String, frameStartTime: Long) {
-        // Just update heartbeat to prove liveness
-        updateHeartbeat(workerId)
+        val json = workerRegistryMap.get(workerId) ?: return
+        val state = WorkerState.fromJson(json)
+        workerRegistryMap.put(workerId, state.copy(
+            lastHeartbeat = System.currentTimeMillis()
+        ).toJson())
     }
 
     /**
@@ -158,68 +139,24 @@ class WorkerRegistry @Inject constructor(
             val workerId = entry.key
             val state = WorkerState.fromJson(entry.value)
 
-            when (state.status) {
-                WorkerStatus.ACTIVE -> {
-                    if (now - state.lastHeartbeat > heartbeatTimeout) {
-                        log.warn("Worker {} is unhealthy (last heartbeat: {}ms ago)",
-                            workerId, now - state.lastHeartbeat)
-                        workerRegistryMap.put(workerId, state.copy(status = WorkerStatus.UNHEALTHY).toJson())
-                    }
-                }
-                WorkerStatus.REMOVING -> {
-                    // Actually remove workers marked for removal
-                    workerRegistryMap.remove(workerId)
-                    log.info("Removed worker {} from registry", workerId)
-                }
-                else -> {}
-            }
-        }
-    }
+            if (state.status == WorkerStatus.ACTIVE &&
+                (now - state.lastHeartbeat) > heartbeatTimeout) {
 
-    /**
-     * Mark specific workers as unhealthy
-     */
-    fun markWorkersUnhealthy(workerIds: Collection<String>) {
-        workerIds.forEach { workerId ->
-            val json = workerRegistryMap.get(workerId)
-            if (json != null) {
-                val state = WorkerState.fromJson(json)
+                log.warn("Worker {} marked unhealthy (last heartbeat: {}ms ago)",
+                    workerId, now - state.lastHeartbeat)
+
                 workerRegistryMap.put(workerId, state.copy(status = WorkerStatus.UNHEALTHY).toJson())
-                log.warn("Marked worker {} as unhealthy", workerId)
             }
         }
     }
 
     /**
-     * Get all active workers.
-     * This is the key method for frame coordination - only ACTIVE workers
-     * should receive frame manifests and be expected to complete frames.
+     * Get list of active workers
      */
-    fun getActiveWorkers(): Set<String> {
+    fun getActiveWorkers(): List<String> {
         return workerRegistryMap.entries()
-            .map { WorkerState.fromJson(it.value) }
-            .filter { it.status == WorkerStatus.ACTIVE }
-            .map { it.workerId }
-            .toSet()
-    }
-
-    /**
-     * Get workers that were active at frame start but may have failed.
-     * Used for recovery scenarios.
-     */
-    fun getWorkersActiveAtFrame(frameStartTime: Long): Set<String> {
-        // For now, return current active workers
-        // Could be enhanced to track historical state if needed
-        return getActiveWorkers()
-    }
-
-    /**
-     * Check if we have the minimum number of workers to process
-     */
-    fun hasMinimumWorkers(): Boolean {
-        val activeCount = getActiveWorkers().size
-        val minimumWorkers = System.getenv("MIN_WORKERS")?.toIntOrNull() ?: 1
-        return activeCount >= minimumWorkers
+            .filter { WorkerState.fromJson(it.value).status == WorkerStatus.ACTIVE }
+            .map { it.key }
     }
 
     /**
@@ -258,6 +195,19 @@ class WorkerRegistry @Inject constructor(
     }
 
     /**
+     * Get the expected number of workers.
+     * This counts all workers that are not being removed.
+     * Used during startup to know when all workers are ready.
+     *
+     * @return Count of workers in PENDING, ACTIVE, or UNHEALTHY states
+     */
+    fun getExpectedWorkerCount(): Int {
+        return getAllWorkers().count {
+            it.value.status != WorkerStatus.REMOVING
+        }
+    }
+
+    /**
      * Remove a worker immediately (used in testing or emergency scenarios)
      */
     fun removeWorkerImmediately(workerId: String): Boolean {
@@ -267,14 +217,6 @@ class WorkerRegistry @Inject constructor(
             return true
         }
         return false
-    }
-
-    /**
-     * Clear all completed frame records (used between frames to save memory)
-     * Note: This method is now a no-op since we removed completedFrames tracking
-     */
-    fun clearFrameCompletionHistory() {
-        // No-op - completedFrames removed
     }
 
     /**

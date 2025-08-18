@@ -11,66 +11,67 @@ import io.vertx.core.json.JsonObject
 
 /**
  * Handles frame completion events from workers.
- * Now checks if all workers are complete and triggers the next frame.
+ * Updated for logical frames - tracks completions by frame number.
  */
 class WorkerFrameCompleteEvent @Inject constructor(
     private val eventBusUtils: EventBusUtils,
     private val vlog: VerticleLogger,
+    private val coordinatorState: FrameCoordinatorState,
     private val workerRegistry: WorkerRegistry,
-    private val frameCoordinatorState: FrameCoordinatorState,
     private val frameCompletionTracker: FrameCompletionTracker
 ) {
     suspend fun register() {
         eventBusUtils.registerTracedConsumer<JsonObject>(ADDRESS_WORKER_FRAME_COMPLETE) { message, traceId ->
+            vlog.logInfo("Received worker frame complete...")
+
             val workerId = message.body().getString("workerId")
-            val frameStartTime = message.body().getLong("frameStartTime")
+            val logicalFrame = message.body().getLong("logicalFrame")  // Changed from frameStartTime
             val operationCount = message.body().getInteger("operationCount", 0)
 
-            // Check if we should process this
-            if (frameCoordinatorState.isPaused) {
-                vlog.logInfo("Ignoring frame completion while paused")
-                return@registerTracedConsumer
-            }
-
-            // Record the completion using the tracker
-            frameCompletionTracker.recordWorkerCompletion(workerId, frameStartTime, operationCount)
-            workerRegistry.recordFrameCompletion(workerId, frameStartTime)
-
-            // Log completion
             vlog.getEventLogger().trace(
-                "WORKER_FRAME_COMPLETED",
+                "FRAME_COMPLETE_RECEIVED",
                 mapOf(
                     "workerId" to workerId,
-                    "frameStartTime" to frameStartTime,
+                    "logicalFrame" to logicalFrame,
                     "operationCount" to operationCount
                 ),
                 traceId
             )
 
+            // Validate worker is active
+            if (!workerRegistry.isWorkerHealthy(workerId)) {
+                vlog.logInfo("Ignoring completion from unhealthy worker $workerId")
+                return@registerTracedConsumer
+            }
+
+            // Record completion
+            coordinatorState.recordWorkerCompletion(workerId, logicalFrame)
+            frameCompletionTracker.recordWorkerCompletion(workerId, logicalFrame, operationCount)
+
             // Check if all workers have completed this frame
-            if (frameCompletionTracker.isFrameComplete(frameStartTime)) {
-                vlog.logInfo("All workers completed frame $frameStartTime")
+            if (coordinatorState.isFrameComplete(logicalFrame)) {
+                val completedWorkers = coordinatorState.getCompletedWorkers(logicalFrame)
+                val activeWorkers = workerRegistry.getActiveWorkers()
 
-                // Signal the coordinator that the frame is complete
-                eventBusUtils.sendWithTracing(
-                    FrameCoordinatorVerticle.ADDRESS_FRAME_ALL_COMPLETE,
-                    JsonObject().put("frameStartTime", frameStartTime),
-                    traceId
-                )
+                vlog.logInfo("Frame $logicalFrame progress: ${completedWorkers.size}/${activeWorkers.size} workers complete")
 
+                // All workers complete - notify coordinator
                 vlog.getEventLogger().trace(
-                    "FRAME_ALL_WORKERS_COMPLETE",
+                    "ALL_WORKERS_COMPLETE",
                     mapOf(
-                        "frameStartTime" to frameStartTime,
-                        "completedWorkers" to frameCompletionTracker.getCompletedWorkers(frameStartTime).size
+                        "logicalFrame" to logicalFrame,
+                        "workerCount" to activeWorkers.size
                     ),
                     traceId
                 )
-            } else {
-                // Log progress
-                val completed = frameCompletionTracker.getCompletedWorkers(frameStartTime)
-                val total = workerRegistry.getActiveWorkers().size
-                vlog.logInfo("Frame $frameStartTime progress: ${completed.size}/$total workers complete")
+
+                eventBusUtils.sendWithTracing(
+                    FrameCoordinatorVerticle.ADDRESS_FRAME_ALL_COMPLETE,
+                    JsonObject()
+                        .put("logicalFrame", logicalFrame)
+                        .put("completedWorkers", completedWorkers.size),
+                    traceId
+                )
             }
         }
     }

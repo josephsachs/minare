@@ -4,6 +4,7 @@ import com.minare.controller.OperationController
 import com.minare.operation.MessageQueue
 import com.minare.operation.Operation
 import com.minare.operation.OperationType
+import com.minare.worker.coordinator.BackpressureManager
 import io.vertx.core.json.JsonObject
 import org.slf4j.LoggerFactory
 import javax.inject.Inject
@@ -15,8 +16,9 @@ import javax.inject.Singleton
  */
 @Singleton
 class ExampleOperationController @Inject constructor(
-    messageQueue: MessageQueue
-) : OperationController(messageQueue) {
+    messageQueue: MessageQueue,
+    backpressureManager: BackpressureManager
+) : OperationController(messageQueue, backpressureManager) {
 
     private val log = LoggerFactory.getLogger(ExampleOperationController::class.java)
 

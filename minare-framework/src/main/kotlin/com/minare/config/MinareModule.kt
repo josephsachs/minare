@@ -44,6 +44,8 @@ import com.minare.time.DockerTimeService
 import com.minare.time.TimeService
 import com.minare.worker.upsocket.CommandMessageHandler
 import com.minare.config.AppStateProvider
+import com.minare.worker.coordinator.DelayLateOperations
+import com.minare.worker.coordinator.LateOperationHandler
 import kotlin.coroutines.CoroutineContext
 
 /**
@@ -75,9 +77,12 @@ class MinareModule : AbstractModule(), DatabaseNameProvider {
         bind(ConnectionCache::class.java).to(InMemoryConnectionCache::class.java).`in`(Singleton::class.java)
         bind(ReflectionCache::class.java).`in`(Singleton::class.java)
 
-        bind(PubSubChannelStrategy::class.java).to(PerChannelPubSubStrategy::class.java).`in`(Singleton::class.java)
         bind(UpdateBatchCoordinator::class.java).`in`(Singleton::class.java)
         bind(CommandMessageHandler::class.java).`in`(Singleton::class.java)
+
+        // Overridable services
+        bind(PubSubChannelStrategy::class.java).to(PerChannelPubSubStrategy::class.java).`in`(Singleton::class.java)
+        bind(LateOperationHandler::class.java).to(DelayLateOperations::class.java)
 
         // Providers
         bind(AppState::class.java).toProvider(AppStateProvider::class.java).`in`(Singleton::class.java)

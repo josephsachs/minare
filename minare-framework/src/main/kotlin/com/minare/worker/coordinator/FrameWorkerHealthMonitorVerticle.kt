@@ -47,8 +47,8 @@ class FrameWorkerHealthMonitorVerticle @Inject constructor(
         // Listen for health check requests
         vertx.eventBus().consumer<JsonObject>(ADDRESS_HEALTH_CHECK_REQUEST) { message ->
             launch {
-                val frameStartTime = message.body().getLong("frameStartTime")
-                performHealthCheck(frameStartTime)
+                val logicalFrame = message.body().getLong("logicalFrame")
+                performHealthCheck(logicalFrame)
             }
         }
     }
@@ -56,10 +56,12 @@ class FrameWorkerHealthMonitorVerticle @Inject constructor(
     /**
      * Perform comprehensive health check for frame processing.
      * Checks workers, Hazelcast, and Redis availability.
+     *
+     * @param logicalFrame The logical frame number being checked
      */
-    private suspend fun performHealthCheck(frameStartTime: Long) {
+    private suspend fun performHealthCheck(logicalFrame: Long) {
         val checkStartTime = System.currentTimeMillis()
-        log.debug("Starting health check for frame {}", frameStartTime)
+        log.debug("Starting health check for logical frame {}", logicalFrame)
 
         try {
             // 1. Update and check worker health
@@ -79,7 +81,7 @@ class FrameWorkerHealthMonitorVerticle @Inject constructor(
             val checkDuration = System.currentTimeMillis() - checkStartTime
 
             val result = JsonObject()
-                .put("frameStartTime", frameStartTime)
+                .put("logicalFrame", logicalFrame)
                 .put("healthy", allHealthy)
                 .put("checkDuration", checkDuration)
                 .put("workers", workerHealthResult.toJson())
@@ -88,20 +90,20 @@ class FrameWorkerHealthMonitorVerticle @Inject constructor(
                 .put("timestamp", System.currentTimeMillis())
 
             if (!allHealthy) {
-                log.warn("Health check failed for frame {}: {}", frameStartTime, result.encode())
+                log.warn("Health check failed for logical frame {}: {}", logicalFrame, result.encode())
             } else {
-                log.debug("Health check passed for frame {} in {}ms", frameStartTime, checkDuration)
+                log.debug("Health check passed for logical frame {} in {}ms", logicalFrame, checkDuration)
             }
 
             // Send result back to coordinator
             vertx.eventBus().send(ADDRESS_HEALTH_CHECK_RESULT, result)
 
         } catch (e: Exception) {
-            log.error("Error during health check for frame {}", frameStartTime, e)
+            log.error("Error during health check for logical frame {}", logicalFrame, e)
 
             // Send failure result
             val errorResult = JsonObject()
-                .put("frameStartTime", frameStartTime)
+                .put("logicalFrame", logicalFrame)
                 .put("healthy", false)
                 .put("error", e.message)
                 .put("timestamp", System.currentTimeMillis())

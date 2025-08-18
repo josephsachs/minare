@@ -7,6 +7,7 @@ import com.minare.utils.HeartbeatManager
 import com.minare.utils.VerticleLogger
 import com.minare.utils.WebSocketUtils
 import com.minare.controller.OperationController
+import com.minare.exception.BackpressureException
 import com.minare.worker.upsocket.SyncCommandHandler
 import io.vertx.core.http.ServerWebSocket
 import io.vertx.core.json.JsonObject
@@ -30,6 +31,9 @@ class MessageHandler @Inject constructor(
      * Handle an incoming message from a client
      */
     suspend fun handle(websocket: ServerWebSocket, message: JsonObject) {
+        // TEMPORARY DEBUG
+        vlog.logInfo("Message handler received message ${message.getString("command")}")
+
         val connectionId = connectionTracker.getConnectionId(websocket)
         if (connectionId == null) {
             WebSocketUtils.sendErrorResponse(
@@ -38,6 +42,8 @@ class MessageHandler @Inject constructor(
             )
             return
         }
+
+        vlog.logInfo("Message handler handling message...")
 
         val traceId = connectionTracker.getTraceId(connectionId)
         val msgTraceId = vlog.getEventLogger().trace(
@@ -78,6 +84,12 @@ class MessageHandler @Inject constructor(
                     "command" to message.getString("command", "unknown"),
                     "connectionId" to connectionId
                 ), msgTraceId
+            )
+        } catch (e: BackpressureException) {
+            vlog.logInfo("Backpressure active, rejecting message from connection ${connectionId}")
+            WebSocketUtils.sendErrorResponse(
+                websocket,
+                e, null, vlog
             )
         } catch (e: Exception) {
             vlog.logVerticleError("MESSAGE_HANDLING", e)

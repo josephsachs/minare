@@ -8,152 +8,109 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Tracks frame completion across workers.
- * Manages the distributed completion map and provides methods
- * to check frame progress and completion status.
+ * Tracks frame completion status across workers using Hazelcast.
+ * Updated for logical frames - uses frame numbers instead of timestamps.
  */
 @Singleton
 class FrameCompletionTracker @Inject constructor(
     private val hazelcastInstance: HazelcastInstance,
-    private val coordinatorState: FrameCoordinatorState,
     private val workerRegistry: WorkerRegistry
 ) {
     private val log = LoggerFactory.getLogger(FrameCompletionTracker::class.java)
 
-    private val completionMap: IMap<String, OperationCompletion> by lazy {
-        hazelcastInstance.getMap("operation-completions")
+    private val completionMap: IMap<String, JsonObject> by lazy {
+        hazelcastInstance.getMap("frame-completions")
     }
 
     /**
-     * Record that a worker has completed its operations for a frame.
-     * This updates both the coordinator state and the distributed map.
+     * Record that a worker has completed a logical frame.
      *
-     * @param workerId The ID of the worker
-     * @param frameStartTime The frame start time
+     * @param workerId The worker that completed
+     * @param logicalFrame The logical frame number
      * @param operationCount Number of operations completed
      */
-    fun recordWorkerCompletion(
-        workerId: String,
-        frameStartTime: Long,
-        operationCount: Int
-    ) {
-        // Update coordinator state
-        coordinatorState.recordWorkerCompletion(workerId, frameStartTime)
+    fun recordWorkerCompletion(workerId: String, logicalFrame: Long, operationCount: Int) {
+        val key = makeCompletionKey(logicalFrame, workerId)
+        val completion = JsonObject()
+            .put("workerId", workerId)
+            .put("logicalFrame", logicalFrame)
+            .put("operationCount", operationCount)
+            .put("completedAt", System.currentTimeMillis())
 
-        // Also track in distributed map for recovery purposes
-        val completionKey = "frame-$frameStartTime:worker-$workerId"
-        val completion = OperationCompletion(
-            operationId = completionKey,
-            workerId = workerId,
-            completedAt = System.currentTimeMillis(),
-            entityId = null,
-            resultSummary = "frame:$frameStartTime,ops:$operationCount"
-        )
-
-        completionMap[completionKey] = completion
-
-        log.debug("Recorded completion for worker {} on frame {} ({} operations)",
-            workerId, frameStartTime, operationCount)
+        completionMap[key] = completion
+        log.debug("Recorded completion for worker {} on logical frame {} ({} operations)",
+            workerId, logicalFrame, operationCount)
     }
 
     /**
-     * Check if all expected workers have completed the current frame.
+     * Get all workers that have completed a specific logical frame.
      *
-     * @param frameStartTime The frame to check
-     * @return true if all active workers have reported completion
-     */
-    fun isFrameComplete(frameStartTime: Long): Boolean {
-        return coordinatorState.isFrameComplete(frameStartTime)
-    }
-
-    /**
-     * Get the set of workers that have completed a specific frame.
-     *
-     * @param frameStartTime The frame to check
+     * @param logicalFrame The logical frame to check
      * @return Set of worker IDs that have completed
      */
-    fun getCompletedWorkers(frameStartTime: Long): Set<String> {
-        return coordinatorState.getCompletedWorkers(frameStartTime)
+    fun getCompletedWorkers(logicalFrame: Long): Set<String> {
+        val prefix = "frame-$logicalFrame:"
+
+        return completionMap.keys
+            .filter { it.startsWith(prefix) }
+            .map { it.substringAfter(":") }
+            .toSet()
     }
 
     /**
-     * Get workers that haven't completed the frame yet.
+     * Get workers that haven't completed a logical frame yet.
      *
-     * @param frameStartTime The frame to check
+     * @param logicalFrame The logical frame to check
      * @return Set of worker IDs that haven't completed
      */
-    fun getMissingWorkers(frameStartTime: Long): Set<String> {
-        val completed = getCompletedWorkers(frameStartTime)
-        val expected = workerRegistry.getActiveWorkers()
+    fun getMissingWorkers(logicalFrame: Long): Set<String> {
+        val completed = getCompletedWorkers(logicalFrame)
+        val expected = workerRegistry.getActiveWorkers().toSet()  // Convert List to Set
         return expected - completed
     }
 
     /**
-     * Clear completion data for a frame.
-     * Should be called after frame completion to free memory.
+     * Clear completion records for a logical frame.
+     * Should be called after frame is fully processed.
      *
-     * @param frameStartTime The frame to clear
+     * @param logicalFrame The logical frame to clear
      */
-    fun clearFrameCompletions(frameStartTime: Long) {
-        // Clear from distributed map
-        val completionKeys = completionMap.keys
-            .filter { it.startsWith("frame-$frameStartTime:") }
+    fun clearFrameCompletions(logicalFrame: Long) {
+        val prefix = "frame-$logicalFrame:"
 
-        completionKeys.forEach { completionMap.remove(it) }
+        val keysToRemove = completionMap.keys.filter { it.startsWith(prefix) }
+        keysToRemove.forEach { completionMap.remove(it) }
 
-        log.debug("Cleared {} completions for frame {}",
-            completionKeys.size, frameStartTime)
+        log.debug("Cleared {} completion records for logical frame {}",
+            keysToRemove.size, logicalFrame)
     }
 
     /**
-     * Check if a specific operation was completed.
-     * Used during recovery to identify incomplete operations.
+     * Check if all expected workers have completed a logical frame.
      *
-     * @param frameStartTime The frame time
-     * @param operationId The operation ID to check
-     * @return true if the operation was completed
+     * @param logicalFrame The logical frame to check
+     * @return true if all active workers have completed
      */
-    fun isOperationCompleted(frameStartTime: Long, operationId: String): Boolean {
-        val completionKey = "frame-$frameStartTime:op-$operationId"
-        return completionMap.containsKey(completionKey)
+    fun isFrameComplete(logicalFrame: Long): Boolean {
+        val completed = getCompletedWorkers(logicalFrame)
+        val expected = workerRegistry.getActiveWorkers()
+
+        return expected.isNotEmpty() && completed.containsAll(expected)
     }
 
     /**
-     * Record completion of a specific operation.
-     * Used by workers to mark individual operations as complete.
+     * Get completion statistics for a logical frame.
      *
-     * @param frameStartTime The frame time
-     * @param operationId The operation ID
-     * @param workerId The worker that completed it
-     */
-    fun recordOperationCompletion(
-        frameStartTime: Long,
-        operationId: String,
-        workerId: String
-    ) {
-        val completionKey = "frame-$frameStartTime:op-$operationId"
-        val completion = OperationCompletion(
-            operationId = operationId,
-            workerId = workerId,
-            completedAt = System.currentTimeMillis()
-        )
-
-        completionMap[completionKey] = completion
-    }
-
-    /**
-     * Get completion statistics for monitoring.
-     *
-     * @param frameStartTime The frame to analyze
+     * @param logicalFrame The frame to analyze
      * @return JsonObject with completion statistics
      */
-    fun getFrameCompletionStats(frameStartTime: Long): JsonObject {
-        val completed = getCompletedWorkers(frameStartTime)
+    fun getFrameCompletionStats(logicalFrame: Long): JsonObject {
+        val completed = getCompletedWorkers(logicalFrame)
         val expected = workerRegistry.getActiveWorkers()
         val missing = expected - completed
 
         return JsonObject()
-            .put("frameStartTime", frameStartTime)
+            .put("logicalFrame", logicalFrame)
             .put("expectedWorkers", expected.size)
             .put("completedWorkers", completed.size)
             .put("missingWorkers", missing.size)
@@ -162,5 +119,29 @@ class FrameCompletionTracker @Inject constructor(
                 else (completed.size.toDouble() / expected.size) * 100)
             .put("completed", completed.toList())
             .put("missing", missing.toList())
+    }
+
+    /**
+     * Clear ALL completion records from the distributed map.
+     * Should be called when starting a new session to ensure clean state.
+     */
+    fun clearAllCompletions() {
+        val keysToRemove = completionMap.keys.filter {
+            it.startsWith("frame-") || it.startsWith("manifest:")
+        }
+
+        if (keysToRemove.isNotEmpty()) {
+            keysToRemove.forEach { completionMap.remove(it) }
+            log.info("Cleared {} completion records from distributed map for new session", keysToRemove.size)
+        } else {
+            log.debug("No completion records to clear for new session")
+        }
+    }
+
+    /**
+     * Create a completion map key for a logical frame and worker.
+     */
+    private fun makeCompletionKey(logicalFrame: Long, workerId: String): String {
+        return "frame-$logicalFrame:$workerId"
     }
 }

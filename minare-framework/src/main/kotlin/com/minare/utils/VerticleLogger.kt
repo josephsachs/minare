@@ -182,6 +182,23 @@ class VerticleLogger @Inject constructor() {
     }
 
     /**
+     * Log debug message
+     */
+    fun logDebug(message: String) {
+        checkVerticleInitialized()
+        log!!.debug("{}: {}", verticle!!.javaClass.simpleName, message)
+    }
+
+    /**
+     * Log debug message with details
+     */
+    fun logDebug(message: String, details: Map<String, Any?>) {
+        checkVerticleInitialized()
+        val detailString = details.entries.joinToString(", ") { "${it.key}=${it.value}" }
+        log!!.debug("{}: {} [{}]", verticle!!.javaClass.simpleName, message, detailString)
+    }
+
+    /**
      * Check if the verticle has been initialized
      */
     private fun checkVerticleInitialized() {
