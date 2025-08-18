@@ -1,5 +1,6 @@
 package com.minare.worker
 
+import com.minare.utils.VerticleLogger
 import io.vertx.core.Vertx
 import io.vertx.core.json.JsonObject
 import io.vertx.kotlin.coroutines.CoroutineVerticle
@@ -18,7 +19,8 @@ import kotlin.system.measureTimeMillis
  * - Workers process operations via FrameWorkerVerticle
  */
 class WorkerOperationHandlerVerticle @Inject constructor(
-    private val vertx: Vertx
+    private val vertx: Vertx,
+    private val verticleLogger: VerticleLogger
 ) : CoroutineVerticle() {
 
     private val log = LoggerFactory.getLogger(WorkerOperationHandlerVerticle::class.java)
@@ -80,8 +82,7 @@ class WorkerOperationHandlerVerticle @Inject constructor(
                 action, operationId, entityId)
 
             when (action) {
-                "MUTATE" -> {
-                    // Reconstruct the command format expected by mutation handler
+                "MUTATE" -> {// Reconstruct the command format expected by mutation handler
                     val command = JsonObject()
                         .put("command", "mutate")
                         .put("entity", JsonObject()
@@ -90,6 +91,8 @@ class WorkerOperationHandlerVerticle @Inject constructor(
                             .put("version", operationJson.getLong("version"))
                             .put("state", operationJson.getJsonObject("delta") ?: JsonObject())
                         )
+
+                    verticleLogger.logInfo("Processing mutate command ${command.toString()}")
 
                     // Send to MutationVerticle
                     val processingTime = measureTimeMillis {
@@ -106,7 +109,7 @@ class WorkerOperationHandlerVerticle @Inject constructor(
                         }
                     }
 
-                    log.debug("Processed MUTATE for entity {} in {}ms", entityId, processingTime)
+                    log.info("Processed MUTATE for entity {} in {}ms", entityId, processingTime)
                 }
 
                 "CREATE" -> {
