@@ -9,6 +9,11 @@ import com.minare.worker.coordinator.FrameCoordinatorVerticle.Companion.ADDRESS_
 import com.minare.worker.coordinator.WorkerRegistry
 import io.vertx.core.json.JsonObject
 
+/**
+ * FrameCatchupEvent handles frame catchup when returning from paused state
+ *
+ * TODO: Re-implement with pause and recover strategies
+ */
 class FrameCatchUpEvent @Inject constructor(
     private val eventBusUtils: EventBusUtils,
     private val vlog: VerticleLogger,
@@ -17,9 +22,7 @@ class FrameCatchUpEvent @Inject constructor(
     private val workerRegistry: WorkerRegistry
 ) {
     suspend fun register() {
-        // Listen to frame completion events when paused
         eventBusUtils.registerTracedConsumer<JsonObject>(ADDRESS_WORKER_FRAME_COMPLETE) { message, traceId ->
-            // Only process if we're paused
             if (!coordinatorState.isPaused) {
                 return@registerTracedConsumer
             }
@@ -28,7 +31,6 @@ class FrameCatchUpEvent @Inject constructor(
             val logicalFrame = message.body().getLong("logicalFrame")
             val targetFrame = coordinatorState.lastProcessedFrame
 
-            // Only care about completions for the target catch-up frame
             if (logicalFrame == targetFrame && frameCompletionTracker.isFrameComplete(targetFrame)) {
                 val activeWorkers = workerRegistry.getActiveWorkers()
                 val completedWorkers = frameCompletionTracker.getCompletedWorkers(targetFrame)
@@ -45,7 +47,6 @@ class FrameCatchUpEvent @Inject constructor(
                     traceId
                 )
 
-                // Notify coordinator to resume
                 eventBusUtils.sendWithTracing(
                     ADDRESS_WORKERS_CAUGHT_UP,
                     JsonObject()

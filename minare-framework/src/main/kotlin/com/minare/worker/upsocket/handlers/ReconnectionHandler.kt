@@ -25,7 +25,7 @@ class ReconnectionHandler @Inject constructor(
     /**
      * Handle a reconnection attempt
      */
-    public suspend fun handle(websocket: ServerWebSocket, connectionId: String, deploymentId: String, traceId: String) {
+    suspend fun handle(websocket: ServerWebSocket, connectionId: String, deploymentId: String, traceId: String) {
         val reconnectTraceId = vlog.getEventLogger().trace(
             "RECONNECTION_ATTEMPT", mapOf(
                 "connectionId" to connectionId,

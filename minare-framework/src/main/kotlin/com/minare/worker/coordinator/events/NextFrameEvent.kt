@@ -9,8 +9,7 @@ import io.vertx.core.json.JsonObject
  * Event handler for next frame processing signals.
  * Workers listen to this event to know when to process the next frame.
  *
- * Note: This event handler is primarily for logging/tracing purposes.
- * The actual handling logic is implemented directly in FrameWorkerVerticle.
+ * TODO: Refactor event listener from FrameWorkerVerticle
  */
 class NextFrameEvent @Inject constructor(
     private val eventBusUtils: EventBusUtils,

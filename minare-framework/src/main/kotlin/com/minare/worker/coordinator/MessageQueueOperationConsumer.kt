@@ -107,8 +107,6 @@ class MessageQueueOperationConsumer @Inject constructor(
      * Updated to handle both single operations (JsonObject) and batched operations (JsonArray).
      */
     private fun handleKafkaRecord(record: io.vertx.kafka.client.consumer.KafkaConsumerRecord<String, String>) {
-        log.info("DEBUG: Received Kafka record {}", record.toString())
-
         try {
             val value = record.value()
             if (value.isNullOrEmpty()) {
@@ -130,6 +128,7 @@ class MessageQueueOperationConsumer @Inject constructor(
             }
 
             // Process based on type
+            // TODO: Improve how backpressure status is handled here, this is scattered logic antipattern
             when (parsed) {
                 is JsonObject -> {
                     if (!processOperation(parsed)) {
@@ -149,7 +148,7 @@ class MessageQueueOperationConsumer @Inject constructor(
                 }
             }
 
-            // Commit after successful processing
+            // TODO: Ensure we commit only in the case of successfully completed operations
             messageQueueConsumer?.commit()
 
         } catch (e: Exception) {
@@ -181,11 +180,14 @@ class MessageQueueOperationConsumer @Inject constructor(
         if (timestamp == null) {
             log.error("Operation missing timestamp, cannot assign to frame: {}",
                 operation.encode())
-            return true // Continue processing other operations
+
+            // Continue processing other operations
+            return true
         }
 
         val bufferedFrameCount = coordinatorState.getBufferedFrameCount()
 
+        // TODO: Enable this after re-implementing backpressure control mechanisms
         /**if (bufferedFrameCount >= frameConfig.maxBufferFrames) {
             val totalBuffered = coordinatorState.getTotalBufferedOperations()
             log.error("Frame buffer limit exceeded: {} frames buffered (max: {}), " +
@@ -223,7 +225,7 @@ class MessageQueueOperationConsumer @Inject constructor(
         }
 
         // Route to appropriate handler based on session state
-        if (coordinatorState.sessionStartTimestamp == 0L) {
+        if (coordinatorState.sessionStartTimestamp == 0L) { // TODO: Better way of determining this, centralize somewhere
             handlePreSessionOperation(operation)
         } else {
             handleSessionOperation(operation, timestamp)
@@ -252,7 +254,7 @@ class MessageQueueOperationConsumer @Inject constructor(
     private fun handleSessionOperation(operation: JsonObject, timestamp: Long) {
         val logicalFrame = coordinatorState.getLogicalFrame(timestamp)
 
-        // Check if this is a late operation (before current frame)
+        // Check if this is a late operation
         val frameInProgress = coordinatorState.frameInProgress
 
         // TEMPORARY DEBUG
@@ -271,12 +273,13 @@ class MessageQueueOperationConsumer @Inject constructor(
                 is LateOperationDecision.Delay -> {
                     coordinatorState.bufferOperation(operation, decision.targetFrame)
                     // Let the normal scheduling handle manifest preparation
-                    return  // ADD THIS RETURN
+                    return
                 }
             }
         }
 
         // Check if operation is too far in the future
+        // TODO: Re-enable after implementing coordinator manifest pause
         /**if (coordinatorState.isPaused) {
             // During pause, enforce strict buffer limits
             if (!frameCalculator.isFrameWithinBufferLimit(logicalFrame, frameInProgress)) {
@@ -295,6 +298,7 @@ class MessageQueueOperationConsumer @Inject constructor(
         // Buffer the operation to its target frame
         coordinatorState.bufferOperation(operation, logicalFrame)
 
+        // TEMPORARY DEBUG
         log.info("DEBUG: Buffered operation {} to frame {}", operation.getString("id"), logicalFrame)
 
         // Trigger manifest preparation if needed
@@ -314,6 +318,7 @@ class MessageQueueOperationConsumer @Inject constructor(
         }
 
         // During pause, respect buffer limits
+        // TODO: Revisit after implementing coordinator manifest pause
         if (coordinatorState.isPaused) {
             val frameInProgress = coordinatorState.frameInProgress
             return frameCalculator.isFrameWithinBufferLimit(logicalFrame, frameInProgress)

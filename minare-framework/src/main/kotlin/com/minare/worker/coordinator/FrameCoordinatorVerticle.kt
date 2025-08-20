@@ -74,12 +74,11 @@ class FrameCoordinatorVerticle @Inject constructor(
     }
 
     private fun setupEventBusConsumers() {
-        // Infrastructure commands
         infraAddWorkerEvent.register()
         infraRemoveWorkerEvent.register()
 
-        // Worker lifecycle
         launch {
+            // TODO: Re-enable along with pause and recover mechanism
             //frameCatchUpEvent.register()
             workerHeartbeatEvent.register()
             workerFrameCompleteEvent.register()
@@ -88,7 +87,7 @@ class FrameCoordinatorVerticle @Inject constructor(
             workerHealthChangeEvent.register()
         }
 
-        // Internal event for when all workers complete a frame
+        // All workers complete a frame
         eventBusUtils.registerTracedConsumer<JsonObject>(ADDRESS_FRAME_ALL_COMPLETE) { msg, traceId ->
             launch {
                 val logicalFrame = msg.body().getLong("logicalFrame")
@@ -96,12 +95,12 @@ class FrameCoordinatorVerticle @Inject constructor(
             }
         }
 
-        // Manifest preparation requests (triggered by operation arrival)
+        // Manifest preparation request (triggered by operation arrival)
         eventBusUtils.registerTracedConsumer<JsonObject>(ADDRESS_PREPARE_MANIFEST) { _, traceId ->
             launch { preparePendingManifests() }
         }
 
-        // Resume command
+        // Resume command - not sure if this ever happens with pause not implemented
         eventBusUtils.registerTracedConsumer<JsonObject>(ADDRESS_FRAME_RESUME) { msg, traceId ->
             launch {
                 val reason = msg.body().getString("reason", "Manual resume")
@@ -119,6 +118,7 @@ class FrameCoordinatorVerticle @Inject constructor(
                 coordinatorState.isPaused = false
                 coordinatorState.setFrameInProgress(resumeFrame)
 
+                // TODO: Re-enable this when BackpressureManager is re-implemented
                 //if (backpressureManager.isActive()) {
                 //    log.info("Clearing backpressure on resume from pause")
                 //    backpressureManager.deactivate()
@@ -128,8 +128,7 @@ class FrameCoordinatorVerticle @Inject constructor(
                 // Catch up manifest preparation to current time
                 preparePendingManifests()
 
-                // Broadcast next frame event to resume processing  // NEW
-                log.info("Broadcasting next frame event to resume at frame {}", resumeFrame)
+                log.debug("Broadcasting next frame event to resume at frame {}", resumeFrame)
                 vertx.eventBus().publish(ADDRESS_NEXT_FRAME, JsonObject())
 
                 frameScheduler.scheduleFramePreparation(resumeFrame, this) { frame ->
@@ -138,9 +137,9 @@ class FrameCoordinatorVerticle @Inject constructor(
             }
         }
 
+        // TODO: Reconsider this when implementing pause and recover
         eventBusUtils.registerTracedConsumer<JsonObject>(ADDRESS_ALL_WORKERS_READY) { msg, traceId ->
             launch {
-                log.info("All workers ready")
                 coordinatorState.isPaused = false
 
                 // Only start session on startup
@@ -162,10 +161,10 @@ class FrameCoordinatorVerticle @Inject constructor(
     private suspend fun tryStartSession() {
         val existingWorkers = workerRegistry.getActiveWorkers()
         if (existingWorkers.isNotEmpty()) {
-            log.info("Found {} active workers already registered", existingWorkers.size)
+            log.debug("Found {} active workers already registered", existingWorkers.size)
 
             if (existingWorkers.size == workerRegistry.getExpectedWorkerCount()) {
-                log.info("All expected workers already active, starting session")
+                log.debug("All expected workers already active, starting session")
                 coordinatorState.isPaused = false
                 launch {
                     startNewSession()
@@ -185,32 +184,26 @@ class FrameCoordinatorVerticle @Inject constructor(
         val sessionStartTime = announcementTime + frameConfig.frameOffsetMs
         val sessionStartNanos = System.nanoTime() + frameCalculator.msToNanos(frameConfig.frameOffsetMs)
 
-        // Clear previous session state
         clearPreviousSessionState()
 
-        // Extract and renumber buffered operations
         val operationsByOldFrame = extractBufferedOperations()
         coordinatorState.resetSessionState(sessionStartTime, sessionStartNanos)
 
-        // Initialize frame progress in Hazelcast
         coordinatorState.initializeFrameProgress()
-
-        // Reset frame in progress
         coordinatorState.setFrameInProgress(0)
 
-        val newFrame = assignBufferedOperations(operationsByOldFrame)
+        assignBufferedOperations(operationsByOldFrame)
 
-        // Prepare additional manifests beyond what assignBufferedOperations did
-        val minFramesToPrepare = 20L // Ensure at least 20 frames ready
+        val minFramesToPrepare = 20L // TODO: Make this configurable
         for (frame in (coordinatorState.lastPreparedManifest + 1) until minFramesToPrepare) {
             prepareManifestForFrame(frame)
         }
 
-        // Publish session event and announce to workers
         publishSessionStartEvent(sessionStartTime, announcementTime)
         announceSessionToWorkers(sessionStartTime, announcementTime)
 
-        // Start the periodic manifest preparation BEFORE waiting
+        // IMPORTANT: Continue preparing manifests even without frame completions
+        // This keeps operation processing responsive to real-time input
         val manifestPrepTimer = vertx.setPeriodic(frameConfig.frameDurationMs) {
             launch {
                 val currentFrame = frameCalculator.getCurrentLogicalFrame(coordinatorState.sessionStartNanos)
@@ -223,11 +216,10 @@ class FrameCoordinatorVerticle @Inject constructor(
             }
         }
 
-        // Wait for the announced start time
+        // Keep operation-assignment consistent with expected frame time
         delay(frameConfig.frameOffsetMs)
 
-        // NOW broadcast - manifests should be ready
-        log.info("Broadcasting initial next frame event for frame 0")
+        log.debug("Broadcasting initial next frame event for frame 0")
         vertx.eventBus().publish(ADDRESS_NEXT_FRAME, JsonObject())
     }
 
@@ -253,8 +245,8 @@ class FrameCoordinatorVerticle @Inject constructor(
             messageQueue.send("minare.system.events", JsonArray().add(sessionEvent))
             log.info("Published session start event to Kafka")
         } catch (e: Exception) {
+            // TODO: This case indicates a big problem and should be occasion for clusterwide pause
             log.error("Failed to publish session start event", e)
-            // Continue anyway - this is just for audit
         }
     }
 
@@ -289,6 +281,7 @@ class FrameCoordinatorVerticle @Inject constructor(
      */
     private suspend fun assignBufferedOperations(operationsByOldFrame: MutableMap<Long, List<JsonObject>>): Long {
         // Re-buffer operations with new frame numbers, preserving groupings
+        // Not sure we should be doing this here
         var newFrame = 0L
         operationsByOldFrame.forEach { (_, operations) ->
             operations.forEach { op ->
@@ -302,6 +295,7 @@ class FrameCoordinatorVerticle @Inject constructor(
         }
 
         // Handle any pending operations (those that arrived before session started)
+        // This is probably unnecessary and might be causing issues with initial operations
         val pendingCount = coordinatorState.getPendingOperationCount()
         if (pendingCount > 0) {
             coordinatorState.assignPendingOperationsToFrame(newFrame)
@@ -322,8 +316,8 @@ class FrameCoordinatorVerticle @Inject constructor(
     }
 
     /**
-     * Prepare any pending manifests based on current state.
-     * PRESERVED: Original logic for determining which frames to prepare
+     * Prepare any pending manifests, occurs following a hard pause and resume,
+     * such as when backpressure control is de-activated
      */
     private suspend fun preparePendingManifests() {
         val framesToPrepare = frameScheduler.getFramesToPrepareNow()
@@ -372,18 +366,18 @@ class FrameCoordinatorVerticle @Inject constructor(
     }
 
     /**
-     * Handle frame completion event.
-     * Triggered by WorkerFrameCompleteEvent when all workers finish.
+     * Handle frame completion event triggered by WorkerFrameCompleteEvent when all workers finish.
+     * This is what permits workers to complete the next frame
      */
     private suspend fun onFrameComplete(logicalFrame: Long) {
         log.info("Logical frame {} completed successfully", logicalFrame)
 
         markFrameComplete(logicalFrame)
 
-        // Broadcast next frame event to all workers  // NEW
         log.info("Broadcasting next frame event after completing frame {}", logicalFrame)
         vertx.eventBus().publish(ADDRESS_NEXT_FRAME, JsonObject())
 
+        // TODO: Re-enable backpressure control mechanisms after proper implementation
         //checkAndHandleBackpressure(logicalFrame)
         prepareUpcomingFrames()
         cleanupCompletedFrame(logicalFrame)
@@ -395,7 +389,11 @@ class FrameCoordinatorVerticle @Inject constructor(
         coordinatorState.setFrameInProgress(logicalFrame + 1)
     }
 
+    /**
+     * TODO: This is the current logic for disabling backpressure control, currently unused
+     */
     private suspend fun checkAndHandleBackpressure(logicalFrame: Long) {
+        // TODO: Re-enable backpressure control mechanisms
         //if (!backpressureManager.isActive()) {
         //    return
         //}
@@ -442,6 +440,9 @@ class FrameCoordinatorVerticle @Inject constructor(
         frameCompletionTracker.clearFrameCompletions(logicalFrame)
     }
 
+    /**
+     * Detects lagging workers, used to trigger worker soft pause
+     */
     private fun checkFrameLag(logicalFrame: Long) {
         val expectedFrame = frameCalculator.getCurrentLogicalFrame(coordinatorState.sessionStartNanos)
 

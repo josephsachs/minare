@@ -33,16 +33,15 @@ abstract class OperationController @Inject constructor(
      * @param message The raw message from the client
      */
     suspend fun process(message: JsonObject) {
-        // Let the application convert the message to Operation(s)
+        // Pass message to application layer for packaging into Operations
         val operations = preQueue(message)
 
-        // Skip if the application returns null
+        // If application returns nothing, proceed
         if (operations == null) {
             log.debug("Application preQueue returned null, skipping message")
             return
         }
 
-        // Convert to JsonArray and send to Kafka
         queue(operations)
     }
 
@@ -59,10 +58,7 @@ abstract class OperationController @Inject constructor(
             else -> throw IllegalArgumentException("Expected Operation or OperationSet, got ${operations::class.simpleName}")
         }
 
-        // Send to Kafka
         sendMessage(message)
-
-        // Call post-queue hook
         postQueue(message)
     }
 
@@ -96,6 +92,7 @@ abstract class OperationController @Inject constructor(
             return
         }
 
+        // TODO: Re-enable BackpressureManager with proper triggering conditions
         //if (backpressureManager.isActive()) {
         //    throw BackpressureException("System overloaded - please retry")
         //}

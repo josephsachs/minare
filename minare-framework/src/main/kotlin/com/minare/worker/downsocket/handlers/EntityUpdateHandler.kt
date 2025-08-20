@@ -6,6 +6,11 @@ import com.minare.utils.VerticleLogger
 import io.vertx.core.json.JsonObject
 import com.minare.worker.downsocket.DownSocketVerticleCache
 
+/**
+ * Centralizes behavior for Entity update message handling
+ *
+ * TODO: Re-enable behavior dependent on worker deploymentId when register provides it properly
+ */
 class EntityUpdateHandler @Inject constructor(
     private val vlog: VerticleLogger,
     private val downSocketVerticleCache: DownSocketVerticleCache,

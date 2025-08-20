@@ -16,6 +16,8 @@ import kotlin.coroutines.CoroutineContext
 /**
  * Utility class for event bus communications with tracing support
  * Provides methods to send and receive traced messages across verticles
+ *
+ * TODO: Rename as TracedEventBus
  */
 class EventBusUtils(
     private val vertx: Vertx,

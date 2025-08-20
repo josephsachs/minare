@@ -201,8 +201,8 @@ abstract class MinareApplication : CoroutineVerticle() {
         val downSocketVerticleOptions = DeploymentOptions()
             .setWorker(true)
             .setWorkerPoolName("down-socket-pool")
-            .setWorkerPoolSize(7)
-            .setInstances(7)
+            .setWorkerPoolSize(5)
+            .setInstances(3)
 
         downSocketVerticleDeploymentId = vertx.deployVerticle(
             "guice:" + DownSocketVerticle::class.java.name,

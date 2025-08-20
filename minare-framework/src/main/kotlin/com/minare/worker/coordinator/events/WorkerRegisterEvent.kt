@@ -13,7 +13,7 @@ import io.vertx.core.json.JsonObject
  * This event indicates that a worker has fully deployed all its verticles
  * and is ready to participate in frame processing.
  *
- * Updated to enforce strict worker registration - only pre-registered workers
+ * Enforces strict worker registration - only pre-registered workers
  * via infrastructure commands are allowed to join the cluster.
  */
 class WorkerRegisterEvent @Inject constructor(

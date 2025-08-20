@@ -24,7 +24,7 @@ class KafkaMessageQueue @Inject constructor(
 
     private val log = LoggerFactory.getLogger(KafkaMessageQueue::class.java)
 
-    // Configuration
+    // TODO: Move all System.getenv() calls to MinareApplication
     private val bootstrapServers = System.getenv("KAFKA_BOOTSTRAP_SERVERS") ?: "localhost:9092"
     private val topicPartitions = System.getenv("KAFKA_TOPIC_PARTITIONS")?.toInt() ?: 3
     private val topicReplicationFactor = System.getenv("KAFKA_TOPIC_REPLICATION_FACTOR")?.toShort() ?: 1
@@ -38,7 +38,6 @@ class KafkaMessageQueue @Inject constructor(
     private val initializedTopics = mutableSetOf<String>()
     private val initMutex = Mutex()
 
-    // Lazy initialize producers and admin client
     private val producer: KafkaProducer<String, String> by lazy {
         createProducer()
     }
@@ -56,34 +55,25 @@ class KafkaMessageQueue @Inject constructor(
     private fun createProducer(): KafkaProducer<String, String> {
         val config = mutableMapOf<String, String>()
 
-        // Connection
         config["bootstrap.servers"] = bootstrapServers
-
-        // Serialization
         config["key.serializer"] = "org.apache.kafka.common.serialization.StringSerializer"
         config["value.serializer"] = "org.apache.kafka.common.serialization.StringSerializer"
-
-        // Reliability settings
         config["acks"] = producerAcks  // 0=none, 1=leader, all=all replicas
         config["retries"] = producerRetries.toString()
         config["max.in.flight.requests.per.connection"] = "5"
         // Only enable idempotence if acks=all
         config["enable.idempotence"] = (producerAcks == "all").toString()
-
-        // Performance settings
         config["compression.type"] = producerCompressionType
         config["linger.ms"] = producerLingerMs
         config["batch.size"] = producerBatchSize
         config["buffer.memory"] = "33554432"  // 32MB
-
-        // Timeout settings
         config["request.timeout.ms"] = "30000"
         config["delivery.timeout.ms"] = "120000"
 
-        // Client identification
+        // Move System.getenv() call to MinareApplication
         config["client.id"] = "minare-producer-${System.getenv("HOSTNAME") ?: "unknown"}"
 
-        log.debug("Creating Kafka producer with config: {}", config)
+        log.info("Creating Kafka producer with config: {}", config)
 
         return KafkaProducer.create(vertx, config)
     }
@@ -101,12 +91,10 @@ class KafkaMessageQueue @Inject constructor(
      * Thread-safe with mutex protection.
      */
     private suspend fun ensureTopicExists(topic: String) {
-        // Fast path - if we've already initialized this topic, skip
         if (initializedTopics.contains(topic)) {
             return
         }
 
-        // Slow path - use mutex to ensure only one thread creates the topic
         initMutex.withLock {
             // Double-check inside mutex
             if (initializedTopics.contains(topic)) {
@@ -117,8 +105,8 @@ class KafkaMessageQueue @Inject constructor(
                 log.debug("Ensuring topic {} exists", topic)
 
                 val newTopic = NewTopic(topic, topicPartitions, topicReplicationFactor).apply {
-                    // Set topic-level configs
                     setConfig(mapOf(
+                        // TODO: Make retention window configurable by developer, including DB snapshot and save-to-disk strategies
                         "retention.ms" to "86400000", // 24 hours
                         "compression.type" to "producer", // Use producer's compression
                         "min.insync.replicas" to "1"
@@ -131,7 +119,6 @@ class KafkaMessageQueue @Inject constructor(
                 initializedTopics.add(topic)
 
             } catch (e: Exception) {
-                // Topic might have been created by another instance
                 if (e.message?.contains("already exists") == true) {
                     log.debug("Topic {} was created by another instance", topic)
                     initializedTopics.add(topic)
@@ -170,14 +157,13 @@ class KafkaMessageQueue @Inject constructor(
 
         } catch (e: Exception) {
             log.error("Error sending message to topic {}", topic, e)
-            // In production, you might want to send to a DLQ or metrics system
+
             throw e
         }
     }
 
     override suspend fun send(topic: String, key: String, message: JsonArray) {
         try {
-            // Ensure topic exists
             ensureTopicExists(topic)
 
             val record = KafkaProducerRecord.create<String, String>(
@@ -186,7 +172,6 @@ class KafkaMessageQueue @Inject constructor(
                 message.toString()
             )
 
-            // Add headers
             record.addHeader("produced-by", "minare")
             record.addHeader("produced-at", System.currentTimeMillis().toString())
             record.addHeader("message-key", key)
@@ -196,7 +181,6 @@ class KafkaMessageQueue @Inject constructor(
                     topic, key, message.encodePrettily())
             }
 
-            // Send and await result
             val metadata = producer.send(record).await()
 
             if (log.isTraceEnabled) {

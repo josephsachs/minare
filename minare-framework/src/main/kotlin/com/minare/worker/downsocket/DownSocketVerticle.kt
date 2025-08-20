@@ -90,6 +90,7 @@ class DownSocketVerticle @Inject constructor(
 
             initializeRouter()
 
+            // TODO: Reconsider timer here
             //timer = UpdateTimer()
             //timer.start(DEFAULT_TICK_INTERVAL_MS)
             log.info("Started Timer at {${System.currentTimeMillis()}}")
@@ -97,7 +98,7 @@ class DownSocketVerticle @Inject constructor(
                 "intervalMs" to DEFAULT_TICK_INTERVAL_MS
             ))
 
-            // ADDED: Register consumer for batched updates from UpdateBatchCoordinator
+            // Register consumer for batched updates from UpdateBatchCoordinator
             registerBatchedUpdateConsumer()
 
             vlog.logStartupStep("EVENT_BUS_HANDLERS_REGISTERED")
@@ -118,7 +119,7 @@ class DownSocketVerticle @Inject constructor(
     }
 
     /**
-     * ADDED: Register consumer for batched updates from UpdateBatchCoordinator
+     * Register consumer for batched updates from UpdateBatchCoordinator
      */
     private fun registerBatchedUpdateConsumer() {
         vertx.eventBus().consumer<JsonObject>(UpdateBatchCoordinator.ADDRESS_BATCHED_UPDATES) { message ->
@@ -133,10 +134,11 @@ class DownSocketVerticle @Inject constructor(
     }
 
     /**
-     * ADDED: Forward a batched update to all connected clients managed by this verticle
+     * Forward a batched update to all connected clients managed by this verticle
      */
     private fun forwardUpdateToClients(batchedUpdate: JsonObject) {
         val connections = connectionTracker.getAllConnectionIds()
+
         for (connectionId in connections) {
             sendUpdate(connectionId, batchedUpdate)
         }
@@ -200,6 +202,7 @@ class DownSocketVerticle @Inject constructor(
      * Register all event bus consumers
      */
     private suspend fun registerEventBusConsumers() {
+        // Guessing we disabled this when we removed individual entity updates in favor of batching
         //entityUpdatedEvent.register()
         updateConnectionEstablishedEvent.register()
         updateConnectionClosedEvent.register()
@@ -366,6 +369,8 @@ class DownSocketVerticle @Inject constructor(
         return if (socket != null && !socket.isClosed()) {
             try {
                 socket.writeTextMessage(update.encode())
+                //TEMPORARY DEBUG
+                log.info("Sent update to websocket: {}", update.encode())
                 true
             } catch (e: Exception) {
                 log.error("Failed to send update to {}", connectionId, e)

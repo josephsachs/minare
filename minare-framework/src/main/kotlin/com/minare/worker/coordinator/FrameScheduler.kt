@@ -13,6 +13,8 @@ import javax.inject.Singleton
  * Handles all frame scheduling logic for the coordinator.
  * Responsible for determining when frames should be prepared and
  * managing the timing of frame preparation.
+ *
+ * Governed by lookahead buffer and coordinator manifest pause state.
  */
 @Singleton
 class FrameScheduler @Inject constructor(
@@ -73,7 +75,7 @@ class FrameScheduler @Inject constructor(
             return false
         }
 
-        // During pause, respect buffer limits
+        // During manifest pause, respect buffer limits
         if (coordinatorState.isPaused) {
             val frameInProgress = coordinatorState.frameInProgress
             return frameCalculator.isFrameWithinBufferLimit(frameNumber, frameInProgress)
@@ -110,7 +112,6 @@ class FrameScheduler @Inject constructor(
 
         onPrepareFrame(frameNumber)
 
-        // Schedule next frame if appropriate
         if (shouldContinueScheduling(frameNumber)) {
             scheduleFramePreparation(frameNumber + 1, scope, onPrepareFrame)
         }
@@ -124,7 +125,7 @@ class FrameScheduler @Inject constructor(
             return frameCalculator.isFrameWithinBufferLimit(nextFrame, frameInProgress)
         }
 
-        // Normal operation - always continue
+        // Normal operation always continue
         return true
     }
 

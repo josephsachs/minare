@@ -20,24 +20,17 @@ class UpdateBatchCoordinator @Inject constructor(
 ) {
     private val log = LoggerFactory.getLogger(UpdateBatchCoordinator::class.java)
 
-    // Map of entityId -> latest update
     private val pendingUpdates = ConcurrentHashMap<String, JsonObject>()
-
-    // Whether the coordinator is running
     private val isRunning = AtomicBoolean(false)
 
-    // The interval between batch distributions (milliseconds)
     private var batchIntervalMs = 100L // 10 updates per second
 
-    // Timer ID for the periodic batch distribution
     private var timerId: Long? = null
 
-    // Metrics
     private var tickCount = 0L
     private var totalProcessingTimeMs = 0L
     private var lastTickTimeMs = 0L
 
-    // Address to publish batched updates
     companion object {
         const val ADDRESS_BATCHED_UPDATES = "minare.entity.batched.updates"
     }
@@ -110,15 +103,15 @@ class UpdateBatchCoordinator @Inject constructor(
             val newVersion = entityUpdate.getLong("version", 0)
 
             if (newVersion > existingVersion) {
-                // New version is higher, replace the pending update
+                // TODO: Merge JsonObjects instead of overwriting, with newer taking priority in case of delta conflict
                 pendingUpdates[entityId] = entityUpdate
+
                 log.trace("Updated entity in batch queue: id={}, version={}", entityId, newVersion)
             } else {
                 log.trace("Ignored outdated entity update: id={}, existing={}, new={}",
                     entityId, existingVersion, newVersion)
             }
         } else {
-            // No existing update, add this one
             pendingUpdates[entityId] = entityUpdate
             log.trace("Added entity to batch queue: id={}", entityId)
         }
@@ -165,11 +158,12 @@ class UpdateBatchCoordinator @Inject constructor(
             return
         }
 
-        // Create a snapshot of current updates and clear pending queue
         val updatesBatch = HashMap(pendingUpdates)
+
         pendingUpdates.clear()
 
         // Create the update message in the same format as DownSocketVerticle currently uses
+        // TODO: Send to application hook for developer to convert to client's expected format
         val updateMessage = JsonObject()
             .put("type", "update_batch")
             .put("timestamp", System.currentTimeMillis())
@@ -179,7 +173,6 @@ class UpdateBatchCoordinator @Inject constructor(
                 }
             })
 
-        // Publish to event bus for all DownSocketVerticles to consume
         vertx.eventBus().publish(ADDRESS_BATCHED_UPDATES, updateMessage)
 
         if (updatesBatch.size > 0 && (

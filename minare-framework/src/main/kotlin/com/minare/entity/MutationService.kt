@@ -81,8 +81,10 @@ class MutationService @Inject constructor(
         try {
             stateStore.mutateState(entityId, allowedChanges)
 
-            // Handle version bubbling for parent entities
-            versioningService.bubbleVersions(entityId)
+            // Temporarily disabled
+            // We need to fix delta updates to merge rather than replace
+            // Revisit in V3
+            // versioningService.bubbleVersions(entityId)
 
             return JsonObject()
                 .put("success", true)

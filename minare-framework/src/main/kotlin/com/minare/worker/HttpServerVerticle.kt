@@ -40,16 +40,11 @@ class HttpServerVerticle : CoroutineVerticle() {
     override suspend fun start() {
         log.info("Starting HttpServerVerticle")
 
-
         vlog = VerticleLogger()
         vlog.setVerticle(this)
-
-
         vlog.logConfig(config)
 
-
         mainRouter = Router.router(vertx)
-
 
         vertx.eventBus().consumer<JsonObject>(ADDRESS_REGISTER_ROUTER) { message ->
             CoroutineScope(vertx.dispatcher()).launch {
@@ -97,7 +92,6 @@ class HttpServerVerticle : CoroutineVerticle() {
         }
 
         try {
-
             val port = config.getInteger("port", DEFAULT_PORT)
             val host = config.getString("host", DEFAULT_HOST)
 
@@ -106,13 +100,11 @@ class HttpServerVerticle : CoroutineVerticle() {
                 "port" to port
             ))
 
-
             val options = HttpServerOptions()
                 .setHost(host)
                 .setPort(port)
                 .setTcpKeepAlive(true)
                 .setTcpNoDelay(true)
-
 
             httpServer = vertx.createHttpServer(options)
                 .requestHandler(mainRouter)
@@ -124,7 +116,6 @@ class HttpServerVerticle : CoroutineVerticle() {
             vlog.logStartupStep("HTTP_SERVER_STARTED", mapOf(
                 "actualPort" to httpServer!!.actualPort()
             ))
-
 
             vertx.eventBus().publish(ADDRESS_SERVER_STARTED, JsonObject()
                 .put("port", httpServer!!.actualPort())
@@ -145,7 +136,6 @@ class HttpServerVerticle : CoroutineVerticle() {
 
                 httpServer!!.close().await()
                 isStarted.set(false)
-
 
                 vertx.eventBus().publish(ADDRESS_SERVER_STOPPED, JsonObject())
 

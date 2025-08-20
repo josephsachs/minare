@@ -48,7 +48,6 @@ class DownSocketVerticleCache @Inject constructor(
             entityChannelCache.remove(entityId)
         }
 
-        // Query database
         val channels = try {
             contextStore.getChannelsByEntityId(entityId).toSet()
         } catch (e: Exception) {
@@ -59,6 +58,7 @@ class DownSocketVerticleCache @Inject constructor(
         }
 
         // Cache the result with expiry
+        // TODO: Find a better way than caching with TTL, still too vulnerable to stale data
         entityChannelCache[entityId] = Pair(channels, now + CACHE_TTL_MS)
 
         return channels

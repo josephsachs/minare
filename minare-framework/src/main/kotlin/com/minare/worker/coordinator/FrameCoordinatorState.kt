@@ -27,7 +27,6 @@ class FrameCoordinatorState @Inject constructor(
 ) {
     private val log = LoggerFactory.getLogger(FrameCoordinatorState::class.java)
 
-    // Session timing state
     @Volatile
     var sessionStartTimestamp: Long = 0L
         private set
@@ -36,24 +35,15 @@ class FrameCoordinatorState @Inject constructor(
     var sessionStartNanos: Long = 0L
         private set
 
-    // Frame progress tracking
     private val _lastProcessedFrame = AtomicLong(-1L)
     private val _lastPreparedManifest = AtomicLong(-1L)
     private val _isPaused = AtomicBoolean(true)  // Start paused until workers ready
 
-    // Operations buffered by logical frame number
     private val operationsByFrame = ConcurrentHashMap<Long, ConcurrentLinkedQueue<JsonObject>>()
-
-    // Operations buffered before session starts
     private val pendingOperations = ConcurrentLinkedQueue<JsonObject>()
-
-    // Current frame completion tracking
     private val currentFrameCompletions = ConcurrentHashMap<String, Long>()
-
-    // Distributed frame progress in Hazelcast
     private val frameProgress: IAtomicLong = hazelcastInstance.getCPSubsystem().getAtomicLong("frame-progress")
 
-    // Public properties
     var lastProcessedFrame: Long
         get() = _lastProcessedFrame.get()
         private set(value) = _lastProcessedFrame.set(value)
@@ -161,10 +151,12 @@ class FrameCoordinatorState @Inject constructor(
      * Removes and returns the operations.
      */
     fun extractFrameOperations(logicalFrame: Long): List<JsonObject> {
-        log.info("DEBUG: Extracting operations for frame {}, available frames: {}",
+        // TEMPORARY DEBUG
+        log.info("Extracting operations for frame {}, available frames: {}",
             logicalFrame, operationsByFrame.keys.sorted())
 
         // Include pending operations if this is frame 0
+        // TODO: This probably shouldn't work like this
         val pendingOps = if (logicalFrame == 0L && pendingOperations.isNotEmpty()) {
             val ops = mutableListOf<JsonObject>()
             while (pendingOperations.isNotEmpty()) {
@@ -176,7 +168,7 @@ class FrameCoordinatorState @Inject constructor(
         // Get regular buffered operations
         val queue = operationsByFrame.remove(logicalFrame)
         if (queue == null) {
-            log.warn("No operations found for frame {}", logicalFrame)
+            log.debug("No operations found for frame {}", logicalFrame)
             return pendingOps
         }
 
@@ -203,11 +195,12 @@ class FrameCoordinatorState @Inject constructor(
      */
     fun recordWorkerCompletion(workerId: String, frameNumber: Long) {
         // Only record if it's for the current frame
+        // TODO: This case should be prevented by frame completion logic/coordinator message
         if (frameNumber == frameProgress.get()) {
             currentFrameCompletions[workerId] = System.currentTimeMillis()
-            log.info("Worker {} completed logical frame {}", workerId, frameNumber)
+            log.debug("Worker {} completed logical frame {}", workerId, frameNumber)
         } else {
-            log.warn("Ignoring completion from worker {} for old frame {} (current: {})",
+            log.error("Ignoring completion from worker {} for old frame {} (current: {})",
                 workerId, frameNumber, frameProgress.get())
         }
     }

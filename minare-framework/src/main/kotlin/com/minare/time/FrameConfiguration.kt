@@ -7,7 +7,7 @@ package com.minare.time
  * including frame duration, checkpointing intervals, and synchronization
  * parameters.
  *
- * Updated with event-driven coordination constants.
+ * TODO: Finetune, remove or simplify defaults
  */
 data class FrameConfiguration(
     /**

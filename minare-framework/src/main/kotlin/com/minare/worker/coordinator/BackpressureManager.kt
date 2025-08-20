@@ -6,6 +6,14 @@ import com.hazelcast.core.HazelcastInstance
 import com.hazelcast.map.IMap
 import java.io.Serializable
 
+/**
+ * BackpressureManager handles backpressure state. Occurs under conditions such as
+ * - Coordinator is too many steps ahead of workers and needs nard pause
+ *
+ * Causes 503 status to incoming upsocket messages for client to handle.
+ *
+ * TODO: Re-implement after frame loop behavior is fully validated.
+ */
 @Singleton
 class BackpressureManager @Inject constructor(
     private val hazelcastInstance: HazelcastInstance

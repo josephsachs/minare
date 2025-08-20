@@ -4,6 +4,9 @@ import com.google.inject.Inject
 import com.minare.utils.EventBusUtils
 import com.minare.utils.VerticleLogger
 
+/**
+ * WorkerHealthChangeEvent handles status messages from FrameWorkerHealthMonitorVerticle
+ */
 class WorkerHealthChangeEvent @Inject constructor(
     private val eventBusUtils: EventBusUtils,
     private val vlog: VerticleLogger
