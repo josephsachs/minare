@@ -34,14 +34,9 @@ class RedisPubSubWorkerVerticle @Inject constructor(
     private var redisAPI: RedisAPI? = null
 
     companion object {
-        // Same event bus addresses as ChangeStreamWorkerVerticle for compatibility
         const val ADDRESS_STREAM_STARTED = "minare.change.stream.started"
         const val ADDRESS_STREAM_STOPPED = "minare.change.stream.stopped"
         const val ADDRESS_ENTITY_UPDATED = "minare.entity.update"
-
-        // Batching constants for performance
-        const val CHANGE_BATCH_SIZE = 100
-        const val MAX_WAIT_MS = 200L
         const val DEFAULT_BATCH_INTERVAL_MS = 100L // 10 frames per second
     }
 
@@ -50,16 +45,10 @@ class RedisPubSubWorkerVerticle @Inject constructor(
             running = true
             vlog.setVerticle(this)
 
-            log.info("Starting RedisPubSubWorkerVerticle for database: {}", databaseName)
-
-            // Initialize Redis subscriber
             initializeRedisSubscriber()
 
-            // Start the update batch coordinator
             updateBatchCoordinator.start(DEFAULT_BATCH_INTERVAL_MS)
-            log.info("Started UpdateBatchCoordinator with interval: {}ms", DEFAULT_BATCH_INTERVAL_MS)
 
-            // Start the subscription process
             launch {
                 processRedisSubscriptions()
             }
@@ -114,16 +103,13 @@ class RedisPubSubWorkerVerticle @Inject constructor(
 
         try {
             withContext(subscriptionContext) {
-                // Connect and get the connection
                 val connection = redisSubscriber!!.connect().await()
 
-                // Set up message handler BEFORE subscribing
                 connection.handler { response: io.vertx.redis.client.Response ->
                     // Redis pub/sub responses come as Response objects
                     when (response.type()) {
                         io.vertx.redis.client.ResponseType.PUSH,
                         io.vertx.redis.client.ResponseType.MULTI -> {
-                            // Handle pub/sub messages
                             if (response.size() >= 3) {
                                 val messageType = response.get(0).toString()
                                 if (messageType == "message") {
@@ -158,7 +144,6 @@ class RedisPubSubWorkerVerticle @Inject constructor(
                     }
                 }
 
-                // Determine which Redis pub/sub channels to subscribe to
                 val channelsToSubscribe = determineSubscriptionChannels()
 
                 if (channelsToSubscribe.isEmpty()) {
@@ -168,7 +153,6 @@ class RedisPubSubWorkerVerticle @Inject constructor(
 
                 log.info("Subscribing to Redis pub/sub channels: {}", channelsToSubscribe)
 
-                // Subscribe to the channels using the connection
                 for (channel in channelsToSubscribe) {
                     // Use pattern subscribe for wildcard channels
                     if (channel.contains("*")) {
@@ -180,7 +164,6 @@ class RedisPubSubWorkerVerticle @Inject constructor(
                     }
                 }
 
-                // Publish stream started event
                 vertx.eventBus().publish(ADDRESS_STREAM_STARTED, true)
                 log.info("Redis pub/sub subscriptions active for {} channels", channelsToSubscribe.size)
 
@@ -193,10 +176,9 @@ class RedisPubSubWorkerVerticle @Inject constructor(
             if (e is CancellationException) throw e
             log.error("Error in Redis subscription processing", e)
 
-            // Try to restart after a delay if we're still running
             if (running) {
                 delay(5000)
-                processRedisSubscriptions() // Recursive restart
+                processRedisSubscriptions()
             }
         }
     }
@@ -209,8 +191,8 @@ class RedisPubSubWorkerVerticle @Inject constructor(
      */
     private fun determineSubscriptionChannels(): List<String> {
         return try {
-            // Use the strategy's own subscription logic instead of hardcoding
             pubSubChannelStrategy.getSubscriptions().map { it.channel }
+
         } catch (e: Exception) {
             log.error("Error getting subscriptions from strategy: {}", pubSubChannelStrategy::class.simpleName, e)
             // Fallback to global channel in case of error
@@ -224,19 +206,15 @@ class RedisPubSubWorkerVerticle @Inject constructor(
      * for batched distribution via the UpdateBatchCoordinator.
      */
     private suspend fun handleRedisMessage(message: String) {
-        try {
-            // Parse the Redis message
-            val messageJson = JsonObject(message)
+        log.info("RedisPubSubWorker received update: {}", message)
 
-            // Extract the change notification data
+        try {
+            val messageJson = JsonObject(message)
             val changeNotification = extractChangeNotification(messageJson)
 
             if (changeNotification != null) {
-                // Queue update for batched distribution instead of publishing directly
                 updateBatchCoordinator.queueUpdate(changeNotification)
 
-                // Note: We temporarily keep the original event bus publication during transition
-                // Once all DownSocketVerticles are updated to use batched updates, this can be removed
                 vertx.eventBus().publish(ADDRESS_ENTITY_UPDATED, changeNotification)
             }
         } catch (e: Exception) {
@@ -252,12 +230,7 @@ class RedisPubSubWorkerVerticle @Inject constructor(
         try {
             // Redis pub/sub messages come in the format:
             // ["message", "channel_name", "actual_message_payload"]
-            // We need to extract the actual payload
 
-            // For now, assume the message is the change notification itself
-            // In a real implementation, you might need to parse the Redis message format
-
-            // Validate that this looks like a change notification
             if (redisMessage.containsKey("_id") &&
                 redisMessage.containsKey("type") &&
                 redisMessage.containsKey("version")) {

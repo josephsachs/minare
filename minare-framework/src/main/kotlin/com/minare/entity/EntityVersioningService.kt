@@ -14,6 +14,8 @@ import com.minare.persistence.StateStore
 /**
  * Updated to work with JsonObject documents instead of Entity instances,
  * using direct ReflectionCache calls instead of Entity wrapper methods.
+ *
+ * TODO: For V3, more complex field-level rules for bubbling
  */
 @Singleton
 class EntityVersioningService @Inject constructor(
@@ -41,15 +43,10 @@ class EntityVersioningService @Inject constructor(
      */
     private fun findEntitiesForVersionUpdate(graph: Graph<JsonObject, DefaultEdge>, entityId: String): Set<String> {
         val idsToUpdate = mutableSetOf<String>()
-
-        // Find the document in the graph that matches our entityId
         val selfDocument = graph.vertexSet().find { it.getString("_id") == entityId }
             ?: return idsToUpdate
 
-        // Add the original entity's ID
         idsToUpdate.add(entityId)
-
-        // Get all parent documents from the graph using JsonObject-based traversal
         val allParentDocuments = entityQueryStore.traverseParents(graph, selfDocument)
 
         allParentDocuments.forEach { parentDocument ->
@@ -71,10 +68,7 @@ class EntityVersioningService @Inject constructor(
             val parentId = parentDocument.getString("_id") ?: return false
             val childState = childDocument.getJsonObject("state", JsonObject())
 
-            // Get the entity class for the child type using EntityFactory
             val childEntityClass = entityFactory.useClass(childType) ?: return false
-
-            // Use direct ReflectionCache call instead of Entity wrapper method
             val parentFields = reflectionCache.getFieldsWithAnnotation<Parent>(childEntityClass.kotlin)
 
             if (parentFields.isEmpty()) {
@@ -87,7 +81,6 @@ class EntityVersioningService @Inject constructor(
 
                 val fieldValue = childState.getValue(stateName)
 
-                // Check if this field references the parent we're checking
                 when (fieldValue) {
                     is String -> fieldValue == parentId
                     else -> false
@@ -118,7 +111,6 @@ class EntityVersioningService @Inject constructor(
             var updatedCount = 0
 
             for (entityId in idsToUpdate) {
-                // Increment version in Redis using atomic operation
                 val result = stateStore.mutateState(entityId, JsonObject().put("_versionIncrement", 1))
                 if (result != null && result.containsKey("version")) {
                     updatedCount++

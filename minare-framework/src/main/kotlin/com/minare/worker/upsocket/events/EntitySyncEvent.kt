@@ -10,6 +10,11 @@ import com.minare.utils.VerticleLogger
 import io.vertx.core.json.JsonObject
 import com.minare.worker.upsocket.UpSocketVerticle
 
+/**
+ * Handles Entity sync requests
+ *
+ * TODO: This should return results via downsocket to preserve unidirectional flow
+ */
 class EntitySyncEvent @Inject constructor(
     private val eventBusUtils: EventBusUtils,
     private val vlog: VerticleLogger,

@@ -1,4 +1,4 @@
-package com.minare.example.controller
+package com.minare.controller
 
 import com.minare.core.models.Entity
 import com.minare.persistence.ChannelStore

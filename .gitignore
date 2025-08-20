@@ -4,6 +4,7 @@ docker/config/mongodb.key
 docker/data
 docker/app.jar
 logs/
+logs2/
 target/
 performance-test/node_modules
 dbExec.sh

@@ -8,6 +8,10 @@ import io.vertx.core.json.JsonObject
 import com.minare.worker.upsocket.UpSocketVerticle
 import com.minare.worker.upsocket.ConnectionLifecycle
 
+/**
+ * Note that a defunct upsocket should not try to reconnect automatically, this should be
+ * kicked back to client reconnect handling
+ */
 @Singleton
 class UpSocketCleanupEvent @Inject constructor(
     private val eventBusUtils: EventBusUtils,

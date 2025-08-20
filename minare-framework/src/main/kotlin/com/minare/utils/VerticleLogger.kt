@@ -69,17 +69,10 @@ class VerticleLogger @Inject constructor() {
     }
 
     /**
-     * Log verticle undeployment
+     * Log informarive message
      */
     fun logInfo(message: String) {
         checkVerticleInitialized()
-        eventLog!!.logStateChange(
-            verticle!!.javaClass.simpleName,
-            currentState,
-            "UNDEPLOYED",
-            mapOf("deploymentId" to (deploymentId ?: "unknown"))
-        )
-
         log!!.info("{}: {}", verticle!!.javaClass.simpleName, message)
     }
 
@@ -186,6 +179,23 @@ class VerticleLogger @Inject constructor() {
 
         eventLog!!.trace("VERTICLE_CONFIG", configInfo)
         log!!.debug("{} configuration: keys=[{}]", verticle!!.javaClass.simpleName, configKeys)
+    }
+
+    /**
+     * Log debug message
+     */
+    fun logDebug(message: String) {
+        checkVerticleInitialized()
+        log!!.debug("{}: {}", verticle!!.javaClass.simpleName, message)
+    }
+
+    /**
+     * Log debug message with details
+     */
+    fun logDebug(message: String, details: Map<String, Any?>) {
+        checkVerticleInitialized()
+        val detailString = details.entries.joinToString(", ") { "${it.key}=${it.value}" }
+        log!!.debug("{}: {} [{}]", verticle!!.javaClass.simpleName, message, detailString)
     }
 
     /**

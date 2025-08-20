@@ -14,13 +14,11 @@ import javax.inject.Singleton
 /**
  * Handles command messages after they've been processed through Kafka.
  * This is now called by MessageQueueConsumerVerticle instead of directly
- * from the WebSocket handler.
- *
- * Sync handling has been moved to SyncCommandHandler.
+ * from the WebSocket handler, meaning we now expect JsonObject messages with the
+ * format of Operation.
  */
 @Singleton
 open class CommandMessageHandler @Inject constructor(
-    private val connectionController: ConnectionController,
     private val vertx: Vertx,
     private val connectionCache: ConnectionCache
 ) {

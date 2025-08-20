@@ -24,7 +24,7 @@ class KafkaMessageQueue @Inject constructor(
 
     private val log = LoggerFactory.getLogger(KafkaMessageQueue::class.java)
 
-    // Configuration
+    // TODO: Move all System.getenv() calls to MinareApplication
     private val bootstrapServers = System.getenv("KAFKA_BOOTSTRAP_SERVERS") ?: "localhost:9092"
     private val topicPartitions = System.getenv("KAFKA_TOPIC_PARTITIONS")?.toInt() ?: 3
     private val topicReplicationFactor = System.getenv("KAFKA_TOPIC_REPLICATION_FACTOR")?.toShort() ?: 1
@@ -38,7 +38,6 @@ class KafkaMessageQueue @Inject constructor(
     private val initializedTopics = mutableSetOf<String>()
     private val initMutex = Mutex()
 
-    // Lazy initialize producers and admin client
     private val producer: KafkaProducer<String, String> by lazy {
         createProducer()
     }
@@ -56,34 +55,25 @@ class KafkaMessageQueue @Inject constructor(
     private fun createProducer(): KafkaProducer<String, String> {
         val config = mutableMapOf<String, String>()
 
-        // Connection
         config["bootstrap.servers"] = bootstrapServers
-
-        // Serialization
         config["key.serializer"] = "org.apache.kafka.common.serialization.StringSerializer"
         config["value.serializer"] = "org.apache.kafka.common.serialization.StringSerializer"
-
-        // Reliability settings
         config["acks"] = producerAcks  // 0=none, 1=leader, all=all replicas
         config["retries"] = producerRetries.toString()
         config["max.in.flight.requests.per.connection"] = "5"
         // Only enable idempotence if acks=all
         config["enable.idempotence"] = (producerAcks == "all").toString()
-
-        // Performance settings
         config["compression.type"] = producerCompressionType
         config["linger.ms"] = producerLingerMs
         config["batch.size"] = producerBatchSize
         config["buffer.memory"] = "33554432"  // 32MB
-
-        // Timeout settings
         config["request.timeout.ms"] = "30000"
         config["delivery.timeout.ms"] = "120000"
 
-        // Client identification
+        // Move System.getenv() call to MinareApplication
         config["client.id"] = "minare-producer-${System.getenv("HOSTNAME") ?: "unknown"}"
 
-        log.debug("Creating Kafka producer with config: {}", config)
+        log.info("Creating Kafka producer with config: {}", config)
 
         return KafkaProducer.create(vertx, config)
     }
@@ -92,53 +82,35 @@ class KafkaMessageQueue @Inject constructor(
         val config = mutableMapOf<String, String>()
         config["bootstrap.servers"] = bootstrapServers
         config["client.id"] = "minare-admin-${System.getenv("HOSTNAME") ?: "unknown"}"
-        config["request.timeout.ms"] = "30000"
-
-        log.debug("Creating Kafka admin client")
 
         return KafkaAdminClient.create(vertx, config)
     }
 
     /**
-     * Ensure topic exists before sending messages
+     * Ensure a topic exists, creating it if necessary.
+     * Thread-safe with mutex protection.
      */
     private suspend fun ensureTopicExists(topic: String) {
-        // Quick check without lock
         if (initializedTopics.contains(topic)) {
             return
         }
 
-        // Acquire lock for initialization
         initMutex.withLock {
-            // Double-check inside lock
+            // Double-check inside mutex
             if (initializedTopics.contains(topic)) {
                 return
             }
 
             try {
-                log.info("Checking if topic {} exists", topic)
-
-                // List existing topics
-                val topics = adminClient.listTopics().await()
-
-                if (topics.contains(topic)) {
-                    log.debug("Topic {} already exists", topic)
-                    initializedTopics.add(topic)
-                    return
-                }
-
-                // Create topic
-                log.info("Creating topic {} with {} partitions and replication factor {}",
-                    topic, topicPartitions, topicReplicationFactor)
+                log.debug("Ensuring topic {} exists", topic)
 
                 val newTopic = NewTopic(topic, topicPartitions, topicReplicationFactor).apply {
-                    // Topic configuration
-                    config = mapOf(
-                        "retention.ms" to (7 * 24 * 60 * 60 * 1000).toString(), // 7 days
-                        "segment.ms" to (60 * 60 * 1000).toString(), // 1 hour
+                    setConfig(mapOf(
+                        // TODO: Make retention window configurable by developer, including DB snapshot and save-to-disk strategies
+                        "retention.ms" to "86400000", // 24 hours
                         "compression.type" to "producer", // Use producer's compression
                         "min.insync.replicas" to "1"
-                    )
+                    ))
                 }
 
                 adminClient.createTopics(listOf(newTopic)).await()
@@ -147,7 +119,6 @@ class KafkaMessageQueue @Inject constructor(
                 initializedTopics.add(topic)
 
             } catch (e: Exception) {
-                // Topic might have been created by another instance
                 if (e.message?.contains("already exists") == true) {
                     log.debug("Topic {} was created by another instance", topic)
                     initializedTopics.add(topic)
@@ -161,7 +132,6 @@ class KafkaMessageQueue @Inject constructor(
 
     override suspend fun send(topic: String, message: JsonArray) {
         try {
-            // Ensure topic exists
             ensureTopicExists(topic)
 
             val record = KafkaProducerRecord.create<String, String>(
@@ -177,30 +147,23 @@ class KafkaMessageQueue @Inject constructor(
                 log.debug("Sending message to topic {}: {}", topic, message.encodePrettily())
             }
 
-            // Send with callback for production monitoring
-            producer.send(record) { asyncResult ->
-                if (asyncResult.failed()) {
-                    log.error("Failed to send message to topic {} - {}", topic, asyncResult.cause().message, asyncResult.cause())
-                    // In production, you might want to send this to a metrics system
-                } else {
-                    val metadata = asyncResult.result()
-                    if (log.isTraceEnabled) {
-                        log.trace("Message sent to topic {} partition {} offset {}",
-                            metadata.topic, metadata.partition, metadata.offset)
-                    }
-                }
+            // Send and await result
+            val metadata = producer.send(record).await()
+
+            if (log.isTraceEnabled) {
+                log.trace("Message sent to topic {} partition {} offset {}",
+                    metadata.topic, metadata.partition, metadata.offset)
             }
 
         } catch (e: Exception) {
             log.error("Error sending message to topic {}", topic, e)
-            // In production, you might want to send to a DLQ or metrics system
+
             throw e
         }
     }
 
     override suspend fun send(topic: String, key: String, message: JsonArray) {
         try {
-            // Ensure topic exists
             ensureTopicExists(topic)
 
             val record = KafkaProducerRecord.create<String, String>(
@@ -209,7 +172,6 @@ class KafkaMessageQueue @Inject constructor(
                 message.toString()
             )
 
-            // Add headers
             record.addHeader("produced-by", "minare")
             record.addHeader("produced-at", System.currentTimeMillis().toString())
             record.addHeader("message-key", key)
@@ -219,18 +181,11 @@ class KafkaMessageQueue @Inject constructor(
                     topic, key, message.encodePrettily())
             }
 
-            // Send with callback
-            producer.send(record) { asyncResult ->
-                if (asyncResult.failed()) {
-                    log.error("Failed to send keyed message to topic {} with key {} - {}",
-                        topic, key, asyncResult.cause().message, asyncResult.cause())
-                } else {
-                    val metadata = asyncResult.result()
-                    if (log.isTraceEnabled) {
-                        log.trace("Keyed message sent to topic {} partition {} offset {} with key {}",
-                            metadata.topic, metadata.partition, metadata.offset, key)
-                    }
-                }
+            val metadata = producer.send(record).await()
+
+            if (log.isTraceEnabled) {
+                log.trace("Keyed message sent to topic {} partition {} offset {} with key {}",
+                    metadata.topic, metadata.partition, metadata.offset, key)
             }
 
         } catch (e: Exception) {
@@ -250,6 +205,30 @@ class KafkaMessageQueue @Inject constructor(
             adminClient.close().await()
         } catch (e: Exception) {
             log.error("Error during Kafka client shutdown", e)
+        }
+    }
+
+
+    /**
+     * Delete all Minare-related Kafka topics
+     * Called by StateInitializer when RESET_STATE=true
+     */
+    suspend fun resetAllTopics() {
+        try {
+            val topics = adminClient.listTopics().await()
+            val minareTopics = topics.filter { it.startsWith("minare.") }
+
+            if (minareTopics.isNotEmpty()) {
+                log.warn("Deleting Kafka topics: {}", minareTopics)
+                adminClient.deleteTopics(minareTopics).await()
+                initializedTopics.clear()
+                log.info("Deleted {} Kafka topics", minareTopics.size)
+            } else {
+                log.debug("No Minare topics found to delete")
+            }
+        } catch (e: Exception) {
+            log.error("Failed to delete Kafka topics", e)
+            throw e
         }
     }
 }

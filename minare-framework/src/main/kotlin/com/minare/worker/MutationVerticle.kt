@@ -18,9 +18,7 @@ import com.minare.persistence.StateStore
  * Updated to work directly with JsonObjects instead of Entity objects.
  */
 class MutationVerticle @Inject constructor(
-    private val entityController: EntityController,
     private val stateStore: StateStore,
-    private val reflectionCache: ReflectionCache,
     private val mutationService: MutationService
 ) : CoroutineVerticle() {
 
@@ -34,7 +32,6 @@ class MutationVerticle @Inject constructor(
         vertx.eventBus().consumer<JsonObject>(ADDRESS_MUTATION).handler { message ->
             launch(vertx.dispatcher()) {
                 try {
-                    // Extract command data
                     val command = message.body()
                     val connectionId = command.getString("connectionId")
                     val entityObject = command.getJsonObject("entity")
@@ -54,7 +51,6 @@ class MutationVerticle @Inject constructor(
                     log.debug("Processing mutation for entity '$entityId' from connection '$connectionId'")
 
                     try {
-                        // Check if entity exists
                         val entityJson = stateStore.findEntityJson(entityId)
 
                         if (entityJson == null) {
@@ -62,14 +58,11 @@ class MutationVerticle @Inject constructor(
                             return@launch
                         }
 
-                        // Perform the mutation using the service
                         val result = mutationService.mutate(entityId, entityType, entityObject)
 
-                        // If mutation was successful, fetch the updated entity
                         if (result.getBoolean("success", false)) {
                             val updatedEntityJson = stateStore.findEntityJson(entityId)
 
-                            // Build response with the updated entity
                             val response = JsonObject()
                                 .put("success", true)
                                 .put("entity", JsonObject()
@@ -78,10 +71,8 @@ class MutationVerticle @Inject constructor(
                                     .put("type", updatedEntityJson?.getString("type"))
                                 )
 
-                            // Send successful response
                             message.reply(response)
                         } else {
-                            // Return the error from the mutation
                             message.fail(400, result.getString("message", "Unknown error"))
                         }
                     } catch (e: Exception) {

@@ -43,11 +43,11 @@ open class EntityController @Inject constructor(
 
         log.debug("Creating new entity of type {}", entity.type)
 
-        // Phase 1: Save to MongoDB to get ID assigned
+        //  Save to MongoDB to get ID assigned
         val entityWithId = entityStore.save(entity)
         log.debug("Entity created in MongoDB with ID: {}", entityWithId._id)
 
-        // Phase 2: Save to Redis for fast state access
+        // Redis is source of truth for Entity state
         val finalEntity = stateStore.save(entityWithId)
         log.debug("Entity {} synced to Redis", finalEntity._id)
 
@@ -62,13 +62,14 @@ open class EntityController @Inject constructor(
      * @return The saved entity with any updates
      */
     open suspend fun save(entity: Entity): Entity {
+        // TODO: Only save Entity relationships to MongoDB, ignore other state, but ensure tandem write
+
         if (entity._id.isNullOrEmpty()) {
             throw IllegalArgumentException("Entity must have an ID - use create() for new entities")
         }
 
         log.debug("Saving existing entity {} to Redis", entity._id)
 
-        // Save to Redis first (source of truth for existing entities)
         val savedEntity = stateStore.save(entity)
 
         // Schedule write-behind to MongoDB using JsonObject approach

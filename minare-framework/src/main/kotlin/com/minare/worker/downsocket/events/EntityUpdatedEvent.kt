@@ -10,7 +10,7 @@ import io.vertx.core.json.JsonObject
 /**
  * Event handler for entity update events.
  *
- * Modified to handle both legacy individual updates and batched updates during transition.
+ * Handles both legacy individual updates and batched updates during transition.
  */
 class EntityUpdatedEvent @Inject constructor(
     private val eventBusUtils: EventBusUtils,
@@ -21,7 +21,7 @@ class EntityUpdatedEvent @Inject constructor(
         // Register handler for legacy individual entity update events
         eventBusUtils.registerTracedConsumer<JsonObject>(ADDRESS_ENTITY_UPDATED) { message, traceId ->
             // Only process individual updates if we're in transition period
-            // This will be removed once all components use batched updates
+            // TODO: Remove once all components use batched updates
             entityUpdateHandler.handle(message.body(), traceId)
         }
         vlog.logHandlerRegistration(ADDRESS_ENTITY_UPDATED)

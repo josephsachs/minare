@@ -48,9 +48,8 @@ class UpSocketVerticle @Inject constructor(
 
     companion object {
         const val ADDRESS_UP_SOCKET_INITIALIZE = "minare.up.socket.initialize"
-        const val ADDRESS_CONNECTION_CLEANUP = "minare.connection.cleanup"
-
         const val ADDRESS_SOCKET_CLEANUP = "minare.socket.cleanup"
+        const val ADDRESS_CONNECTION_CLEANUP = "minare.connection.cleanup"
         const val ADDRESS_ENTITY_SYNC = "minare.entity.sync"
         const val ADDRESS_GET_ROUTER = "minare.up.socket.get.router"
 
@@ -81,6 +80,7 @@ class UpSocketVerticle @Inject constructor(
         deployHttpServer()
 
         // Save deployment ID
+        // TODO: If this is the deployment ID for the worker, it should be set in MinareApplication instead
         deploymentID?.let {
             vlog.logDeployment(it)
         }

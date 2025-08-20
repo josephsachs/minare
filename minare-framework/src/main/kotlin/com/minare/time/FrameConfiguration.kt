@@ -1,67 +1,55 @@
 package com.minare.time
 
-import javax.inject.Inject
-import javax.inject.Singleton
-
 /**
- * Configuration for the distributed frame controller system.
+ * Configuration for frame-based processing in Minare.
  *
- * Provides user-configurable settings with sensible defaults following
- * convention-over-configuration principles. Framework derives timing
- * settings based on user preferences.
+ * This configuration defines the temporal structure of the system,
+ * including frame duration, checkpointing intervals, and synchronization
+ * parameters.
  *
- * Immutable once set - changes require application restart.
+ * TODO: Finetune, remove or simplify defaults
  */
-data class FrameConfiguration constructor(
+data class FrameConfiguration(
     /**
      * Duration of each frame in milliseconds.
-     * All commands within this time window are processed together.
+     * This is the fundamental time unit for the system.
      *
-     * Default: 1000ms (1 second frames)
-     * Suitable for: Turn-based games, slow real-time games
-     *
-     * Consider shorter durations for:
-     * - Fast-paced action games (100-500ms)
-     * - High-frequency trading systems (10-100ms)
+     * Default: 100ms (10 frames per second)
+     * Production typical: 100-1000ms
+     * High-frequency games: 16-33ms (30-60 FPS)
      */
-    val frameDurationMs: Long = 1000,
+    val frameDurationMs: Long = 100,
 
     /**
-     * Gap between frames for coordination and pause/resume operations.
-     * Occurs after postFrame() hook, before preFrame() hook
+     * Number of frames between state checkpoints.
+     * Checkpoints allow recovery without replaying entire history.
      *
-     * Default: 100ms
-     * Should allow for:
-     * - Inter-frame coordination messages
-     * - Instance status reporting
-     * - Brief pause/resume cycles
-     * - Network latency buffer
+     * Default: 600 frames (60 seconds at 100ms frames)
+     * Trade-off: More frequent = faster recovery but more storage
      */
-    val frameOffsetMs: Long = 100,
+    val saveIntervalFrames: Int = 600,
 
     /**
-     * Coordination timeout for failure detection.
-     * Expressed as a percentage of the offset time.
+     * Offset from announcement to actual frame start.
+     * Gives workers time to prepare after frame announcement.
      *
-     * Default: 0.8 (80% interframe time used)
+     * Default: 2000ms
+     * Should be > network latency + worker prep time
+     */
+    val frameOffsetMs: Long = 2000,
+
+    /**
+     * How long to wait for workers to complete a frame.
+     * Expressed as a multiple of frame duration.
+     *
+     * Default: 0.8 (80% of frame duration)
+     * Example: 80ms wait for 100ms frames
      */
     val coordinationWaitPeriod: Double = 0.8,
 
     /**
-     * Number of frames between database checkpoint saves.
-     * Used for disaster recovery via write-behind persistence.
-     * Occurs after postFrame() and before offset.
-     *
-     * Default: 10 frames
-     * At 1000ms frames: checkpoint every 10 seconds
-     * At 100ms frames: checkpoint every 1 second
-     */
-    val saveIntervalFrames: Int = 100,
-
-    /**
-     * Framework-derived: time synchronization frequency.
-     * Based on checkpoint frequency to maintain time precision
-     * relative to user's consistency/performance preferences.
+     * Interval between time synchronization checks.
+     * NTP sync helps maintain temporal alignment across cluster.
      *
      * Formula: max(1, saveIntervalFrames / 4)
      * Ensures at least 4 NTP syncs between checkpoints
@@ -84,7 +72,33 @@ data class FrameConfiguration constructor(
      * Default: 100ms
      * Balances temporal precision vs operational stability
      */
-    val maxClockDriftMs: Long = 100
+    val maxClockDriftMs: Long = 100,
+
+    /**
+     * Maximum frames to buffer during pause conditions.
+     * When paused, operations continue arriving and are buffered
+     * up to this many frames ahead.
+     *
+     * Default: 1000 frames (1 second at 100ms frames)
+     * After this, backpressure (503) should be applied
+     */
+    val maxBufferFrames: Int = 1000,
+
+    /**
+     * How many frames ahead to prepare during normal operation.
+     * Provides smooth operation without excessive pre-computation.
+     *
+     * Default: 2 frames
+     * Balances low latency with operational buffer
+     */
+    val normalOperationLookahead: Int = 2,
+
+    /**
+     * Number of frames to complete after backpressure activation
+     * before resuming normal operation.
+     * Default: 3 (30% of maxBufferFrames)
+     */
+    val catchupFramesBeforeResume: Int = 3
 ) {
     init {
         require(frameDurationMs > 0) { "Frame duration must be positive" }
@@ -93,6 +107,8 @@ data class FrameConfiguration constructor(
         require(frameOffsetMs > 0) { "Frame offset must be positive" }
         require(coordinationWaitPeriod > 0) { "Coordination wait period must be positive" }
         require(maxClockDriftMs > 0) { "Clock drift tolerance must be positive" }
+        require(maxBufferFrames > 0) { "Max buffer frames must be positive" }
+        require(normalOperationLookahead > 0) { "Normal operation lookahead must be positive" }
 
         // Warn about potentially problematic configurations
         if (frameDurationMs < 5) {
@@ -110,6 +126,14 @@ data class FrameConfiguration constructor(
         if (maxClockDriftMs > frameDurationMs) {
             println("WARNING: Max clock drift exceeds frame length. This may result in incorrect processing order.")
         }
+
+        if (maxBufferFrames > 50) {
+            println("WARNING: Very large buffer (${maxBufferFrames} frames) may cause memory issues")
+        }
+
+        if (normalOperationLookahead > 5) {
+            println("WARNING: Large lookahead (${normalOperationLookahead} frames) reduces operation processing responsiveness")
+        }
     }
 
     /**
@@ -117,34 +141,39 @@ data class FrameConfiguration constructor(
      * Short frames with frequent checkpoints.
      */
     companion object {
-        fun forHighFrequencyGame() = FrameConfiguration(
-            frameDurationMs = 16,              // ~60 FPS gaming standard
-            frameOffsetMs = 4,                 // 25% of frame for coordination
-            coordinationWaitPeriod = 0.75,     // Tight failure detection
-            saveIntervalFrames = 200,          // Save every ~3.2 seconds
-            timeSyncIntervalFrames = 50,       // Sync every ~800ms
-            frameStartupOffsetMs = 2000,       // Quick startup
-            maxClockDriftMs = 8                // Half frame tolerance
+        fun highFrequencyGame() = FrameConfiguration(
+            frameDurationMs = 16,          // 60 FPS
+            saveIntervalFrames = 1800,     // Every 30 seconds
+            frameOffsetMs = 500,           // Quick start
+            coordinationWaitPeriod = 0.5,  // Tight timing
+            maxBufferFrames = 60,          // 1 second buffer
+            normalOperationLookahead = 3   // Slightly more buffer for smooth gameplay
         )
 
-        fun forTurnBasedGame() = FrameConfiguration(
-            frameDurationMs = 2000,            // 2 second turns
-            frameOffsetMs = 200,               // 10% for coordination
-            coordinationWaitPeriod = 0.9,      // Generous failure detection
-            saveIntervalFrames = 30,           // Save every minute
-            timeSyncIntervalFrames = 10,       // Sync every 20 seconds
-            frameStartupOffsetMs = 10000,      // Allow slow startup
-            maxClockDriftMs = 500              // Relaxed drift tolerance
+        /**
+         * Create a configuration for batch processing systems.
+         * Longer frames with relaxed timing.
+         */
+        fun batchProcessing() = FrameConfiguration(
+            frameDurationMs = 1000,        // 1 second frames
+            saveIntervalFrames = 60,       // Every minute
+            frameOffsetMs = 5000,          // Plenty of prep time
+            coordinationWaitPeriod = 0.9,  // Relaxed timing
+            maxBufferFrames = 30,          // 30 second buffer
+            normalOperationLookahead = 1   // Minimal lookahead
         )
 
-        fun forRealTimeStrategy() = FrameConfiguration(
-            frameDurationMs = 200,             // 5 FPS simulation tick
-            frameOffsetMs = 20,                // 10% for coordination
-            coordinationWaitPeriod = 0.8,      // Balanced failure detection
-            saveIntervalFrames = 150,          // Save every 30 seconds
-            timeSyncIntervalFrames = 75,       // Sync every 15 seconds
-            frameStartupOffsetMs = 5000,       // Standard startup
-            maxClockDriftMs = 50               // Moderate drift tolerance
+        /**
+         * Create a configuration for real-time analytics.
+         * Balanced for low latency with reliability.
+         */
+        fun realtimeAnalytics() = FrameConfiguration(
+            frameDurationMs = 100,         // 10 FPS
+            saveIntervalFrames = 600,      // Every minute
+            frameOffsetMs = 2000,          // Standard prep
+            coordinationWaitPeriod = 0.8,  // Standard timing
+            maxBufferFrames = 20,          // 2 second buffer
+            normalOperationLookahead = 2   // Standard lookahead
         )
     }
 }

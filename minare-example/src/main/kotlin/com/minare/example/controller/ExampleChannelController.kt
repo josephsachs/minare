@@ -1,5 +1,8 @@
 package com.minare.example.controller
 
+import com.google.inject.Provider
+import com.minare.application.AppState
+import com.minare.controller.ChannelController
 import com.minare.persistence.ChannelStore
 import com.minare.persistence.ContextStore
 import org.slf4j.LoggerFactory
@@ -13,25 +16,27 @@ import javax.inject.Singleton
 @Singleton
 class ExampleChannelController @Inject constructor(
     channelStore: ChannelStore,
-    contextStore: ContextStore
+    contextStore: ContextStore,
+    private val appStateProvider: Provider<AppState>
 ) : ChannelController(channelStore, contextStore) {
     private val log = LoggerFactory.getLogger(ExampleChannelController::class.java)
 
-
-    private var defaultChannelId: String? = null
+    companion object {
+        private const val DEFAULT_CHANNEL_KEY = "example.defaultChannel"
+    }
 
     /**
      * Set the default channel ID for this application
      */
-    fun setDefaultChannel(channelId: String) {
+    suspend fun setDefaultChannel(channelId: String) {
         log.info("Setting default channel to: {}", channelId)
-        defaultChannelId = channelId
+        appStateProvider.get().set(DEFAULT_CHANNEL_KEY, channelId)
     }
 
     /**
      * Get the default channel ID for this application
      */
-    fun getDefaultChannel(): String? {
-        return defaultChannelId
+    suspend fun getDefaultChannel(): String? {
+        return appStateProvider.get().get(DEFAULT_CHANNEL_KEY)
     }
 }

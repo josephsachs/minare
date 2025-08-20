@@ -23,8 +23,7 @@ open class ConnectionController @Inject constructor(
     val connectionCache: ConnectionCache,
     val channelStore: ChannelStore,
     val contextStore: ContextStore,
-    val entityStore: EntityStore,
-    val reflectionCache: ReflectionCache
+    val entityStore: EntityStore
 ) {
     private val log = LoggerFactory.getLogger(ConnectionController::class.java)
 
@@ -399,6 +398,7 @@ open class ConnectionController @Inject constructor(
                 .put("type", "sync")
                 .put("data", syncData)
 
+            // TODO: Return sync results via downsocket instead
             val upSocket = getUpSocket(connectionId)
             if (upSocket != null && !upSocket.isClosed()) {
                 upSocket.writeTextMessage(syncMessage.encode())

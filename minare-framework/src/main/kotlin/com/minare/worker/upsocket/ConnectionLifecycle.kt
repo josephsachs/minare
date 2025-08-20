@@ -14,6 +14,9 @@ import io.vertx.core.Vertx
 import io.vertx.core.http.ServerWebSocket
 import io.vertx.core.json.JsonObject
 
+/**
+ * Handles socket lifecycle events including connection tracking and verticle caches
+ */
 @Singleton
 class ConnectionLifecycle @Inject constructor(
     private val vertx: Vertx,
@@ -27,14 +30,13 @@ class ConnectionLifecycle @Inject constructor(
     /**
      * Connect to the up socket
      */
-    public suspend fun initiateConnection(websocket: ServerWebSocket, deploymentId: String, traceId: String) {
+    suspend fun initiateConnection(websocket: ServerWebSocket, deploymentId: String, traceId: String) {
         try {
             vlog.getEventLogger().logDbOperation("CREATE", "connections", emptyMap(), traceId)
 
             val startTime = System.currentTimeMillis()
             val connection = connectionStore.create()
 
-            // Log performance metrics
             val createTime = System.currentTimeMillis() - startTime
             vlog.getEventLogger().logPerformance(
                 "CREATE_CONNECTION", createTime,
@@ -62,7 +64,7 @@ class ConnectionLifecycle @Inject constructor(
                 deploymentId
             )
 
-            // IMPORTANT: Update the cache with the updated connection
+            // Save cache entry with the updated connection
             connectionCache.storeConnection(updatedConnection)
             connectionCache.storeUpSocket(connection._id, websocket, updatedConnection)
 
@@ -94,7 +96,7 @@ class ConnectionLifecycle @Inject constructor(
     /**
      * Coordinated connection cleanup process
      */
-    public suspend fun cleanupConnection(connectionId: String): Boolean {
+    suspend fun cleanupConnection(connectionId: String): Boolean {
         val traceId = connectionTracker.getTraceId(connectionId)
 
         try {
@@ -104,7 +106,7 @@ class ConnectionLifecycle @Inject constructor(
                 ), traceId
             )
 
-            // Step 1: Clean up channels
+            // Clean up channels
             val channelCleanupResult = cleanupConnectionChannels(connectionId)
             if (!channelCleanupResult) {
                 vlog.getEventLogger().trace(
@@ -114,7 +116,7 @@ class ConnectionLifecycle @Inject constructor(
                 )
             }
 
-            // Step 2: Clean up sockets and stop heartbeat
+            // Clean up sockets and stop heartbeat
             heartbeatManager.stopHeartbeat(connectionId)
             val updateSocket = connectionCache.getDownSocket(connectionId)
             val socketCleanupResult = cleanupConnectionSockets(connectionId, updateSocket != null)
@@ -126,7 +128,7 @@ class ConnectionLifecycle @Inject constructor(
                 )
             }
 
-            // Step 3: Mark connection as not reconnectable
+            // Mark connection as not reconnectable
             try {
                 connectionStore.updateReconnectable(connectionId, false)
                 vlog.getEventLogger().logStateChange(
@@ -141,7 +143,7 @@ class ConnectionLifecycle @Inject constructor(
                 )
             }
 
-            // Step 4: Remove the connection from DB and cache
+            // Remove the connection from DB and cache
             try {
                 // Try to delete from the database first
                 connectionStore.delete(connectionId)
@@ -215,7 +217,7 @@ class ConnectionLifecycle @Inject constructor(
     /**
      * Cleans up channel memberships for a connection
      */
-    public suspend fun cleanupConnectionChannels(connectionId: String): Boolean {
+    suspend fun cleanupConnectionChannels(connectionId: String): Boolean {
         val traceId = connectionTracker.getTraceId(connectionId)
 
         try {

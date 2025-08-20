@@ -16,29 +16,41 @@ services:
     networks:
       - minare_net
     depends_on:
-      - app
+      - app-coordinator
+      - app-worker
     healthcheck:
       test: ["CMD", "haproxy", "-c", "-f", "/usr/local/etc/haproxy/haproxy.cfg"]
       interval: 10s
       timeout: 5s
       retries: 3
 
-  # Minare Application
-  app:
+  # Minare Application - Coordinator Instance
+  app-coordinator:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: minare-app
-    hostname: app
+    container_name: minare-app-coordinator
+    hostname: app-coordinator
     volumes:
       - ./app.jar:/app/app.jar:ro
       - ./logs:/app/logs
     environment:
-      - RESET_DB=true # Development only
+      # Role configuration
+      - INSTANCE_ROLE=COORDINATOR
+
+      # Cluster configuration
+      - VERTX_CLUSTER_HOST=app-coordinator
+      - HAZELCAST_CLUSTER_NAME=minare-cluster
+
+      # Database configuration
+      - RESET_STATE=true # Development only
       - MONGO_URI=mongodb://mongodb-rs:27017/minare?replicaSet=rs0
       - REDIS_URI=redis://redis:6379
+
+      # JVM configuration
       - JAVA_OPTS=-Xmx512m -XX:+UseContainerSupport
       - NTP_URL=ntp.local
+
       # Kafka configuration
       - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
       - KAFKA_TOPIC_PARTITIONS=3
@@ -46,18 +58,22 @@ services:
       - KAFKA_PRODUCER_ACKS=all
       - KAFKA_PRODUCER_COMPRESSION=gzip
       - KAFKA_PRODUCER_RETRIES=3
+
       # Kafka consumer configuration
-      - KAFKA_CONSUMER_GROUP=minare-mutation-processor
+      - KAFKA_CONSUMER_GROUP=minare-coordinator
       - KAFKA_SESSION_TIMEOUT_MS=30000
       - KAFKA_MAX_POLL_RECORDS=100
       - KAFKA_AUTO_OFFSET_RESET=earliest
+
       # Debug configuration (conditional)
       - JAVA_DEBUG=${JAVA_DEBUG:-false}
       - JAVA_DEBUG_PORT=${JAVA_DEBUG_PORT:-5005}
-      - JAVA_DEBUG_SUSPEND=${JAVA_DEBUG_SUSPEND:-y}
+      - JAVA_DEBUG_SUSPEND=${JAVA_DEBUG_SUSPEND:-n}
     ports:
       # Debug port (only active when JAVA_DEBUG=true)
       - "${JAVA_DEBUG_PORT:-5005}:${JAVA_DEBUG_PORT:-5005}"
+      # Monitoring port for frame coordination status
+      - "9090:9090"
     networks:
       - minare_net
     depends_on:
@@ -74,6 +90,100 @@ services:
       - "8080"
       - "4225"
       - "4226"
+      - "9090"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9090/workers"]  # Changed to admin port
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # Infrastructure container
+  infra:
+    image: alpine:latest
+    container_name: minare-infra
+    hostname: infra
+    networks:
+      - minare_net
+    depends_on:
+      app-coordinator:
+        condition: service_healthy
+    volumes:
+      - ./scripts/infra:/scripts:ro
+    environment:
+      # Coordinator connection
+      - COORDINATOR_HOST=app-coordinator
+      - COORDINATOR_PORT=9090
+
+      # Worker configuration
+      - WORKER_IDS=app-worker
+
+      # Timing configuration
+      - STARTUP_DELAY=5
+      - RETRY_INTERVAL=2
+      - MAX_RETRIES=10
+    entrypoint: ["/scripts/infra-entrypoint.sh"]
+
+  # Minare Application - Worker Instance
+  app-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: minare-app-worker
+    hostname: app-worker
+    volumes:
+      - ./app.jar:/app/app.jar:ro
+      - ./logs2:/app/logs
+    environment:
+      # Role configuration
+      - INSTANCE_ROLE=WORKER
+
+      # Cluster configuration
+      - VERTX_CLUSTER_HOST=app-worker
+      - HAZELCAST_CLUSTER_NAME=minare-cluster
+
+      # Database configuration
+      - MONGO_URI=mongodb://mongodb-rs:27017/minare?replicaSet=rs0
+      - REDIS_URI=redis://redis:6379
+
+      # JVM configuration
+      - JAVA_OPTS=-Xmx512m -XX:+UseContainerSupport
+      - NTP_URL=ntp.local
+
+      # Kafka configuration
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - KAFKA_TOPIC_PARTITIONS=3
+      - KAFKA_TOPIC_REPLICATION_FACTOR=1
+      - KAFKA_PRODUCER_ACKS=all
+      - KAFKA_PRODUCER_COMPRESSION=gzip
+      - KAFKA_PRODUCER_RETRIES=3
+
+      # Debug configuration (conditional)
+      - JAVA_DEBUG=${JAVA_DEBUG:-false}
+      - JAVA_DEBUG_PORT=${JAVA_DEBUG_PORT2:-5006}
+      - JAVA_DEBUG_SUSPEND=${JAVA_DEBUG_SUSPEND:-n}
+    ports:
+      # Debug port (only active when JAVA_DEBUG=true)
+      - "${JAVA_DEBUG_PORT2:-5006}:${JAVA_DEBUG_PORT2:-5006}"
+      # Monitoring port for frame coordination status
+      - "9091:9090"
+    networks:
+      - minare_net
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+    cap_add:
+      - SYS_TIME
+    # Expose ports for HAProxy to reach (not to host)
+    expose:
+      - "8080"
+      - "4225"
+      - "4226"
+      - "9090"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 30s
@@ -144,31 +254,72 @@ services:
       - minare_net
     volumes:
       - ./data/kafka:/tmp/kraft-combined-logs
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-topics --bootstrap-server localhost:9092 --list"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
 
-  # Development scaling - uncomment to test clustering
-  # app2:
+  # Kafka UI for development and debugging
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: kafka-ui
+    hostname: kafka-ui
+    ports:
+      - "8090:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: minare-kafka
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+    depends_on:
+      - kafka
+    networks:
+      - minare_net
+
+  # Optional third instance for testing larger clusters
+  # app-worker2:
   #   build:
   #     context: .
   #     dockerfile: Dockerfile
-  #   container_name: minare-app2
-  #   hostname: app2
+  #   container_name: minare-app-worker2
+  #   hostname: app-worker2
   #   volumes:
   #     - ./app.jar:/app/app.jar:ro
-  #     - ./logs2:/app/logs
+  #     - ./logs3:/app/logs
   #   environment:
+  #     # Role configuration
+  #     - INSTANCE_ROLE=WORKER
+  #     # Cluster configuration
+  #     - VERTX_CLUSTERED=true
+  #     - VERTX_CLUSTER_HOST=app-worker2
+  #     - HAZELCAST_CLUSTER_NAME=minare-cluster
+  #     # Database configuration
   #     - MONGO_URI=mongodb://mongodb-rs:27017/minare?replicaSet=rs0
   #     - REDIS_URI=redis://redis:6379
+  #     # JVM configuration
+  #     - JAVA_OPTS=-Xmx512m -XX:+UseContainerSupport
+  #     - NTP_URL=ntp.local
+  #     # Kafka configuration
   #     - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
   #     - KAFKA_TOPIC_PARTITIONS=3
   #     - KAFKA_TOPIC_REPLICATION_FACTOR=1
-  #     - KAFKA_PRODUCER_ACKS=1
-  #     - JAVA_OPTS=-Xmx512m -XX:+UseContainerSupport
-  #     # Debug on different port for second instance
+  #     - KAFKA_PRODUCER_ACKS=all
+  #     - KAFKA_PRODUCER_COMPRESSION=gzip
+  #     - KAFKA_PRODUCER_RETRIES=3
+  #     # Kafka consumer configuration
+  #     - KAFKA_CONSUMER_GROUP=minare-mutation-processor
+  #     - KAFKA_SESSION_TIMEOUT_MS=30000
+  #     - KAFKA_MAX_POLL_RECORDS=100
+  #     - KAFKA_AUTO_OFFSET_RESET=earliest
+  #     # Debug configuration (conditional)
   #     - JAVA_DEBUG=${JAVA_DEBUG:-false}
-  #     - JAVA_DEBUG_PORT=${JAVA_DEBUG_PORT2:-5006}
-  #     - JAVA_DEBUG_SUSPEND=${JAVA_DEBUG_SUSPEND:-y}
+  #     - JAVA_DEBUG_PORT=${JAVA_DEBUG_PORT3:-5007}
+  #     - JAVA_DEBUG_SUSPEND=${JAVA_DEBUG_SUSPEND:-n}
   #   ports:
-  #     - "${JAVA_DEBUG_PORT2:-5006}:${JAVA_DEBUG_PORT2:-5006}"
+  #     # Debug port (only active when JAVA_DEBUG=true)
+  #     - "${JAVA_DEBUG_PORT3:-5007}:${JAVA_DEBUG_PORT3:-5007}"
+  #     # Monitoring port for frame coordination status
+  #     - "9092:9090"
   #   networks:
   #     - minare_net
   #   depends_on:
@@ -177,15 +328,21 @@ services:
   #     redis:
   #       condition: service_healthy
   #     kafka:
-  #       condition: service_healthy
+  #       condition: service_started
   #   cap_add:
   #     - SYS_TIME
   #   expose:
   #     - "8080"
   #     - "4225"
   #     - "4226"
+  #     - "9090"
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 3
+  #     start_period: 60s
 
 networks:
   minare_net:
-    name: minare_net
     driver: bridge

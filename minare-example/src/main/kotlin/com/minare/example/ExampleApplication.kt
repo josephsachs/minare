@@ -31,13 +31,10 @@ class ExampleApplication : MinareApplication() {
      */
     override suspend fun onApplicationStart() {
         try {
-
             val defaultChannelId = channelController.createChannel()
             log.info("Created default channel: $defaultChannelId")
 
-
             channelController.setDefaultChannel(defaultChannelId)
-
 
             initializeNodeGraph(defaultChannelId)
 
@@ -47,7 +44,6 @@ class ExampleApplication : MinareApplication() {
             throw e
         }
     }
-
 
     override suspend fun setupApplicationRoutes() {
         val router = Router.router(vertx)
@@ -112,15 +108,12 @@ class ExampleApplication : MinareApplication() {
      */
     private suspend fun initializeNodeGraph(channelId: String) {
         try {
-
-
             val (rootNode, allNodes) = nodeGraphBuilder.buildAsymmetricTree(
                 maxDepth = 4,
                 maxBranchingFactor = 3,
                 totalNodes = 25,
                 randomSeed = 42L
             )
-
 
             val nodesAdded = channelController.addEntitiesToChannel(allNodes, channelId)
             log.info("Added $nodesAdded nodes to channel $channelId")

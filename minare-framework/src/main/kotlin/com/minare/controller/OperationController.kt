@@ -7,6 +7,8 @@ import io.vertx.core.json.JsonArray
 import io.vertx.core.json.JsonObject
 import org.slf4j.LoggerFactory
 import javax.inject.Inject
+import com.minare.exception.BackpressureException
+import com.minare.worker.coordinator.BackpressureManager
 
 /**
  * Controller for the operation event queue.
@@ -19,7 +21,8 @@ import javax.inject.Inject
  * - Applications can extend this class to customize behavior
  */
 abstract class OperationController @Inject constructor(
-    private val messageQueue: MessageQueue
+    private val messageQueue: MessageQueue,
+    private val backpressureManager: BackpressureManager
 ) {
     private val log = LoggerFactory.getLogger(OperationController::class.java)
 
@@ -30,16 +33,15 @@ abstract class OperationController @Inject constructor(
      * @param message The raw message from the client
      */
     suspend fun process(message: JsonObject) {
-        // Let the application convert the message to Operation(s)
+        // Pass message to application layer for packaging into Operations
         val operations = preQueue(message)
 
-        // Skip if the application returns null
+        // If application returns nothing, proceed
         if (operations == null) {
             log.debug("Application preQueue returned null, skipping message")
             return
         }
 
-        // Convert to JsonArray and send to Kafka
         queue(operations)
     }
 
@@ -56,10 +58,7 @@ abstract class OperationController @Inject constructor(
             else -> throw IllegalArgumentException("Expected Operation or OperationSet, got ${operations::class.simpleName}")
         }
 
-        // Send to Kafka
         sendMessage(message)
-
-        // Call post-queue hook
         postQueue(message)
     }
 
@@ -92,6 +91,11 @@ abstract class OperationController @Inject constructor(
             log.debug("Skipping empty operation set")
             return
         }
+
+        // TODO: Re-enable BackpressureManager with proper triggering conditions
+        //if (backpressureManager.isActive()) {
+        //    throw BackpressureException("System overloaded - please retry")
+        //}
 
         log.debug("Sending {} operations to Kafka topic {}", message.size(), OPERATIONS_TOPIC)
         messageQueue.send(OPERATIONS_TOPIC, message)

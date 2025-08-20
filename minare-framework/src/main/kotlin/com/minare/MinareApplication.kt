@@ -2,6 +2,11 @@ package com.minare
 
 import com.google.inject.*
 import com.google.inject.name.Names
+import com.minare.MinareApplication.ConnectionEvents.ADDRESS_COORDINATOR_STARTED
+import com.minare.MinareApplication.ConnectionEvents.ADDRESS_WORKER_STARTED
+import com.minare.application.AppState
+import com.minare.application.ClusteredAppState
+import com.minare.cache.HazelcastInstanceHolder
 import com.minare.config.*
 import com.minare.controller.ConnectionController
 import com.minare.worker.upsocket.UpSocketVerticle
@@ -9,13 +14,14 @@ import com.minare.worker.downsocket.DownSocketVerticle
 import com.minare.persistence.DatabaseInitializer
 import com.minare.time.TimeService
 import com.minare.worker.*
+import com.minare.worker.coordinator.config.FrameCoordinatorVerticleModule
 import com.minare.worker.downsocket.config.DownSocketVerticleModule
 import com.minare.worker.upsocket.config.UpSocketVerticleModule
 import io.vertx.core.DeploymentOptions
 import io.vertx.core.Vertx
 import io.vertx.core.VertxOptions
 import io.vertx.core.http.HttpServer
-import io.vertx.core.impl.Deployment
+import io.vertx.core.json.JsonArray
 import io.vertx.core.json.JsonObject
 import io.vertx.kotlin.coroutines.CoroutineVerticle
 import io.vertx.kotlin.coroutines.await
@@ -27,6 +33,9 @@ import kotlinx.coroutines.runBlocking
 import org.slf4j.LoggerFactory
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
+import com.minare.config.AppStateProvider
+import com.minare.persistence.StateInitializer
+import com.minare.worker.coordinator.*
 import kotlin.system.exitProcess
 
 /**
@@ -35,21 +44,33 @@ import kotlin.system.exitProcess
  */
 abstract class MinareApplication : CoroutineVerticle() {
     private val log = LoggerFactory.getLogger(MinareApplication::class.java)
+
+    // Dependency injections
     @Inject
     private lateinit var connectionController: ConnectionController
     @Inject
     private lateinit var timeService: TimeService
     @Inject
-    lateinit var databaseInitializer: DatabaseInitializer
+    lateinit var stateInitializer: StateInitializer
     @Inject
     lateinit var injector: Injector
 
+    // Application utilities
+    protected lateinit var appState: AppState
+
+    // Verticle deployment information
+    private var processorCount: Number? = null
+    private var frameCoordinatorVerticleDeploymentId: String? = null
     private var mutationVerticleDeploymentId: String? = null
     private var upSocketVerticleDeploymentId: String? = null
+    private var redisPubSubWorkerDeploymentId: String? = null
     private var cleanupVerticleDeploymentId: String? = null
     private var downSocketVerticleDeploymentId: String? = null
-    private var messageQueueConsumerVerticleDeploymentId: String? = null
+    private var coordinatorAdminDeploymentId: String? = null
+    private var frameWorkerHealthMonitorVerticleDeploymentId: String? = null
+    private var workerOperationHandlerVerticleDeploymentId: String? = null
 
+    // Connection state
     private val pendingConnections = ConcurrentHashMap<String, ConnectionState>()
 
     private class ConnectionState {
@@ -58,12 +79,16 @@ abstract class MinareApplication : CoroutineVerticle() {
         var traceId: String? = null
     }
 
+    // Servers
     var httpServer: HttpServer? = null
 
     object ConnectionEvents {
         const val ADDRESS_UP_SOCKET_CONNECTED = "minare.connection.up.connected"
         const val ADDRESS_DOWN_SOCKET_CONNECTED = "minare.connection.down.connected"
         const val ADDRESS_CONNECTION_COMPLETE = "minare.connection.complete"
+
+        const val ADDRESS_COORDINATOR_STARTED = "minare.cluster.coordinator.started"
+        const val ADDRESS_WORKER_STARTED = "minare.cluster.worker.started"
     }
 
     /**
@@ -72,113 +97,243 @@ abstract class MinareApplication : CoroutineVerticle() {
      */
     override suspend fun start() {
         try {
+            val instanceRole = System.getenv("INSTANCE_ROLE") ?:
+                throw IllegalStateException("INSTANCE_ROLE environment variable is required")
+
+            processorCount = Runtime.getRuntime().availableProcessors()
+
             timeService.syncTime()
             log.info("Time synchronization complete")
 
-            databaseInitializer.initialize()
-            log.info("Database initialized successfully")
-
-            val processorCount = Runtime.getRuntime().availableProcessors()
+            if (instanceRole == "COORDINATOR") stateInitializer.initialize()
 
             vertx.registerVerticleFactory(MinareVerticleFactory(injector))
             log.info("Registered MinareVerticleFactory")
 
-            val upSocketOptions = DeploymentOptions()
-                .setWorker(true)
-                .setWorkerPoolName("up-socket-pool")
-                .setWorkerPoolSize(5)
-                .setInstances(3)
-                .setConfig(JsonObject().put("useOwnHttpServer", true))
-
-            upSocketVerticleDeploymentId = vertx.deployVerticle(
-                "guice:" + UpSocketVerticle::class.java.name,
-                upSocketOptions
-            ).await()
-            log.info("Up socket verticle deployed with ID: $upSocketVerticleDeploymentId")
-
-            val downSocketVerticleOptions = DeploymentOptions()
-                .setWorker(true)
-                .setWorkerPoolName("down-socket-pool")
-                .setWorkerPoolSize(7)
-                .setInstances(7)
-
-            downSocketVerticleDeploymentId = vertx.deployVerticle(
-                "guice:" + DownSocketVerticle::class.java.name,
-                downSocketVerticleOptions
-            ).await()
-            log.info("Down socket verticle deployed with ID: $downSocketVerticleDeploymentId")
-
-            val redisPubSubWorkerOptions = DeploymentOptions()
-                .setWorker(true)
-                .setWorkerPoolName("redis-pubsub-pool")
-                .setWorkerPoolSize(2)
-                .setInstances(2)
-                .setMaxWorkerExecuteTime(Long.MAX_VALUE)
-
-            val redisPubSubWorkerDeploymentId = vertx.deployVerticle(
-                "guice:" + RedisPubSubWorkerVerticle::class.java.name,
-                redisPubSubWorkerOptions
-            ).await()
-            log.info("Redis pub/sub worker deployed with ID: $redisPubSubWorkerDeploymentId")
-
-            val mutationOptions = DeploymentOptions()
-                .setWorker(true)
-                .setWorkerPoolName("mutation-pool")
-                .setWorkerPoolSize(2)
-                .setInstances(1)
-
-            mutationVerticleDeploymentId = vertx.deployVerticle(
-                "guice:" + MutationVerticle::class.java.name,
-                mutationOptions
-            ).await()
-            log.info("Mutation verticle deployed with ID: $mutationVerticleDeploymentId")
-
-            val cleanupOptions = DeploymentOptions()
-                .setWorker(true)
-                .setWorkerPoolName("cleanup-pool")
-                .setWorkerPoolSize(1)
-                .setInstances(1)
-
-            cleanupVerticleDeploymentId = vertx.deployVerticle(
-                "guice:" + CleanupVerticle::class.java.name,
-                cleanupOptions
-            ).await()
-            log.info("Cleanup verticle deployed with ID: $cleanupVerticleDeploymentId")
-
-            val messageQueueOptions = DeploymentOptions()
-                .setWorker(true)
-                .setWorkerPoolName("message-queue-consumer-pool")
-                .setWorkerPoolSize(1)
-                .setInstances(1)
-
-            messageQueueConsumerVerticleDeploymentId = vertx.deployVerticle(
-                "guice:" + MessageQueueConsumerVerticle::class.java.name,
-                messageQueueOptions
-            ).await()
-            log.info("KafkaMessageQueueConsumer verticle deployed with ID: $messageQueueConsumerVerticleDeploymentId")
-
-            val initResult = vertx.eventBus().request<JsonObject>(
-                UpSocketVerticle.ADDRESS_UP_SOCKET_INITIALIZE,
-                JsonObject()
-            ).await()
-
-            if (initResult.body().getBoolean("success", false)) {
-                log.info("UpSocketVerticle router initialized: {}",
-                    initResult.body().getString("message"))
-            } else {
-                log.error("Failed to initialize UpSocketVerticle router")
+            when (instanceRole) {
+                "COORDINATOR" -> {
+                    initializeCoordinator()
+                }
+                "WORKER" -> {
+                    initializeWorker()
+                }
             }
-
-            registerConnectionEventHandlers()
-
-            setupApplicationRoutes()
-
-            onApplicationStart()
 
         } catch (e: Exception) {
             log.error("Failed to start application", e)
             throw e
         }
+    }
+
+    /**
+     * Initialize the coordinator
+     */
+    private suspend fun initializeCoordinator() {
+        val frameCordinatorVerticleOptions = DeploymentOptions()
+            .setInstances(1)
+            .setConfig(
+                JsonObject()
+                    .put("role", "coordinator")
+            )
+
+        frameCoordinatorVerticleDeploymentId = vertx.deployVerticle(
+            "guice:" + FrameCoordinatorVerticle::class.java.name,
+            frameCordinatorVerticleOptions
+        ).await()
+
+        vertx.eventBus().publish(ADDRESS_COORDINATOR_STARTED, JsonObject())
+        log.info("Coordinator verticle deployed with ID: $frameCoordinatorVerticleDeploymentId")
+
+        val frameHealthMonitorVerticleOptions = DeploymentOptions()
+            .setInstances(1)
+            .setConfig(JsonObject().put("role", "coordinator-admin"))
+
+        frameWorkerHealthMonitorVerticleDeploymentId = vertx.deployVerticle(
+            "guice:" + FrameWorkerHealthMonitorVerticle::class.java.name,
+            frameHealthMonitorVerticleOptions
+        ).await()
+        log.info("Frame worker health monitor deployed with ID: {}", frameWorkerHealthMonitorVerticleDeploymentId)
+
+        val coordinatorAdminOptions = DeploymentOptions()
+            .setInstances(1)
+            .setConfig(JsonObject().put("role", "coordinator-admin"))
+
+        coordinatorAdminDeploymentId = vertx.deployVerticle(
+            "guice:" + CoordinatorAdminVerticle::class.java.name,
+            coordinatorAdminOptions
+        ).await()
+        log.info("Coordinator admin interface deployed with ID: {} on port 9090", coordinatorAdminDeploymentId)
+
+        // Initialize clustered app state
+        val sharedMap = vertx.sharedData()
+            .getClusterWideMap<String, String>("app-state").await()
+        appState = ClusteredAppState(sharedMap)
+        AppStateProvider.setInstance(appState)
+        log.info("Initialized clustered app state for coordinator")
+
+        // Delegate application startup
+        log.info("Starting application...")
+        onApplicationStart()
+
+        log.info("Application startup completed.")
+    }
+
+    /**
+     * Initialize a worker instance
+     */
+    private suspend fun initializeWorker() {
+        // Get worker ID from hostname or config
+        val workerId = System.getenv("HOSTNAME") ?: throw IllegalStateException("Worker ID not configured")
+
+        val upSocketVerticleOptions = DeploymentOptions()
+            .setWorker(true)
+            .setWorkerPoolName("up-socket-pool")
+            .setWorkerPoolSize(5)
+            .setInstances(3)
+            .setConfig(JsonObject().put("useOwnHttpServer", true))
+
+        upSocketVerticleDeploymentId = vertx.deployVerticle(
+            "guice:" + UpSocketVerticle::class.java.name,
+            upSocketVerticleOptions
+        ).await()
+        log.info("Up socket verticle deployed with ID: $upSocketVerticleDeploymentId")
+
+        val downSocketVerticleOptions = DeploymentOptions()
+            .setWorker(true)
+            .setWorkerPoolName("down-socket-pool")
+            .setWorkerPoolSize(5)
+            .setInstances(3)
+
+        downSocketVerticleDeploymentId = vertx.deployVerticle(
+            "guice:" + DownSocketVerticle::class.java.name,
+            downSocketVerticleOptions
+        ).await()
+        log.info("Down socket verticle deployed with ID: $downSocketVerticleDeploymentId")
+
+        val redisPubSubWorkerOptions = DeploymentOptions()
+            .setWorker(true)
+            .setWorkerPoolName("redis-pubsub-pool")
+            .setWorkerPoolSize(2)
+            .setInstances(2)
+            .setMaxWorkerExecuteTime(Long.MAX_VALUE)
+
+        redisPubSubWorkerDeploymentId = vertx.deployVerticle(
+            "guice:" + RedisPubSubWorkerVerticle::class.java.name,
+            redisPubSubWorkerOptions
+        ).await()
+        log.info("Redis pub/sub worker deployed with ID: $redisPubSubWorkerDeploymentId")
+
+        val mutationOptions = DeploymentOptions()
+            .setWorker(true)
+            .setWorkerPoolName("mutation-pool")
+            .setWorkerPoolSize(2)
+            .setInstances(1)
+
+        mutationVerticleDeploymentId = vertx.deployVerticle(
+            "guice:" + MutationVerticle::class.java.name,
+            mutationOptions
+        ).await()
+        log.info("Mutation verticle deployed with ID: $mutationVerticleDeploymentId")
+
+        val cleanupOptions = DeploymentOptions()
+            .setWorker(true)
+            .setWorkerPoolName("cleanup-pool")
+            .setWorkerPoolSize(1)
+            .setInstances(1)
+
+        cleanupVerticleDeploymentId = vertx.deployVerticle(
+            "guice:" + CleanupVerticle::class.java.name,
+            cleanupOptions
+        ).await()
+        log.info("Cleanup verticle deployed with ID: $cleanupVerticleDeploymentId")
+
+        val workerOperationHandler = DeploymentOptions()
+            .setWorker(true)
+            .setWorkerPoolName("worker-operation-handler-pool")
+            .setWorkerPoolSize(1)
+            .setInstances(1)
+
+        workerOperationHandlerVerticleDeploymentId = vertx.deployVerticle(
+            "guice:" + WorkerOperationHandlerVerticle::class.java.name,
+            workerOperationHandler
+        ).await()
+        log.info("KafkaMessageQueueConsumer verticle deployed with ID: $workerOperationHandlerVerticleDeploymentId")
+
+        // Deploy the frame worker verticle
+        val frameWorkerOptions = DeploymentOptions()
+            .setInstances(1)
+            .setConfig(JsonObject().put("workerId", workerId))
+
+        val frameWorkerDeploymentId = vertx.deployVerticle(
+            "guice:" + FrameWorkerVerticle::class.java.name,
+            frameWorkerOptions
+        ).await()
+
+        log.info("Frame worker verticle deployed with ID: {}", frameWorkerDeploymentId)
+
+        // Connect the clustered AppState
+        val sharedMap = vertx.sharedData()
+            .getClusterWideMap<String, String>("app-state").await()
+        appState = ClusteredAppState(sharedMap)
+        AppStateProvider.setInstance(appState)
+        log.info("Initialized clustered app state for worker")
+
+        // Register up socket initialize event
+        val initResult = vertx.eventBus().request<JsonObject>(
+            UpSocketVerticle.ADDRESS_UP_SOCKET_INITIALIZE,
+            JsonObject()
+        ).await()
+
+        if (initResult.body().getBoolean("success", false)) {
+            log.info("UpSocketVerticle router initialized: {}",
+                initResult.body().getString("message"))
+        } else {
+            log.error("Failed to initialize UpSocketVerticle router")
+        }
+
+        // Delegate application routes setup
+        log.info("Setting up application routes...")
+        setupApplicationRoutes()
+
+        registerConnectionEventHandlers()
+
+        workerGetRegistryMap()
+
+        // Announce worker is ready
+        vertx.eventBus().publish(ADDRESS_WORKER_STARTED, JsonObject()
+            .put("workerId", workerId))
+        log.info("Published worker started event for {}", workerId)
+
+        log.info("Worker instance deployed with ID: $deploymentID")
+    }
+
+    private fun workerGetRegistryMap() {
+        val workerId = System.getenv("HOSTNAME") ?: throw IllegalStateException("HOSTNAME not set")
+
+        // Get the worker registry map from dependency injection
+        val workerRegistryMap = injector.getInstance(WorkerRegistryMap::class.java)
+
+        // Check if worker was pre-registered by infrastructure
+        val existingState = workerRegistryMap.get(workerId)
+
+        if (existingState != null) {
+            // Update existing entry (likely PENDING → ACTIVE)
+            log.info("Updating pre-registered worker {} to ACTIVE status", workerId)
+            existingState.put("status", "ACTIVE")
+            existingState.put("lastHeartbeat", System.currentTimeMillis())
+            workerRegistryMap.put(workerId, existingState)
+        } else {
+            // Self-register if not pre-registered
+            log.info("Self-registering worker {} in distributed registry", workerId)
+            val newState = JsonObject()
+                .put("workerId", workerId)
+                .put("status", "ACTIVE")
+                .put("lastHeartbeat", System.currentTimeMillis())
+                .put("addedAt", System.currentTimeMillis())
+            workerRegistryMap.put(workerId, newState)
+        }
+
+        log.info("Worker {} registered in distributed map", workerId)
     }
 
     /**
@@ -200,50 +355,18 @@ abstract class MinareApplication : CoroutineVerticle() {
      * Helper method for clean shutdown
      */
     override suspend fun stop() {
+        val instanceRole = System.getenv("INSTANCE_ROLE") ?:
+        throw IllegalStateException("INSTANCE_ROLE environment variable is required")
+
+        log.info("Undeploying ${instanceRole} with ID ${deploymentID}")
+
         try {
-
-            if (upSocketVerticleDeploymentId != null) {
-                try {
-                    vertx.undeploy(upSocketVerticleDeploymentId).await()
-                    log.info("Up socket verticle undeployed successfully")
-                } catch (e: Exception) {
-                    log.error("Error undeploying up socket verticle", e)
+            when (instanceRole) {
+                "COORDINATOR" -> {
+                    undeployCoordinator()
                 }
-            }
-
-            if (downSocketVerticleDeploymentId != null) {
-                try {
-                    vertx.undeploy(downSocketVerticleDeploymentId).await()
-                    log.info("Down socket verticle undeployed successfully")
-                } catch (e: Exception) {
-                    log.error("Error undeploying down socket verticle", e)
-                }
-            }
-
-            if (mutationVerticleDeploymentId != null) {
-                try {
-                    vertx.undeploy(mutationVerticleDeploymentId).await()
-                    log.info("Mutation verticle undeployed successfully")
-                } catch (e: Exception) {
-                    log.error("Error undeploying mutation verticle", e)
-                }
-            }
-
-            if (cleanupVerticleDeploymentId != null) {
-                try {
-                    vertx.undeploy(cleanupVerticleDeploymentId).await()
-                    log.info("Cleanup verticle undeployed successfully")
-                } catch (e: Exception) {
-                    log.error("Error undeploying cleanup verticle", e)
-                }
-            }
-
-            if (httpServer != null) {
-                try {
-                    httpServer?.close()?.await()
-                    log.info("HTTP server closed successfully")
-                } catch (e: Exception) {
-                    log.error("Error closing HTTP server", e)
+                "WORKER" -> {
+                    undeployWorker()
                 }
             }
 
@@ -251,6 +374,106 @@ abstract class MinareApplication : CoroutineVerticle() {
         } catch (e: Exception) {
             log.error("Error during application shutdown", e)
             throw e
+        }
+    }
+
+    /**
+     * Undeploy coordinator instance
+     */
+    private suspend fun undeployCoordinator() {
+        if (frameCoordinatorVerticleDeploymentId != null) {
+            try {
+                vertx.undeploy(frameCoordinatorVerticleDeploymentId).await()
+                log.info("Frame coordinator verticle undeployed successfully")
+            } catch (e: Exception) {
+                log.error("Error undeploying up frame coordinator verticle", e)
+            }
+        }
+
+        if (coordinatorAdminDeploymentId != null) {
+            try {
+                vertx.undeploy(coordinatorAdminDeploymentId).await()
+                log.info("Coordinator admin verticle undeployed successfully")
+            } catch (e: Exception) {
+                log.error("Error undeploying up coordinator admin verticle", e)
+            }
+        }
+
+        if (frameWorkerHealthMonitorVerticleDeploymentId != null) {
+            try {
+                vertx.undeploy(frameWorkerHealthMonitorVerticleDeploymentId).await()
+                log.info("Frame worker health monitor verticle undeployed successfully")
+            } catch (e: Exception) {
+                log.error("Error undeploying up frame health worker monitor admin verticle", e)
+            }
+        }
+    }
+
+    /**
+     * Undeploy worker instance
+     */
+    private suspend fun undeployWorker() {
+        if (upSocketVerticleDeploymentId != null) {
+            try {
+                vertx.undeploy(upSocketVerticleDeploymentId).await()
+                log.info("Up socket verticle undeployed successfully")
+            } catch (e: Exception) {
+                log.error("Error undeploying up socket verticle", e)
+            }
+        }
+
+        if (downSocketVerticleDeploymentId != null) {
+            try {
+                vertx.undeploy(downSocketVerticleDeploymentId).await()
+                log.info("Down socket verticle undeployed successfully")
+            } catch (e: Exception) {
+                log.error("Error undeploying down socket verticle", e)
+            }
+        }
+
+        if (redisPubSubWorkerDeploymentId != null) {
+            try {
+                vertx.undeploy(redisPubSubWorkerDeploymentId).await()
+                log.info("PubSub socket verticle undeployed successfully")
+            } catch (e: Exception) {
+                log.error("Error undeploying PubSub socket verticle", e)
+            }
+        }
+
+        if (mutationVerticleDeploymentId != null) {
+            try {
+                vertx.undeploy(mutationVerticleDeploymentId).await()
+                log.info("Mutation verticle undeployed successfully")
+            } catch (e: Exception) {
+                log.error("Error undeploying mutation verticle", e)
+            }
+        }
+
+        if (cleanupVerticleDeploymentId != null) {
+            try {
+                vertx.undeploy(cleanupVerticleDeploymentId).await()
+                log.info("Cleanup verticle undeployed successfully")
+            } catch (e: Exception) {
+                log.error("Error undeploying cleanup verticle", e)
+            }
+        }
+
+        if (workerOperationHandlerVerticleDeploymentId != null) {
+            try {
+                vertx.undeploy(workerOperationHandlerVerticleDeploymentId).await()
+                log.info("Message queue consumer verticle undeployed successfully")
+            } catch (e: Exception) {
+                log.error("Error undeploying message queue verticle", e)
+            }
+        }
+
+        if (httpServer != null) {
+            try {
+                httpServer?.close()?.await()
+                log.info("HTTP server closed successfully")
+            } catch (e: Exception) {
+                log.error("Error closing HTTP server", e)
+            }
         }
     }
 
@@ -267,7 +490,6 @@ abstract class MinareApplication : CoroutineVerticle() {
                 }
             }
         }
-
 
         vertx.eventBus().consumer<JsonObject>(ConnectionEvents.ADDRESS_DOWN_SOCKET_CONNECTED) { message ->
             val connectionId = message.body().getString("connectionId")
@@ -365,41 +587,27 @@ abstract class MinareApplication : CoroutineVerticle() {
         }
 
         /**
-         * Check if we should enable clustering
-         */
-        private fun isClusteringEnabled(args: Array<String>): Boolean {
-            return args.contains("--cluster") ||
-                    System.getenv("ENABLE_CLUSTERING")?.equals("true", ignoreCase = true) == true
-        }
-
-        /**
          * Start the application with the given implementation class.
          * This is the main entry point that applications should use.
          */
         fun start(applicationClass: Class<out MinareApplication>, args: Array<String>) {
-            val clusteringEnabled = isClusteringEnabled(args)
-
             val vertxOptions = VertxOptions()
 
-            if (clusteringEnabled) {
-                log.info("Clustering is enabled")
+            log.info("Clustering is enabled")
 
-                val clusterManager = HazelcastClusterManager()
-                vertxOptions.clusterManager = clusterManager
+            val clusterManager = HazelcastConfigFactory.createConfiguredClusterManager()
+            vertxOptions.clusterManager = clusterManager
+            HazelcastInstanceHolder.setClusterManager(clusterManager)
 
-                Vertx.clusteredVertx(vertxOptions).onComplete { ar ->
-                    if (ar.succeeded()) {
-                        val vertx = ar.result()
-                        log.info("Successfully created clustered Vertx instance")
-                        completeStartup(vertx, applicationClass, args, clusteringEnabled)
-                    } else {
-                        log.error("Failed to create clustered Vertx instance", ar.cause())
-                        exitProcess(1)
-                    }
+            Vertx.clusteredVertx(vertxOptions).onComplete { ar ->
+                if (ar.succeeded()) {
+                    val vertx = ar.result()
+                    log.info("Successfully created clustered Vertx instance")
+                    completeStartup(vertx, applicationClass, args)
+                } else {
+                    log.error("Failed to create clustered Vertx instance", ar.cause())
+                    exitProcess(1)
                 }
-            } else {
-                val vertx = Vertx.vertx(vertxOptions)
-                completeStartup(vertx, applicationClass, args, false)
             }
         }
 
@@ -409,8 +617,7 @@ abstract class MinareApplication : CoroutineVerticle() {
         private fun completeStartup(
             vertx: Vertx,
             applicationClass: Class<out MinareApplication>,
-            args: Array<String>,
-            clusteringEnabled: Boolean
+            args: Array<String>
         ) {
             try {
                 val appModule = getApplicationModule(applicationClass)
@@ -422,6 +629,7 @@ abstract class MinareApplication : CoroutineVerticle() {
                 val frameworkModule = MinareModule()
                 val upSocketVerticleModule = UpSocketVerticleModule()
                 val downSocketVerticleModule = DownSocketVerticleModule()
+                val frameCoordinatorVerticleModule = FrameCoordinatorVerticleModule()
 
                 val dbNameModule = object : AbstractModule() {
                     override fun configure() {
@@ -436,7 +644,7 @@ abstract class MinareApplication : CoroutineVerticle() {
                         bind(Vertx::class.java).toInstance(vertx)
                         bind(Boolean::class.java)
                             .annotatedWith(Names.named("clusteringEnabled"))
-                            .toInstance(clusteringEnabled)
+                            .toInstance(true)
                     }
                 }
 
@@ -447,6 +655,7 @@ abstract class MinareApplication : CoroutineVerticle() {
                         install(frameworkModule)
                         install(upSocketVerticleModule)
                         install(downSocketVerticleModule)
+                        install(frameCoordinatorVerticleModule)
                         // Then app module (overrides framework if needed)
                         install(appModule)
                         // Then vertx and database modules
