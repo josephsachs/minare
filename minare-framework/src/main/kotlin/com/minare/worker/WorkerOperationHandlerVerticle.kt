@@ -82,7 +82,7 @@ class WorkerOperationHandlerVerticle @Inject constructor(
                 action, operationId, entityId)
 
             when (action) {
-                "MUTATE" -> {// Reconstruct the command format expected by mutation handler
+                "MUTATE" -> {
                     val command = JsonObject()
                         .put("command", "mutate")
                         .put("entity", JsonObject()
@@ -94,7 +94,6 @@ class WorkerOperationHandlerVerticle @Inject constructor(
 
                     verticleLogger.logInfo("Processing mutate command ${command.toString()}")
 
-                    // Send to MutationVerticle
                     val processingTime = measureTimeMillis {
                         val result = vertx.eventBus()
                             .request<JsonObject>("minare.mutation.process",

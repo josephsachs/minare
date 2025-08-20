@@ -138,12 +138,7 @@ class DownSocketVerticle @Inject constructor(
     private fun forwardUpdateToClients(batchedUpdate: JsonObject) {
         val connections = connectionTracker.getAllConnectionIds()
 
-        // TEMPORARY DEBUG
-        log.info("Forwarding batch to {} connections", connections.size)
-
         for (connectionId in connections) {
-            // TEMPORARY DEBUG
-            log.info("Sending batch to connection: {}", connectionId)
             sendUpdate(connectionId, batchedUpdate)
         }
     }

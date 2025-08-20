@@ -10,8 +10,7 @@ import javax.inject.Singleton
 
 /**
  * Handles sync commands outside of the Kafka flow.
- * This is a temporary solution - sync operations will need fundamental
- * changes in the future as part of the frame-based architecture.
+ * TODO: Route sync thru downsocket instead of returning
  */
 @Singleton
 class SyncCommandHandler @Inject constructor(

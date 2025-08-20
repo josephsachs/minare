@@ -1,7 +1,6 @@
 package com.minare.worker
 
 import com.minare.cache.ConnectionCache
-import com.minare.controller.ConnectionController
 import com.minare.persistence.ConnectionStore
 import io.vertx.core.json.JsonObject
 import io.vertx.kotlin.coroutines.CoroutineVerticle
@@ -26,21 +25,15 @@ class CleanupVerticle @Inject constructor(
 
     companion object {
         const val ADDRESS_TRIGGER_CLEANUP = "minare.trigger.cleanup"
-
-
-        private const val CLEANUP_INTERVAL_MS = 60000L
-
-        // Connection reconnection window - how long to keep connections available for reconnect after disconnect
         const val CONNECTION_RECONNECT_WINDOW_MS = 60000L
 
-        // Connection expiry - when to clean up inactive connections
+        private const val CLEANUP_INTERVAL_MS = 60000L
         private const val CONNECTION_EXPIRY_MS = 180000L
     }
 
     override suspend fun start() {
         log.info("Starting CleanupVerticle")
 
-        // Setup periodic cleanup timer
         vertx.setPeriodic(CLEANUP_INTERVAL_MS) { _ ->
             CoroutineScope(vertx.dispatcher()).launch {
                 try {
@@ -51,7 +44,6 @@ class CleanupVerticle @Inject constructor(
             }
         }
 
-        // Setup event bus listener for triggered cleanups
         vertx.eventBus().consumer<JsonObject>(ADDRESS_TRIGGER_CLEANUP) { message ->
             CoroutineScope(vertx.dispatcher()).launch {
                 try {
@@ -85,10 +77,7 @@ class CleanupVerticle @Inject constructor(
         var connectionsRemoved = 0
 
         try {
-            // Step 1: Verify cache-database consistency
             validateCacheIntegrity()
-
-            // Step 2: Find connections to clean up
             val connectionsToClear = mutableListOf<String>()
 
             // Find expired inactive connections
@@ -96,9 +85,8 @@ class CleanupVerticle @Inject constructor(
             log.info("Found ${expiredConnections.size} expired connections (inactive > ${CONNECTION_EXPIRY_MS/1000/60} minutes)")
             connectionsToClear.addAll(expiredConnections.map { it._id })
 
-            // Find disconnected non-reconnectable connections
+            // If aggressive cleanup is enabled, find disconnected non-reconnectable connections
             if (aggressive) {
-                // Only if aggressive cleanup is enabled
                 val recentlyDisconnected = connectionStore.findInactiveConnections(CONNECTION_RECONNECT_WINDOW_MS)
                     .filter { !it.reconnectable || it.upSocketId == null }
 
@@ -106,15 +94,11 @@ class CleanupVerticle @Inject constructor(
                 connectionsToClear.addAll(recentlyDisconnected.map { it._id })
             }
 
-            // Step 3: Clean up each connection
             for (connectionId in connectionsToClear) {
                 try {
                     log.info("Cleaning up connection: $connectionId")
 
-                    // Attempt to use the standard cleanup process
-                    val cleanupSuccess = cleanupStaleConnection(connectionId)
-
-                    if (cleanupSuccess) {
+                    if (cleanupStaleConnection(connectionId)) {
                         connectionsRemoved++
                     }
                 } catch (e: Exception) {
@@ -122,11 +106,10 @@ class CleanupVerticle @Inject constructor(
                 }
             }
 
-            // Step 4: Check for any orphaned connections in the cache
+            // Check for any orphaned connections in the cache
             val cacheConnectionIds = connectionCache.getAllConnectedIds()
             val orphanedConnections = cacheConnectionIds.filter { connectionId ->
                 try {
-                    // Attempt to find this connection in the database
                     connectionStore.find(connectionId)
                     false // Found in database, not orphaned
                 } catch (e: Exception) {
@@ -140,7 +123,6 @@ class CleanupVerticle @Inject constructor(
             for (connectionId in orphanedConnections) {
                 try {
                     log.info("Removing orphaned cache entry: $connectionId")
-                    // Clean up from cache
                     connectionCache.removeUpSocket(connectionId)
                     connectionCache.removeDownSocket(connectionId)
                     connectionCache.removeConnection(connectionId)
@@ -165,11 +147,8 @@ class CleanupVerticle @Inject constructor(
     private suspend fun validateCacheIntegrity() {
         log.debug("Starting cache integrity validation")
 
-        // Get all connections from cache
         val cacheConnectionIds = connectionCache.getAllConnectedIds()
         log.debug("Found ${cacheConnectionIds.size} connections in cache")
-
-        // We could add more validation here if needed
     }
 
     /**
@@ -197,7 +176,6 @@ class CleanupVerticle @Inject constructor(
                 }
             }
 
-            // Then use the controller to clean up
             val result = vertx.eventBus().request<JsonObject>(
                 UpSocketVerticle.ADDRESS_CONNECTION_CLEANUP,
                 JsonObject().put("connectionId", connectionId)

@@ -398,6 +398,7 @@ open class ConnectionController @Inject constructor(
                 .put("type", "sync")
                 .put("data", syncData)
 
+            // TODO: Return sync results via downsocket instead
             val upSocket = getUpSocket(connectionId)
             if (upSocket != null && !upSocket.isClosed()) {
                 upSocket.writeTextMessage(syncMessage.encode())
