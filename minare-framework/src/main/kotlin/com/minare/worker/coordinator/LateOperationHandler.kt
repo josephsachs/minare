@@ -6,6 +6,10 @@ import org.slf4j.LoggerFactory
 /**
  * Strategy interface for handling operations that arrive too late
  * to be included in their intended logical frame.
+ *
+ * Note that a late operation is defined by the relationship of its Kafka timestamp to the
+ * logical frame schedule, not the time of consumption.In other words, here we are handling
+ * client-to-worker latency, not divergence between frame coordinator and worker cluster.
  */
 interface LateOperationHandler {
     /**

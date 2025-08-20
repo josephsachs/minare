@@ -15,17 +15,11 @@ class FrameCalculator @Inject constructor(
     companion object {
         const val NANOS_PER_MS = 1_000_000L
         const val NANOS_PER_SECOND = 1_000_000_000L
-
-        // Buffer warning threshold as a percentage
         const val BUFFER_WARNING_THRESHOLD_PERCENT = 0.8
-
-        // Frame lag thresholds for severity levels
-        // In our real-time system, any lag is significant
-        const val FRAME_LAG_WARNING_THRESHOLD = 0L  // Even 1 frame behind is a warning
-        const val FRAME_LAG_CRITICAL_THRESHOLD = 1L // More than 1 frame is critical
+        const val FRAME_LAG_WARNING_THRESHOLD = 0L
+        const val FRAME_LAG_CRITICAL_THRESHOLD = 1L
     }
 
-    // Cached for performance
     private val frameDurationNanos = frameConfig.frameDurationMs * NANOS_PER_MS
 
     /**
@@ -230,9 +224,9 @@ class FrameCalculator @Inject constructor(
      */
     enum class LagSeverity {
         NONE,      // Exactly on schedule (0 frames behind)
-        WARNING,   // 1 frame behind - immediate attention needed
-        CRITICAL,  // More than 1 frame behind - system recovery required
-        INVALID    // Ahead of schedule - should never happen
+        WARNING,   // FRAME_LAG_WARNINGL_THRESHOLD frames behind - immediate attention needed
+        CRITICAL,  // More than FRAME_LAG_CRITICAL_THRESHOLD frames behind - system recovery required
+        INVALID    // Ahead of schedule - indicates logical error as coordinator should prevent this
     }
 
     /**

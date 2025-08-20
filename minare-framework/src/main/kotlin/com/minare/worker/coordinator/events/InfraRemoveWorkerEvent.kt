@@ -6,6 +6,9 @@ import com.minare.utils.EventBusUtils
 import com.minare.utils.VerticleLogger
 import io.vertx.core.json.JsonObject
 
+/**
+ * InfraRemoveWorkerEvent occurs when CoordinatorAdminVerticle receives remove worker command
+ */
 class InfraRemoveWorkerEvent @Inject constructor(
     private val eventBusUtils: EventBusUtils,
     private val vlog: VerticleLogger,

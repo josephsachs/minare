@@ -22,12 +22,11 @@ import javax.inject.Inject
  * Admin HTTP interface for the Frame Coordinator.
  * Provides endpoints for infrastructure management and monitoring.
  *
- * Enhanced with comprehensive monitoring for event-driven coordination.
- * This runs on port 9090 and should be firewalled from public access.
+ * IMPORTANT: Port 9090 should be secured by VPC and security group in the infrastructure config
+ * Open to the internet at your own risk, or better yet don't
  */
 class CoordinatorAdminVerticle @Inject constructor(
     private val vlog: VerticleLogger,
-    private val eventBusUtils: EventBusUtils,
     private val workerRegistry: WorkerRegistry,
     private val frameCoordinatorState: FrameCoordinatorState,
     private val messageQueueOperationConsumer: MessageQueueOperationConsumer,
@@ -54,7 +53,6 @@ class CoordinatorAdminVerticle @Inject constructor(
         val router = Router.router(vertx)
         router.route().handler(BodyHandler.create())
 
-        // Health check endpoint
         router.get("/health").handler { ctx ->
             val health = JsonObject()
                 .put("status", if (frameCoordinatorState.isFrameLoopRunning()) "UP" else "DOWN")
@@ -65,7 +63,6 @@ class CoordinatorAdminVerticle @Inject constructor(
                 .end(health.encode())
         }
 
-        // Comprehensive status endpoint
         router.get("/status").handler { ctx ->
             val workerCounts = workerRegistry.getWorkerCountByStatus()
             val frameStatus = frameCoordinatorState.getCurrentFrameStatus()
@@ -94,7 +91,6 @@ class CoordinatorAdminVerticle @Inject constructor(
                 .end(status.encode())
         }
 
-        // Worker status with enhanced details
         router.get("/workers").handler { ctx ->
             val workers = workerRegistry.getAllWorkers()
             val expectedCount = workerRegistry.getExpectedWorkerCount()
@@ -125,7 +121,6 @@ class CoordinatorAdminVerticle @Inject constructor(
                 .end(response.encode())
         }
 
-        // Frame processing status
         router.get("/frames").handler { ctx ->
             val currentFrame = frameCoordinatorState.getCurrentLogicalFrame()
             val frameInProgress = frameCoordinatorState.frameInProgress
@@ -143,7 +138,6 @@ class CoordinatorAdminVerticle @Inject constructor(
                 .put("bufferedOperations", frameCoordinatorState.getBufferedOperationCounts())
                 .put("totalBufferedOperations", frameCoordinatorState.getTotalBufferedOperations())
 
-            // Add rich frame processing status if session is active
             if (currentFrame >= 0 && frameInProgress >= 0) {
                 val processingStatus = frameCalculator.getFrameProcessingStatus(frameInProgress, currentFrame)
                 frameStatus
@@ -164,7 +158,6 @@ class CoordinatorAdminVerticle @Inject constructor(
                 .end(frameStatus.encode())
         }
 
-        // Buffer status endpoint
         router.get("/buffer").handler { ctx ->
             val bufferCounts = frameCoordinatorState.getBufferedOperationCounts()
             val totalBuffered = frameCoordinatorState.getTotalBufferedOperations()
@@ -183,7 +176,6 @@ class CoordinatorAdminVerticle @Inject constructor(
                 .end(bufferStatus.encode())
         }
 
-        // Event bus message endpoint (existing)
         router.post("/eventbus").handler { ctx ->
             launch {
                 try {
@@ -191,7 +183,6 @@ class CoordinatorAdminVerticle @Inject constructor(
                     val address = body.getString("address")
                     val message = body.getJsonObject("body")
 
-                    // Send to event bus and await reply
                     val reply = vertx.eventBus()
                         .request<JsonObject>(address, message)
                         .await()
@@ -212,7 +203,11 @@ class CoordinatorAdminVerticle @Inject constructor(
             }
         }
 
-        // Worker management endpoints
+        /**
+         * IMPORTANT: Worker add and remove endpoints are the critical step when updating expected
+         * workers for the frame coordinator. Infrastructure is expected to add and remove these
+         * at application startup and during scaling events.
+         */
         router.post("/workers/add").handler { ctx ->
             launch {
                 try {
@@ -229,7 +224,6 @@ class CoordinatorAdminVerticle @Inject constructor(
                         return@launch
                     }
 
-                    // Send add worker command
                     val reply = vertx.eventBus()
                         .request<JsonObject>(
                             InfraAddWorkerEvent.ADDRESS_INFRA_ADD_WORKER,
@@ -268,7 +262,6 @@ class CoordinatorAdminVerticle @Inject constructor(
                         return@launch
                     }
 
-                    // Send remove worker command
                     val reply = vertx.eventBus()
                         .request<JsonObject>(
                             InfraRemoveWorkerEvent.ADDRESS_INFRA_REMOVE_WORKER,

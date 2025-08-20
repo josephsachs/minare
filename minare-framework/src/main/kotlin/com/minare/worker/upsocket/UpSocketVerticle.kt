@@ -80,6 +80,7 @@ class UpSocketVerticle @Inject constructor(
         deployHttpServer()
 
         // Save deployment ID
+        // TODO: If this is the deployment ID for the worker, it should be set in MinareApplication instead
         deploymentID?.let {
             vlog.logDeployment(it)
         }

@@ -53,21 +53,18 @@ class ShardedPubSubStrategy : PubSubChannelStrategy {
 
     override fun parseMessage(channel: String, message: String): JsonObject? {
         try {
-            // Parse the message from JSON
             val messageJson = JsonObject(message)
 
-            // Validate that it looks like a change notification
             if (messageJson.containsKey("_id") &&
                 messageJson.containsKey("type") &&
                 messageJson.containsKey("version")) {
 
-                // The message is already in the format expected by down socket verticle
                 return messageJson
             }
 
             return null
         } catch (e: Exception) {
-            // Log error in real implementation
+            // Log error
             return null
         }
     }

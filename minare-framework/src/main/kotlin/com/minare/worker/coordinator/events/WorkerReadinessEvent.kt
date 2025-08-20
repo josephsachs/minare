@@ -8,6 +8,10 @@ import com.minare.worker.coordinator.FrameCoordinatorVerticle
 import com.minare.worker.coordinator.WorkerRegistry
 import io.vertx.core.json.JsonObject
 
+/**
+ * WorkerReadinessEvent triggers when a worker announces activation, causes FrameCoordinatorVerticle
+ * to check if we're ready to begin frame loop. Coordinator will also check status in tryStartSession().
+ */
 class WorkerReadinessEvent @Inject constructor(
     private val eventBusUtils: EventBusUtils,
     private val vlog: VerticleLogger,

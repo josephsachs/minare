@@ -90,6 +90,7 @@ class DownSocketVerticle @Inject constructor(
 
             initializeRouter()
 
+            // TODO: Reconsider timer here
             //timer = UpdateTimer()
             //timer.start(DEFAULT_TICK_INTERVAL_MS)
             log.info("Started Timer at {${System.currentTimeMillis()}}")
@@ -97,7 +98,7 @@ class DownSocketVerticle @Inject constructor(
                 "intervalMs" to DEFAULT_TICK_INTERVAL_MS
             ))
 
-            // ADDED: Register consumer for batched updates from UpdateBatchCoordinator
+            // Register consumer for batched updates from UpdateBatchCoordinator
             registerBatchedUpdateConsumer()
 
             vlog.logStartupStep("EVENT_BUS_HANDLERS_REGISTERED")
@@ -201,6 +202,7 @@ class DownSocketVerticle @Inject constructor(
      * Register all event bus consumers
      */
     private suspend fun registerEventBusConsumers() {
+        // Guessing we disabled this when we removed individual entity updates in favor of batching
         //entityUpdatedEvent.register()
         updateConnectionEstablishedEvent.register()
         updateConnectionClosedEvent.register()

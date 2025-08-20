@@ -6,6 +6,9 @@ import com.minare.utils.EventBusUtils
 import com.minare.utils.VerticleLogger
 import io.vertx.core.json.JsonObject
 
+/**
+ * WorkerHeartbeatEvent handles worker heartbeat events
+ */
 class WorkerHeartbeatEvent @Inject constructor(
     private val eventBusUtils: EventBusUtils,
     private val vlog: VerticleLogger,

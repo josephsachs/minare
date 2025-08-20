@@ -10,8 +10,7 @@ import com.minare.worker.coordinator.FrameCompletionTracker
 import io.vertx.core.json.JsonObject
 
 /**
- * Handles frame completion events from workers.
- * Updated for logical frames - tracks completions by frame number.
+ * Handles frame completion events from workers, allowing coordinator to give go-ahead to progress
  */
 class WorkerFrameCompleteEvent @Inject constructor(
     private val eventBusUtils: EventBusUtils,
@@ -36,24 +35,20 @@ class WorkerFrameCompleteEvent @Inject constructor(
                 traceId
             )
 
-            // Validate worker is active
             if (!workerRegistry.isWorkerHealthy(workerId)) {
                 vlog.logInfo("Ignoring completion from unhealthy worker $workerId")
                 return@registerTracedConsumer
             }
 
-            // Record completion
             coordinatorState.recordWorkerCompletion(workerId, logicalFrame)
             frameCompletionTracker.recordWorkerCompletion(workerId, logicalFrame, operationCount)
 
-            // Check if all workers have completed this frame
             if (coordinatorState.isFrameComplete(logicalFrame)) {
                 val completedWorkers = coordinatorState.getCompletedWorkers(logicalFrame)
                 val activeWorkers = workerRegistry.getActiveWorkers()
 
                 vlog.logInfo("Frame $logicalFrame progress: ${completedWorkers.size}/${activeWorkers.size} workers complete")
 
-                // All workers complete - notify coordinator
                 vlog.getEventLogger().trace(
                     "ALL_WORKERS_COMPLETE",
                     mapOf(

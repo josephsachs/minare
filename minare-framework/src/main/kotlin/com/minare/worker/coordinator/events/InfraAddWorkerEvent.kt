@@ -6,6 +6,9 @@ import com.minare.utils.EventBusUtils
 import com.minare.utils.VerticleLogger
 import io.vertx.core.json.JsonObject
 
+/**
+ * InfraAddWorkerEvent occurs when CoordinatorAdminVerticle receives add worker command
+ */
 class InfraAddWorkerEvent @Inject constructor(
     private val eventBusUtils: EventBusUtils,
     private val vlog: VerticleLogger,

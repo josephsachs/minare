@@ -14,6 +14,9 @@ import io.vertx.core.Vertx
 import io.vertx.core.http.ServerWebSocket
 import io.vertx.core.json.JsonObject
 
+/**
+ * Handles socket lifecycle events including connection tracking and verticle caches
+ */
 @Singleton
 class ConnectionLifecycle @Inject constructor(
     private val vertx: Vertx,

@@ -1,6 +1,7 @@
 package com.minare.pubsub
 
 import io.vertx.core.json.JsonObject
+import org.slf4j.LoggerFactory
 import javax.inject.Singleton
 
 /**
@@ -17,6 +18,7 @@ import javax.inject.Singleton
  */
 @Singleton
 class GlobalPubSubStrategy : PubSubChannelStrategy {
+    private val log = LoggerFactory.getLogger(GlobalPubSubStrategy::class.java)
 
     companion object {
         const val GLOBAL_CHANNEL = "minare:entity:changes"
@@ -43,7 +45,6 @@ class GlobalPubSubStrategy : PubSubChannelStrategy {
 
     override fun parseMessage(channel: String, message: String): JsonObject? {
         try {
-            // Parse the message from JSON
             val messageJson = JsonObject(message)
 
             // Validate that it looks like a change notification
@@ -51,13 +52,13 @@ class GlobalPubSubStrategy : PubSubChannelStrategy {
                 messageJson.containsKey("type") &&
                 messageJson.containsKey("version")) {
 
-                // The message is already in the format expected by down socket verticle
                 return messageJson
             }
 
             return null
         } catch (e: Exception) {
-            // Log error in real implementation
+            log.error("PubSub message received not in expected format $e")
+
             return null
         }
     }
