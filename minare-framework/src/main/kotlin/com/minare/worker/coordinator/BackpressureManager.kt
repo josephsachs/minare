@@ -96,4 +96,44 @@ class BackpressureManager @Inject constructor(
         // Nope, we're fine
         return true
     }
+
+    /**
+     * Old logic for deactivating backpressure control
+     */
+    private suspend fun checkAndHandleBackpressure(logicalFrame: Long) {
+        if (!isActive()) {
+            return
+        }
+
+        val backpressureState = getBackpressureState() ?: return
+
+        val framesSinceActivation = logicalFrame - backpressureState.activatedAtFrame
+        val currentBuffered = coordinatorState.getTotalBufferedOperations()
+
+        log.debug("Backpressure check - frames since activation: ${framesSinceActivation}, current buffer: ${currentBuffered}/${backpressureState.maxBufferSize}")
+
+        // Deactivate if we've completed enough catch-up frames
+        if (framesSinceActivation >= frameConfig.catchupFramesBeforeResume.toLong()) {
+            log.info("Deactivating backpressure after ${framesSinceActivation} catchup frames completed. Buffer: ${currentBuffered}/${backpressureState.maxBufferSize}",)
+
+            deactivate()
+
+            // TODO: Return control to the consumer here
+            //messageQueueOperationConsumer.resumeConsumption()
+
+            // Broadcast backpressure deactivated event
+            vertx.eventBus().publish(
+                "minare.backpressure.deactivated",
+                JsonObject()
+                    .put("deactivatedAtFrame", logicalFrame)
+                    .put("framesCompleted", framesSinceActivation)
+                    .put("currentBufferSize", currentBuffered)
+                    .put("maxBufferSize", backpressureState.maxBufferSize)
+                    .put("timestamp", System.currentTimeMillis())
+            )
+        } else {
+            val framesRemaining = frameConfig.catchupFramesBeforeResume.toLong() - framesSinceActivation
+            log.info("Backpressure remains active - ${framesRemaining} more frames needed for catchup")
+        }
+    }
 }

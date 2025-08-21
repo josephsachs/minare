@@ -118,13 +118,6 @@ class FrameCoordinatorVerticle @Inject constructor(
                 coordinatorState.isPaused = false
                 coordinatorState.setFrameInProgress(resumeFrame)
 
-                // TODO: Re-enable this when BackpressureManager is re-implemented
-                //if (backpressureManager.isActive()) {
-                //    log.info("Clearing backpressure on resume from pause")
-                //    backpressureManager.deactivate()
-                //    messageQueueOperationConsumer.resumeConsumption()
-                //}
-
                 // Catch up manifest preparation to current time
                 preparePendingManifests()
 
@@ -136,19 +129,6 @@ class FrameCoordinatorVerticle @Inject constructor(
                 }
             }
         }
-
-        // TODO: Reconsider this when implementing pause and recover
-        /**eventBusUtils.registerTracedConsumer<JsonObject>(ADDRESS_ALL_WORKERS_READY) { msg, traceId ->
-            launch {
-                coordinatorState.isPaused = false
-
-                // Only start session on startup
-                if (coordinatorState.sessionStartTimestamp == 0L) { // TODO: Come up with a clearer way to identify startup state
-                    log.info("No existing session, starting new session")
-                    startNewSession()
-                }
-            }
-        }**/
     }
 
     private suspend fun setupOperationConsumer() {
@@ -387,48 +367,6 @@ class FrameCoordinatorVerticle @Inject constructor(
     private fun markFrameComplete(logicalFrame: Long) {
         coordinatorState.markFrameProcessed(logicalFrame)
         coordinatorState.setFrameInProgress(logicalFrame + 1)
-    }
-
-    /**
-     * TODO: This is the current logic for disabling backpressure control, currently unused
-     */
-    private suspend fun checkAndHandleBackpressure(logicalFrame: Long) {
-        // TODO: Re-enable backpressure control mechanisms
-        //if (!backpressureManager.isActive()) {
-        //    return
-        //}
-
-        val backpressureState = backpressureManager.getBackpressureState() ?: return
-
-        val framesSinceActivation = logicalFrame - backpressureState.activatedAtFrame
-        val currentBuffered = coordinatorState.getTotalBufferedOperations()
-
-        log.debug("Backpressure check - frames since activation: {}, current buffer: {}/{}",
-            framesSinceActivation, currentBuffered, backpressureState.maxBufferSize)
-
-        // Deactivate if we've completed enough catch-up frames
-        if (framesSinceActivation >= frameConfig.catchupFramesBeforeResume.toLong()) {
-            log.info("Deactivating backpressure after {} catchup frames completed. Buffer: {}/{}",
-                framesSinceActivation, currentBuffered, backpressureState.maxBufferSize)
-
-            backpressureManager.deactivate()
-            messageQueueOperationConsumer.resumeConsumption()
-
-            // Broadcast backpressure deactivated event
-            vertx.eventBus().publish(
-                "minare.backpressure.deactivated",
-                JsonObject()
-                    .put("deactivatedAtFrame", logicalFrame)
-                    .put("framesCompleted", framesSinceActivation)
-                    .put("currentBufferSize", currentBuffered)
-                    .put("maxBufferSize", backpressureState.maxBufferSize)
-                    .put("timestamp", System.currentTimeMillis())
-            )
-        } else {
-            val framesRemaining = frameConfig.catchupFramesBeforeResume.toLong() - framesSinceActivation
-            log.info("Backpressure remains active - {} more frames needed for catchup",
-                framesRemaining)
-        }
     }
 
     private suspend fun prepareUpcomingFrames() {

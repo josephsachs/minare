@@ -123,17 +123,13 @@ class MessageQueueOperationConsumer @Inject constructor(
 
                 log.info("OPERATION_FLOW: Consuming operation from Kafka - id: {}, entityId: {}, traceId: {}",
                     operationId, entityId, traceId)
-
-                //if (!processOperation(operationJson)) {
-                //    log.error("Failed to process operation {}, backpressure activated", operationId)
-                //}
             }
 
         } catch (e: Exception) {
             log.error("Error processing Kafka record: {}", e.message, e)
             log.error("Raw record value was: {}", record.value())
         }
-        // ...
+        // END DEBUGGING CODE
 
         try {
             val value = record.value()
@@ -319,26 +315,7 @@ class MessageQueueOperationConsumer @Inject constructor(
             }
         }
 
-        // Check if operation is too far in the future
-        // TODO: Re-enable after implementing coordinator manifest pause
-        /**if (coordinatorState.isPaused) {
-            // During pause, enforce strict buffer limits
-            if (!frameCalculator.isFrameWithinBufferLimit(logicalFrame, frameInProgress)) {
-                log.error("Operation {} targets frame {} which exceeds pause buffer limit " +
-                        "(current: {}, max allowed: {}). " +
-                        "503 backpressure should be implemented here.",
-                    operation.getString("id"), logicalFrame,
-                    frameInProgress, frameInProgress + frameConfig.maxBufferFrames)
-
-                // Note: We should return 503 to HTTP clients here, but since this is
-                // Kafka consumption, we handle it via backpressure activation above
-                return
-            }
-        }**/
-
         if (logicalFrame <= coordinatorState.lastPreparedManifest) {
-            //log.info("MANIFEST_UPDATE_CHECK: Operation {} for frame {}", operationId, logicalFrame)
-
             try {
                 val manifestMap = hazelcastInstance.getMap<String, JsonObject>("manifests")
                 val activeWorkers = workerRegistry.getActiveWorkers()
@@ -390,46 +367,6 @@ class MessageQueueOperationConsumer @Inject constructor(
 
         // TEMPORARY DEBUG
         log.info("DEBUG: Buffered operation {} to frame {}", operation.getString("id"), logicalFrame)
-
-        // Trigger manifest preparation if needed
-        //if (shouldTriggerManifestPreparation(logicalFrame)) {
-        //    triggerManifestPreparation(logicalFrame)
-        //}
-    }
-
-    /**
-     * Determine if we should trigger manifest preparation for a frame.
-     * This provides event-driven manifest preparation when operations arrive.
-     */
-    private fun shouldTriggerManifestPreparation(logicalFrame: Long): Boolean {
-        // Already prepared?
-        if (logicalFrame <= coordinatorState.lastPreparedManifest) {
-            return false
-        }
-
-        // During pause, respect buffer limits
-        // TODO: Revisit after implementing coordinator manifest pause
-        if (coordinatorState.isPaused) {
-            val frameInProgress = coordinatorState.frameInProgress
-            return frameCalculator.isFrameWithinBufferLimit(logicalFrame, frameInProgress)
-        }
-
-        // Normal operation - prepare if within lookahead window
-        val currentFrame = frameCalculator.getCurrentLogicalFrame(coordinatorState.sessionStartNanos)
-        return logicalFrame <= currentFrame + frameConfig.normalOperationLookahead
-    }
-
-    /**
-     * Trigger manifest preparation for a specific frame.
-     * Sends event to coordinator to prepare the manifest.
-     */
-    private fun triggerManifestPreparation(logicalFrame: Long) {
-        vertx.eventBus().send(
-            FrameCoordinatorVerticle.ADDRESS_PREPARE_MANIFEST,
-            JsonObject()
-                .put("logicalFrame", logicalFrame)
-                .put("trigger", "operation_arrival")
-        )
     }
 
     /**
