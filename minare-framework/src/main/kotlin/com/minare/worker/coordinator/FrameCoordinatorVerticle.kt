@@ -138,7 +138,7 @@ class FrameCoordinatorVerticle @Inject constructor(
         }
 
         // TODO: Reconsider this when implementing pause and recover
-        eventBusUtils.registerTracedConsumer<JsonObject>(ADDRESS_ALL_WORKERS_READY) { msg, traceId ->
+        /**eventBusUtils.registerTracedConsumer<JsonObject>(ADDRESS_ALL_WORKERS_READY) { msg, traceId ->
             launch {
                 coordinatorState.isPaused = false
 
@@ -148,7 +148,7 @@ class FrameCoordinatorVerticle @Inject constructor(
                     startNewSession()
                 }
             }
-        }
+        }**/
     }
 
     private suspend fun setupOperationConsumer() {

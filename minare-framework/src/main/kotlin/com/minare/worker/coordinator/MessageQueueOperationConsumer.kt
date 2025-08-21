@@ -215,35 +215,9 @@ class MessageQueueOperationConsumer @Inject constructor(
 
         val bufferedFrameCount = coordinatorState.getBufferedFrameCount()
 
-        // TODO: Enable this after re-implementing backpressure control mechanisms
-        /**if (bufferedFrameCount >= frameConfig.maxBufferFrames) {
-            val totalBuffered = coordinatorState.getTotalBufferedOperations()
-            log.error("Frame buffer limit exceeded: {} frames buffered (max: {}), " +
-                    "containing {} total operations. Activating backpressure",
-                bufferedFrameCount, frameConfig.maxBufferFrames, totalBuffered)
-
-            // Activate backpressure
-            backpressureManager.activate(
-                frame = coordinatorState.frameInProgress,
-                bufferedOps = totalBuffered,
-                maxBuffer = frameConfig.maxBufferFrames
-            )
-
-            // Pause Kafka consumer
+        // TODO: Enable this after re-implementing backpressure control mechanism
+        /**if (backpressureManager.triggerIfFrameBufferExceeded(bufferedFrameCount)) {
             messageQueueConsumer?.pause()
-
-            // Broadcast backpressure activated event
-            vertx.eventBus().publish(
-                "minare.backpressure.activated",
-                JsonObject()
-                    .put("frameInProgress", coordinatorState.frameInProgress)
-                    .put("bufferedFrames", bufferedFrameCount)
-                    .put("maxBufferFrames", frameConfig.maxBufferFrames)
-                    .put("bufferedOperations", totalBuffered)
-                    .put("timestamp", System.currentTimeMillis())
-            )
-
-            return false // Stop processing
         }**/
 
         // Warn when approaching frame buffer limit

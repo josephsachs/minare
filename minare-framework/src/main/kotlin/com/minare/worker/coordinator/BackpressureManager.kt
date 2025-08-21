@@ -4,6 +4,10 @@ import com.google.inject.Inject
 import com.google.inject.Singleton
 import com.hazelcast.core.HazelcastInstance
 import com.hazelcast.map.IMap
+import com.minare.time.FrameConfiguration
+import io.vertx.core.Vertx
+import io.vertx.core.impl.logging.LoggerFactory
+import io.vertx.core.json.JsonObject
 import java.io.Serializable
 
 /**
@@ -16,8 +20,13 @@ import java.io.Serializable
  */
 @Singleton
 class BackpressureManager @Inject constructor(
-    private val hazelcastInstance: HazelcastInstance
+    private val vertx: Vertx,
+    private val hazelcastInstance: HazelcastInstance,
+    private val frameConfig: FrameConfiguration,
+    private val coordinatorState: FrameCoordinatorState
 ) {
+    private val log = LoggerFactory.getLogger(BackpressureManager::class.java)
+
     private val backpressureMap: IMap<String, BackpressureState> by lazy {
         hazelcastInstance.getMap("backpressure-state")
     }
@@ -53,5 +62,38 @@ class BackpressureManager @Inject constructor(
 
     fun getBackpressureState(): BackpressureState? {
         return backpressureMap["global"]
+    }
+
+    fun triggerIfFrameBufferExceeded(bufferedFrameCount: Int): Boolean {
+        if (bufferedFrameCount >= frameConfig.maxBufferFrames) {
+            val totalBuffered = coordinatorState.getTotalBufferedOperations()
+            log.error("Frame buffer limit exceeded: ${bufferedFrameCount} frames buffered " +
+                    "max: ${frameConfig.maxBufferFrames}), containing ${totalBuffered} total operations. " +
+                    "Activating backpressure"
+            )
+
+            // Activate backpressure
+            activate(
+                frame = coordinatorState.frameInProgress,
+                bufferedOps = totalBuffered,
+                maxBuffer = frameConfig.maxBufferFrames
+            )
+
+            // Broadcast backpressure activated event
+            vertx.eventBus().publish(
+                "minare.backpressure.activated",
+                JsonObject()
+                    .put("frameInProgress", coordinatorState.frameInProgress)
+                    .put("bufferedFrames", bufferedFrameCount)
+                    .put("maxBufferFrames", frameConfig.maxBufferFrames)
+                    .put("bufferedOperations", totalBuffered)
+                    .put("timestamp", System.currentTimeMillis())
+                )
+
+            return false // Stop processing
+        }
+
+        // Nope, we're fine
+        return true
     }
 }
