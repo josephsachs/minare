@@ -14,6 +14,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.slf4j.LoggerFactory
 import javax.inject.Inject
+import com.minare.utils.OperationDebugUtils
 
 /**
  * Frame Coordinator - The central orchestrator for frame-based processing.
@@ -46,7 +47,8 @@ class FrameCoordinatorVerticle @Inject constructor(
     private val workerReadinessEvent: WorkerReadinessEvent,
     private val frameCatchUpEvent: FrameCatchUpEvent,
     private val workerHealthChangeEvent: WorkerHealthChangeEvent,
-    private val nextFrameEvent: NextFrameEvent
+    private val nextFrameEvent: NextFrameEvent,
+    private val operationDebugUtils: OperationDebugUtils
 ) : CoroutineVerticle() {
 
     private val log = LoggerFactory.getLogger(FrameCoordinatorVerticle::class.java)
@@ -312,6 +314,10 @@ class FrameCoordinatorVerticle @Inject constructor(
      */
     private suspend fun prepareManifestForFrame(logicalFrame: Long) {
         val operations = coordinatorState.extractFrameOperations(logicalFrame)
+
+        // TEMPORARY DEBUG
+        operationDebugUtils.logOperation(operations, "FrameCoordinatorVerticle.prepareManifestForFrame")
+
         val activeWorkers = workerRegistry.getActiveWorkers().toSet()
 
         if (activeWorkers.isEmpty() && operations.isNotEmpty()) {

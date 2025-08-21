@@ -19,6 +19,7 @@ import kotlinx.coroutines.launch
 import org.slf4j.LoggerFactory
 import java.util.concurrent.TimeoutException
 import javax.inject.Inject
+import com.minare.utils.OperationDebugUtils
 
 /**
  * Worker-side frame processing verticle.
@@ -30,7 +31,8 @@ import javax.inject.Inject
 class FrameWorkerVerticle @Inject constructor(
     private val vlog: VerticleLogger,
     private val hazelcastInstance: HazelcastInstance,
-    private val frameConfig: FrameConfiguration
+    private val frameConfig: FrameConfiguration,
+    private val operationDebugUtils: OperationDebugUtils
 ) : CoroutineVerticle() {
 
     private val log = LoggerFactory.getLogger(FrameWorkerVerticle::class.java)
@@ -91,9 +93,7 @@ class FrameWorkerVerticle @Inject constructor(
             )
 
             launch {
-                //if (processingActive) {
-                    handleNextFrame()
-                //}
+                handleNextFrame()
             }
         }
 
@@ -172,11 +172,6 @@ class FrameWorkerVerticle @Inject constructor(
      * Pull current frame from Hazelcast and process it.
      */
     private suspend fun handleNextFrame() {
-        //if (!processingActive) {
-        //    log.debug("Ignoring next frame event - processing not active")
-        //    return
-        //}
-
         val frameToProcess = frameProgress.get()
 
         try {
@@ -284,6 +279,9 @@ class FrameWorkerVerticle @Inject constructor(
         operation: JsonObject,
         logicalFrame: Long
     ): Boolean {
+        // TEMPORARY DEBUG
+        operationDebugUtils.logOperation(operation, "FrameWorkerVerticle.processOperation")
+
         val operationId = operation.getString("id")
         if (operationId == null) {
             log.error("Operation missing ID: {}", operation.encode())

@@ -13,6 +13,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 import javax.inject.Inject
 import javax.inject.Singleton
+import com.minare.utils.OperationDebugUtils
 
 /**
  * Shared state for the Frame Coordinator system.
@@ -23,7 +24,8 @@ class FrameCoordinatorState @Inject constructor(
     private val workerRegistry: WorkerRegistry,
     private val frameCalculator: FrameCalculator,
     private val frameConfig: FrameConfiguration,
-    private val hazelcastInstance: HazelcastInstance
+    private val hazelcastInstance: HazelcastInstance,
+    private val operationDebugUtils: OperationDebugUtils
 ) {
     private val log = LoggerFactory.getLogger(FrameCoordinatorState::class.java)
 
@@ -137,6 +139,9 @@ class FrameCoordinatorState @Inject constructor(
      * Buffer an operation to a specific logical frame
      */
     fun bufferOperation(operation: JsonObject, logicalFrame: Long) {
+        // TEMPORARY DEBUG
+        operationDebugUtils.logOperation(operation, "frameCoordinatorState: bufferOperation")
+
         val queue = operationsByFrame.computeIfAbsent(logicalFrame) { ConcurrentLinkedQueue() }
         queue.offer(operation)
 

@@ -12,6 +12,7 @@ import kotlinx.coroutines.CoroutineScope
 import org.slf4j.LoggerFactory
 import javax.inject.Inject
 import javax.inject.Singleton
+import com.minare.utils.OperationDebugUtils
 
 /**
  * Handles Kafka consumption for the frame coordinator.
@@ -29,7 +30,8 @@ class MessageQueueOperationConsumer @Inject constructor(
     private val lateOperationHandler: LateOperationHandler,
     private val backpressureManager: BackpressureManager,
     private val hazelcastInstance: HazelcastInstance,
-    private val workerRegistry: WorkerRegistry
+    private val workerRegistry: WorkerRegistry,
+    private val operationDebugUtils: OperationDebugUtils
 ) {
     private val log = LoggerFactory.getLogger(MessageQueueOperationConsumer::class.java)
 
@@ -111,24 +113,7 @@ class MessageQueueOperationConsumer @Inject constructor(
      */
     private fun handleKafkaRecord(record: io.vertx.kafka.client.consumer.KafkaConsumerRecord<String, String>) {
         // TEMPORARY DEBUG
-        try {
-            val operationArray = JsonArray(record.value())
-
-            // Process each operation in the array
-            for (i in 0 until operationArray.size()) {
-                val operationJson = operationArray.getJsonObject(i)
-                val operationId = operationJson.getString("id", "unknown")
-                val entityId = operationJson.getString("entityId", "unknown")  // Note: entityId, not entity
-                val traceId = operationJson.getString("traceId", "unknown")
-
-                log.info("OPERATION_FLOW: Consuming operation from Kafka - id: {}, entityId: {}, traceId: {}",
-                    operationId, entityId, traceId)
-            }
-
-        } catch (e: Exception) {
-            log.error("Error processing Kafka record: {}", e.message, e)
-            log.error("Raw record value was: {}", record.value())
-        }
+        operationDebugUtils.logOperation(JsonArray(record.value()), "handleKafkaRecord")
         // END DEBUGGING CODE
 
         try {
@@ -155,19 +140,22 @@ class MessageQueueOperationConsumer @Inject constructor(
             // TODO: Improve how backpressure status is handled here, this is scattered logic antipattern
             when (parsed) {
                 is JsonObject -> {
-                    if (!processOperation(parsed)) {
+                    processOperation(parsed)
+                    //if (!processOperation(parsed)) {
                         // Backpressure activated, stop processing
-                        return
-                    }
+                     //   return
+                    //}
                 }
                 is JsonArray -> {
                     // Process batch of operations
                     for (i in 0 until parsed.size()) {
                         val operation = parsed.getJsonObject(i)
-                        if (!processOperation(operation)) {
-                            // Backpressure activated, stop processing
-                            return
-                        }
+                        processOperation(operation)
+
+                        //if (!processOperation(operation)) {
+                        //    Backpressure activated, stop processing
+                        //    return
+                        //}
                     }
                 }
             }
@@ -266,6 +254,9 @@ class MessageQueueOperationConsumer @Inject constructor(
 
             val decision = lateOperationHandler.handleLateOperation(operation, logicalFrame, frameInProgress)
 
+            // TEMPORARY DEBUG
+            operationDebugUtils.logOperation(operation, "MessageQueueOperationConsumer.handleSessionOperation")
+
             when (decision) {
                 is LateOperationDecision.Drop -> return
                 is LateOperationDecision.Delay -> {
@@ -275,7 +266,7 @@ class MessageQueueOperationConsumer @Inject constructor(
                             operation.getString("id"), decision.targetFrame)
 
                         try {
-                            val manifestMap = hazelcastInstance.getMap<String, JsonObject>("manifests")
+                            val manifestMap = hazelcastInstance.getMap<String, JsonObject>("frame-manifests")
                             val activeWorkers = workerRegistry.getActiveWorkers()
 
                             if (activeWorkers.isNotEmpty()) {
@@ -285,6 +276,10 @@ class MessageQueueOperationConsumer @Inject constructor(
                                 val manifestKey = FrameManifest.makeKey(decision.targetFrame, workerId) // Note: targetFrame!
 
                                 val manifestJson = manifestMap[manifestKey]
+
+                                // TEMPORARY DEBUG
+                                operationDebugUtils.logManifestCheck(manifestKey, manifestJson != null)
+
                                 if (manifestJson != null) {
                                     val manifest = FrameManifest.fromJson(manifestJson)
                                     val operations = manifest.operations.toMutableList()
@@ -317,7 +312,7 @@ class MessageQueueOperationConsumer @Inject constructor(
 
         if (logicalFrame <= coordinatorState.lastPreparedManifest) {
             try {
-                val manifestMap = hazelcastInstance.getMap<String, JsonObject>("manifests")
+                val manifestMap = hazelcastInstance.getMap<String, JsonObject>("frame-manifests")
                 val activeWorkers = workerRegistry.getActiveWorkers()
 
                 if (activeWorkers.isEmpty()) {
@@ -332,6 +327,10 @@ class MessageQueueOperationConsumer @Inject constructor(
                 val manifestKey = FrameManifest.makeKey(logicalFrame, workerId)
 
                 val manifestJson = manifestMap[manifestKey]
+
+                // TEMPORARY DEBUG
+                operationDebugUtils.logManifestCheck(manifestKey, manifestJson != null)
+
                 if (manifestJson != null) {
                     // Parse existing manifest
                     val manifest = FrameManifest.fromJson(manifestJson)
