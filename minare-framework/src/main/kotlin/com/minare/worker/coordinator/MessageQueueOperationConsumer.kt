@@ -260,7 +260,7 @@ class MessageQueueOperationConsumer @Inject constructor(
         // TEMPORARY DEBUG
         log.info("frameInProgress = {}, logicalFrame = {}", frameInProgress, logicalFrame)
 
-        if (logicalFrame < frameInProgress) {
+        if (logicalFrame <= frameInProgress) {
             val framesLate = frameInProgress - logicalFrame
 
             log.info("Late operation detected: operation targets frame {} but current frame is {} ({} frames late)",
