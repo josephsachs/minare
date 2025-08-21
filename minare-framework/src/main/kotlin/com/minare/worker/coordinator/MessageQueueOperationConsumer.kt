@@ -299,8 +299,47 @@ class MessageQueueOperationConsumer @Inject constructor(
             when (decision) {
                 is LateOperationDecision.Drop -> return
                 is LateOperationDecision.Delay -> {
+                    // Check if target frame already has a manifest
+                    if (decision.targetFrame <= coordinatorState.lastPreparedManifest) {
+                        log.info("LATE_MANIFEST_UPDATE: Late operation {} delayed to already-prepared frame {}",
+                            operation.getString("id"), decision.targetFrame)
+
+                        try {
+                            val manifestMap = hazelcastInstance.getMap<String, JsonObject>("manifests")
+                            val activeWorkers = workerRegistry.getActiveWorkers()
+
+                            if (activeWorkers.isNotEmpty()) {
+                                val operationId = operation.getString("id")
+                                val workerIndex = Math.abs(operationId.hashCode()) % activeWorkers.size
+                                val workerId = activeWorkers.toList()[workerIndex]
+                                val manifestKey = FrameManifest.makeKey(decision.targetFrame, workerId) // Note: targetFrame!
+
+                                val manifestJson = manifestMap[manifestKey]
+                                if (manifestJson != null) {
+                                    val manifest = FrameManifest.fromJson(manifestJson)
+                                    val operations = manifest.operations.toMutableList()
+                                    operations.add(operation)
+                                    operations.sortBy { it.getString("id") }
+
+                                    val updatedManifest = FrameManifest(
+                                        workerId = manifest.workerId,
+                                        logicalFrame = manifest.logicalFrame,
+                                        createdAt = manifest.createdAt,
+                                        operations = operations
+                                    )
+
+                                    manifestMap[manifestKey] = updatedManifest.toJson()
+                                    log.info("LATE_MANIFEST_UPDATE: Updated manifest {} (now {} ops)", manifestKey, operations.size)
+
+                                    return // Don't buffer since it's in the manifest
+                                }
+                            }
+                        } catch (e: Exception) {
+                            log.error("LATE_MANIFEST_UPDATE: Error updating manifest", e)
+                        }
+                    }
+
                     coordinatorState.bufferOperation(operation, decision.targetFrame)
-                    // Let the normal scheduling handle manifest preparation
                     return
                 }
             }
@@ -324,40 +363,51 @@ class MessageQueueOperationConsumer @Inject constructor(
         }**/
 
         if (logicalFrame <= coordinatorState.lastPreparedManifest) {
-            val operationId = operation.getString("id")
-            val entityId = operation.getString("entity", "unknown")
-
-            log.info("PW7Q8: Operation {} for entity {} arrived for already-prepared frame {} (lastPrepared: {}, frameInProgress: {}, gap: {})",
-                operationId, entityId, logicalFrame, coordinatorState.lastPreparedManifest, frameInProgress,
-                coordinatorState.lastPreparedManifest - frameInProgress)
+            //log.info("MANIFEST_UPDATE_CHECK: Operation {} for frame {}", operationId, logicalFrame)
 
             try {
                 val manifestMap = hazelcastInstance.getMap<String, JsonObject>("manifests")
-
-                // Get active workers to find the right manifest
                 val activeWorkers = workerRegistry.getActiveWorkers()
+
                 if (activeWorkers.isEmpty()) {
-                    log.warn("No active workers for frame {}, buffering normally", logicalFrame)
+                    log.warn("No active workers, cannot update manifest")
                     coordinatorState.bufferOperation(operation, logicalFrame)
                     return
                 }
 
-                // Determine which worker's manifest to check
                 val operationId = operation.getString("id")
                 val workerIndex = Math.abs(operationId.hashCode()) % activeWorkers.size
                 val workerId = activeWorkers.toList()[workerIndex]
                 val manifestKey = FrameManifest.makeKey(logicalFrame, workerId)
 
-                log.info("Checking manifest {} for operation {}", manifestKey, operationId)
+                val manifestJson = manifestMap[manifestKey]
+                if (manifestJson != null) {
+                    // Parse existing manifest
+                    val manifest = FrameManifest.fromJson(manifestJson)
+                    val operations = manifest.operations.toMutableList()
+                    operations.add(operation)
 
-                val manifestExists = manifestMap.containsKey(manifestKey)
-                log.info("Manifest {} exists: {}", manifestKey, manifestExists)
+                    // Sort by operation ID to maintain deterministic order
+                    operations.sortBy { it.getString("id") }
+
+                    // Create updated manifest
+                    val updatedManifest = FrameManifest(
+                        workerId = manifest.workerId,
+                        logicalFrame = manifest.logicalFrame,
+                        createdAt = manifest.createdAt,
+                        operations = operations
+                    )
+
+                    // Write back
+                    manifestMap[manifestKey] = updatedManifest.toJson()
+                    log.info("MANIFEST_UPDATE_CHECK: Updated manifest {} (now {} ops)", manifestKey, operations.size)
+                }
 
             } catch (e: Exception) {
-                log.error("Failed to check manifest", e)
+                log.error("MANIFEST_UPDATE_CHECK: Error updating manifest", e)
             }
 
-            coordinatorState.bufferOperation(operation, logicalFrame)
+            // Don't buffer - it's already in the manifest
             return
         }
 
