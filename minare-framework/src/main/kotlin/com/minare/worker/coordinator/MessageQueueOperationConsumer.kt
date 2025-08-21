@@ -1,5 +1,6 @@
 package com.minare.worker.coordinator
 
+import com.hazelcast.core.HazelcastInstance
 import com.minare.time.FrameConfiguration
 import com.minare.time.FrameCalculator
 import io.vertx.core.Vertx
@@ -26,7 +27,9 @@ class MessageQueueOperationConsumer @Inject constructor(
     private val frameCalculator: FrameCalculator,
     private val coordinatorState: FrameCoordinatorState,
     private val lateOperationHandler: LateOperationHandler,
-    private val backpressureManager: BackpressureManager
+    private val backpressureManager: BackpressureManager,
+    private val hazelcastInstance: HazelcastInstance,
+    private val workerRegistry: WorkerRegistry
 ) {
     private val log = LoggerFactory.getLogger(MessageQueueOperationConsumer::class.java)
 
@@ -107,6 +110,31 @@ class MessageQueueOperationConsumer @Inject constructor(
      * Updated to handle both single operations (JsonObject) and batched operations (JsonArray).
      */
     private fun handleKafkaRecord(record: io.vertx.kafka.client.consumer.KafkaConsumerRecord<String, String>) {
+        // TEMPORARY DEBUG
+        try {
+            val operationArray = JsonArray(record.value())
+
+            // Process each operation in the array
+            for (i in 0 until operationArray.size()) {
+                val operationJson = operationArray.getJsonObject(i)
+                val operationId = operationJson.getString("id", "unknown")
+                val entityId = operationJson.getString("entityId", "unknown")  // Note: entityId, not entity
+                val traceId = operationJson.getString("traceId", "unknown")
+
+                log.info("OPERATION_FLOW: Consuming operation from Kafka - id: {}, entityId: {}, traceId: {}",
+                    operationId, entityId, traceId)
+
+                //if (!processOperation(operationJson)) {
+                //    log.error("Failed to process operation {}, backpressure activated", operationId)
+                //}
+            }
+
+        } catch (e: Exception) {
+            log.error("Error processing Kafka record: {}", e.message, e)
+            log.error("Raw record value was: {}", record.value())
+        }
+        // ...
+
         try {
             val value = record.value()
             if (value.isNullOrEmpty()) {
@@ -295,6 +323,44 @@ class MessageQueueOperationConsumer @Inject constructor(
             }
         }**/
 
+        if (logicalFrame <= coordinatorState.lastPreparedManifest) {
+            val operationId = operation.getString("id")
+            val entityId = operation.getString("entity", "unknown")
+
+            log.info("PW7Q8: Operation {} for entity {} arrived for already-prepared frame {} (lastPrepared: {}, frameInProgress: {}, gap: {})",
+                operationId, entityId, logicalFrame, coordinatorState.lastPreparedManifest, frameInProgress,
+                coordinatorState.lastPreparedManifest - frameInProgress)
+
+            try {
+                val manifestMap = hazelcastInstance.getMap<String, JsonObject>("manifests")
+
+                // Get active workers to find the right manifest
+                val activeWorkers = workerRegistry.getActiveWorkers()
+                if (activeWorkers.isEmpty()) {
+                    log.warn("No active workers for frame {}, buffering normally", logicalFrame)
+                    coordinatorState.bufferOperation(operation, logicalFrame)
+                    return
+                }
+
+                // Determine which worker's manifest to check
+                val operationId = operation.getString("id")
+                val workerIndex = Math.abs(operationId.hashCode()) % activeWorkers.size
+                val workerId = activeWorkers.toList()[workerIndex]
+                val manifestKey = FrameManifest.makeKey(logicalFrame, workerId)
+
+                log.info("Checking manifest {} for operation {}", manifestKey, operationId)
+
+                val manifestExists = manifestMap.containsKey(manifestKey)
+                log.info("Manifest {} exists: {}", manifestKey, manifestExists)
+
+            } catch (e: Exception) {
+                log.error("Failed to check manifest", e)
+            }
+
+            coordinatorState.bufferOperation(operation, logicalFrame)
+            return
+        }
+
         // Buffer the operation to its target frame
         coordinatorState.bufferOperation(operation, logicalFrame)
 
@@ -302,9 +368,9 @@ class MessageQueueOperationConsumer @Inject constructor(
         log.info("DEBUG: Buffered operation {} to frame {}", operation.getString("id"), logicalFrame)
 
         // Trigger manifest preparation if needed
-        if (shouldTriggerManifestPreparation(logicalFrame)) {
-            triggerManifestPreparation(logicalFrame)
-        }
+        //if (shouldTriggerManifestPreparation(logicalFrame)) {
+        //    triggerManifestPreparation(logicalFrame)
+        //}
     }
 
     /**
