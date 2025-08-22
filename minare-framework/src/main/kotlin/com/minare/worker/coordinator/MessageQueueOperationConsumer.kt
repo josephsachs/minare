@@ -130,6 +130,8 @@ class MessageQueueOperationConsumer @Inject constructor(
                 }
                 is JsonArray -> {
                     // Process batch of operations
+                    // Will grow more complex as Entity rules governing operation atomicity are refined
+                    // Consider refactoring outta here
                     for (i in 0 until parsed.size()) {
                         val operation = parsed.getJsonObject(i)
                         processOperation(operation)

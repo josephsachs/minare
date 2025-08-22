@@ -42,7 +42,6 @@ class FrameWorkerVerticle @Inject constructor(
     }
 
     private var sessionStartTimestamp: Long = 0L  // Wall clock for external communication
-    private var sessionStartNanos: Long = 0L      // Nanos for accurate frame pacing
     private var processingActive = false
 
     // Track the current frame processing job for clean cancellation
@@ -59,19 +58,15 @@ class FrameWorkerVerticle @Inject constructor(
         vlog.setVerticle(this)
 
         workerId = config.getString("workerId")
-
-        // Initialize distributed maps
         manifestMap = hazelcastInstance.getMap("frame-manifests")
         completionMap = hazelcastInstance.getMap("operation-completions")
 
-        // Listen for session start announcements
         vertx.eventBus().consumer<JsonObject>(FrameCoordinatorVerticle.ADDRESS_SESSION_START) { msg ->
             launch {
                 handleSessionStart(msg.body())
             }
         }
 
-        // Listen for next frame events
         vertx.eventBus().consumer<JsonObject>(ADDRESS_NEXT_FRAME) { msg ->
             vlog.getEventLogger().trace(
                 "NEXT_FRAME_EVENT",
@@ -123,15 +118,11 @@ class FrameWorkerVerticle @Inject constructor(
         // Clear any stale state in Hazelcast for this worker
         clearWorkerManifests()
 
-        // Reset state for new session
         sessionStartTimestamp = newSessionStart
         processingActive = true
 
         // Wait for session start
         delay(startsIn)
-
-        // Capture nanoTime at actual session start for frame pacing
-        sessionStartNanos = System.nanoTime()
 
         // Now wait for subsequent frame advancement events
         log.info("Worker {} ready for frame advancement events", workerId)
@@ -181,7 +172,6 @@ class FrameWorkerVerticle @Inject constructor(
         val frameStartTime = System.currentTimeMillis()
 
         try {
-            // Fetch manifest from Hazelcast
             val manifestKey = FrameManifest.makeKey(logicalFrame, workerId)
 
             // Keep trying until we find the manifest
@@ -206,7 +196,7 @@ class FrameWorkerVerticle @Inject constructor(
             log.info("Processing logical frame {} with {} operations",
                 logicalFrame, operations.size)
 
-            // Process operations sequentially
+            // Process operations sequentially, order matters
             var successCount = 0
             for (operation in operations) {
                 if (processOperation(operation, logicalFrame)) {
@@ -256,7 +246,6 @@ class FrameWorkerVerticle @Inject constructor(
         }
 
         try {
-            // Convert to Operation for easier handling
             val op = Operation.fromJson(operation)
 
             // Send to the appropriate processor based on action type
@@ -322,7 +311,6 @@ class FrameWorkerVerticle @Inject constructor(
         log.info("Stopping FrameWorkerVerticle")
         processingActive = false
 
-        // Cancel frame processing job
         currentFrameProcessingJob?.cancel()
         currentFrameProcessingJob = null
 
