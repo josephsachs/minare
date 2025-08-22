@@ -33,7 +33,6 @@ class FrameCoordinatorVerticle @Inject constructor(
     private val eventBusUtils: EventBusUtils,
     private val workerRegistry: WorkerRegistry,
     private val coordinatorState: FrameCoordinatorState,
-    private val backpressureManager: BackpressureManager,
     private val messageQueue: MessageQueue,
     private val messageQueueOperationConsumer: MessageQueueOperationConsumer,
     private val frameManifestBuilder: FrameManifestBuilder,
@@ -45,10 +44,7 @@ class FrameCoordinatorVerticle @Inject constructor(
     private val workerHeartbeatEvent: WorkerHeartbeatEvent,
     private val workerRegisterEvent: WorkerRegisterEvent,
     private val workerReadinessEvent: WorkerReadinessEvent,
-    private val frameCatchUpEvent: FrameCatchUpEvent,
-    private val workerHealthChangeEvent: WorkerHealthChangeEvent,
-    private val nextFrameEvent: NextFrameEvent,
-    private val operationDebugUtils: OperationDebugUtils
+    private val workerHealthChangeEvent: WorkerHealthChangeEvent
 ) : CoroutineVerticle() {
 
     private val log = LoggerFactory.getLogger(FrameCoordinatorVerticle::class.java)
@@ -80,8 +76,6 @@ class FrameCoordinatorVerticle @Inject constructor(
         infraRemoveWorkerEvent.register()
 
         launch {
-            // TODO: Re-enable along with pause and recover mechanism
-            //frameCatchUpEvent.register()
             workerHeartbeatEvent.register()
             workerFrameCompleteEvent.register()
             workerRegisterEvent.register()
@@ -314,10 +308,6 @@ class FrameCoordinatorVerticle @Inject constructor(
      */
     private suspend fun prepareManifestForFrame(logicalFrame: Long) {
         val operations = coordinatorState.extractFrameOperations(logicalFrame)
-
-        // TEMPORARY DEBUG
-        operationDebugUtils.logOperation(operations, "FrameCoordinatorVerticle.prepareManifestForFrame")
-
         val activeWorkers = workerRegistry.getActiveWorkers().toSet()
 
         if (activeWorkers.isEmpty() && operations.isNotEmpty()) {

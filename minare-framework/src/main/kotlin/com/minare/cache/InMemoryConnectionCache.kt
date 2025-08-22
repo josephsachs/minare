@@ -25,7 +25,7 @@ class InMemoryConnectionCache @Inject constructor(
     private val downSocketToConnection = ConcurrentHashMap<ServerWebSocket, Connection>()
 
     override fun storeConnection(connection: Connection) {
-        log.info("[TRACE] Storing connection in cache: {} with upSocketId={}, downSocketId={}",
+        log.info("Storing connection in cache: {} with upSocketId={}, downSocketId={}",
             connection._id, connection.upSocketId, connection.downSocketId)
         connections[connection._id] = connection
     }
@@ -38,14 +38,14 @@ class InMemoryConnectionCache @Inject constructor(
         val cachedConnection = connections[connectionId]
 
         if (cachedConnection != null) {
-            log.info("[TRACE] Retrieved connection from cache: {} with upSocketId={}, downSocketId={}",
+            log.info("Retrieved connection from cache: {} with upSocketId={}, downSocketId={}",
                 cachedConnection._id, cachedConnection.upSocketId, cachedConnection.downSocketId)
             return cachedConnection
         }
 
         try {
             val connection = connectionStore.find(connectionId)
-            log.info("[TRACE] Retrieved connection from database: {} with upSocketId={}, downSocketId={}",
+            log.info("Retrieved connection from database: {} with upSocketId={}, downSocketId={}",
                 connection._id, connection.upSocketId, connection.downSocketId)
 
             connections[connectionId] = connection

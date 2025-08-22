@@ -28,10 +28,8 @@ class MessageQueueOperationConsumer @Inject constructor(
     private val frameCalculator: FrameCalculator,
     private val coordinatorState: FrameCoordinatorState,
     private val lateOperationHandler: LateOperationHandler,
-    private val backpressureManager: BackpressureManager,
     private val hazelcastInstance: HazelcastInstance,
-    private val workerRegistry: WorkerRegistry,
-    private val operationDebugUtils: OperationDebugUtils
+    private val workerRegistry: WorkerRegistry
 ) {
     private val log = LoggerFactory.getLogger(MessageQueueOperationConsumer::class.java)
 
@@ -73,10 +71,8 @@ class MessageQueueOperationConsumer @Inject constructor(
 
         messageQueueConsumer = KafkaConsumer.create<String, String>(vertx, config)
 
-        // Subscribe to operations topic
         messageQueueConsumer!!.subscribe(OPERATIONS_TOPIC).await()
 
-        // Start consuming
         messageQueueConsumer!!.handler { record ->
             handleKafkaRecord(record)
         }
@@ -112,10 +108,6 @@ class MessageQueueOperationConsumer @Inject constructor(
      * Updated to handle both single operations (JsonObject) and batched operations (JsonArray).
      */
     private fun handleKafkaRecord(record: io.vertx.kafka.client.consumer.KafkaConsumerRecord<String, String>) {
-        // TEMPORARY DEBUG
-        operationDebugUtils.logOperation(JsonArray(record.value()), "handleKafkaRecord")
-        // END DEBUGGING CODE
-
         try {
             val value = record.value()
             if (value.isNullOrEmpty()) {
@@ -136,26 +128,16 @@ class MessageQueueOperationConsumer @Inject constructor(
                 }
             }
 
-            // Process based on type
             // TODO: Improve how backpressure status is handled here, this is scattered logic antipattern
             when (parsed) {
                 is JsonObject -> {
                     processOperation(parsed)
-                    //if (!processOperation(parsed)) {
-                        // Backpressure activated, stop processing
-                     //   return
-                    //}
                 }
                 is JsonArray -> {
                     // Process batch of operations
                     for (i in 0 until parsed.size()) {
                         val operation = parsed.getJsonObject(i)
                         processOperation(operation)
-
-                        //if (!processOperation(operation)) {
-                        //    Backpressure activated, stop processing
-                        //    return
-                        //}
                     }
                 }
             }
@@ -199,11 +181,6 @@ class MessageQueueOperationConsumer @Inject constructor(
 
         val bufferedFrameCount = coordinatorState.getBufferedFrameCount()
 
-        // TODO: Enable this after re-implementing backpressure control mechanism
-        /**if (backpressureManager.triggerIfFrameBufferExceeded(bufferedFrameCount)) {
-            messageQueueConsumer?.pause()
-        }**/
-
         // Warn when approaching frame buffer limit
         if (bufferedFrameCount >= frameCalculator.getBufferWarningThreshold()) {
             log.warn("Frame buffer approaching limit: {} frames buffered (max: {})",
@@ -242,62 +219,41 @@ class MessageQueueOperationConsumer @Inject constructor(
 
         // Check if this is a late operation
         val frameInProgress = coordinatorState.frameInProgress
-
-        // TEMPORARY DEBUG
-        log.info("frameInProgress = {}, logicalFrame = {}", frameInProgress, logicalFrame)
-
         if (logicalFrame <= frameInProgress) {
-            val framesLate = frameInProgress - logicalFrame
-
-            log.info("Late operation detected: operation targets frame {} but current frame is {} ({} frames late)",
-                logicalFrame, frameInProgress, framesLate)
-
             val decision = lateOperationHandler.handleLateOperation(operation, logicalFrame, frameInProgress)
-
-            // TEMPORARY DEBUG
-            operationDebugUtils.logOperation(operation, "MessageQueueOperationConsumer.handleSessionOperation")
 
             when (decision) {
                 is LateOperationDecision.Drop -> return
                 is LateOperationDecision.Delay -> {
                     // Check if target frame already has a manifest
                     if (decision.targetFrame <= coordinatorState.lastPreparedManifest) {
-                        log.info("LATE_MANIFEST_UPDATE: Late operation {} delayed to already-prepared frame {}",
-                            operation.getString("id"), decision.targetFrame)
-
                         try {
                             val manifestMap = hazelcastInstance.getMap<String, JsonObject>("frame-manifests")
                             val activeWorkers = workerRegistry.getActiveWorkers()
 
-                            if (activeWorkers.isNotEmpty()) {
-                                val operationId = operation.getString("id")
-                                val workerIndex = Math.abs(operationId.hashCode()) % activeWorkers.size
-                                val workerId = activeWorkers.toList()[workerIndex]
-                                val manifestKey = FrameManifest.makeKey(decision.targetFrame, workerId) // Note: targetFrame!
+                            val operationId = operation.getString("id")
+                            val workerIndex = Math.abs(operationId.hashCode()) % activeWorkers.size
+                            val workerId = activeWorkers.toList()[workerIndex]
+                            val manifestKey = FrameManifest.makeKey(decision.targetFrame, workerId) // Note: targetFrame!
 
-                                val manifestJson = manifestMap[manifestKey]
+                            val manifestJson = manifestMap[manifestKey]
 
-                                // TEMPORARY DEBUG
-                                operationDebugUtils.logManifestCheck(manifestKey, manifestJson != null)
+                            if (manifestJson != null) {
+                                val manifest = FrameManifest.fromJson(manifestJson)
+                                val operations = manifest.operations.toMutableList()
+                                operations.add(operation)
+                                operations.sortBy { it.getString("id") }
 
-                                if (manifestJson != null) {
-                                    val manifest = FrameManifest.fromJson(manifestJson)
-                                    val operations = manifest.operations.toMutableList()
-                                    operations.add(operation)
-                                    operations.sortBy { it.getString("id") }
+                                val updatedManifest = FrameManifest(
+                                    workerId = manifest.workerId,
+                                    logicalFrame = manifest.logicalFrame,
+                                    createdAt = manifest.createdAt,
+                                    operations = operations
+                                )
 
-                                    val updatedManifest = FrameManifest(
-                                        workerId = manifest.workerId,
-                                        logicalFrame = manifest.logicalFrame,
-                                        createdAt = manifest.createdAt,
-                                        operations = operations
-                                    )
+                                manifestMap[manifestKey] = updatedManifest.toJson()
 
-                                    manifestMap[manifestKey] = updatedManifest.toJson()
-                                    log.info("LATE_MANIFEST_UPDATE: Updated manifest {} (now {} ops)", manifestKey, operations.size)
-
-                                    return // Don't buffer since it's in the manifest
-                                }
+                                return // Don't buffer since it's in the manifest
                             }
                         } catch (e: Exception) {
                             log.error("LATE_MANIFEST_UPDATE: Error updating manifest", e)
@@ -315,12 +271,6 @@ class MessageQueueOperationConsumer @Inject constructor(
                 val manifestMap = hazelcastInstance.getMap<String, JsonObject>("frame-manifests")
                 val activeWorkers = workerRegistry.getActiveWorkers()
 
-                if (activeWorkers.isEmpty()) {
-                    log.warn("No active workers, cannot update manifest")
-                    coordinatorState.bufferOperation(operation, logicalFrame)
-                    return
-                }
-
                 val operationId = operation.getString("id")
                 val workerIndex = Math.abs(operationId.hashCode()) % activeWorkers.size
                 val workerId = activeWorkers.toList()[workerIndex]
@@ -328,19 +278,13 @@ class MessageQueueOperationConsumer @Inject constructor(
 
                 val manifestJson = manifestMap[manifestKey]
 
-                // TEMPORARY DEBUG
-                operationDebugUtils.logManifestCheck(manifestKey, manifestJson != null)
-
                 if (manifestJson != null) {
                     // Parse existing manifest
                     val manifest = FrameManifest.fromJson(manifestJson)
                     val operations = manifest.operations.toMutableList()
                     operations.add(operation)
-
-                    // Sort by operation ID to maintain deterministic order
                     operations.sortBy { it.getString("id") }
 
-                    // Create updated manifest
                     val updatedManifest = FrameManifest(
                         workerId = manifest.workerId,
                         logicalFrame = manifest.logicalFrame,
@@ -348,11 +292,8 @@ class MessageQueueOperationConsumer @Inject constructor(
                         operations = operations
                     )
 
-                    // Write back
                     manifestMap[manifestKey] = updatedManifest.toJson()
-                    log.info("MANIFEST_UPDATE_CHECK: Updated manifest {} (now {} ops)", manifestKey, operations.size)
                 }
-
             } catch (e: Exception) {
                 log.error("MANIFEST_UPDATE_CHECK: Error updating manifest", e)
             }
@@ -363,9 +304,6 @@ class MessageQueueOperationConsumer @Inject constructor(
 
         // Buffer the operation to its target frame
         coordinatorState.bufferOperation(operation, logicalFrame)
-
-        // TEMPORARY DEBUG
-        log.info("DEBUG: Buffered operation {} to frame {}", operation.getString("id"), logicalFrame)
     }
 
     /**

@@ -139,9 +139,6 @@ class FrameCoordinatorState @Inject constructor(
      * Buffer an operation to a specific logical frame
      */
     fun bufferOperation(operation: JsonObject, logicalFrame: Long) {
-        // TEMPORARY DEBUG
-        operationDebugUtils.logOperation(operation, "frameCoordinatorState: bufferOperation")
-
         val queue = operationsByFrame.computeIfAbsent(logicalFrame) { ConcurrentLinkedQueue() }
         queue.offer(operation)
 
@@ -156,10 +153,6 @@ class FrameCoordinatorState @Inject constructor(
      * Removes and returns the operations.
      */
     fun extractFrameOperations(logicalFrame: Long): List<JsonObject> {
-        // TEMPORARY DEBUG
-        log.info("Extracting operations for frame {}, available frames: {}",
-            logicalFrame, operationsByFrame.keys.sorted())
-
         // Include pending operations if this is frame 0
         // TODO: This probably shouldn't work like this
         val pendingOps = if (logicalFrame == 0L && pendingOperations.isNotEmpty()) {

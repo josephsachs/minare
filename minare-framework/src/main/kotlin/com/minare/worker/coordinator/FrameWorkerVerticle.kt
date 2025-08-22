@@ -279,9 +279,6 @@ class FrameWorkerVerticle @Inject constructor(
         operation: JsonObject,
         logicalFrame: Long
     ): Boolean {
-        // TEMPORARY DEBUG
-        operationDebugUtils.logOperation(operation, "FrameWorkerVerticle.processOperation")
-
         val operationId = operation.getString("id")
         if (operationId == null) {
             log.error("Operation missing ID: {}", operation.encode())
