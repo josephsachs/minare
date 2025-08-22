@@ -6,10 +6,7 @@ import com.hazelcast.cp.IAtomicLong
 import com.hazelcast.map.IMap
 import com.minare.operation.Operation
 import com.minare.time.FrameConfiguration
-import com.minare.time.FrameCalculator
 import com.minare.utils.VerticleLogger
-import com.minare.worker.coordinator.events.NextFrameEvent
-import com.minare.worker.coordinator.events.NextFrameEvent.Companion
 import io.vertx.core.json.JsonObject
 import io.vertx.kotlin.coroutines.CoroutineVerticle
 import io.vertx.kotlin.coroutines.await
@@ -74,13 +71,6 @@ class FrameWorkerVerticle @Inject constructor(
             }
         }
 
-        // Listen for pause events
-        vertx.eventBus().consumer<JsonObject>(FrameCoordinatorVerticle.ADDRESS_FRAME_PAUSE) { msg ->
-            launch {
-                handlePause(msg.body())
-            }
-        }
-
         // Listen for next frame events
         vertx.eventBus().consumer<JsonObject>(ADDRESS_NEXT_FRAME) { msg ->
             vlog.getEventLogger().trace(
@@ -91,31 +81,11 @@ class FrameWorkerVerticle @Inject constructor(
             )
 
             launch {
-                //if (processingActive) {
-                    handleNextFrame()
-                //}
+                handleNextFrame()
             }
         }
 
         log.info("FrameWorkerVerticle started for worker {}", workerId)
-    }
-
-    /**
-     * Handle pause event by stopping frame processing cleanly.
-     */
-    private suspend fun handlePause(pauseMessage: JsonObject) {
-        val reason = pauseMessage.getString("reason", "unknown")
-        log.info("Received pause event: {}", reason)
-
-        // Stop processing
-        processingActive = false
-
-        // Cancel the current frame processing job if it exists
-        currentFrameProcessingJob?.let { job ->
-            log.info("Cancelling frame processing job for pause")
-            job.cancel()
-            currentFrameProcessingJob = null
-        }
     }
 
     /**
@@ -172,11 +142,6 @@ class FrameWorkerVerticle @Inject constructor(
      * Pull current frame from Hazelcast and process it.
      */
     private suspend fun handleNextFrame() {
-        //if (!processingActive) {
-        //    log.debug("Ignoring next frame event - processing not active")
-        //    return
-        //}
-
         val frameToProcess = frameProgress.get()
 
         try {

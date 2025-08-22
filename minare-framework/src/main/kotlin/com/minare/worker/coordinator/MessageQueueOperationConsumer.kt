@@ -1,7 +1,6 @@
 package com.minare.worker.coordinator
 
-import com.minare.time.FrameConfiguration
-import com.minare.time.FrameCalculator
+import com.hazelcast.core.HazelcastInstance
 import io.vertx.core.Vertx
 import io.vertx.core.json.JsonArray
 import io.vertx.core.json.JsonObject
@@ -22,11 +21,10 @@ import javax.inject.Singleton
 @Singleton
 class MessageQueueOperationConsumer @Inject constructor(
     private val vertx: Vertx,
-    private val frameConfig: FrameConfiguration,
-    private val frameCalculator: FrameCalculator,
     private val coordinatorState: FrameCoordinatorState,
     private val lateOperationHandler: LateOperationHandler,
-    private val backpressureManager: BackpressureManager
+    private val hazelcastInstance: HazelcastInstance,
+    private val workerRegistry: WorkerRegistry
 ) {
     private val log = LoggerFactory.getLogger(MessageQueueOperationConsumer::class.java)
 
@@ -68,10 +66,8 @@ class MessageQueueOperationConsumer @Inject constructor(
 
         messageQueueConsumer = KafkaConsumer.create<String, String>(vertx, config)
 
-        // Subscribe to operations topic
         messageQueueConsumer!!.subscribe(OPERATIONS_TOPIC).await()
 
-        // Start consuming
         messageQueueConsumer!!.handler { record ->
             handleKafkaRecord(record)
         }
@@ -127,23 +123,16 @@ class MessageQueueOperationConsumer @Inject constructor(
                 }
             }
 
-            // Process based on type
             // TODO: Improve how backpressure status is handled here, this is scattered logic antipattern
             when (parsed) {
                 is JsonObject -> {
-                    if (!processOperation(parsed)) {
-                        // Backpressure activated, stop processing
-                        return
-                    }
+                    processOperation(parsed)
                 }
                 is JsonArray -> {
                     // Process batch of operations
                     for (i in 0 until parsed.size()) {
                         val operation = parsed.getJsonObject(i)
-                        if (!processOperation(operation)) {
-                            // Backpressure activated, stop processing
-                            return
-                        }
+                        processOperation(operation)
                     }
                 }
             }
@@ -185,45 +174,6 @@ class MessageQueueOperationConsumer @Inject constructor(
             return true
         }
 
-        val bufferedFrameCount = coordinatorState.getBufferedFrameCount()
-
-        // TODO: Enable this after re-implementing backpressure control mechanisms
-        /**if (bufferedFrameCount >= frameConfig.maxBufferFrames) {
-            val totalBuffered = coordinatorState.getTotalBufferedOperations()
-            log.error("Frame buffer limit exceeded: {} frames buffered (max: {}), " +
-                    "containing {} total operations. Activating backpressure",
-                bufferedFrameCount, frameConfig.maxBufferFrames, totalBuffered)
-
-            // Activate backpressure
-            backpressureManager.activate(
-                frame = coordinatorState.frameInProgress,
-                bufferedOps = totalBuffered,
-                maxBuffer = frameConfig.maxBufferFrames
-            )
-
-            // Pause Kafka consumer
-            messageQueueConsumer?.pause()
-
-            // Broadcast backpressure activated event
-            vertx.eventBus().publish(
-                "minare.backpressure.activated",
-                JsonObject()
-                    .put("frameInProgress", coordinatorState.frameInProgress)
-                    .put("bufferedFrames", bufferedFrameCount)
-                    .put("maxBufferFrames", frameConfig.maxBufferFrames)
-                    .put("bufferedOperations", totalBuffered)
-                    .put("timestamp", System.currentTimeMillis())
-            )
-
-            return false // Stop processing
-        }**/
-
-        // Warn when approaching frame buffer limit
-        if (bufferedFrameCount >= frameCalculator.getBufferWarningThreshold()) {
-            log.warn("Frame buffer approaching limit: {} frames buffered (max: {})",
-                bufferedFrameCount, frameConfig.maxBufferFrames)
-        }
-
         // Route to appropriate handler based on session state
         if (coordinatorState.sessionStartTimestamp == 0L) { // TODO: Better way of determining this, centralize somewhere
             handlePreSessionOperation(operation)
@@ -256,90 +206,66 @@ class MessageQueueOperationConsumer @Inject constructor(
 
         // Check if this is a late operation
         val frameInProgress = coordinatorState.frameInProgress
-
-        // TEMPORARY DEBUG
-        log.info("frameInProgress = {}, logicalFrame = {}", frameInProgress, logicalFrame)
-
-        if (logicalFrame < frameInProgress) {
-            val framesLate = frameInProgress - logicalFrame
-
-            log.info("Late operation detected: operation targets frame {} but current frame is {} ({} frames late)",
-                logicalFrame, frameInProgress, framesLate)
-
+        if (logicalFrame <= frameInProgress) {
             val decision = lateOperationHandler.handleLateOperation(operation, logicalFrame, frameInProgress)
 
             when (decision) {
                 is LateOperationDecision.Drop -> return
                 is LateOperationDecision.Delay -> {
+                    // Do we need to assign to a prior manifest?
+                    if (decision.targetFrame <= coordinatorState.lastPreparedManifest) {
+                        assignToExistingManifest(operation, decision.targetFrame)
+                    }
+
                     coordinatorState.bufferOperation(operation, decision.targetFrame)
-                    // Let the normal scheduling handle manifest preparation
                     return
                 }
             }
         }
 
-        // Check if operation is too far in the future
-        // TODO: Re-enable after implementing coordinator manifest pause
-        /**if (coordinatorState.isPaused) {
-            // During pause, enforce strict buffer limits
-            if (!frameCalculator.isFrameWithinBufferLimit(logicalFrame, frameInProgress)) {
-                log.error("Operation {} targets frame {} which exceeds pause buffer limit " +
-                        "(current: {}, max allowed: {}). " +
-                        "503 backpressure should be implemented here.",
-                    operation.getString("id"), logicalFrame,
-                    frameInProgress, frameInProgress + frameConfig.maxBufferFrames)
-
-                // Note: We should return 503 to HTTP clients here, but since this is
-                // Kafka consumption, we handle it via backpressure activation above
-                return
-            }
-        }**/
+        if (logicalFrame <= coordinatorState.lastPreparedManifest) {
+            assignToExistingManifest(operation, logicalFrame)
+            return
+        }
 
         // Buffer the operation to its target frame
         coordinatorState.bufferOperation(operation, logicalFrame)
-
-        // TEMPORARY DEBUG
-        log.info("DEBUG: Buffered operation {} to frame {}", operation.getString("id"), logicalFrame)
-
-        // Trigger manifest preparation if needed
-        if (shouldTriggerManifestPreparation(logicalFrame)) {
-            triggerManifestPreparation(logicalFrame)
-        }
     }
 
     /**
-     * Determine if we should trigger manifest preparation for a frame.
-     * This provides event-driven manifest preparation when operations arrive.
+     * Handle assignment of operations to prior manifests, ex. if they belong in a logical frame
+     * we have already prepared but not begun processing
      */
-    private fun shouldTriggerManifestPreparation(logicalFrame: Long): Boolean {
-        // Already prepared?
-        if (logicalFrame <= coordinatorState.lastPreparedManifest) {
-            return false
+    private fun assignToExistingManifest(operation: JsonObject, frame: Long) {
+        try {
+            val manifestMap = hazelcastInstance.getMap<String, JsonObject>("frame-manifests")
+            val activeWorkers = workerRegistry.getActiveWorkers()
+
+            val operationId = operation.getString("id")
+            val workerIndex = Math.abs(operationId.hashCode()) % activeWorkers.size
+            val workerId = activeWorkers.toList()[workerIndex]
+            val manifestKey = FrameManifest.makeKey(frame, workerId) // Note: targetFrame!
+
+            val manifestJson = manifestMap[manifestKey]
+
+            if (manifestJson != null) {
+                val manifest = FrameManifest.fromJson(manifestJson)
+                val operations = manifest.operations.toMutableList()
+                operations.add(operation)
+                operations.sortBy { it.getString("id") }
+
+                val updatedManifest = FrameManifest(
+                    workerId = manifest.workerId,
+                    logicalFrame = manifest.logicalFrame,
+                    createdAt = manifest.createdAt,
+                    operations = operations
+                )
+
+                manifestMap[manifestKey] = updatedManifest.toJson()
+            }
+        } catch (e: Exception) {
+            log.error("Buffered operation assignment: Error updating manifest", e)
         }
-
-        // During pause, respect buffer limits
-        // TODO: Revisit after implementing coordinator manifest pause
-        if (coordinatorState.isPaused) {
-            val frameInProgress = coordinatorState.frameInProgress
-            return frameCalculator.isFrameWithinBufferLimit(logicalFrame, frameInProgress)
-        }
-
-        // Normal operation - prepare if within lookahead window
-        val currentFrame = frameCalculator.getCurrentLogicalFrame(coordinatorState.sessionStartNanos)
-        return logicalFrame <= currentFrame + frameConfig.normalOperationLookahead
-    }
-
-    /**
-     * Trigger manifest preparation for a specific frame.
-     * Sends event to coordinator to prepare the manifest.
-     */
-    private fun triggerManifestPreparation(logicalFrame: Long) {
-        vertx.eventBus().send(
-            FrameCoordinatorVerticle.ADDRESS_PREPARE_MANIFEST,
-            JsonObject()
-                .put("logicalFrame", logicalFrame)
-                .put("trigger", "operation_arrival")
-        )
     }
 
     /**

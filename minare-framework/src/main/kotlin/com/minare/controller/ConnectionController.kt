@@ -198,10 +198,7 @@ open class ConnectionController @Inject constructor(
 
             connectionCache.storeConnection(updatedConnection)
 
-            log.info(
-                "Up socket for connection {} marked as disconnected, available for reconnection",
-                connectionId
-            )
+            log.info("Up socket for connection {} marked as disconnected, available for reconnection", connectionId)
         } catch (e: Exception) {
             log.error("Failed to mark up WebSocket disconnected for {}", connectionId, e)
             throw e
