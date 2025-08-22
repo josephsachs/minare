@@ -192,9 +192,6 @@ class FrameCoordinatorVerticle @Inject constructor(
             }
         }
 
-        // Keep operation-assignment consistent with expected frame time
-        delay(frameConfig.frameOffsetMs)
-
         log.debug("Broadcasting initial next frame event for frame 0")
         vertx.eventBus().publish(ADDRESS_NEXT_FRAME, JsonObject())
     }

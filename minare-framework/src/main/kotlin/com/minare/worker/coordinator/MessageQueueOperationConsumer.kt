@@ -179,9 +179,8 @@ class MessageQueueOperationConsumer @Inject constructor(
             return true
         }
 
+        // Check buffered frame count
         val bufferedFrameCount = coordinatorState.getBufferedFrameCount()
-
-        // Warn when approaching frame buffer limit
         if (bufferedFrameCount >= frameCalculator.getBufferWarningThreshold()) {
             log.warn("Frame buffer approaching limit: {} frames buffered (max: {})",
                 bufferedFrameCount, frameConfig.maxBufferFrames)
@@ -225,39 +224,9 @@ class MessageQueueOperationConsumer @Inject constructor(
             when (decision) {
                 is LateOperationDecision.Drop -> return
                 is LateOperationDecision.Delay -> {
-                    // Check if target frame already has a manifest
+                    // Do we need to assign to a prior manifest?
                     if (decision.targetFrame <= coordinatorState.lastPreparedManifest) {
-                        try {
-                            val manifestMap = hazelcastInstance.getMap<String, JsonObject>("frame-manifests")
-                            val activeWorkers = workerRegistry.getActiveWorkers()
-
-                            val operationId = operation.getString("id")
-                            val workerIndex = Math.abs(operationId.hashCode()) % activeWorkers.size
-                            val workerId = activeWorkers.toList()[workerIndex]
-                            val manifestKey = FrameManifest.makeKey(decision.targetFrame, workerId) // Note: targetFrame!
-
-                            val manifestJson = manifestMap[manifestKey]
-
-                            if (manifestJson != null) {
-                                val manifest = FrameManifest.fromJson(manifestJson)
-                                val operations = manifest.operations.toMutableList()
-                                operations.add(operation)
-                                operations.sortBy { it.getString("id") }
-
-                                val updatedManifest = FrameManifest(
-                                    workerId = manifest.workerId,
-                                    logicalFrame = manifest.logicalFrame,
-                                    createdAt = manifest.createdAt,
-                                    operations = operations
-                                )
-
-                                manifestMap[manifestKey] = updatedManifest.toJson()
-
-                                return // Don't buffer since it's in the manifest
-                            }
-                        } catch (e: Exception) {
-                            log.error("LATE_MANIFEST_UPDATE: Error updating manifest", e)
-                        }
+                        assignToExistingManifest(operation, decision.targetFrame)
                     }
 
                     coordinatorState.bufferOperation(operation, decision.targetFrame)
@@ -267,43 +236,48 @@ class MessageQueueOperationConsumer @Inject constructor(
         }
 
         if (logicalFrame <= coordinatorState.lastPreparedManifest) {
-            try {
-                val manifestMap = hazelcastInstance.getMap<String, JsonObject>("frame-manifests")
-                val activeWorkers = workerRegistry.getActiveWorkers()
-
-                val operationId = operation.getString("id")
-                val workerIndex = Math.abs(operationId.hashCode()) % activeWorkers.size
-                val workerId = activeWorkers.toList()[workerIndex]
-                val manifestKey = FrameManifest.makeKey(logicalFrame, workerId)
-
-                val manifestJson = manifestMap[manifestKey]
-
-                if (manifestJson != null) {
-                    // Parse existing manifest
-                    val manifest = FrameManifest.fromJson(manifestJson)
-                    val operations = manifest.operations.toMutableList()
-                    operations.add(operation)
-                    operations.sortBy { it.getString("id") }
-
-                    val updatedManifest = FrameManifest(
-                        workerId = manifest.workerId,
-                        logicalFrame = manifest.logicalFrame,
-                        createdAt = manifest.createdAt,
-                        operations = operations
-                    )
-
-                    manifestMap[manifestKey] = updatedManifest.toJson()
-                }
-            } catch (e: Exception) {
-                log.error("MANIFEST_UPDATE_CHECK: Error updating manifest", e)
-            }
-
-            // Don't buffer - it's already in the manifest
+            assignToExistingManifest(operation, logicalFrame)
             return
         }
 
         // Buffer the operation to its target frame
         coordinatorState.bufferOperation(operation, logicalFrame)
+    }
+
+    /**
+     * Handle assignment of operations to prior manifests, ex. if they belong in a logical frame
+     * we have already prepared but not begun processing
+     */
+    private fun assignToExistingManifest(operation: JsonObject, frame: Long) {
+        try {
+            val manifestMap = hazelcastInstance.getMap<String, JsonObject>("frame-manifests")
+            val activeWorkers = workerRegistry.getActiveWorkers()
+
+            val operationId = operation.getString("id")
+            val workerIndex = Math.abs(operationId.hashCode()) % activeWorkers.size
+            val workerId = activeWorkers.toList()[workerIndex]
+            val manifestKey = FrameManifest.makeKey(frame, workerId) // Note: targetFrame!
+
+            val manifestJson = manifestMap[manifestKey]
+
+            if (manifestJson != null) {
+                val manifest = FrameManifest.fromJson(manifestJson)
+                val operations = manifest.operations.toMutableList()
+                operations.add(operation)
+                operations.sortBy { it.getString("id") }
+
+                val updatedManifest = FrameManifest(
+                    workerId = manifest.workerId,
+                    logicalFrame = manifest.logicalFrame,
+                    createdAt = manifest.createdAt,
+                    operations = operations
+                )
+
+                manifestMap[manifestKey] = updatedManifest.toJson()
+            }
+        } catch (e: Exception) {
+            log.error("Buffered operation assignment: Error updating manifest", e)
+        }
     }
 
     /**
