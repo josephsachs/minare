@@ -8,7 +8,6 @@ import com.minare.utils.VerticleLogger
  * WorkerHealthChangeEvent handles status messages from FrameWorkerHealthMonitorVerticle
  */
 class WorkerHealthChangeEvent @Inject constructor(
-    private val eventBusUtils: EventBusUtils,
     private val vlog: VerticleLogger
 ) {
     suspend fun register() {

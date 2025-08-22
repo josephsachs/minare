@@ -3,18 +3,15 @@ package com.minare.worker.coordinator
 import com.minare.operation.MessageQueue
 import com.minare.time.FrameCalculator
 import com.minare.time.FrameConfiguration
-import com.minare.time.TimeService
 import com.minare.utils.EventBusUtils
 import com.minare.utils.VerticleLogger
 import com.minare.worker.coordinator.events.*
 import io.vertx.core.json.JsonArray
 import io.vertx.core.json.JsonObject
 import io.vertx.kotlin.coroutines.CoroutineVerticle
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.slf4j.LoggerFactory
 import javax.inject.Inject
-import com.minare.utils.OperationDebugUtils
 
 /**
  * Frame Coordinator - The central orchestrator for frame-based processing.
@@ -27,7 +24,6 @@ import com.minare.utils.OperationDebugUtils
  */
 class FrameCoordinatorVerticle @Inject constructor(
     private val frameConfig: FrameConfiguration,
-    private val timeService: TimeService,
     private val frameCalculator: FrameCalculator,
     private val vlog: VerticleLogger,
     private val eventBusUtils: EventBusUtils,
@@ -37,7 +33,6 @@ class FrameCoordinatorVerticle @Inject constructor(
     private val messageQueueOperationConsumer: MessageQueueOperationConsumer,
     private val frameManifestBuilder: FrameManifestBuilder,
     private val frameCompletionTracker: FrameCompletionTracker,
-    private val frameScheduler: FrameScheduler,  // NEW
     private val infraAddWorkerEvent: InfraAddWorkerEvent,
     private val infraRemoveWorkerEvent: InfraRemoveWorkerEvent,
     private val workerFrameCompleteEvent: WorkerFrameCompleteEvent,
@@ -51,13 +46,10 @@ class FrameCoordinatorVerticle @Inject constructor(
 
     companion object {
         const val ADDRESS_FRAME_START = "minare.coordinator.frame.start"
-        const val ADDRESS_FRAME_PAUSE = "minare.coordinator.frame.pause"
-        const val ADDRESS_FRAME_RESUME = "minare.coordinator.frame.resume"
         const val ADDRESS_SESSION_START = "minare.coordinator.session.start"
         const val ADDRESS_FRAME_ALL_COMPLETE = "minare.coordinator.internal.frame-all-complete"
         const val ADDRESS_PREPARE_MANIFEST = "minare.coordinator.internal.prepare-manifest"
         const val ADDRESS_ALL_WORKERS_READY = "minare.coordinator.all.workers.ready"
-        const val ADDRESS_WORKERS_CAUGHT_UP = "minare.coordinator.workers.caught.up"
         const val ADDRESS_NEXT_FRAME = "minare.coordinator.next.frame"  // NEW
     }
 
@@ -95,36 +87,6 @@ class FrameCoordinatorVerticle @Inject constructor(
         eventBusUtils.registerTracedConsumer<JsonObject>(ADDRESS_PREPARE_MANIFEST) { _, traceId ->
             launch { preparePendingManifests() }
         }
-
-        // Resume command - not sure if this ever happens with pause not implemented
-        eventBusUtils.registerTracedConsumer<JsonObject>(ADDRESS_FRAME_RESUME) { msg, traceId ->
-            launch {
-                val reason = msg.body().getString("reason", "Manual resume")
-                log.info("Received resume command: {}", reason)
-                // Resume happens via FrameCatchUpEvent when workers are ready
-                // Just log that we've received the request
-            }
-        }
-
-        eventBusUtils.registerTracedConsumer<JsonObject>(ADDRESS_WORKERS_CAUGHT_UP) { msg, traceId ->
-            launch {
-                val resumeFrame = msg.body().getLong("resumeFrame")
-                log.info("All workers caught up, resuming at frame {}", resumeFrame)
-
-                coordinatorState.isPaused = false
-                coordinatorState.setFrameInProgress(resumeFrame)
-
-                // Catch up manifest preparation to current time
-                preparePendingManifests()
-
-                log.debug("Broadcasting next frame event to resume at frame {}", resumeFrame)
-                vertx.eventBus().publish(ADDRESS_NEXT_FRAME, JsonObject())
-
-                frameScheduler.scheduleFramePreparation(resumeFrame, this) { frame ->
-                    prepareManifestForFrame(frame)
-                }
-            }
-        }
     }
 
     private suspend fun setupOperationConsumer() {
@@ -141,7 +103,6 @@ class FrameCoordinatorVerticle @Inject constructor(
 
             if (existingWorkers.size == workerRegistry.getExpectedWorkerCount()) {
                 log.debug("All expected workers already active, starting session")
-                coordinatorState.isPaused = false
                 launch {
                     startNewSession()
                 }
@@ -293,7 +254,7 @@ class FrameCoordinatorVerticle @Inject constructor(
      * such as when backpressure control is de-activated
      */
     private suspend fun preparePendingManifests() {
-        val framesToPrepare = frameScheduler.getFramesToPrepareNow()
+        val framesToPrepare = getFramesToPrepareNow()
 
         for (frame in framesToPrepare) {
             prepareManifestForFrame(frame)
@@ -366,6 +327,26 @@ class FrameCoordinatorVerticle @Inject constructor(
         preparePendingManifests()
     }
 
+    /**
+     * Get frames that should be prepared right now based on current state
+     */
+    fun getFramesToPrepareNow(): List<Long> {
+        val lastPrepared = coordinatorState.lastPreparedManifest
+
+        return getFramesToPrepareNormally(lastPrepared)
+    }
+
+    private fun getFramesToPrepareNormally(lastPrepared: Long): List<Long> {
+        val currentFrame = frameCalculator.getCurrentLogicalFrame(coordinatorState.sessionStartNanos)
+        val targetFrame = currentFrame + frameConfig.normalOperationLookahead
+
+        return if (targetFrame > lastPrepared) {
+            ((lastPrepared + 1)..targetFrame).toList()
+        } else {
+            emptyList()
+        }
+    }
+
     private fun cleanupCompletedFrame(logicalFrame: Long) {
         frameManifestBuilder.clearFrameManifests(logicalFrame)
         frameCompletionTracker.clearFrameCompletions(logicalFrame)
@@ -388,7 +369,6 @@ class FrameCoordinatorVerticle @Inject constructor(
 
     override suspend fun stop() {
         log.info("Stopping FrameCoordinatorVerticle")
-        coordinatorState.isPaused = true
         messageQueueOperationConsumer.stop()
         super.stop()
     }

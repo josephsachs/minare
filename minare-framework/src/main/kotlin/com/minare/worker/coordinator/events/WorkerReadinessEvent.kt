@@ -29,8 +29,7 @@ class WorkerReadinessEvent @Inject constructor(
 
             // Only proceed if no session is running and all workers are ready
             if (activeWorkers == expectedWorkers &&
-                coordinatorState.sessionStartTimestamp == 0L &&
-                coordinatorState.isPaused) {
+                coordinatorState.sessionStartTimestamp == 0L) {
 
                 vlog.getEventLogger().trace(
                     "ALL_WORKERS_READY",

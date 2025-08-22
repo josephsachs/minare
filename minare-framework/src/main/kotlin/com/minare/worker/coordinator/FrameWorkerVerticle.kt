@@ -6,10 +6,7 @@ import com.hazelcast.cp.IAtomicLong
 import com.hazelcast.map.IMap
 import com.minare.operation.Operation
 import com.minare.time.FrameConfiguration
-import com.minare.time.FrameCalculator
 import com.minare.utils.VerticleLogger
-import com.minare.worker.coordinator.events.NextFrameEvent
-import com.minare.worker.coordinator.events.NextFrameEvent.Companion
 import io.vertx.core.json.JsonObject
 import io.vertx.kotlin.coroutines.CoroutineVerticle
 import io.vertx.kotlin.coroutines.await
@@ -19,7 +16,6 @@ import kotlinx.coroutines.launch
 import org.slf4j.LoggerFactory
 import java.util.concurrent.TimeoutException
 import javax.inject.Inject
-import com.minare.utils.OperationDebugUtils
 
 /**
  * Worker-side frame processing verticle.
@@ -31,8 +27,7 @@ import com.minare.utils.OperationDebugUtils
 class FrameWorkerVerticle @Inject constructor(
     private val vlog: VerticleLogger,
     private val hazelcastInstance: HazelcastInstance,
-    private val frameConfig: FrameConfiguration,
-    private val operationDebugUtils: OperationDebugUtils
+    private val frameConfig: FrameConfiguration
 ) : CoroutineVerticle() {
 
     private val log = LoggerFactory.getLogger(FrameWorkerVerticle::class.java)
@@ -76,13 +71,6 @@ class FrameWorkerVerticle @Inject constructor(
             }
         }
 
-        // Listen for pause events
-        vertx.eventBus().consumer<JsonObject>(FrameCoordinatorVerticle.ADDRESS_FRAME_PAUSE) { msg ->
-            launch {
-                handlePause(msg.body())
-            }
-        }
-
         // Listen for next frame events
         vertx.eventBus().consumer<JsonObject>(ADDRESS_NEXT_FRAME) { msg ->
             vlog.getEventLogger().trace(
@@ -98,24 +86,6 @@ class FrameWorkerVerticle @Inject constructor(
         }
 
         log.info("FrameWorkerVerticle started for worker {}", workerId)
-    }
-
-    /**
-     * Handle pause event by stopping frame processing cleanly.
-     */
-    private suspend fun handlePause(pauseMessage: JsonObject) {
-        val reason = pauseMessage.getString("reason", "unknown")
-        log.info("Received pause event: {}", reason)
-
-        // Stop processing
-        processingActive = false
-
-        // Cancel the current frame processing job if it exists
-        currentFrameProcessingJob?.let { job ->
-            log.info("Cancelling frame processing job for pause")
-            job.cancel()
-            currentFrameProcessingJob = null
-        }
     }
 
     /**

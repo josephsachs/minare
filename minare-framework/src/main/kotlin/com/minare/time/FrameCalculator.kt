@@ -1,6 +1,5 @@
 package com.minare.time
 
-import com.minare.time.FrameConfiguration
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -15,9 +14,6 @@ class FrameCalculator @Inject constructor(
     companion object {
         const val NANOS_PER_MS = 1_000_000L
         const val NANOS_PER_SECOND = 1_000_000_000L
-        const val BUFFER_WARNING_THRESHOLD_PERCENT = 0.8
-        const val FRAME_LAG_WARNING_THRESHOLD = 0L
-        const val FRAME_LAG_CRITICAL_THRESHOLD = 1L
     }
 
     private val frameDurationNanos = frameConfig.frameDurationMs * NANOS_PER_MS

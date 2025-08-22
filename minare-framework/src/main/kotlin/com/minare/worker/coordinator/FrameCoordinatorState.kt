@@ -2,18 +2,14 @@ package com.minare.worker.coordinator
 
 import com.hazelcast.core.HazelcastInstance
 import com.hazelcast.cp.IAtomicLong
-import com.minare.time.FrameConfiguration
 import com.minare.time.FrameCalculator
 import io.vertx.core.json.JsonObject
 import org.slf4j.LoggerFactory
-import java.util.*
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ConcurrentLinkedQueue
-import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 import javax.inject.Inject
 import javax.inject.Singleton
-import com.minare.utils.OperationDebugUtils
 
 /**
  * Shared state for the Frame Coordinator system.
@@ -23,9 +19,7 @@ import com.minare.utils.OperationDebugUtils
 class FrameCoordinatorState @Inject constructor(
     private val workerRegistry: WorkerRegistry,
     private val frameCalculator: FrameCalculator,
-    private val frameConfig: FrameConfiguration,
-    private val hazelcastInstance: HazelcastInstance,
-    private val operationDebugUtils: OperationDebugUtils
+    private val hazelcastInstance: HazelcastInstance
 ) {
     private val log = LoggerFactory.getLogger(FrameCoordinatorState::class.java)
 
@@ -39,7 +33,6 @@ class FrameCoordinatorState @Inject constructor(
 
     private val _lastProcessedFrame = AtomicLong(-1L)
     private val _lastPreparedManifest = AtomicLong(-1L)
-    private val _isPaused = AtomicBoolean(true)  // Start paused until workers ready
 
     private val operationsByFrame = ConcurrentHashMap<Long, ConcurrentLinkedQueue<JsonObject>>()
     private val pendingOperations = ConcurrentLinkedQueue<JsonObject>()
@@ -53,10 +46,6 @@ class FrameCoordinatorState @Inject constructor(
     var lastPreparedManifest: Long
         get() = _lastPreparedManifest.get()
         set(value) = _lastPreparedManifest.set(value)
-
-    var isPaused: Boolean
-        get() = _isPaused.get()
-        set(value) = _isPaused.set(value)
 
     val frameInProgress: Long
         get() = frameProgress.get()
@@ -174,6 +163,13 @@ class FrameCoordinatorState @Inject constructor(
     }
 
     /**
+     * Check if frame loop is running
+     */
+    fun isFrameLoopRunning(): Boolean {
+        return frameProgress.get() != -1L
+    }
+
+    /**
      * Set the frame currently in progress
      */
     fun setFrameInProgress(frameNumber: Long) {
@@ -234,13 +230,6 @@ class FrameCoordinatorState @Inject constructor(
     }
 
     /**
-     * Check if frame loop is running (for monitoring)
-     */
-    fun isFrameLoopRunning(): Boolean {
-        return frameProgress.get() != -1L && !isPaused
-    }
-
-    /**
      * Get current frame status (for monitoring)
      */
     fun getCurrentFrameStatus(): JsonObject {
@@ -254,7 +243,6 @@ class FrameCoordinatorState @Inject constructor(
             .put("sessionStartTimestamp", sessionStartTimestamp)
             .put("completedWorkers", currentFrameCompletions.size)
             .put("totalWorkers", workerRegistry.getActiveWorkers().size)
-            .put("isPaused", isPaused)
             .put("totalBufferedOperations", getTotalBufferedOperations())
     }
 

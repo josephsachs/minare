@@ -8,7 +8,6 @@ import io.vertx.core.json.JsonObject
 import org.slf4j.LoggerFactory
 import javax.inject.Inject
 import com.minare.exception.BackpressureException
-import com.minare.worker.coordinator.BackpressureManager
 
 /**
  * Controller for the operation event queue.
@@ -21,8 +20,7 @@ import com.minare.worker.coordinator.BackpressureManager
  * - Applications can extend this class to customize behavior
  */
 abstract class OperationController @Inject constructor(
-    private val messageQueue: MessageQueue,
-    private val backpressureManager: BackpressureManager
+    private val messageQueue: MessageQueue
 ) {
     private val log = LoggerFactory.getLogger(OperationController::class.java)
 

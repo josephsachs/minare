@@ -1,8 +1,6 @@
 package com.minare.worker.coordinator
 
 import com.hazelcast.core.HazelcastInstance
-import com.minare.time.FrameConfiguration
-import com.minare.time.FrameCalculator
 import io.vertx.core.Vertx
 import io.vertx.core.json.JsonArray
 import io.vertx.core.json.JsonObject
@@ -12,7 +10,6 @@ import kotlinx.coroutines.CoroutineScope
 import org.slf4j.LoggerFactory
 import javax.inject.Inject
 import javax.inject.Singleton
-import com.minare.utils.OperationDebugUtils
 
 /**
  * Handles Kafka consumption for the frame coordinator.
@@ -24,8 +21,6 @@ import com.minare.utils.OperationDebugUtils
 @Singleton
 class MessageQueueOperationConsumer @Inject constructor(
     private val vertx: Vertx,
-    private val frameConfig: FrameConfiguration,
-    private val frameCalculator: FrameCalculator,
     private val coordinatorState: FrameCoordinatorState,
     private val lateOperationHandler: LateOperationHandler,
     private val hazelcastInstance: HazelcastInstance,
