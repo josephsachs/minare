@@ -67,8 +67,8 @@ data class FrameManifest(
         /**
          * Create the distributed map key for a manifest
          */
-        fun makeKey(frameStartTime: Long, workerId: String): String {
-            return "manifest:$frameStartTime:$workerId"
+        fun makeKey(logicalFrame: Long, workerId: String): String {
+            return "manifest:$logicalFrame:$workerId"
         }
 
         /**

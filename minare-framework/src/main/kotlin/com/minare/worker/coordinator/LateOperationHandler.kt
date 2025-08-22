@@ -66,9 +66,7 @@ class RejectLateOperations(
  * Delay strategy - adds late operations to the next unprocessed frame.
  * Less deterministic but more forgiving of network delays.
  */
-class DelayLateOperations(
-    private val maxDelayFrames: Int = 5
-) : LateOperationHandler {
+class DelayLateOperations() : LateOperationHandler {
     private val log = LoggerFactory.getLogger(DelayLateOperations::class.java)
 
     override fun handleLateOperation(
@@ -77,15 +75,6 @@ class DelayLateOperations(
         currentFrame: Long
     ): LateOperationDecision {
         val nextFrame = currentFrame + 1
-        val delayedFrames = nextFrame - intendedFrame
-
-        if (delayedFrames > maxDelayFrames) {
-            log.warn("Operation {} too late to delay ({} frames), dropping",
-                operation.getString("id"),
-                delayedFrames
-            )
-            return LateOperationDecision.Drop
-        }
 
         log.info("Delaying operation {} from frame {} to frame {}",
             operation.getString("id"),

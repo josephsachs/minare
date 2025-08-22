@@ -1,9 +1,7 @@
 package com.minare.worker.coordinator
 
 import com.minare.time.FrameCalculator
-import com.minare.utils.EventBusUtils
 import com.minare.utils.VerticleLogger
-import com.minare.worker.coordinator.FrameCoordinatorVerticle.Companion.ADDRESS_FRAME_PAUSE
 import com.minare.worker.coordinator.events.InfraAddWorkerEvent
 import com.minare.worker.coordinator.events.InfraRemoveWorkerEvent
 import io.vertx.core.http.HttpServer
@@ -70,7 +68,6 @@ class CoordinatorAdminVerticle @Inject constructor(
 
             val status = JsonObject()
                 .put("coordinator", JsonObject()
-                    .put("state", if (frameCoordinatorState.isPaused) "PAUSED" else "RUNNING")
                     .put("sessionStarted", frameCoordinatorState.sessionStartTimestamp > 0)
                     .put("frameStatus", frameStatus))
                 .put("workers", JsonObject()
@@ -83,8 +80,7 @@ class CoordinatorAdminVerticle @Inject constructor(
                 .put("buffer", JsonObject()
                     .put("totalOperations", frameCoordinatorState.getTotalBufferedOperations())
                     .put("frameDistribution", frameCoordinatorState.getBufferedOperationCounts())
-                    .put("approachingLimit", frameCoordinatorState.isApproachingBufferLimit()))
-                .put("consumer", consumerMetrics)
+                .put("consumer", consumerMetrics))
 
             ctx.response()
                 .putHeader("content-type", "application/json")
@@ -129,7 +125,6 @@ class CoordinatorAdminVerticle @Inject constructor(
 
             val frameStatus = JsonObject()
                 .put("running", frameCoordinatorState.isFrameLoopRunning())
-                .put("paused", frameCoordinatorState.isPaused)
                 .put("currentWallClockFrame", currentFrame)
                 .put("frameInProgress", frameInProgress)
                 .put("lastProcessedFrame", lastProcessed)
@@ -164,8 +159,6 @@ class CoordinatorAdminVerticle @Inject constructor(
 
             val bufferStatus = JsonObject()
                 .put("totalOperations", totalBuffered)
-                .put("approachingLimit", frameCoordinatorState.isApproachingBufferLimit())
-                .put("isPaused", frameCoordinatorState.isPaused)
                 .put("frameDistribution", bufferCounts)
                 .put("bufferedFrameCount", bufferCounts.size)
                 .put("oldestBufferedFrame", bufferCounts.keys.minOrNull() ?: -1)

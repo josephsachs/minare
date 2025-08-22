@@ -30,7 +30,6 @@ class FrameCoordinatorVerticleModule : PrivateModule() {
         bind(InfraRemoveWorkerEvent::class.java).`in`(Singleton::class.java)
         bind(WorkerFrameCompleteEvent::class.java).`in`(Singleton::class.java)
         bind(WorkerHeartbeatEvent::class.java).`in`(Singleton::class.java)
-        bind(FrameCatchUpEvent::class.java).`in`(Singleton::class.java)
         bind(WorkerHealthChangeEvent::class.java).`in`(Singleton::class.java)
         bind(WorkerRegisterEvent::class.java).`in`(Singleton::class.java)
         bind(WorkerReadinessEvent::class.java).`in`(Singleton::class.java)

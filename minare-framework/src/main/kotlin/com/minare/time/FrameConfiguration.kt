@@ -75,16 +75,6 @@ data class FrameConfiguration(
     val maxClockDriftMs: Long = 100,
 
     /**
-     * Maximum frames to buffer during pause conditions.
-     * When paused, operations continue arriving and are buffered
-     * up to this many frames ahead.
-     *
-     * Default: 1000 frames (1 second at 100ms frames)
-     * After this, backpressure (503) should be applied
-     */
-    val maxBufferFrames: Int = 1000,
-
-    /**
      * How many frames ahead to prepare during normal operation.
      * Provides smooth operation without excessive pre-computation.
      *
@@ -107,7 +97,6 @@ data class FrameConfiguration(
         require(frameOffsetMs > 0) { "Frame offset must be positive" }
         require(coordinationWaitPeriod > 0) { "Coordination wait period must be positive" }
         require(maxClockDriftMs > 0) { "Clock drift tolerance must be positive" }
-        require(maxBufferFrames > 0) { "Max buffer frames must be positive" }
         require(normalOperationLookahead > 0) { "Normal operation lookahead must be positive" }
 
         // Warn about potentially problematic configurations
@@ -127,53 +116,8 @@ data class FrameConfiguration(
             println("WARNING: Max clock drift exceeds frame length. This may result in incorrect processing order.")
         }
 
-        if (maxBufferFrames > 50) {
-            println("WARNING: Very large buffer (${maxBufferFrames} frames) may cause memory issues")
-        }
-
         if (normalOperationLookahead > 5) {
             println("WARNING: Large lookahead (${normalOperationLookahead} frames) reduces operation processing responsiveness")
         }
-    }
-
-    /**
-     * Create a configuration suitable for high-frequency games.
-     * Short frames with frequent checkpoints.
-     */
-    companion object {
-        fun highFrequencyGame() = FrameConfiguration(
-            frameDurationMs = 16,          // 60 FPS
-            saveIntervalFrames = 1800,     // Every 30 seconds
-            frameOffsetMs = 500,           // Quick start
-            coordinationWaitPeriod = 0.5,  // Tight timing
-            maxBufferFrames = 60,          // 1 second buffer
-            normalOperationLookahead = 3   // Slightly more buffer for smooth gameplay
-        )
-
-        /**
-         * Create a configuration for batch processing systems.
-         * Longer frames with relaxed timing.
-         */
-        fun batchProcessing() = FrameConfiguration(
-            frameDurationMs = 1000,        // 1 second frames
-            saveIntervalFrames = 60,       // Every minute
-            frameOffsetMs = 5000,          // Plenty of prep time
-            coordinationWaitPeriod = 0.9,  // Relaxed timing
-            maxBufferFrames = 30,          // 30 second buffer
-            normalOperationLookahead = 1   // Minimal lookahead
-        )
-
-        /**
-         * Create a configuration for real-time analytics.
-         * Balanced for low latency with reliability.
-         */
-        fun realtimeAnalytics() = FrameConfiguration(
-            frameDurationMs = 100,         // 10 FPS
-            saveIntervalFrames = 600,      // Every minute
-            frameOffsetMs = 2000,          // Standard prep
-            coordinationWaitPeriod = 0.8,  // Standard timing
-            maxBufferFrames = 20,          // 2 second buffer
-            normalOperationLookahead = 2   // Standard lookahead
-        )
     }
 }

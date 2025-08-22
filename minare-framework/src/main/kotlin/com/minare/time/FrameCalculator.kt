@@ -1,6 +1,5 @@
 package com.minare.time
 
-import com.minare.time.FrameConfiguration
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -15,9 +14,6 @@ class FrameCalculator @Inject constructor(
     companion object {
         const val NANOS_PER_MS = 1_000_000L
         const val NANOS_PER_SECOND = 1_000_000_000L
-        const val BUFFER_WARNING_THRESHOLD_PERCENT = 0.8
-        const val FRAME_LAG_WARNING_THRESHOLD = 0L
-        const val FRAME_LAG_CRITICAL_THRESHOLD = 1L
     }
 
     private val frameDurationNanos = frameConfig.frameDurationMs * NANOS_PER_MS
@@ -97,17 +93,6 @@ class FrameCalculator @Inject constructor(
     }
 
     /**
-     * Check if a frame is within allowed buffer limits
-     */
-    fun isFrameWithinBufferLimit(
-        frameNumber: Long,
-        frameInProgress: Long,
-        maxBufferFrames: Int = frameConfig.maxBufferFrames
-    ): Boolean {
-        return frameNumber <= frameInProgress + maxBufferFrames
-    }
-
-    /**
      * Convert frame duration to readable string
      */
     fun frameDurationToString(): String {
@@ -144,28 +129,6 @@ class FrameCalculator @Inject constructor(
      */
     fun msToNanos(ms: Long): Long {
         return ms * NANOS_PER_MS
-    }
-
-    /**
-     * Get the buffer warning threshold (number of frames)
-     * Returns 80% of the maximum buffer frames configuration
-     */
-    fun getBufferWarningThreshold(): Int {
-        return (frameConfig.maxBufferFrames * BUFFER_WARNING_THRESHOLD_PERCENT).toInt()
-    }
-
-    /**
-     * Check if buffered frames are approaching the configured limit
-     * @param bufferedFrames Number of frames currently buffered
-     * @param frameInProgress Current frame being processed
-     * @return true if buffered frames exceed 80% of max allowed
-     */
-    fun isApproachingBufferLimit(bufferedFrames: Long, frameInProgress: Long): Boolean {
-        val maxFrame = frameInProgress + bufferedFrames
-        val maxAllowedFrame = frameInProgress + frameConfig.maxBufferFrames
-        val threshold = frameInProgress + getBufferWarningThreshold()
-
-        return maxFrame > threshold
     }
 
     /**
