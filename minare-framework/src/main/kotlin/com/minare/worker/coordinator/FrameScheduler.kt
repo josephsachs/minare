@@ -47,7 +47,7 @@ class FrameScheduler @Inject constructor(
             scheduleAtExactTime(frameNumber, timeLeft, scope, onPrepareFrame)
         } else {
             scope.launch {
-                catchUpOverdueFrames(onPrepareFrame)
+                onPrepareFrame(frameNumber)
                 scheduleNextFrame(scope, onPrepareFrame)
             }
         }
@@ -59,11 +59,7 @@ class FrameScheduler @Inject constructor(
     fun getFramesToPrepareNow(): List<Long> {
         val lastPrepared = coordinatorState.lastPreparedManifest
 
-        return if (coordinatorState.isPaused) {
-            getFramesToPrepareDuringPause(lastPrepared)
-        } else {
-            getFramesToPrepareNormally(lastPrepared)
-        }
+        return getFramesToPrepareNormally(lastPrepared)
     }
 
     /**
@@ -73,12 +69,6 @@ class FrameScheduler @Inject constructor(
         // Already prepared?
         if (frameNumber <= coordinatorState.lastPreparedManifest) {
             return false
-        }
-
-        // During manifest pause, respect buffer limits
-        if (coordinatorState.isPaused) {
-            val frameInProgress = coordinatorState.frameInProgress
-            return frameCalculator.isFrameWithinBufferLimit(frameNumber, frameInProgress)
         }
 
         // Normal operation - prepare if within lookahead
@@ -111,66 +101,7 @@ class FrameScheduler @Inject constructor(
         }
 
         onPrepareFrame(frameNumber)
-
-        if (shouldContinueScheduling(frameNumber)) {
-            scheduleFramePreparation(frameNumber + 1, scope, onPrepareFrame)
-        }
-    }
-
-    private fun shouldContinueScheduling(lastScheduledFrame: Long): Boolean {
-        if (coordinatorState.isPaused) {
-            // During pause, only continue if within buffer limit
-            val frameInProgress = coordinatorState.frameInProgress
-            val nextFrame = lastScheduledFrame + 1
-            return frameCalculator.isFrameWithinBufferLimit(nextFrame, frameInProgress)
-        }
-
-        // Normal operation always continue
-        return true
-    }
-
-    private suspend fun catchUpOverdueFrames(onPrepareFrame: suspend (Long) -> Unit) {
-        if (coordinatorState.isPaused) {
-            // During pause: prepare specific overdue frames with limits
-            val framesToPrepare = getOverdueFramesDuringPause()
-            for (frame in framesToPrepare) {
-                onPrepareFrame(frame)
-            }
-        } else {
-            // Normal operation: use the general pending manifest logic
-            val framesToPrepare = getFramesToPrepareNow()
-            for (frame in framesToPrepare) {
-                onPrepareFrame(frame)
-            }
-        }
-    }
-
-    private fun getOverdueFramesDuringPause(): List<Long> {
-        val lastPrepared = coordinatorState.lastPreparedManifest
-        val frameInProgress = coordinatorState.frameInProgress
-        val maxAllowed = frameInProgress + frameConfig.maxBufferFrames
-        val currentFrame = frameCalculator.getCurrentLogicalFrame(coordinatorState.sessionStartNanos)
-        val targetFrame = minOf(currentFrame, maxAllowed)
-
-        return ((lastPrepared + 1)..targetFrame).toList()
-    }
-
-    private fun getOverdueFrames(): List<Long> {
-        val lastPrepared = coordinatorState.lastPreparedManifest
-        val currentFrame = frameCalculator.getCurrentLogicalFrame(coordinatorState.sessionStartNanos)
-
-        return if (coordinatorState.isPaused) {
-            // During pause, limit to buffer
-            val frameInProgress = coordinatorState.frameInProgress
-            val maxAllowed = frameInProgress + frameConfig.maxBufferFrames
-            val targetFrame = minOf(currentFrame, maxAllowed)
-
-            ((lastPrepared + 1)..targetFrame).toList()
-        } else {
-            // Normal operation - catch up to current + lookahead
-            val targetFrame = currentFrame + frameConfig.normalOperationLookahead
-            ((lastPrepared + 1)..targetFrame).toList()
-        }
+        scheduleFramePreparation(frameNumber + 1, scope, onPrepareFrame)
     }
 
     private fun scheduleNextFrame(
@@ -184,24 +115,6 @@ class FrameScheduler @Inject constructor(
         )
 
         scheduleFramePreparation(nextFrame, scope, onPrepareFrame)
-    }
-
-    private fun getFramesToPrepareDuringPause(lastPrepared: Long): List<Long> {
-        val frameInProgress = coordinatorState.frameInProgress
-        val maxAllowed = frameInProgress + frameConfig.maxBufferFrames
-
-        // Find highest frame with buffered operations
-        val bufferedFrames = coordinatorState.getBufferedOperationCounts().keys
-        val highestBuffered = bufferedFrames.maxOrNull() ?: lastPrepared
-
-        // Prepare up to the lesser of: highest buffered or max allowed
-        val targetFrame = minOf(highestBuffered, maxAllowed)
-
-        return if (targetFrame > lastPrepared) {
-            ((lastPrepared + 1)..targetFrame).toList()
-        } else {
-            emptyList()
-        }
     }
 
     private fun getFramesToPrepareNormally(lastPrepared: Long): List<Long> {

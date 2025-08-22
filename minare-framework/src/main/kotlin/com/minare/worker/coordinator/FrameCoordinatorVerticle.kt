@@ -277,7 +277,7 @@ class FrameCoordinatorVerticle @Inject constructor(
         }
 
         // Prepare manifests for all frames we have operations for
-        val framesToPrepare = minOf(newFrame, frameConfig.maxBufferFrames.toLong())
+        val framesToPrepare = newFrame
         for (frame in 0 until framesToPrepare) {
             prepareManifestForFrame(frame)
         }

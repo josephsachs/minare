@@ -83,8 +83,7 @@ class CoordinatorAdminVerticle @Inject constructor(
                 .put("buffer", JsonObject()
                     .put("totalOperations", frameCoordinatorState.getTotalBufferedOperations())
                     .put("frameDistribution", frameCoordinatorState.getBufferedOperationCounts())
-                    .put("approachingLimit", frameCoordinatorState.isApproachingBufferLimit()))
-                .put("consumer", consumerMetrics)
+                .put("consumer", consumerMetrics))
 
             ctx.response()
                 .putHeader("content-type", "application/json")
@@ -164,7 +163,6 @@ class CoordinatorAdminVerticle @Inject constructor(
 
             val bufferStatus = JsonObject()
                 .put("totalOperations", totalBuffered)
-                .put("approachingLimit", frameCoordinatorState.isApproachingBufferLimit())
                 .put("isPaused", frameCoordinatorState.isPaused)
                 .put("frameDistribution", bufferCounts)
                 .put("bufferedFrameCount", bufferCounts.size)

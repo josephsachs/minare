@@ -179,13 +179,6 @@ class MessageQueueOperationConsumer @Inject constructor(
             return true
         }
 
-        // Check buffered frame count
-        val bufferedFrameCount = coordinatorState.getBufferedFrameCount()
-        if (bufferedFrameCount >= frameCalculator.getBufferWarningThreshold()) {
-            log.warn("Frame buffer approaching limit: {} frames buffered (max: {})",
-                bufferedFrameCount, frameConfig.maxBufferFrames)
-        }
-
         // Route to appropriate handler based on session state
         if (coordinatorState.sessionStartTimestamp == 0L) { // TODO: Better way of determining this, centralize somewhere
             handlePreSessionOperation(operation)

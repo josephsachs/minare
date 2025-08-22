@@ -64,39 +64,6 @@ class BackpressureManager @Inject constructor(
         return backpressureMap["global"]
     }
 
-    fun triggerIfFrameBufferExceeded(bufferedFrameCount: Int): Boolean {
-        if (bufferedFrameCount >= frameConfig.maxBufferFrames) {
-            val totalBuffered = coordinatorState.getTotalBufferedOperations()
-            log.error("Frame buffer limit exceeded: ${bufferedFrameCount} frames buffered " +
-                    "max: ${frameConfig.maxBufferFrames}), containing ${totalBuffered} total operations. " +
-                    "Activating backpressure"
-            )
-
-            // Activate backpressure
-            activate(
-                frame = coordinatorState.frameInProgress,
-                bufferedOps = totalBuffered,
-                maxBuffer = frameConfig.maxBufferFrames
-            )
-
-            // Broadcast backpressure activated event
-            vertx.eventBus().publish(
-                "minare.backpressure.activated",
-                JsonObject()
-                    .put("frameInProgress", coordinatorState.frameInProgress)
-                    .put("bufferedFrames", bufferedFrameCount)
-                    .put("maxBufferFrames", frameConfig.maxBufferFrames)
-                    .put("bufferedOperations", totalBuffered)
-                    .put("timestamp", System.currentTimeMillis())
-                )
-
-            return false // Stop processing
-        }
-
-        // Nope, we're fine
-        return true
-    }
-
     /**
      * Old logic for deactivating backpressure control
      */

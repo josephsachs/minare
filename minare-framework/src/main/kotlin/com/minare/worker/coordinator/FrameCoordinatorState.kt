@@ -234,29 +234,6 @@ class FrameCoordinatorState @Inject constructor(
     }
 
     /**
-     * Get the number of frames that have buffered operations.
-     * This is used to enforce frame buffer limits.
-     *
-     * @return The count of frames beyond frameInProgress that have operations buffered
-     */
-    fun getBufferedFrameCount(): Int {
-        if (frameProgress.get() < 0) {
-            // Session hasn't started yet, count all frames
-            return operationsByFrame.size
-        }
-
-        val currentFrame = frameProgress.get()
-        val bufferedFrames = operationsByFrame.keys.filter { it >= currentFrame }
-
-        return if (bufferedFrames.isEmpty()) {
-            0
-        } else {
-            val maxBufferedFrame = bufferedFrames.maxOrNull() ?: currentFrame
-            (maxBufferedFrame - currentFrame + 1).toInt()
-        }
-    }
-
-    /**
      * Check if frame loop is running (for monitoring)
      */
     fun isFrameLoopRunning(): Boolean {
@@ -279,20 +256,6 @@ class FrameCoordinatorState @Inject constructor(
             .put("totalWorkers", workerRegistry.getActiveWorkers().size)
             .put("isPaused", isPaused)
             .put("totalBufferedOperations", getTotalBufferedOperations())
-            .put("bufferedFrameCount", getBufferedFrameCount())
-    }
-
-    /**
-     * Check if we're approaching buffer limits during pause
-     */
-    fun isApproachingBufferLimit(): Boolean {
-        if (!isPaused) return false
-
-        val bufferedFrames = operationsByFrame.keys.maxOrNull()?.let { maxFrame ->
-            maxFrame - frameProgress.get()
-        } ?: 0
-
-        return bufferedFrames > frameConfig.maxBufferFrames * 0.8
     }
 
     /**

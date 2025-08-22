@@ -97,17 +97,6 @@ class FrameCalculator @Inject constructor(
     }
 
     /**
-     * Check if a frame is within allowed buffer limits
-     */
-    fun isFrameWithinBufferLimit(
-        frameNumber: Long,
-        frameInProgress: Long,
-        maxBufferFrames: Int = frameConfig.maxBufferFrames
-    ): Boolean {
-        return frameNumber <= frameInProgress + maxBufferFrames
-    }
-
-    /**
      * Convert frame duration to readable string
      */
     fun frameDurationToString(): String {
@@ -144,28 +133,6 @@ class FrameCalculator @Inject constructor(
      */
     fun msToNanos(ms: Long): Long {
         return ms * NANOS_PER_MS
-    }
-
-    /**
-     * Get the buffer warning threshold (number of frames)
-     * Returns 80% of the maximum buffer frames configuration
-     */
-    fun getBufferWarningThreshold(): Int {
-        return (frameConfig.maxBufferFrames * BUFFER_WARNING_THRESHOLD_PERCENT).toInt()
-    }
-
-    /**
-     * Check if buffered frames are approaching the configured limit
-     * @param bufferedFrames Number of frames currently buffered
-     * @param frameInProgress Current frame being processed
-     * @return true if buffered frames exceed 80% of max allowed
-     */
-    fun isApproachingBufferLimit(bufferedFrames: Long, frameInProgress: Long): Boolean {
-        val maxFrame = frameInProgress + bufferedFrames
-        val maxAllowedFrame = frameInProgress + frameConfig.maxBufferFrames
-        val threshold = frameInProgress + getBufferWarningThreshold()
-
-        return maxFrame > threshold
     }
 
     /**
