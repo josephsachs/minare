@@ -82,7 +82,8 @@ Clients can then submit operations which change the colors of nodes. Several int
 this. To see it in action:
 1. Clone the Github repository to a path called `minare`.
 2. Ensure you have installed the prerequisites:
-   1. Java 24.0.1
+   1. A Docker version that includes `docker compose`
+   2. Java 24.0.1
    2. Maven 3.9.10
    3. Node.js 24.3.0
    4. artillery 2.0.21
@@ -92,5 +93,6 @@ this. To see it in action:
 6. After a connection is established, on the upper-right, click `Show Grid View`.
 7. In your terminal, find the `/minare-example/integration-test` path and run `artillery run color-wave-test.yml`.
 8. Watch the nodes change color in waves. After the final wave, each node should be colored black and have its version incremented to 40.
+9. In the `/minare/docker` path, run `docker compose stop`.
 
 
