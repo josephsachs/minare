@@ -6,5 +6,5 @@ docker/app.jar
 logs/
 logs2/
 target/
-performance-test/node_modules
+minare-example/integration-test/node_modules
 dbExec.sh

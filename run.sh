@@ -1,6 +1,6 @@
 #!/bin/bash
 
-cd /Users/josephsachs/documents/dev/minare/docker/ 
+cd docker
 docker compose down
 
 cd ..
