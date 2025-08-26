@@ -3,7 +3,7 @@ Current version: 0.2.0
 
 ## Concept
 Multiplayer games and collaborative simulations need consistency, determinism, and the ability to recover quickly
-from failures affecting the integrity of rapidly-changing state data. 
+from failures affecting the integrity of mutable state. 
 
 Minare explores logical frame coordination as a solution to such challenges. If the concept proves sound, 
 Minare will provide a rich back-end framework for developers building multiplayer games, or any distributed application 
@@ -11,30 +11,29 @@ requiring strong consistency guarantees.
 
 ### Why Logical Frames?
 Imagine you have to distribute work across a cluster of workers. Each operation might have implications for subsequent 
-operations, so you need it to complete in order.
+operations, so you need them to complete in order.
 
 One approach might be to timestamp incoming work and pass that to workers. This is intuitively appealing: time is already
-an ordering abstraction, and while clocks do drift, there are external authorities to synchronize with. 
+an ordering abstraction, and while clocks do drift there are external authorities to synchronize with. 
 
-However, wall-clock time is not the only type of time in computing, and workers are not abstractions, they are different 
-VMs:sometimes running on different metal, sometimes over different pipes. Variances in network latency, CPU speed, and 
+However, wall-clock time is not the *only* type of time, and workers are not abstractions but individual VMs: 
+sometimes running on different metal, sometimes over different pipes. Variances in network latency, CPU speed, and 
 GC throughput create time variances you cannot synchronize away. 
 
-You can build in grace periods, have a leader make periodic progress checks and so on—but as you're doing this more 
+You can build in grace periods, have a leader make periodic progress checks and so on—but as you're doing this, more 
 work is coming in.
 
 Computing addresses this by abstracting process time as **cycles.** Game engines like Unity and Godot extend the idea 
 with the concept of **frames**: discrete units of logical time. A frame might complete more or less quickly 
-depending on the actual speed of work (dependent on the weight of the simulation, the user's hardware and, in lockstep
-netcode, the speed of the slowest connection), but variances in speed do not affect the integrity of the 
-simulated gameworld.
+depending on the actual speed of work (impacted by the weight of the simulation, the user's hardware and, in lockstep
+netcode, the speed of the slowest connection), but variances do not affect the integrity of the simulated gameworld.
 
-Minare adopts the same approach, in theory preserving temporal ordering from clock drift and other variances by 
-assigning operations to temporally-ordered frames, then coordinating the completion of these frames.
+Minare adopts the same approach, in theory protecting temporal ordering from clock drift and other variances by 
+assigning operations to abstract frames, then coordinating the completion of these frames.
 
 ### Consistency First
 The CAP theorem states that in distributed systems, consistency, availability and partition tolerance are competing 
-aims, where strong guarantees in one area imply weaker guarantees in another area.
+aims: strong guarantees in one area imply weaker guarantees in another area.
 
 Minare chooses consistency early and often. Work is stored in a durable message queue. There is one cluster coordinator 
 and no leader election. Worker topology is fixed per session: when you replay a session, the hash ring will distribute 
@@ -58,7 +57,7 @@ operations through single-thread pipelines.
 ## Technical Details
 
 ### Architecture
-Because my goal is to build not just a solution but tooling, the choice of technical stack required a careful balance 
+Because Minare is intended to be not just a solution but tooling, the choice of technical stack requires a careful balance 
 between my goals and the developer's experience. I chose 
 - **JVM** because it performs better than Node.js or Python, is polyglot, doesn't require the developer to learn novel patterns like Rust or Go, and has a mature ecosystem;
 - **Vert.x** because it scales up to handle massive socket pools without blinking; 
