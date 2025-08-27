@@ -3,6 +3,7 @@ package com.minare.worker.coordinator
 import com.minare.operation.MessageQueue
 import com.minare.time.FrameCalculator
 import com.minare.time.FrameConfiguration
+import com.minare.worker.coordinator.FrameCoordinatorState.Companion.PauseState
 import com.minare.utils.EventBusUtils
 import com.minare.utils.VerticleLogger
 import com.minare.worker.coordinator.events.*
@@ -11,6 +12,7 @@ import io.vertx.core.json.JsonObject
 import io.vertx.kotlin.coroutines.CoroutineVerticle
 import kotlinx.coroutines.launch
 import org.slf4j.LoggerFactory
+import java.awt.Frame
 import javax.inject.Inject
 
 /**
@@ -265,13 +267,13 @@ class FrameCoordinatorVerticle @Inject constructor(
      * Prepare and write manifest for a specific logical frame.
      */
     private suspend fun prepareManifestForFrame(logicalFrame: Long) {
+        if (coordinatorState.pauseState in setOf(PauseState.REST, PauseState.SOFT)) {
+            log.info("Delayed preparing frame $logicalFrame} due to pause ${coordinatorState.pauseState}")
+            return
+        }
+
         val operations = coordinatorState.extractFrameOperations(logicalFrame)
         val activeWorkers = workerRegistry.getActiveWorkers().toSet()
-
-        if (activeWorkers.isEmpty() && operations.isNotEmpty()) {
-            log.warn("No active workers available for frame {} with {} operations",
-                logicalFrame, operations.size)
-        }
 
         val assignments = frameManifestBuilder.distributeOperations(operations, activeWorkers)
 
@@ -305,6 +307,11 @@ class FrameCoordinatorVerticle @Inject constructor(
      */
     private suspend fun onFrameComplete(logicalFrame: Long) {
         log.info("Logical frame {} completed successfully", logicalFrame)
+
+        if (coordinatorState.pauseState in setOf(PauseState.SOFT, PauseState.HARD)) {
+            log.info("Completed frame $logicalFrame, pausing")
+            return
+        }
 
         markFrameComplete(logicalFrame)
 

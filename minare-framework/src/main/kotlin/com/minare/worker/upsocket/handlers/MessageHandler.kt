@@ -8,6 +8,8 @@ import com.minare.utils.VerticleLogger
 import com.minare.utils.WebSocketUtils
 import com.minare.controller.OperationController
 import com.minare.exception.BackpressureException
+import com.minare.worker.coordinator.FrameCoordinatorState
+import com.minare.worker.coordinator.FrameCoordinatorState.Companion.PauseState
 import com.minare.worker.upsocket.SyncCommandHandler
 import io.vertx.core.http.ServerWebSocket
 import io.vertx.core.json.JsonObject
@@ -25,7 +27,8 @@ class MessageHandler @Inject constructor(
     private val connectionTracker: ConnectionTracker,
     private val heartbeatManager: HeartbeatManager,
     private val operationController: OperationController,
-    private val syncCommandHandler: SyncCommandHandler
+    private val syncCommandHandler: SyncCommandHandler,
+    private val coordinatorState: FrameCoordinatorState
 ) {
     /**
      * Handle an incoming message from a client
@@ -68,7 +71,12 @@ class MessageHandler @Inject constructor(
                 }
 
                 // All other messages go through OperationController to Kafka
+                // TODO: Make MessageHandler much more command agnostic, require dev to package command messages
                 else -> {
+                    if (coordinatorState.pauseState == PauseState.HARD) {
+                        throw BackpressureException("Service temporarily unavailable - system is paused")
+                    }
+
                     // Add connectionId to the message for downstream processing
                     message.put("connectionId", connectionId)
                     operationController.process(message)
