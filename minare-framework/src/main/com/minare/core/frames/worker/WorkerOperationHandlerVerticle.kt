@@ -1,5 +1,8 @@
 package com.minare.core.frames.worker
 
+import com.minare.core.frames.services.DeltaStorageService
+import com.minare.core.operation.models.OperationType
+import com.minare.core.storage.interfaces.StateStore
 import com.minare.core.utils.vertx.VerticleLogger
 import io.vertx.core.Vertx
 import io.vertx.core.json.JsonObject
@@ -20,7 +23,9 @@ import kotlin.system.measureTimeMillis
  */
 class WorkerOperationHandlerVerticle @Inject constructor(
     private val vertx: Vertx,
-    private val verticleLogger: VerticleLogger
+    private val verticleLogger: VerticleLogger,
+    private val deltaStorageService: DeltaStorageService,
+    private val stateStore: StateStore
 ) : CoroutineVerticle() {
 
     private val log = LoggerFactory.getLogger(WorkerOperationHandlerVerticle::class.java)
@@ -75,14 +80,24 @@ class WorkerOperationHandlerVerticle @Inject constructor(
         try {
             val entityId = operationJson.getString("entityId")
             val operationId = operationJson.getString("id")
-            val connectionId = operationJson.getString("connectionId")
-            val entityType = operationJson.getString("entityType")
 
             log.debug("Processing {} operation {} for entity {}",
                 action, operationId, entityId)
 
             when (action) {
                 "MUTATE" -> {
+                    val entityId = operationJson.getString("entityId")
+                    val operationId = operationJson.getString("id")
+                    val connectionId = operationJson.getString("connectionId")
+                    val entityType = operationJson.getString("entityType")
+                    val frameNumber = operationJson.getLong("frameNumber")  // NEW: passed from FrameWorkerVerticle
+
+                    log.debug("Processing {} operation {} for entity {}",
+                        action, operationId, entityId)
+
+                    // NEW: Capture BEFORE state
+                    val beforeState = stateStore.findEntityJson(entityId)
+
                     val command = JsonObject()
                         .put("command", "mutate")
                         .put("entity", JsonObject()
@@ -106,6 +121,18 @@ class WorkerOperationHandlerVerticle @Inject constructor(
                         if (!result.body().getBoolean("success", false)) {
                             throw Exception(result.body().getString("error", "Mutation failed"))
                         }
+
+                        // NEW: Capture AFTER state and store delta
+                        val afterState = stateStore.findEntityJson(entityId)
+
+                        deltaStorageService.captureAndStoreDelta(
+                            frameNumber = frameNumber,
+                            entityId = entityId,
+                            operationType = OperationType.MUTATE,
+                            operationId = operationId,
+                            beforeState = beforeState,
+                            afterState = afterState
+                        )
                     }
 
                     log.info("Processed MUTATE for entity {} in {}ms", entityId, processingTime)
