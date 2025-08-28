@@ -1,8 +1,8 @@
 package com.minare.worker.downsocket.events
 
 import com.google.inject.Inject
-import com.minare.utils.EventBusUtils
-import com.minare.utils.VerticleLogger
+import com.minare.core.utils.vertx.EventBusUtils
+import com.minare.core.utils.vertx.VerticleLogger
 import com.minare.core.transport.downsocket.RedisPubSubWorkerVerticle
 import com.minare.worker.downsocket.handlers.EntityUpdateHandler
 import io.vertx.core.json.JsonObject

@@ -3,7 +3,7 @@ package com.minare.worker.downsocket.handlers
 import com.google.inject.Inject
 import com.minare.core.transport.downsocket.DownSocketVerticleCache
 import com.minare.core.storage.interfaces.ConnectionStore
-import com.minare.utils.VerticleLogger
+import com.minare.core.utils.vertx.VerticleLogger
 import io.vertx.core.json.JsonObject
 
 /**

@@ -2,7 +2,7 @@ package com.minare.core.config
 
 import com.hazelcast.config.Config
 import com.hazelcast.config.SerializerConfig
-import com.minare.utils.JsonObjectSerializer
+import com.minare.core.utils.json.JsonObjectSerializer
 import io.vertx.core.json.JsonObject
 import io.vertx.spi.cluster.hazelcast.HazelcastClusterManager
 import org.slf4j.LoggerFactory

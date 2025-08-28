@@ -1,6 +1,6 @@
 package com.minare.core.frames.coordinator
 
-import com.minare.utils.VerticleLogger
+import com.minare.core.utils.vertx.VerticleLogger
 import com.minare.core.frames.coordinator.services.MessageQueueOperationConsumer
 import com.minare.worker.coordinator.events.InfraAddWorkerEvent
 import com.minare.worker.coordinator.events.InfraRemoveWorkerEvent

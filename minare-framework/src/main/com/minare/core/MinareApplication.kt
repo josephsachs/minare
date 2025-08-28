@@ -4,15 +4,14 @@ import com.google.inject.*
 import com.google.inject.name.Names
 import com.minare.core.MinareApplication.ConnectionEvents.ADDRESS_COORDINATOR_STARTED
 import com.minare.core.MinareApplication.ConnectionEvents.ADDRESS_WORKER_STARTED
-import com.minare.application.AppState
-import com.minare.application.ClusteredAppState
+import com.minare.application.interfaces.AppState
+import com.minare.application.adapters.ClusteredAppState
 import com.minare.core.config.HazelcastInstanceHolder
 import com.minare.core.config.*
 import com.minare.controller.ConnectionController
 import com.minare.worker.upsocket.UpSocketVerticle
 import com.minare.core.transport.downsocket.DownSocketVerticle
 import com.minare.time.TimeService
-import com.minare.worker.*
 import com.minare.worker.coordinator.config.FrameCoordinatorVerticleModule
 import com.minare.worker.downsocket.config.DownSocketVerticleModule
 import com.minare.worker.upsocket.config.UpSocketVerticleModule
@@ -42,7 +41,6 @@ import com.minare.core.operation.MutationVerticle
 import com.minare.core.transport.downsocket.RedisPubSubWorkerVerticle
 import com.minare.core.storage.services.StateInitializer
 import com.minare.core.transport.CleanupVerticle
-import com.minare.worker.coordinator.*
 import kotlin.system.exitProcess
 
 /**

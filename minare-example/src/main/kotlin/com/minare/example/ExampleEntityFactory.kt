@@ -1,7 +1,7 @@
 package com.minare.example
 
-import com.minare.core.entity.EntityFactory
-import com.minare.core.entity.Entity
+import com.minare.core.entity.factories.EntityFactory
+import com.minare.core.entity.models.Entity
 import com.minare.example.models.Node
 import org.slf4j.LoggerFactory
 import javax.inject.Singleton

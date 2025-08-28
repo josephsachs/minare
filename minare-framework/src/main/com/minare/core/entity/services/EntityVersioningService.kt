@@ -1,9 +1,9 @@
-package com.minare.entity
+package com.minare.core.entity.services
 
 import com.google.inject.Inject
 import com.google.inject.Singleton
 import com.minare.core.entity.annotations.Parent
-import com.minare.core.entity.EntityFactory
+import com.minare.core.entity.factories.EntityFactory
 import com.minare.core.entity.ReflectionCache
 import io.vertx.core.json.JsonObject
 import org.jgrapht.Graph

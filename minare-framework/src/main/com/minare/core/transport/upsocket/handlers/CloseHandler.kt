@@ -4,8 +4,8 @@ import com.google.inject.Inject
 import com.minare.cache.ConnectionCache
 import com.minare.core.storage.interfaces.ConnectionStore
 import com.minare.core.transport.downsocket.services.ConnectionTracker
-import com.minare.utils.HeartbeatManager
-import com.minare.utils.VerticleLogger
+import com.minare.core.transport.services.HeartbeatManager
+import com.minare.core.utils.vertx.VerticleLogger
 import com.minare.core.transport.CleanupVerticle
 import io.vertx.core.http.ServerWebSocket
 

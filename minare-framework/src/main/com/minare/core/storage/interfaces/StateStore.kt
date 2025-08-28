@@ -1,6 +1,6 @@
 package com.minare.core.storage.interfaces
 
-import com.minare.core.entity.Entity
+import com.minare.core.entity.models.Entity
 import io.vertx.core.json.JsonObject
 
 /**

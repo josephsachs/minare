@@ -5,8 +5,8 @@ import com.hazelcast.core.HazelcastInstance
 import com.hazelcast.cp.IAtomicLong
 import com.hazelcast.map.IMap
 import com.minare.core.operation.models.Operation
-import com.minare.application.FrameConfiguration
-import com.minare.utils.VerticleLogger
+import com.minare.application.config.FrameConfiguration
+import com.minare.core.utils.vertx.VerticleLogger
 import com.minare.core.frames.coordinator.FrameCoordinatorVerticle
 import com.minare.worker.coordinator.models.FrameManifest
 import com.minare.worker.coordinator.models.OperationCompletion

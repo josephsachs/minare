@@ -1,5 +1,6 @@
-package com.minare.core.entity
+package com.minare.core.entity.factories
 
+import com.minare.core.entity.models.Entity
 import org.slf4j.LoggerFactory
 import javax.inject.Singleton
 import kotlin.reflect.KClass

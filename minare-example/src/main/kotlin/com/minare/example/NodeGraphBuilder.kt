@@ -1,11 +1,10 @@
 package com.minare.example.core.models
 
-import com.minare.core.entity.EntityFactory
+import com.minare.core.entity.factories.EntityFactory
 import com.minare.example.models.Node
 import org.jgrapht.graph.DefaultEdge
 import org.jgrapht.graph.SimpleDirectedGraph
 import org.slf4j.LoggerFactory
-import java.util.*
 import javax.inject.Inject
 import javax.inject.Singleton
 import com.minare.controller.EntityController

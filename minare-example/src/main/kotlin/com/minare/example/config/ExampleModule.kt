@@ -7,7 +7,7 @@ import com.minare.controller.ChannelController
 import com.minare.controller.ConnectionController
 import com.minare.controller.OperationController
 import com.minare.core.config.DatabaseNameProvider
-import com.minare.core.entity.EntityFactory
+import com.minare.core.entity.factories.EntityFactory
 import com.minare.example.ExampleEntityFactory
 import com.minare.example.controller.ExampleChannelController
 import com.minare.example.controller.ExampleConnectionController

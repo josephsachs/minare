@@ -1,8 +1,8 @@
-package com.minare.entity
+package com.minare.core.entity.services
 
 import com.google.inject.Inject
 import com.google.inject.Singleton
-import com.minare.core.entity.EntityFactory
+import com.minare.core.entity.factories.EntityFactory
 import com.minare.core.entity.ReflectionCache
 import com.minare.core.entity.annotations.Mutable
 import com.minare.core.entity.annotations.State

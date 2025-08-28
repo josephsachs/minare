@@ -1,6 +1,7 @@
-package com.minare.utils
+package com.minare.core.transport.services
 
 import com.minare.core.storage.interfaces.ConnectionStore
+import com.minare.core.utils.vertx.VerticleLogger
 import io.vertx.core.Vertx
 import io.vertx.core.http.ServerWebSocket
 import io.vertx.core.json.JsonObject

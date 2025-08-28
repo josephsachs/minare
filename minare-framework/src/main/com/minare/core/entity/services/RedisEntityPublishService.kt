@@ -1,4 +1,4 @@
-package com.minare.entity
+package com.minare.core.entity.services
 
 import com.google.inject.Singleton
 import com.minare.core.storage.interfaces.ContextStore
