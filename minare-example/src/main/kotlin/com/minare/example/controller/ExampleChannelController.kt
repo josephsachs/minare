@@ -3,8 +3,8 @@ package com.minare.example.controller
 import com.google.inject.Provider
 import com.minare.application.AppState
 import com.minare.controller.ChannelController
-import com.minare.persistence.ChannelStore
-import com.minare.persistence.ContextStore
+import com.minare.core.storage.interfaces.ChannelStore
+import com.minare.core.storage.interfaces.ContextStore
 import org.slf4j.LoggerFactory
 import javax.inject.Inject
 import javax.inject.Singleton
