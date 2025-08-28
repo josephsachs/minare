@@ -1,4 +1,4 @@
-package com.minare.utils
+package com.minare.core.utils.json
 
 import io.vertx.core.json.JsonArray
 import io.vertx.core.json.JsonObject

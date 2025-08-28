@@ -1,5 +1,6 @@
-package com.minare.core.entity
+package com.minare.core.entity.factories
 
+import com.minare.core.entity.models.Entity
 import kotlin.reflect.KClass
 
 /**

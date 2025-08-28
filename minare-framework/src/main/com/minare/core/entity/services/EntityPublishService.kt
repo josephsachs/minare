@@ -1,4 +1,4 @@
-package com.minare.entity
+package com.minare.core.entity.services
 
 import io.vertx.core.json.JsonObject
 

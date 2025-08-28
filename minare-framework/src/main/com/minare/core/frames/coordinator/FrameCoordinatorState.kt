@@ -4,7 +4,7 @@ import com.hazelcast.core.HazelcastInstance
 import com.hazelcast.cp.IAtomicLong
 import com.minare.core.frames.coordinator.services.FrameCalculatorService
 import com.minare.core.frames.services.WorkerRegistry
-import com.minare.utils.EventBusUtils
+import com.minare.core.utils.vertx.EventBusUtils
 import io.vertx.core.json.JsonObject
 import org.slf4j.LoggerFactory
 import java.util.concurrent.ConcurrentHashMap

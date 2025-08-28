@@ -1,7 +1,7 @@
 package com.minare.example.controller
 
 import com.google.inject.Provider
-import com.minare.application.AppState
+import com.minare.application.interfaces.AppState
 import com.minare.controller.ChannelController
 import com.minare.core.storage.interfaces.ChannelStore
 import com.minare.core.storage.interfaces.ContextStore

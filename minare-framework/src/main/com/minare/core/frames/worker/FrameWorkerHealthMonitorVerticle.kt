@@ -1,9 +1,9 @@
 package com.minare.core.frames.worker
 
 import com.hazelcast.core.HazelcastInstance
-import com.minare.application.FrameConfiguration
+import com.minare.application.config.FrameConfiguration
 import com.minare.core.frames.services.WorkerRegistry
-import com.minare.utils.VerticleLogger
+import com.minare.core.utils.vertx.VerticleLogger
 import io.vertx.core.json.JsonObject
 import io.vertx.kotlin.coroutines.CoroutineVerticle
 import io.vertx.kotlin.coroutines.await

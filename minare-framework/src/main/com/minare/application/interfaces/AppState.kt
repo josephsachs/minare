@@ -1,4 +1,4 @@
-package com.minare.application
+package com.minare.application.interfaces
 
 import io.vertx.core.json.JsonObject
 

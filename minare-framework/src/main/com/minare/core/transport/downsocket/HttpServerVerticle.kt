@@ -1,6 +1,6 @@
 package com.minare.core.transport.downsocket
 
-import com.minare.utils.VerticleLogger
+import com.minare.core.utils.vertx.VerticleLogger
 import io.vertx.core.http.HttpServer
 import io.vertx.core.http.HttpServerOptions
 import io.vertx.core.json.JsonObject

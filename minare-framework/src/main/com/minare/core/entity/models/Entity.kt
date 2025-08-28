@@ -1,4 +1,4 @@
-package com.minare.core.entity
+package com.minare.core.entity.models
 
 import com.fasterxml.jackson.annotation.*
 

@@ -1,10 +1,10 @@
 package com.minare.core.frames.coordinator
 
 import com.minare.core.operation.interfaces.MessageQueue
-import com.minare.application.FrameConfiguration
+import com.minare.application.config.FrameConfiguration
 import com.minare.core.frames.coordinator.FrameCoordinatorState.Companion.PauseState
-import com.minare.utils.EventBusUtils
-import com.minare.utils.VerticleLogger
+import com.minare.core.utils.vertx.EventBusUtils
+import com.minare.core.utils.vertx.VerticleLogger
 import com.minare.core.frames.coordinator.services.FrameCompletionTracker
 import com.minare.core.frames.coordinator.services.FrameManifestBuilder
 import com.minare.core.frames.coordinator.services.MessageQueueOperationConsumer

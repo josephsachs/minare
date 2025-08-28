@@ -1,8 +1,7 @@
 package com.minare.worker.coordinator.events
 
 import com.google.inject.Inject
-import com.minare.utils.EventBusUtils
-import com.minare.utils.VerticleLogger
+import com.minare.core.utils.vertx.VerticleLogger
 
 /**
  * WorkerHealthChangeEvent handles status messages from FrameWorkerHealthMonitorVerticle

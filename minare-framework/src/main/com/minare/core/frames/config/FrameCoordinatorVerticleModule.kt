@@ -5,7 +5,7 @@ import com.google.inject.Provides
 import com.google.inject.Singleton
 import com.minare.core.config.MinareModule
 import com.minare.core.frames.coordinator.FrameCoordinatorVerticle
-import com.minare.utils.EventBusUtils
+import com.minare.core.utils.vertx.EventBusUtils
 import com.minare.core.frames.coordinator.CoordinatorAdminVerticle
 import com.minare.worker.coordinator.events.*
 import io.vertx.core.Vertx

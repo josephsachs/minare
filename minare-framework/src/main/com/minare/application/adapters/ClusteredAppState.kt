@@ -1,5 +1,6 @@
-package com.minare.application
+package com.minare.application.adapters
 
+import com.minare.application.interfaces.AppState
 import io.vertx.core.json.JsonObject
 import io.vertx.core.shareddata.AsyncMap
 import io.vertx.kotlin.coroutines.await

@@ -2,8 +2,8 @@ package com.minare.worker.upsocket.events
 
 import com.google.inject.Inject
 import com.google.inject.Singleton
-import com.minare.utils.EventBusUtils
-import com.minare.utils.VerticleLogger
+import com.minare.core.utils.vertx.EventBusUtils
+import com.minare.core.utils.vertx.VerticleLogger
 import io.vertx.core.json.JsonObject
 import com.minare.worker.upsocket.UpSocketVerticle
 import com.minare.worker.upsocket.ConnectionLifecycle

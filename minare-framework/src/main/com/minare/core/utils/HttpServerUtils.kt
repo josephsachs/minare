@@ -1,5 +1,6 @@
 package com.minare.utils
 
+import com.minare.core.utils.vertx.VerticleLogger
 import io.vertx.core.Future
 import io.vertx.core.Vertx
 import io.vertx.core.http.HttpServer

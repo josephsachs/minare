@@ -1,6 +1,6 @@
 package com.minare.core.frames.coordinator.services
 
-import com.minare.application.FrameConfiguration
+import com.minare.application.config.FrameConfiguration
 import javax.inject.Inject
 import javax.inject.Singleton
 
