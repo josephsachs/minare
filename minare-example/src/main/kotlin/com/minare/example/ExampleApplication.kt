@@ -1,6 +1,6 @@
 package com.minare.example
 
-import com.minare.MinareApplication
+import com.minare.core.MinareApplication
 import com.minare.example.config.ExampleModule
 import com.minare.example.controller.ExampleChannelController
 import com.minare.example.core.models.NodeGraphBuilder

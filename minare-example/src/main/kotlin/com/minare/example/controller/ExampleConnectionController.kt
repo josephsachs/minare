@@ -2,9 +2,8 @@ package com.minare.example.controller
 
 import com.minare.cache.ConnectionCache
 import com.minare.controller.ConnectionController
-import com.minare.core.entity.ReflectionCache
-import com.minare.core.models.Connection
-import com.minare.persistence.*
+import com.minare.core.transport.models.Connection
+import com.minare.core.storage.interfaces.*
 import io.vertx.core.json.JsonObject
 import org.slf4j.LoggerFactory
 import javax.inject.Inject

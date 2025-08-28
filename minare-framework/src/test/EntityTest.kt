@@ -7,7 +7,7 @@
 import com.google.inject.Guice
 import com.google.inject.Injector
 import com.google.inject.name.Names
-import com.minare.core.models.Entity
+import kotlin.com.minare.core.entity.Entity
 import com.minare.core.entity.EntityFactory
 import com.minare.core.entity.ReflectionCache
 import com.minare.core.entity.annotations.Parent
