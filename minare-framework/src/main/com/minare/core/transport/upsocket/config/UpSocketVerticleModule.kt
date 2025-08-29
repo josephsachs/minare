@@ -8,9 +8,9 @@ import com.minare.controller.OperationController
 import com.minare.core.storage.interfaces.ChannelStore
 import com.minare.core.storage.interfaces.ConnectionStore
 import com.minare.core.transport.downsocket.services.ConnectionTracker
-import com.minare.utils.EventBusUtils
+import com.minare.core.utils.vertx.EventBusUtils
 import com.minare.utils.HeartbeatManager
-import com.minare.utils.VerticleLogger
+import com.minare.core.utils.vertx.VerticleLogger
 import com.minare.worker.upsocket.SyncCommandHandler
 import io.vertx.core.Vertx
 import io.vertx.ext.web.Router

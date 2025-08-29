@@ -1,14 +1,14 @@
 package com.minare.core.frames.coordinator
 
-import com.minare.application.FrameConfiguration
+import com.minare.application.config.FrameConfiguration
 import com.minare.core.frames.coordinator.services.FrameCalculatorService
 import com.minare.core.frames.coordinator.services.FrameCompletionTracker
 import com.minare.core.frames.coordinator.services.FrameManifestBuilder
 import com.minare.core.frames.coordinator.services.MessageQueueOperationConsumer
 import com.minare.core.frames.services.WorkerRegistry
 import com.minare.core.operation.interfaces.MessageQueue
-import com.minare.utils.EventBusUtils
-import com.minare.utils.VerticleLogger
+import com.minare.core.utils.vertx.EventBusUtils
+import com.minare.core.utils.vertx.VerticleLogger
 import com.minare.worker.coordinator.events.*
 import io.vertx.core.json.JsonArray
 import io.vertx.core.json.JsonObject

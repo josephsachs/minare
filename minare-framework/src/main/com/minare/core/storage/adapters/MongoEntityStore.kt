@@ -1,8 +1,8 @@
 package com.minare.core.storage.adapters
 
 import com.google.inject.Singleton
-import com.minare.core.entity.Entity
-import com.minare.core.entity.EntityFactory
+import com.minare.core.entity.models.Entity
+import com.minare.core.entity.factories.EntityFactory
 import com.minare.core.entity.ReflectionCache
 import com.minare.core.entity.annotations.Parent
 import io.vertx.core.json.JsonArray

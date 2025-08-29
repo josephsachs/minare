@@ -3,7 +3,7 @@ package com.minare.core.transport.downsocket
 import com.google.inject.Inject
 import com.minare.core.storage.interfaces.ChannelStore
 import com.minare.core.storage.interfaces.ContextStore
-import com.minare.utils.VerticleLogger
+import com.minare.core.utils.vertx.VerticleLogger
 import com.minare.core.transport.downsocket.DownSocketVerticle.Companion.CACHE_TTL_MS
 import io.vertx.core.json.JsonObject
 import java.util.concurrent.ConcurrentHashMap

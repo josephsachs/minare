@@ -2,7 +2,7 @@ package com.minare.worker.upsocket.handlers
 
 import com.google.inject.Inject
 import com.minare.utils.HeartbeatManager
-import com.minare.utils.VerticleLogger
+import com.minare.core.utils.vertx.VerticleLogger
 import com.minare.utils.WebSocketUtils
 import com.minare.controller.OperationController
 import com.minare.core.storage.interfaces.ConnectionStore

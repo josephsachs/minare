@@ -3,12 +3,15 @@ package com.minare.core.config
 import com.google.inject.*
 import com.google.inject.name.Names
 import com.hazelcast.core.HazelcastInstance
-import com.minare.application.AppState
+import com.minare.application.interfaces.AppState
 import com.minare.cache.ConnectionCache
 import com.minare.cache.InMemoryConnectionCache
 import com.minare.core.entity.ReflectionCache
-import com.minare.core.entity.EntityFactory
-import com.minare.entity.*
+import com.minare.core.entity.factories.EntityFactory
+import com.minare.core.entity.services.EntityPublishService
+import com.minare.core.entity.services.EntityVersioningService
+import com.minare.core.entity.services.MutationService
+import com.minare.core.entity.services.RedisEntityPublishService
 import com.minare.core.operation.adapters.KafkaMessageQueue
 import com.minare.core.operation.interfaces.MessageQueue
 import com.minare.core.transport.downsocket.pubsub.PubSubChannelStrategy
@@ -21,7 +24,7 @@ import com.minare.core.frames.services.WorkerRegistryMap
 import com.minare.core.frames.services.HazelcastWorkerRegistryMap
 import com.minare.core.storage.adapters.*
 import com.minare.core.storage.interfaces.*
-import com.minare.utils.VerticleLogger
+import com.minare.core.utils.vertx.VerticleLogger
 import io.vertx.core.Vertx
 import io.vertx.core.impl.logging.LoggerFactory
 import io.vertx.core.json.JsonObject

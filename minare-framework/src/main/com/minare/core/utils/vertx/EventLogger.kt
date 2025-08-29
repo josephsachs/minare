@@ -1,4 +1,4 @@
-package com.minare.utils
+package com.minare.core.utils.vertx
 
 import io.vertx.core.eventbus.Message
 import io.vertx.core.json.JsonObject

@@ -4,7 +4,7 @@ import org.jgrapht.graph.DefaultEdge
 import org.jgrapht.graph.SimpleDirectedGraph
 import org.jgrapht.traverse.DepthFirstIterator
 import org.jgrapht.traverse.TopologicalOrderIterator
-import com.minare.core.entity.Entity
+import com.minare.core.entity.models.Entity
 import com.minare.core.entity.annotations.State
 import com.minare.core.entity.ReflectionCache
 import io.vertx.core.json.JsonArray

@@ -1,7 +1,7 @@
 package com.minare.core.transport.downsocket.services
 
 import com.google.inject.Inject
-import com.minare.utils.VerticleLogger
+import com.minare.core.utils.vertx.VerticleLogger
 import io.vertx.core.http.ServerWebSocket
 import io.vertx.core.json.JsonObject
 import org.slf4j.LoggerFactory

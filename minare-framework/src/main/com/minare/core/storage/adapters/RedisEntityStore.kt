@@ -1,11 +1,11 @@
 package com.minare.core.storage.adapters
 
 import com.google.inject.Singleton
-import com.minare.core.entity.EntityFactory
+import com.minare.core.entity.factories.EntityFactory
 import com.minare.core.entity.ReflectionCache
 import com.minare.core.entity.annotations.State
-import com.minare.core.entity.Entity
-import com.minare.entity.EntityPublishService
+import com.minare.core.entity.models.Entity
+import com.minare.core.entity.services.EntityPublishService
 import io.vertx.core.json.JsonObject
 import io.vertx.kotlin.coroutines.await
 import io.vertx.redis.client.RedisAPI

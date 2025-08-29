@@ -1,7 +1,7 @@
 package com.minare.core.transport.downsocket
 
 import com.minare.core.transport.downsocket.pubsub.PubSubChannelStrategy
-import com.minare.utils.VerticleLogger
+import com.minare.core.utils.vertx.VerticleLogger
 import com.minare.core.transport.downsocket.pubsub.UpdateBatchCoordinator
 import io.vertx.core.json.JsonObject
 import io.vertx.kotlin.coroutines.CoroutineVerticle

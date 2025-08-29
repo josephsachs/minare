@@ -2,7 +2,7 @@ package com.minare.core.config
 
 import com.google.inject.Provider
 import com.google.inject.Singleton
-import com.minare.application.AppState
+import com.minare.application.interfaces.AppState
 
 /**
  * Provider for AppState that enables late binding.

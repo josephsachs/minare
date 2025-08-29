@@ -1,6 +1,6 @@
 package com.minare.controller
 
-import com.minare.core.entity.Entity
+import com.minare.core.entity.models.Entity
 import com.minare.core.storage.interfaces.StateStore
 import com.minare.core.storage.interfaces.WriteBehindStore
 import com.minare.core.storage.interfaces.EntityStore

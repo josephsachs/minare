@@ -1,4 +1,4 @@
-package com.minare.application
+package com.minare.application.config
 
 /**
  * Configuration for frame-based processing in Minare.

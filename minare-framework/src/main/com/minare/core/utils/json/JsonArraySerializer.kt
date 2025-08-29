@@ -1,4 +1,4 @@
-package com.minare.utils
+package com.minare.core.utils.json
 
 import com.hazelcast.nio.ObjectDataInput
 import com.hazelcast.nio.ObjectDataOutput

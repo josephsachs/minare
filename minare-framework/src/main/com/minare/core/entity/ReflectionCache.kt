@@ -1,6 +1,7 @@
 package com.minare.core.entity
 
 import com.minare.core.entity.annotations.EntityType
+import com.minare.core.entity.factories.EntityFactory
 import java.lang.reflect.Field
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.reflect.KClass

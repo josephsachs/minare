@@ -1,6 +1,6 @@
 package com.minare.controller
 
-import com.minare.core.entity.Entity
+import com.minare.core.entity.models.Entity
 import com.minare.core.storage.interfaces.ChannelStore
 import com.minare.core.storage.interfaces.ContextStore
 import org.slf4j.LoggerFactory

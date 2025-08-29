@@ -1,6 +1,6 @@
 package com.minare.core.operation
 
-import com.minare.entity.MutationService
+import com.minare.core.entity.services.MutationService
 import io.vertx.core.json.JsonObject
 import io.vertx.kotlin.coroutines.CoroutineVerticle
 import io.vertx.kotlin.coroutines.dispatcher
