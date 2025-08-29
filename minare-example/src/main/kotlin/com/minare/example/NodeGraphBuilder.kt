@@ -2,8 +2,6 @@ package com.minare.example.core.models
 
 import com.minare.core.entity.EntityFactory
 import com.minare.example.models.Node
-import com.minare.persistence.EntityStore
-import org.jgrapht.Graph
 import org.jgrapht.graph.DefaultEdge
 import org.jgrapht.graph.SimpleDirectedGraph
 import org.slf4j.LoggerFactory

@@ -2,7 +2,7 @@
 import com.fasterxml.jackson.annotation.JsonTypeName
 import com.minare.core.entity.EntityFactory
 import com.minare.core.entity.annotations.*
-import com.minare.core.models.Entity
+import kotlin.com.minare.core.entity.Entity
 import io.vertx.core.json.JsonObject
 import kotlin.reflect.KClass
 
