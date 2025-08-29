@@ -1,9 +1,9 @@
 package com.minare.example.controller
 
 import com.minare.controller.OperationController
-import com.minare.core.operation.interfaces.MessageQueue
-import com.minare.core.operation.models.Operation
-import com.minare.core.operation.models.OperationType
+import com.minare.operation.MessageQueue
+import com.minare.operation.Operation
+import com.minare.operation.OperationType
 import io.vertx.core.json.JsonObject
 import org.slf4j.LoggerFactory
 import javax.inject.Inject

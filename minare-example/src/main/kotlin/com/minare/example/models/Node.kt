@@ -1,7 +1,7 @@
 package com.minare.example.models
 
 import com.minare.core.entity.annotations.*
-import com.minare.core.entity.models.Entity
+import com.minare.core.models.Entity
 
 @EntityType("Node")
 class Node() : Entity() {

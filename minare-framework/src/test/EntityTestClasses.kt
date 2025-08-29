@@ -1,8 +1,8 @@
 /**import com.fasterxml.jackson.annotation.JsonProperty
 import com.fasterxml.jackson.annotation.JsonTypeName
-import com.minare.core.entity.factories.EntityFactory
+import com.minare.core.entity.EntityFactory
 import com.minare.core.entity.annotations.*
-import kotlin.com.minare.core.entity.models.Entity
+import com.minare.core.models.Entity
 import io.vertx.core.json.JsonObject
 import kotlin.reflect.KClass
 
