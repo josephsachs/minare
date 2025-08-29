@@ -3,11 +3,11 @@ package com.minare.example.config
 import com.google.inject.PrivateModule
 import com.google.inject.Singleton
 import com.google.inject.name.Names
-import com.minare.config.DatabaseNameProvider
 import com.minare.controller.ChannelController
 import com.minare.controller.ConnectionController
 import com.minare.controller.OperationController
-import com.minare.core.entity.EntityFactory
+import com.minare.core.config.DatabaseNameProvider
+import com.minare.core.entity.factories.EntityFactory
 import com.minare.example.ExampleEntityFactory
 import com.minare.example.controller.ExampleChannelController
 import com.minare.example.controller.ExampleConnectionController
