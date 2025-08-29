@@ -88,7 +88,7 @@ this. To see it in action:
    3. Node.js 24.3.0
    4. artillery 2.0.21
 3. In your terminal, find the `/minare` path and run `mvn install`.
-4. Next, in the `/minare` path, run `bash run.sh`.
+4. Next, in the `/minare` path, run `bash run.sh 2`. (You can replace `2` with the number of workers you want to spin up.)
 5. In a browser, navigate to `http://localhost:8080/index.html` and click the `Connect` button at the top of the screen.
 6. After a connection is established, on the upper-right, click `Show Grid View`.
 7. In your terminal, find the `/minare-example/integration-test` path and run `artillery run color-wave-test.yml`.

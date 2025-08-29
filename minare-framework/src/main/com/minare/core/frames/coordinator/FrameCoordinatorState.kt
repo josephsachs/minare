@@ -4,7 +4,6 @@ import com.hazelcast.core.HazelcastInstance
 import com.hazelcast.cp.IAtomicLong
 import com.minare.core.frames.coordinator.services.FrameCalculatorService
 import com.minare.core.frames.services.WorkerRegistry
-import com.minare.core.utils.vertx.EventBusUtils
 import io.vertx.core.json.JsonObject
 import org.slf4j.LoggerFactory
 import java.util.concurrent.ConcurrentHashMap
@@ -21,8 +20,7 @@ import javax.inject.Singleton
 class FrameCoordinatorState @Inject constructor(
     private val workerRegistry: WorkerRegistry,
     private val frameCalculator: FrameCalculatorService,
-    private val hazelcastInstance: HazelcastInstance,
-    private val eventBusUtils: EventBusUtils
+    private val hazelcastInstance: HazelcastInstance
 ) {
     private val log = LoggerFactory.getLogger(FrameCoordinatorState::class.java)
 
@@ -42,8 +40,6 @@ class FrameCoordinatorState @Inject constructor(
     private val currentFrameCompletions = ConcurrentHashMap<String, Long>()
     private val frameProgress: IAtomicLong = hazelcastInstance.getCPSubsystem().getAtomicLong("frame-progress")
 
-    private var _pauseState: PauseState = PauseState.UNPAUSED
-
     var lastProcessedFrame: Long
         get() = _lastProcessedFrame.get()
         private set(value) = _lastProcessedFrame.set(value)
@@ -54,29 +50,6 @@ class FrameCoordinatorState @Inject constructor(
 
     val frameInProgress: Long
         get() = frameProgress.get()
-
-    var pauseState: PauseState
-        get() = _pauseState
-        set(value) {
-            log.info("Pause state transitioned from {} to {}", _pauseState, value)
-
-            when (_pauseState to value) {
-                PauseState.SOFT to PauseState.UNPAUSED -> {
-                    eventBusUtils.sendWithTracing(FrameCoordinatorVerticle.ADDRESS_NEXT_FRAME, JsonObject())
-                }
-            }
-
-            _pauseState = value
-        }
-
-    companion object {
-        enum class PauseState {
-            UNPAUSED,
-            REST,
-            SOFT,
-            HARD
-        }
-    }
 
     /**
      * Initialize frame progress for a new session

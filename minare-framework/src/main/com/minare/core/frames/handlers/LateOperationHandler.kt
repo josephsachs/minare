@@ -1,4 +1,4 @@
-package com.minare.worker.coordinator.handlers
+package com.minare.core.frames.coordinator.handlers
 
 import io.vertx.core.json.JsonObject
 import org.slf4j.LoggerFactory

@@ -6,7 +6,6 @@ import com.minare.core.Timer
 import com.minare.core.storage.interfaces.ConnectionStore
 import com.minare.core.transport.downsocket.pubsub.UpdateBatchCoordinator
 import com.minare.core.transport.downsocket.services.ConnectionTracker
-import com.minare.core.transport.services.HeartbeatManager
 import com.minare.core.utils.vertx.EventBusUtils
 import com.minare.core.utils.vertx.VerticleLogger
 import com.minare.utils.*

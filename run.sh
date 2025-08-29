@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Parse command line arguments
+WORKER_COUNT=${1:-1}
+
 cd docker
 docker compose down
 
@@ -8,9 +11,16 @@ mvn package
 
 cd docker
 
-rm logs/websocket-server.log
-rm logs2/websocket-server.log
+# Clean up all log files
+rm -rf logs/*.log
+
+# Create log directory if it doesn't exist
+mkdir -p logs
 
 docker compose build --no-cache
-docker compose up -d
+
+# Start services with specified worker count
+WORKER_COUNT=${WORKER_COUNT} docker compose up -d --scale worker=${WORKER_COUNT}
+
+# Follow logs for all services
 docker compose logs -f

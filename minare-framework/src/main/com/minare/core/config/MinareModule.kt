@@ -38,8 +38,8 @@ import javax.inject.Named
 import com.minare.core.transport.downsocket.pubsub.UpdateBatchCoordinator
 import com.minare.time.DockerTimeService
 import com.minare.time.TimeService
-import com.minare.worker.coordinator.handlers.DelayLateOperations
-import com.minare.worker.coordinator.handlers.LateOperationHandler
+import com.minare.core.frames.coordinator.handlers.DelayLateOperations
+import com.minare.core.frames.coordinator.handlers.LateOperationHandler
 import com.minare.worker.upsocket.CommandMessageHandler
 import kotlin.coroutines.CoroutineContext
 

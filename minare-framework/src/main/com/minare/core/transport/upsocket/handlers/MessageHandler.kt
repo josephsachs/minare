@@ -1,15 +1,13 @@
 package com.minare.worker.upsocket.handlers
 
 import com.google.inject.Inject
-import com.minare.core.storage.interfaces.ConnectionStore
-import com.minare.core.transport.downsocket.services.ConnectionTracker
-import com.minare.core.transport.services.HeartbeatManager
+import com.minare.utils.HeartbeatManager
 import com.minare.core.utils.vertx.VerticleLogger
 import com.minare.utils.WebSocketUtils
 import com.minare.controller.OperationController
+import com.minare.core.storage.interfaces.ConnectionStore
+import com.minare.core.transport.downsocket.services.ConnectionTracker
 import com.minare.exceptions.BackpressureException
-import com.minare.core.frames.coordinator.FrameCoordinatorState
-import com.minare.core.frames.coordinator.FrameCoordinatorState.Companion.PauseState
 import com.minare.worker.upsocket.SyncCommandHandler
 import io.vertx.core.http.ServerWebSocket
 import io.vertx.core.json.JsonObject
@@ -27,8 +25,7 @@ class MessageHandler @Inject constructor(
     private val connectionTracker: ConnectionTracker,
     private val heartbeatManager: HeartbeatManager,
     private val operationController: OperationController,
-    private val syncCommandHandler: SyncCommandHandler,
-    private val coordinatorState: FrameCoordinatorState
+    private val syncCommandHandler: SyncCommandHandler
 ) {
     /**
      * Handle an incoming message from a client
@@ -71,12 +68,7 @@ class MessageHandler @Inject constructor(
                 }
 
                 // All other messages go through OperationController to Kafka
-                // TODO: Make MessageHandler much more command agnostic, require dev to package command messages
                 else -> {
-                    if (coordinatorState.pauseState == PauseState.HARD) {
-                        throw BackpressureException("Service temporarily unavailable - system is paused")
-                    }
-
                     // Add connectionId to the message for downstream processing
                     message.put("connectionId", connectionId)
                     operationController.process(message)

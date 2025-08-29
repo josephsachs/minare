@@ -1,4 +1,4 @@
-package com.minare.core.transport.services
+package com.minare.utils
 
 import com.minare.core.storage.interfaces.ConnectionStore
 import com.minare.core.utils.vertx.VerticleLogger

@@ -1,7 +1,7 @@
 package com.minare.worker.upsocket
 
 import com.minare.core.utils.vertx.VerticleLogger
-import com.minare.core.transport.services.HeartbeatManager
+import com.minare.utils.HeartbeatManager
 import com.minare.core.transport.downsocket.services.ConnectionTracker
 import com.minare.utils.HttpServerUtils
 import com.minare.utils.WebSocketUtils

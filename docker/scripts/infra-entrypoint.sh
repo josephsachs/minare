@@ -1,6 +1,6 @@
 #!/bin/sh
-# Infrastructure Management Container Entrypoint
-# Handles cluster initialization and ongoing infrastructure operations
+# Dynamic Infrastructure Management Container Entrypoint
+# Automatically discovers and registers worker instances
 
 set -e
 
@@ -10,7 +10,8 @@ COORDINATOR_PORT="${COORDINATOR_PORT:-9090}"
 STARTUP_DELAY="${STARTUP_DELAY:-5}"
 RETRY_INTERVAL="${RETRY_INTERVAL:-2}"
 MAX_RETRIES="${MAX_RETRIES:-10}"
-WORKER_IDS="${WORKER_IDS:-app-worker}"
+WORKER_PREFIX="${WORKER_PREFIX:-minare_worker}"
+WORKER_COUNT="${WORKER_COUNT:-1}"
 
 # Colors for output
 RED='\033[0;31m'
@@ -43,6 +44,30 @@ send_event() {
             \"address\": \"${address}\",
             \"body\": ${body}
         }"
+}
+
+# Function to discover worker containers
+discover_workers() {
+    log_info "Discovering worker containers..."
+
+    # Docker Compose creates containers with naming pattern: projectname_servicename_index
+    # For scaled services, they'll be: minare_worker_1, minare_worker_2, etc.
+
+    local workers=""
+    for i in $(seq 1 ${WORKER_COUNT}); do
+        worker_name="${WORKER_PREFIX}_${i}"
+        log_info "Looking for worker: ${worker_name}"
+
+        # Check if the worker hostname resolves (Docker's internal DNS)
+        if nslookup "${worker_name}" >/dev/null 2>&1; then
+            workers="${workers} ${worker_name}"
+            log_info "Found worker: ${worker_name}"
+        else
+            log_warn "Worker ${worker_name} not found (might still be starting)"
+        fi
+    done
+
+    echo "${workers}"
 }
 
 # Function to create Kafka topics
@@ -100,43 +125,75 @@ add_worker() {
     return 1
 }
 
-# Function to execute custom scripts
-run_custom_scripts() {
-    if [ -d /scripts/custom ]; then
-        log_info "Looking for custom scripts in /scripts/custom..."
-        for script in /scripts/custom/*.sh; do
-            if [ -f "$script" ]; then
-                log_info "Executing custom script: $(basename $script)"
-                sh "$script" || log_warn "Custom script $(basename $script) failed with exit code $?"
+# Function to wait for all workers to be healthy
+wait_for_workers() {
+    local expected_count=$1
+    local timeout=60
+    local elapsed=0
+
+    log_info "Waiting for ${expected_count} workers to be healthy..."
+
+    while [ ${elapsed} -lt ${timeout} ]; do
+        local healthy_count=0
+
+        for i in $(seq 1 ${expected_count}); do
+            worker_name="${WORKER_PREFIX}_${i}"
+
+            # Try to health check the worker
+            if curl -f "http://${worker_name}:8080/health" >/dev/null 2>&1; then
+                healthy_count=$((healthy_count + 1))
             fi
         done
-    fi
+
+        if [ ${healthy_count} -eq ${expected_count} ]; then
+            log_info "All ${expected_count} workers are healthy!"
+            return 0
+        fi
+
+        log_info "Healthy workers: ${healthy_count}/${expected_count}"
+        sleep 5
+        elapsed=$((elapsed + 5))
+    done
+
+    log_warn "Timeout waiting for workers to be healthy"
+    return 1
 }
 
 # Main execution
 main() {
-    log_info "Infrastructure management container starting..."
+    log_info "Dynamic Infrastructure management container starting..."
     log_info "Configuration:"
     log_info "  Coordinator: ${COORDINATOR_HOST}:${COORDINATOR_PORT}"
-    log_info "  Workers: ${WORKER_IDS}"
+    log_info "  Worker prefix: ${WORKER_PREFIX}"
+    log_info "  Expected worker count: ${WORKER_COUNT}"
     log_info "  Startup delay: ${STARTUP_DELAY}s"
 
     # Install required tools if not present
-    if ! command -v curl >/dev/null 2>&1; then
+    if ! command -v curl >/dev/null 2>&1 || ! command -v nslookup >/dev/null 2>&1; then
         log_info "Installing required tools..."
-        apk add --no-cache curl jq
+        apk add --no-cache curl bind-tools
     fi
 
-    # Setup Kafka topic
+    # Setup Kafka topics
     create_kafka_topics
 
     # Wait for coordinator to be ready
     log_info "Waiting ${STARTUP_DELAY}s for coordinator to stabilize..."
     sleep ${STARTUP_DELAY}
 
-    # Add all configured workers
+    # Wait for workers to be healthy
+    wait_for_workers ${WORKER_COUNT}
+
+    # Discover and add workers
+    workers=$(discover_workers)
+
+    if [ -z "${workers}" ]; then
+        log_error "No workers discovered!"
+        exit 1
+    fi
+
     success=true
-    for worker in $(echo ${WORKER_IDS} | tr "," " "); do
+    for worker in ${workers}; do
         if ! add_worker "${worker}"; then
             success=false
         fi
@@ -146,18 +203,16 @@ main() {
         log_info "All workers added successfully"
     else
         log_error "Some workers failed to add"
-        # Don't exit - keep running for other tasks
     fi
 
-    # Run any initialization scripts
-    run_custom_scripts
+    log_info "Initialization complete. Container staying alive for monitoring..."
 
-    log_info "Initialization complete. Container staying alive for future tasks..."
-
-    # Keep container alive, checking for new scripts periodically
+    # Keep container alive and periodically check for new workers
     while true; do
-        sleep 3600
-        # Could add periodic tasks here
+        sleep 30
+
+        # Could add logic here to detect scaled workers and register them
+        # For now, just stay alive
     done
 }
 

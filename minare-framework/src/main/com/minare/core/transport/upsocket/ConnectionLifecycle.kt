@@ -7,7 +7,7 @@ import com.minare.cache.ConnectionCache
 import com.minare.core.storage.interfaces.ChannelStore
 import com.minare.core.storage.interfaces.ConnectionStore
 import com.minare.core.transport.downsocket.services.ConnectionTracker
-import com.minare.core.transport.services.HeartbeatManager
+import com.minare.utils.HeartbeatManager
 import com.minare.core.utils.vertx.VerticleLogger
 import com.minare.utils.WebSocketUtils
 import io.vertx.core.Vertx
