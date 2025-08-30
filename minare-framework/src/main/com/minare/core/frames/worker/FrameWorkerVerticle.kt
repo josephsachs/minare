@@ -30,8 +30,7 @@ import javax.inject.Inject
  */
 class FrameWorkerVerticle @Inject constructor(
     private val vlog: VerticleLogger,
-    private val hazelcastInstance: HazelcastInstance,
-    private val frameConfig: FrameConfiguration
+    private val hazelcastInstance: HazelcastInstance
 ) : CoroutineVerticle() {
 
     private val log = LoggerFactory.getLogger(FrameWorkerVerticle::class.java)
@@ -40,12 +39,10 @@ class FrameWorkerVerticle @Inject constructor(
     private lateinit var manifestMap: IMap<String, JsonObject>
     private lateinit var completionMap: IMap<String, OperationCompletion>
 
-    // Distributed frame progress from Hazelcast
     private val frameProgress: IAtomicLong by lazy {
         hazelcastInstance.getCPSubsystem().getAtomicLong("frame-progress")
     }
 
-    private var sessionStartTimestamp: Long = 0L  // Wall clock for external communication
     private var processingActive = false
 
     // Track the current frame processing job for clean cancellation
@@ -93,41 +90,12 @@ class FrameWorkerVerticle @Inject constructor(
      * Ensures any existing processing is cleanly terminated first.
      */
     private suspend fun handleSessionStart(announcement: JsonObject) {
-        val newSessionStart = announcement.getLong("sessionStartTimestamp")
-        val startsIn = announcement.getLong("firstFrameStartsIn")
-        val frameDuration = announcement.getLong("frameDuration")
+        processingActive = false
 
-        log.debug("New session announced - starts at {} (in {}ms), frame duration {}ms",
-            newSessionStart, startsIn, frameDuration)
+        currentFrameProcessingJob?.join()
+        currentFrameProcessingJob = null
 
-        // CRITICAL: Stop any existing processing first
-        if (processingActive || currentFrameProcessingJob != null) {
-            log.warn("Stopping existing frame processing before starting new session")
-            processingActive = false
-
-            // Cancel and wait for the job to complete
-            currentFrameProcessingJob?.let { job ->
-                try {
-                    job.cancel()
-                    job.join()
-                } catch (e: Exception) {
-                    log.error("Error cancelling previous frame processing job", e)
-                }
-                currentFrameProcessingJob = null
-            }
-
-            // Give a bit more time for cleanup
-            delay(frameConfig.frameDurationMs / 2)
-        }
-
-        // Clear any stale state in Hazelcast for this worker
-        clearWorkerManifests()
-
-        sessionStartTimestamp = newSessionStart
         processingActive = true
-
-        // Wait for session start
-        delay(startsIn)
 
         // Now wait for subsequent frame advancement events
         log.info("Worker {} ready for frame advancement events", workerId)
