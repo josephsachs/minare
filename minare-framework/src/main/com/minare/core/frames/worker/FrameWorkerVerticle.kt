@@ -126,7 +126,7 @@ class FrameWorkerVerticle @Inject constructor(
      */
     private suspend fun processLogicalFrame(logicalFrame: Long) {
         val manifestKey = FrameManifest.makeKey(logicalFrame, workerId)
-        val manifestJson = waitForManifest(manifestKey, logicalFrame)
+        val manifestJson = getManifest(manifestKey, logicalFrame)
         val manifest = FrameManifest.fromJson(manifestJson)
         val operations = manifest.operations
 
@@ -140,34 +140,12 @@ class FrameWorkerVerticle @Inject constructor(
 
     /**
      * Wait until we can find the manifest, block til we're done.
-     * TODO: In theory after frame 0 we shouldn't need this delay logic. /
-     *     Coordinator should avoid the race condition by checking WorkerRegistry
-     *     and then either proceeding or waiting for WorkerReadinessEvent.
      */
-    private suspend fun waitForManifest(manifestKey: String, logicalFrame: Long): JsonObject {
-        var loggedWarning = false
-        var attempts = 0
-
-        while (true) {
-            try {
-                manifestMap[manifestKey]?.let { return it }
-
-            } catch (e: HazelcastException) {
-                log.error("Hazelcast error accessing manifest for frame {}", logicalFrame, e)
-                // Fixing our race condition should allow this again
-                //throw FrameLoopException("Worker $workerId could not reach manifest store")
-            }
-
-            if (!loggedWarning) {
-                log.warn("Manifest not found for frame {}, waiting...", logicalFrame)
-                loggedWarning = true
-            } else if (++attempts % 20 == 0) {
-                log.warn("Still waiting for manifest for frame {} (attempt {})", logicalFrame, attempts)
-            }
-
-            // TODO: Does not scale, make this event driven or suffer the consequences
-            delay(50)
-        }
+    private fun getManifest(manifestKey: String, logicalFrame: Long): JsonObject {
+        return manifestMap[manifestKey]
+            ?: throw FrameLoopException(
+                "Manifest not found for frame $logicalFrame. Critical coordinator error - manifests must exist before frame processing."
+            )
     }
 
     /**

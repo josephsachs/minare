@@ -1,25 +1,22 @@
 package com.minare.worker.coordinator.events
 
 import com.google.inject.Inject
+import com.minare.core.frames.coordinator.services.StartupService
 import com.minare.core.utils.vertx.EventBusUtils
 import com.minare.core.utils.vertx.VerticleLogger
-import com.minare.core.frames.coordinator.FrameCoordinatorState
-import com.minare.core.frames.coordinator.FrameCoordinatorVerticle
-import com.minare.core.frames.services.WorkerRegistry
 import io.vertx.core.json.JsonObject
 
 /**
- * WorkerReadinessEvent triggers when a worker announces activation, causes FrameCoordinatorVerticle
- * to check if we're ready to begin frame loop. Coordinator will also check status in tryStartSession().
+ * WorkerReadinessEvent triggers when a worker announces activation.
+ * Delegates to StartupService to track readiness and coordinate session start.
  */
 class WorkerReadinessEvent @Inject constructor(
     private val eventBusUtils: EventBusUtils,
     private val vlog: VerticleLogger,
-    private val workerRegistry: WorkerRegistry,
-    private val coordinatorState: FrameCoordinatorState
+    private val startupService: StartupService
 ) {
     suspend fun register() {
-        // Listen to successful worker activations only
+        // Listen to successful worker activations
         eventBusUtils.registerTracedConsumer<JsonObject>(ADDRESS_WORKER_ACTIVATED) { message, traceId ->
             val workerId = message.body().getString("workerId")
             val activeWorkers = message.body().getInteger("activeWorkers")
@@ -27,28 +24,8 @@ class WorkerReadinessEvent @Inject constructor(
 
             vlog.logInfo("Worker activated: ${workerId}. Status: ${activeWorkers}/${expectedWorkers} active")
 
-            // Only proceed if no session is running and all workers are ready
-            if (activeWorkers == expectedWorkers &&
-                coordinatorState.sessionStartTimestamp == 0L) {
-
-                vlog.getEventLogger().trace(
-                    "ALL_WORKERS_READY",
-                    mapOf(
-                        "activeWorkers" to activeWorkers,
-                        "expectedWorkers" to expectedWorkers
-                    ),
-                    traceId
-                )
-
-                // Notify coordinator that all workers are ready
-                eventBusUtils.sendWithTracing(
-                    FrameCoordinatorVerticle.ADDRESS_ALL_WORKERS_READY,
-                    JsonObject()
-                        .put("activeWorkers", activeWorkers)
-                        .put("expectedWorkers", expectedWorkers),
-                    traceId
-                )
-            }
+            // Delegate to StartupService to track readiness
+            startupService.handleWorkerReady(workerId)
         }
     }
 
