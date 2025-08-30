@@ -2,6 +2,7 @@ package com.minare.core.storage.adapters
 
 import com.minare.core.frames.models.FrameDelta
 import com.minare.core.storage.interfaces.DeltaStore
+import io.vertx.core.json.JsonArray
 import io.vertx.core.json.JsonObject
 import io.vertx.kotlin.coroutines.await
 import io.vertx.redis.client.RedisAPI
@@ -18,7 +19,16 @@ class RedisDeltaStore @Inject constructor(
     override suspend fun appendDelta(frameNumber: Long, delta: FrameDelta) {
         val key = "frame:${frameNumber}:deltas"
 
-        redisAPI.rpush(listOf(key, delta.toJson().encode())).await()
+        val existing = redisAPI.jsonGet(listOf(key, "$")).await()
+        val deltasArray = if (existing != null && existing.toString() != "null") {
+            JsonArray(existing.toString().removePrefix("[").removeSuffix("]"))
+        } else {
+            JsonArray()
+        }
+
+        deltasArray.add(delta.toJson())
+
+        redisAPI.jsonSet(listOf(key, "$", deltasArray.encode())).await()
 
         log.trace("Appended delta for entity {} to frame {}",
             delta.entityId, frameNumber)
@@ -27,11 +37,14 @@ class RedisDeltaStore @Inject constructor(
     override suspend fun getFrameDeltas(frameNumber: Long): List<FrameDelta> {
         val key = "frame:${frameNumber}:deltas"
 
-        val response = redisAPI.lrange(key, "0", "-1").await()
+        val response = redisAPI.get(key).await()
 
-        return response?.map { element ->
-            FrameDelta.fromJson(JsonObject(element.toString()))
-        } ?: emptyList()
+        return if (response != null && response.toString() != "null") {
+            val array = JsonArray(response.toString())
+            array.map { FrameDelta.fromJson(it as JsonObject) }
+        } else {
+            emptyList()
+        }
     }
 
     override suspend fun getDeltasForFrameRange(startFrame: Long, endFrame: Long): List<FrameDelta> {

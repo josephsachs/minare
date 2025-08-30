@@ -63,6 +63,7 @@ class MutationService @Inject constructor(
                 .put("message", "No valid mutable fields found")
         }
 
+        // TODO: Old feature will probably be changed all to hell in V0.4.0
         val allowedChanges = filterDeltaByConsistencyLevel(
             prunedDelta,
             requestedVersion,
