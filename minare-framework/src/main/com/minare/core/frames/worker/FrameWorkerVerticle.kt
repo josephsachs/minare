@@ -251,6 +251,9 @@ class FrameWorkerVerticle @Inject constructor(
         try {
             val op = Operation.fromJson(operation)
 
+            // Add frame number to operation for delta storage
+            operation.put("frameNumber", logicalFrame)
+
             // Send to the appropriate processor based on action type
             val processorAddress = "worker.process.${op.getAction()}"
 

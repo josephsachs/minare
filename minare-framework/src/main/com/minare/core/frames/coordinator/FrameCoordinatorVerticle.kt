@@ -1,6 +1,7 @@
 package com.minare.core.frames.coordinator
 
 import com.minare.application.config.FrameConfiguration
+import com.minare.core.frames.coordinator.FrameCoordinatorState.Companion.PauseState
 import com.minare.core.frames.coordinator.services.FrameCalculatorService
 import com.minare.core.frames.coordinator.services.FrameCompletionTracker
 import com.minare.core.frames.coordinator.services.FrameManifestBuilder
@@ -269,6 +270,11 @@ class FrameCoordinatorVerticle @Inject constructor(
      * Prepare and write manifest for a specific logical frame.
      */
     private suspend fun prepareManifestForFrame(logicalFrame: Long) {
+        if (coordinatorState.pauseState in setOf(PauseState.REST, PauseState.SOFT)) {
+            log.info("Delayed preparing frame $logicalFrame} due to pause ${coordinatorState.pauseState}")
+            return
+        }
+
         val operations = coordinatorState.extractFrameOperations(logicalFrame)
         val activeWorkers = workerRegistry.getActiveWorkers().toSet()
 
@@ -309,6 +315,11 @@ class FrameCoordinatorVerticle @Inject constructor(
      */
     private suspend fun onFrameComplete(logicalFrame: Long) {
         log.info("Logical frame {} completed successfully", logicalFrame)
+
+        if (coordinatorState.pauseState in setOf(PauseState.SOFT, PauseState.HARD)) {
+            log.info("Completed frame $logicalFrame, stopping due to pause ${coordinatorState.pauseState}")
+            return
+        }
 
         markFrameComplete(logicalFrame)
 

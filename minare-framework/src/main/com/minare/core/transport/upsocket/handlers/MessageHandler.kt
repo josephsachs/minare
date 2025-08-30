@@ -3,6 +3,8 @@ package com.minare.worker.upsocket.handlers
 import com.google.inject.Inject
 import com.minare.utils.HeartbeatManager
 import com.minare.core.utils.vertx.VerticleLogger
+import com.minare.core.frames.coordinator.FrameCoordinatorState
+import com.minare.core.frames.coordinator.FrameCoordinatorState.Companion.PauseState
 import com.minare.utils.WebSocketUtils
 import com.minare.controller.OperationController
 import com.minare.core.storage.interfaces.ConnectionStore
@@ -23,10 +25,17 @@ class MessageHandler @Inject constructor(
     private val vlog: VerticleLogger,
     private val connectionStore: ConnectionStore,
     private val connectionTracker: ConnectionTracker,
+    private val coordinatorState: FrameCoordinatorState,
     private val heartbeatManager: HeartbeatManager,
     private val operationController: OperationController,
     private val syncCommandHandler: SyncCommandHandler
 ) {
+    /**
+     * TODO: We need to implement MessageController, overridable handleMessage and MessageCommand /
+     *     in the same way that we do with preQueue and Operation. That way the developer can /
+     *     structure their client command arbitrarily.
+     */
+
     /**
      * Handle an incoming message from a client
      */
@@ -69,6 +78,10 @@ class MessageHandler @Inject constructor(
 
                 // All other messages go through OperationController to Kafka
                 else -> {
+                    if (coordinatorState.pauseState == PauseState.HARD) {
+                        throw BackpressureException("Service temporarily unavailable - system is paused")
+                    }
+
                     // Add connectionId to the message for downstream processing
                     message.put("connectionId", connectionId)
                     operationController.process(message)

@@ -22,22 +22,64 @@ class DeltaStorageService @Inject constructor(
         entityId: String,
         operationType: OperationType,
         operationId: String,
-        beforeState: JsonObject?,
-        afterState: JsonObject?
+        operationJson: JsonObject,
+        beforeEntity: JsonObject?,
+        afterEntity: JsonObject?
     ) {
-        // Create the delta record
+        val requestedDelta = operationJson.getJsonObject("delta")
+        val beforeState = beforeEntity?.getJsonObject("state")
+        val afterState = afterEntity?.getJsonObject("state")
+
+        // Compute what actually changed based on the requested delta
+        val actualChanges = if (beforeState != null && afterState != null && requestedDelta != null) {
+            val changes = JsonObject()
+
+            requestedDelta.fieldNames().forEach { field ->
+                val oldValue = beforeState.getValue(field)
+                val newValue = afterState.getValue(field)
+
+                if (oldValue?.toString() != newValue?.toString()) {
+                    changes.put(field, newValue)
+                }
+            }
+
+            changes
+        } else if (operationType == OperationType.CREATE && afterState != null) {
+            // For CREATE, everything is new
+            afterState
+        } else {
+            JsonObject()
+        }
+
+        if (actualChanges.isEmpty) {
+            log.trace("No actual changes for entity {} in frame {}", entityId, frameNumber)
+            return
+        }
+
+        val prunedBefore = if (beforeState != null && requestedDelta != null) {
+            val before = JsonObject()
+
+            requestedDelta.fieldNames().forEach { field ->
+                beforeState.getValue(field)?.let { before.put(field, it) }
+            }
+
+            before
+        } else {
+            null
+        }
+
         val delta = FrameDelta(
             frameNumber = frameNumber,
             entityId = entityId,
             operation = operationType,
-            before = beforeState?.getJsonObject("state"),  // Extract just the state portion
-            after = afterState?.getJsonObject("state"),    // Extract just the state portion
-            version = afterState?.getLong("version") ?: 0L,
+            before = prunedBefore,
+            after = actualChanges,
+            version = afterEntity?.getLong("version")
+                ?: throw IllegalStateException("No version in afterEntity for $operationType operation"),
             timestamp = System.currentTimeMillis(),
             operationId = operationId
         )
 
-        // Store it
         storeDelta(delta)
 
         log.debug("Captured delta for entity {} in frame {}: {} -> version {}",
