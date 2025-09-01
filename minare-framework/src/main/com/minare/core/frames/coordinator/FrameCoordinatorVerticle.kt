@@ -3,9 +3,11 @@ package com.minare.core.frames.coordinator
 import com.minare.application.config.FrameConfiguration
 import com.minare.core.frames.coordinator.FrameCoordinatorState.Companion.PauseState
 import com.minare.core.frames.coordinator.services.*
+import com.minare.core.frames.coordinator.services.SessionService.Companion.ADDRESS_SESSION_INITIALIZED
 import com.minare.core.frames.services.WorkerRegistry
 import com.minare.core.operation.interfaces.MessageQueue
 import com.minare.core.utils.vertx.EventBusUtils
+import com.minare.core.utils.vertx.EventWaiter
 import com.minare.core.utils.vertx.VerticleLogger
 import com.minare.worker.coordinator.events.*
 import io.vertx.core.json.JsonArray
@@ -30,13 +32,14 @@ class FrameCoordinatorVerticle @Inject constructor(
     private val frameCalculator: FrameCalculatorService,
     private val vlog: VerticleLogger,
     private val eventBusUtils: EventBusUtils,
+    private val eventWaiter: EventWaiter,
     private val workerRegistry: WorkerRegistry,
     private val coordinatorState: FrameCoordinatorState,
-    private val messageQueue: MessageQueue,
     private val messageQueueOperationConsumer: MessageQueueOperationConsumer,
     private val frameManifestBuilder: FrameManifestBuilder,
     private val frameCompletionTracker: FrameCompletionTracker,
     private val startupService: StartupService,
+    private val sessionService: SessionService,
     private val infraAddWorkerEvent: InfraAddWorkerEvent,
     private val infraRemoveWorkerEvent: InfraRemoveWorkerEvent,
     private val workerFrameCompleteEvent: WorkerFrameCompleteEvent,
@@ -48,11 +51,16 @@ class FrameCoordinatorVerticle @Inject constructor(
 
     private val log = LoggerFactory.getLogger(FrameCoordinatorVerticle::class.java)
 
+    var manifestTimerId: Long? = null
+
     companion object {
         const val ADDRESS_FRAME_START = "minare.coordinator.frame.start"
         const val ADDRESS_SESSION_START = "minare.coordinator.session.start"
         const val ADDRESS_FRAME_ALL_COMPLETE = "minare.coordinator.internal.frame-all-complete"
+        const val ADDRESS_FRAME_MANIFESTS_ALL_COMPLETE = "minare.coordinator.internal.frame.manifests-all-complete"
         const val ADDRESS_PREPARE_MANIFEST = "minare.coordinator.internal.prepare-manifest"
+        const val ADDRESS_PREPARE_SESSION_MANIFESTS = "minare.coordinator.prepare-session-manifests"
+        const val ADDRESS_SESSION_MANIFESTS_PREPARED = "minare.coordinator.session-manifests-prepared"
         const val ADDRESS_ALL_WORKERS_READY = "minare.coordinator.all.workers.ready"
         const val ADDRESS_NEXT_FRAME = "minare.coordinator.next.frame"  // NEW
     }
@@ -70,7 +78,7 @@ class FrameCoordinatorVerticle @Inject constructor(
             log.info("Waiting for all workers to be ready...")
             startupService.awaitAllWorkersReady()
             log.info("All workers ready, starting session")
-            startNewSession()
+            startupSession()
         }
     }
 
@@ -98,39 +106,37 @@ class FrameCoordinatorVerticle @Inject constructor(
         eventBusUtils.registerTracedConsumer<JsonObject>(ADDRESS_PREPARE_MANIFEST) { _, traceId ->
             launch { preparePendingManifests() }
         }
+
+        eventBusUtils.registerTracedConsumer<JsonObject>(ADDRESS_PREPARE_SESSION_MANIFESTS) { msg, traceId ->
+            launch {
+                val sessionStartTime = msg.body().getLong("sessionStartTime")
+                val sessionStartNanos = msg.body().getLong("sessionStartNanos")
+
+                val operationsByOldFrame = extractBufferedOperations()
+
+                coordinatorState.resetSessionState(sessionStartTime, sessionStartNanos)
+                coordinatorState.initializeFrameProgress()
+                coordinatorState.setFrameInProgress(0)
+
+                assignBufferedOperations(operationsByOldFrame)
+                prepareManifestForFrame(0)
+
+                eventBusUtils.sendWithTracing(
+                    ADDRESS_SESSION_MANIFESTS_PREPARED,
+                    JsonObject()
+                )
+            }
+        }
     }
 
     private suspend fun setupOperationConsumer() {
         messageQueueOperationConsumer.start(this)
     }
 
-    /**
-     * Start a new session with announcements and manifest preparation.
-     * Called on startup or after resume.
-     * Operations placed into the buffer during pause will be assigned to
-     * new logical frames according to the time of receipt.
-     */
-    private suspend fun startNewSession() {
-        val announcementTime = System.currentTimeMillis()
-        val sessionStartTime = announcementTime + frameConfig.frameOffsetMs
-        val sessionStartNanos = System.nanoTime() + frameCalculator.msToNanos(frameConfig.frameOffsetMs)
-
-        clearPreviousSessionState()
-
-        val operationsByOldFrame = extractBufferedOperations()
-        coordinatorState.resetSessionState(sessionStartTime, sessionStartNanos)
-
-        coordinatorState.initializeFrameProgress()
-        coordinatorState.setFrameInProgress(0)
-
-        assignBufferedOperations(operationsByOldFrame)
-        prepareManifestForFrame(0)
-        publishSessionStartEvent(sessionStartTime, announcementTime)
-        announceSessionToWorkers(sessionStartTime, announcementTime)
-
+    private suspend fun startManifestTimer() {
         // IMPORTANT: Continue preparing manifests even without frame completions
         // This keeps operation processing responsive to real-time input
-        val manifestPrepTimer = vertx.setPeriodic(frameConfig.frameDurationMs) {
+        manifestTimerId = vertx.setPeriodic(frameConfig.frameDurationMs) {
             launch {
                 val currentFrame = frameCalculator.getCurrentLogicalFrame(coordinatorState.sessionStartNanos)
                 val targetFrame = currentFrame + frameConfig.normalOperationLookahead
@@ -141,62 +147,28 @@ class FrameCoordinatorVerticle @Inject constructor(
                 }
             }
         }
-
-        log.debug("Broadcasting initial next frame event for frame 0")
-        vertx.eventBus().publish(ADDRESS_NEXT_FRAME, JsonObject())
-    }
-
-    private fun clearPreviousSessionState() {
-        frameManifestBuilder.clearAllManifests()
-        frameCompletionTracker.clearAllCompletions()
-    }
-
-    private suspend fun publishSessionStartEvent(sessionStartTime: Long, announcementTime: Long) {
-        val activeWorkers = workerRegistry.getActiveWorkers()
-
-        try {
-            val sessionEvent = JsonObject()
-                .put("eventType", "SESSION_START")
-                .put("sessionStartTimestamp", sessionStartTime)
-                .put("announcementTimestamp", announcementTime)
-                .put("frameDuration", frameConfig.frameDurationMs)
-                .put("frameOffset", frameConfig.frameOffsetMs)
-                .put("workerCount", activeWorkers.size)
-                .put("workerIds", JsonArray(activeWorkers.toList()))
-                .put("coordinatorInstance", "coordinator-${System.currentTimeMillis()}") // TODO: Use a more stable ID
-
-            messageQueue.send("minare.system.events", JsonArray().add(sessionEvent))
-            log.info("Published session start event to Kafka")
-        } catch (e: Exception) {
-            // TODO: This case indicates a big problem and should be occasion for clusterwide pause
-            log.error("Failed to publish session start event", e)
-        }
-    }
-
-    private fun announceSessionToWorkers(sessionStartTime: Long, announcementTime: Long) {
-        val announcement = JsonObject()
-            .put("sessionStartTimestamp", sessionStartTime)
-            .put("announcementTimestamp", announcementTime)
-            .put("firstFrameStartsIn", frameConfig.frameOffsetMs)
-            .put("frameDuration", frameConfig.frameDurationMs)
-
-        vertx.eventBus().publish(ADDRESS_SESSION_START, announcement)
-        log.info("Announced new session starting at {} (in {}ms) with {} workers",
-            sessionStartTime, frameConfig.frameOffsetMs, workerRegistry.getActiveWorkers().size)
     }
 
     /**
-     * Get all the operations we buffered during pause
+     * Start a new session with announcements and manifest preparation.
+     * Called on startup or after resume.
+     * Operations placed into the buffer during pause will be assigned to
+     * new logical frames according to the time of receipt.
      */
-    private suspend fun extractBufferedOperations(): MutableMap<Long, List<JsonObject>> {
-        val oldFrameNumbers = coordinatorState.getBufferedOperationCounts().keys.sorted()
-        val operationsByOldFrame = mutableMapOf<Long, List<JsonObject>>()
+    private suspend fun startupSession() {
+        // SessionService takes over setup, returning control to
+        // ADDRESS_PREPARE_SESSION_MANIFESTS before concluding
+        sessionService.initializeSession()
 
-        oldFrameNumbers.forEach { oldFrame ->
-            operationsByOldFrame[oldFrame] = coordinatorState.extractFrameOperations(oldFrame)
-        }
+        val eventMessage = eventWaiter.waitForEvent(ADDRESS_SESSION_INITIALIZED)
 
-        return operationsByOldFrame
+        val newSessionId = eventMessage.getString("sessionId")
+
+        log.info("Frame coordinator received initial session announcement for $newSessionId")
+        coordinatorState.sessionId = newSessionId
+
+        startManifestTimer()
+        sessionService.startSession()
     }
 
     /**
@@ -223,10 +195,24 @@ class FrameCoordinatorVerticle @Inject constructor(
             prepareManifestForFrame(frame)
         }
 
-        log.info("Session start: renumbered {} old frames to frames 0-{}, prepared {} manifests",
+        log.info("Session: renumbered {} old frames to frames 0-{}, prepared {} manifests",
             operationsByOldFrame.size, newFrame - 1, framesToPrepare)
 
         return newFrame
+    }
+
+    /**
+     * Get all the operations we buffered during pause
+     */
+    private suspend fun extractBufferedOperations(): MutableMap<Long, List<JsonObject>> {
+        val oldFrameNumbers = coordinatorState.getBufferedOperationCounts().keys.sorted()
+        val operationsByOldFrame = mutableMapOf<Long, List<JsonObject>>()
+
+        oldFrameNumbers.forEach { oldFrame ->
+            operationsByOldFrame[oldFrame] = coordinatorState.extractFrameOperations(oldFrame)
+        }
+
+        return operationsByOldFrame
     }
 
     /**

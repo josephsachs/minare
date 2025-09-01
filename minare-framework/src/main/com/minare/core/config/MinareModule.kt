@@ -77,9 +77,6 @@ class MinareModule : AbstractModule(), DatabaseNameProvider {
         bind(UpdateBatchCoordinator::class.java).`in`(Singleton::class.java)
         bind(CommandMessageHandler::class.java).`in`(Singleton::class.java)
 
-        // Overridable configuration
-        bind(FrameConfiguration::class.java).to(FrameConfiguration::class.java)
-
         // Overridable services
         bind(PubSubChannelStrategy::class.java).to(PerChannelPubSubStrategy::class.java).`in`(Singleton::class.java)
         bind(LateOperationHandler::class.java).to(DelayLateOperations::class.java)

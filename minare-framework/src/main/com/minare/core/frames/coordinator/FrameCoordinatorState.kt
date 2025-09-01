@@ -42,6 +42,8 @@ class FrameCoordinatorState @Inject constructor(
     private val currentFrameCompletions = ConcurrentHashMap<String, Long>()
     private val frameProgress: IAtomicLong = hazelcastInstance.getCPSubsystem().getAtomicLong("frame-progress")
 
+    var sessionId: String = ""
+
     private var _pauseState: PauseState = PauseState.UNPAUSED
 
     var lastProcessedFrame: Long
@@ -59,13 +61,6 @@ class FrameCoordinatorState @Inject constructor(
         get() = _pauseState
         set(value) {
             log.info("Pause state transitioned from {} to {}", _pauseState, value)
-
-            when (_pauseState to value) {
-                PauseState.SOFT to PauseState.UNPAUSED -> {
-                    eventBusUtils.sendWithTracing( FrameCoordinatorVerticle.ADDRESS_NEXT_FRAME, JsonObject())
-                }
-            }
-
             _pauseState = value
         }
 
