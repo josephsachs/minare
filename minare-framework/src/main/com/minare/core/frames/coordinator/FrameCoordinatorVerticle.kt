@@ -1,10 +1,8 @@
 package com.minare.core.frames.coordinator
 
 import com.minare.application.config.FrameConfiguration
-import com.minare.core.frames.coordinator.services.FrameCalculatorService
-import com.minare.core.frames.coordinator.services.FrameCompletionTracker
-import com.minare.core.frames.coordinator.services.FrameManifestBuilder
-import com.minare.core.frames.coordinator.services.MessageQueueOperationConsumer
+import com.minare.core.frames.coordinator.FrameCoordinatorState.Companion.PauseState
+import com.minare.core.frames.coordinator.services.*
 import com.minare.core.frames.services.WorkerRegistry
 import com.minare.core.operation.interfaces.MessageQueue
 import com.minare.core.utils.vertx.EventBusUtils
@@ -16,6 +14,7 @@ import io.vertx.kotlin.coroutines.CoroutineVerticle
 import kotlinx.coroutines.launch
 import org.slf4j.LoggerFactory
 import javax.inject.Inject
+import kotlin.math.max
 
 /**
  * Frame Coordinator - The central orchestrator for frame-based processing.
@@ -37,6 +36,7 @@ class FrameCoordinatorVerticle @Inject constructor(
     private val messageQueueOperationConsumer: MessageQueueOperationConsumer,
     private val frameManifestBuilder: FrameManifestBuilder,
     private val frameCompletionTracker: FrameCompletionTracker,
+    private val startupService: StartupService,
     private val infraAddWorkerEvent: InfraAddWorkerEvent,
     private val infraRemoveWorkerEvent: InfraRemoveWorkerEvent,
     private val workerFrameCompleteEvent: WorkerFrameCompleteEvent,
@@ -64,7 +64,14 @@ class FrameCoordinatorVerticle @Inject constructor(
         setupEventBusConsumers()
         setupOperationConsumer()
 
-        tryStartSession()
+        startupService.checkInitialWorkerStatus()
+
+        launch {
+            log.info("Waiting for all workers to be ready...")
+            startupService.awaitAllWorkersReady()
+            log.info("All workers ready, starting session")
+            startNewSession()
+        }
     }
 
     private fun setupEventBusConsumers() {
@@ -98,23 +105,6 @@ class FrameCoordinatorVerticle @Inject constructor(
     }
 
     /**
-     * If all registered workers have already posted, unpause and start session
-     */
-    private suspend fun tryStartSession() {
-        val existingWorkers = workerRegistry.getActiveWorkers()
-        if (existingWorkers.isNotEmpty()) {
-            log.debug("Found {} active workers already registered", existingWorkers.size)
-
-            if (existingWorkers.size == workerRegistry.getExpectedWorkerCount()) {
-                log.debug("All expected workers already active, starting session")
-                launch {
-                    startNewSession()
-                }
-            }
-        }
-    }
-
-    /**
      * Start a new session with announcements and manifest preparation.
      * Called on startup or after resume.
      * Operations placed into the buffer during pause will be assigned to
@@ -134,12 +124,7 @@ class FrameCoordinatorVerticle @Inject constructor(
         coordinatorState.setFrameInProgress(0)
 
         assignBufferedOperations(operationsByOldFrame)
-
-        val minFramesToPrepare = 20L // TODO: Make this configurable
-        for (frame in (coordinatorState.lastPreparedManifest + 1) until minFramesToPrepare) {
-            prepareManifestForFrame(frame)
-        }
-
+        prepareManifestForFrame(0)
         publishSessionStartEvent(sessionStartTime, announcementTime)
         announceSessionToWorkers(sessionStartTime, announcementTime)
 
@@ -232,15 +217,6 @@ class FrameCoordinatorVerticle @Inject constructor(
             newFrame++
         }
 
-        // Handle any pending operations (those that arrived before session started)
-        // This is probably unnecessary and might be causing issues with initial operations
-        val pendingCount = coordinatorState.getPendingOperationCount()
-        if (pendingCount > 0) {
-            coordinatorState.assignPendingOperationsToFrame(newFrame)
-            log.info("Assigned {} pending operations to frame {}", pendingCount, newFrame)
-            newFrame++
-        }
-
         // Prepare manifests for all frames we have operations for
         val framesToPrepare = newFrame
         for (frame in 0 until framesToPrepare) {
@@ -258,7 +234,7 @@ class FrameCoordinatorVerticle @Inject constructor(
      * such as when backpressure control is de-activated
      */
     private suspend fun preparePendingManifests() {
-        val framesToPrepare = getFramesToPrepareNow()
+        val framesToPrepare = getFramesToPrepare()
 
         for (frame in framesToPrepare) {
             prepareManifestForFrame(frame)
@@ -269,6 +245,11 @@ class FrameCoordinatorVerticle @Inject constructor(
      * Prepare and write manifest for a specific logical frame.
      */
     private suspend fun prepareManifestForFrame(logicalFrame: Long) {
+        if (coordinatorState.pauseState in setOf(PauseState.REST, PauseState.SOFT)) {
+            log.info("Delayed preparing frame $logicalFrame} due to pause ${coordinatorState.pauseState}")
+            return
+        }
+
         val operations = coordinatorState.extractFrameOperations(logicalFrame)
         val activeWorkers = workerRegistry.getActiveWorkers().toSet()
 
@@ -310,14 +291,19 @@ class FrameCoordinatorVerticle @Inject constructor(
     private suspend fun onFrameComplete(logicalFrame: Long) {
         log.info("Logical frame {} completed successfully", logicalFrame)
 
+        if (coordinatorState.pauseState in setOf(PauseState.SOFT, PauseState.HARD)) {
+            log.info("Completed frame $logicalFrame, stopping due to pause ${coordinatorState.pauseState}")
+            return
+        }
+
         markFrameComplete(logicalFrame)
+
+        // Ensure the next manifest always exists before the workers advance
+        prepareUpcomingFrames()
 
         log.info("Broadcasting next frame event after completing frame {}", logicalFrame)
         vertx.eventBus().publish(ADDRESS_NEXT_FRAME, JsonObject())
 
-        // TODO: Re-enable backpressure control mechanisms after proper implementation
-        //checkAndHandleBackpressure(logicalFrame)
-        prepareUpcomingFrames()
         cleanupCompletedFrame(logicalFrame)
         checkFrameLag(logicalFrame)
     }
@@ -334,15 +320,16 @@ class FrameCoordinatorVerticle @Inject constructor(
     /**
      * Get frames that should be prepared right now based on current state
      */
-    fun getFramesToPrepareNow(): List<Long> {
+    fun getFramesToPrepare(): List<Long> {
         val lastPrepared = coordinatorState.lastPreparedManifest
 
-        return getFramesToPrepareNormally(lastPrepared)
-    }
+        val wallClockFrame = frameCalculator.getCurrentLogicalFrame(coordinatorState.sessionStartNanos)
+        val neededFrame = coordinatorState.frameInProgress  // What workers actually need
 
-    private fun getFramesToPrepareNormally(lastPrepared: Long): List<Long> {
-        val currentFrame = frameCalculator.getCurrentLogicalFrame(coordinatorState.sessionStartNanos)
-        val targetFrame = currentFrame + frameConfig.normalOperationLookahead
+        val targetFrame = max(
+            wallClockFrame + frameConfig.normalOperationLookahead,
+            neededFrame + frameConfig.normalOperationLookahead
+        )
 
         return if (targetFrame > lastPrepared) {
             ((lastPrepared + 1)..targetFrame).toList()

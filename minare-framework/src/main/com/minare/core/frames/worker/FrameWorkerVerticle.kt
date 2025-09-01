@@ -8,6 +8,7 @@ import com.minare.core.operation.models.Operation
 import com.minare.application.config.FrameConfiguration
 import com.minare.core.utils.vertx.VerticleLogger
 import com.minare.core.frames.coordinator.FrameCoordinatorVerticle
+import com.minare.exceptions.FrameLoopException
 import com.minare.worker.coordinator.models.FrameManifest
 import com.minare.worker.coordinator.models.OperationCompletion
 import io.vertx.core.json.JsonObject
@@ -29,8 +30,7 @@ import javax.inject.Inject
  */
 class FrameWorkerVerticle @Inject constructor(
     private val vlog: VerticleLogger,
-    private val hazelcastInstance: HazelcastInstance,
-    private val frameConfig: FrameConfiguration
+    private val hazelcastInstance: HazelcastInstance
 ) : CoroutineVerticle() {
 
     private val log = LoggerFactory.getLogger(FrameWorkerVerticle::class.java)
@@ -39,12 +39,10 @@ class FrameWorkerVerticle @Inject constructor(
     private lateinit var manifestMap: IMap<String, JsonObject>
     private lateinit var completionMap: IMap<String, OperationCompletion>
 
-    // Distributed frame progress from Hazelcast
     private val frameProgress: IAtomicLong by lazy {
         hazelcastInstance.getCPSubsystem().getAtomicLong("frame-progress")
     }
 
-    private var sessionStartTimestamp: Long = 0L  // Wall clock for external communication
     private var processingActive = false
 
     // Track the current frame processing job for clean cancellation
@@ -79,7 +77,8 @@ class FrameWorkerVerticle @Inject constructor(
             )
 
             launch {
-                handleNextFrame()
+                // Process the next frame
+                processLogicalFrame(frameProgress.get())
             }
         }
 
@@ -91,61 +90,15 @@ class FrameWorkerVerticle @Inject constructor(
      * Ensures any existing processing is cleanly terminated first.
      */
     private suspend fun handleSessionStart(announcement: JsonObject) {
-        val newSessionStart = announcement.getLong("sessionStartTimestamp")
-        val startsIn = announcement.getLong("firstFrameStartsIn")
-        val frameDuration = announcement.getLong("frameDuration")
+        processingActive = false
 
-        log.debug("New session announced - starts at {} (in {}ms), frame duration {}ms",
-            newSessionStart, startsIn, frameDuration)
+        currentFrameProcessingJob?.join()
+        currentFrameProcessingJob = null
 
-        // CRITICAL: Stop any existing processing first
-        if (processingActive || currentFrameProcessingJob != null) {
-            log.warn("Stopping existing frame processing before starting new session")
-            processingActive = false
-
-            // Cancel and wait for the job to complete
-            currentFrameProcessingJob?.let { job ->
-                try {
-                    job.cancel()
-                    job.join()
-                } catch (e: Exception) {
-                    log.error("Error cancelling previous frame processing job", e)
-                }
-                currentFrameProcessingJob = null
-            }
-
-            // Give a bit more time for cleanup
-            delay(frameConfig.frameDurationMs / 2)
-        }
-
-        // Clear any stale state in Hazelcast for this worker
-        clearWorkerManifests()
-
-        sessionStartTimestamp = newSessionStart
         processingActive = true
-
-        // Wait for session start
-        delay(startsIn)
 
         // Now wait for subsequent frame advancement events
         log.info("Worker {} ready for frame advancement events", workerId)
-    }
-
-    /**
-     * Handle next frame event from coordinator.
-     * Pull current frame from Hazelcast and process it.
-     */
-    private suspend fun handleNextFrame() {
-        val frameToProcess = frameProgress.get()
-
-        try {
-            processLogicalFrame(frameToProcess)
-        } catch (e: Exception) {
-            log.error("Error processing frame {}", frameToProcess, e)
-            reportFrameError(frameToProcess)
-            // Still report completion so coordinator can advance
-            reportFrameCompletion(frameToProcess, 0)
-        }
     }
 
     /**
@@ -172,66 +125,44 @@ class FrameWorkerVerticle @Inject constructor(
      * Fetches manifest from Hazelcast and processes all assigned operations.
      */
     private suspend fun processLogicalFrame(logicalFrame: Long) {
-        val frameStartTime = System.currentTimeMillis()
+        val manifestKey = FrameManifest.makeKey(logicalFrame, workerId)
+        val manifestJson = getManifest(manifestKey, logicalFrame)
+        val manifest = FrameManifest.fromJson(manifestJson)
+        val operations = manifest.operations
 
-        try {
-            val manifestKey = FrameManifest.makeKey(logicalFrame, workerId)
+        log.info("Processing logical frame {} with {} operations",
+            logicalFrame, operations.size)
 
-            // Keep trying until we find the manifest
-            var manifestJson = manifestMap[manifestKey]
-            var attempt = 0
+        var count = processOperations(operations, logicalFrame)
 
-            while (manifestJson == null) {
-                attempt++
-                if (attempt == 1) {
-                    log.warn("Manifest not found for frame {}, waiting...", logicalFrame)
-                } else if (attempt % 20 == 0) { // Log every second at 50ms delays
-                    log.warn("Still waiting for manifest for frame {} (attempt {})", logicalFrame, attempt)
-                }
+        reportFrameCompletion(logicalFrame, count)
+    }
 
-                delay(50)
-                manifestJson = manifestMap[manifestKey]
+    /**
+     * Wait until we can find the manifest, block til we're done.
+     */
+    private fun getManifest(manifestKey: String, logicalFrame: Long): JsonObject {
+        return manifestMap[manifestKey]
+            ?: throw FrameLoopException(
+                "Manifest not found for frame $logicalFrame. Critical coordinator error - manifests must exist before frame processing."
+            )
+    }
+
+    /**
+     * Process the list of operations, passing each one to processOperation
+     * for individual processing.
+     */
+    private suspend fun processOperations(operations: List<JsonObject>, logicalFrame: Long): Int {
+        var successCount = 0
+
+        // Process operations sequentially, order matters
+        for (operation in operations) {
+            if (processOperation(operation, logicalFrame)) {
+                successCount++
             }
-
-            val manifest = FrameManifest.fromJson(manifestJson)
-            val operations = manifest.operations
-
-            log.info("Processing logical frame {} with {} operations",
-                logicalFrame, operations.size)
-
-            // Process operations sequentially, order matters
-            var successCount = 0
-            for (operation in operations) {
-                if (processOperation(operation, logicalFrame)) {
-                    successCount++
-                }
-            }
-
-            reportFrameCompletion(logicalFrame, successCount)
-
-            val processingTime = System.currentTimeMillis() - frameStartTime
-            if (processingTime > frameConfig.frameDurationMs * 0.8) {
-                log.warn("Frame {} processing took {}ms ({}% of frame duration)",
-                    logicalFrame, processingTime,
-                    (processingTime * 100 / frameConfig.frameDurationMs))
-            }
-
-        } catch (e: HazelcastException) {
-            log.error("Hazelcast error in frame {}", logicalFrame, e)
-            reportFrameError(logicalFrame)
-            reportFrameCompletion(logicalFrame, 0)
-
-        } catch (e: TimeoutException) {
-            log.error("Timeout processing frame {}", logicalFrame, e)
-            reportFrameError(logicalFrame)
-            reportFrameCompletion(logicalFrame, 0)
-
-        } catch (e: Exception) {
-            // After we iron out any framework bugs that could be causing this exception,
-            // delete the catch-all for simpler logic
-            log.error("Unexpected error in frame {} - this is likely a bug", logicalFrame, e)
-            throw e  // Let it crash so we notice and fix it
         }
+
+        return successCount
     }
 
     /**
@@ -250,6 +181,9 @@ class FrameWorkerVerticle @Inject constructor(
 
         try {
             val op = Operation.fromJson(operation)
+
+            // Add frame number to operation for delta storage
+            operation.put("frameNumber", logicalFrame)
 
             // Send to the appropriate processor based on action type
             val processorAddress = "worker.process.${op.getAction()}"
@@ -296,18 +230,6 @@ class FrameWorkerVerticle @Inject constructor(
 
         log.debug("Reported logical frame {} completion with {} operations",
             logicalFrame, operationsProcessed)
-    }
-
-    /**
-     * Report a frame processing error
-     */
-    private fun reportFrameError(logicalFrame: Long) {
-        val errorEvent = JsonObject()
-            .put("workerId", workerId)
-            .put("logicalFrame", logicalFrame)
-            .put("timestamp", System.currentTimeMillis())
-
-        vertx.eventBus().send(ADDRESS_WORKER_FRAME_ERROR, errorEvent)
     }
 
     override suspend fun stop() {

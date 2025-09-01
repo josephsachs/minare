@@ -5,6 +5,7 @@ import com.google.inject.Provides
 import com.google.inject.Singleton
 import com.minare.core.config.MinareModule
 import com.minare.core.frames.coordinator.FrameCoordinatorVerticle
+import com.minare.core.frames.coordinator.services.StartupService
 import com.minare.core.utils.vertx.EventBusUtils
 import com.minare.core.frames.coordinator.CoordinatorAdminVerticle
 import com.minare.worker.coordinator.events.*
@@ -20,10 +21,12 @@ import kotlin.coroutines.CoroutineContext
 class FrameCoordinatorVerticleModule : PrivateModule() {
     private val log = LoggerFactory.getLogger(MinareModule::class.java)
 
-
     override fun configure() {
         bind(FrameCoordinatorVerticle::class.java)
         bind(CoordinatorAdminVerticle::class.java)
+
+        // Coordinator services
+        bind(StartupService::class.java).`in`(Singleton::class.java)
 
         // Event handlers
         bind(InfraAddWorkerEvent::class.java).`in`(Singleton::class.java)
