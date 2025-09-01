@@ -3,6 +3,7 @@ package com.minare.core.config
 import com.google.inject.*
 import com.google.inject.name.Names
 import com.hazelcast.core.HazelcastInstance
+import com.minare.application.config.FrameConfiguration
 import com.minare.application.interfaces.AppState
 import com.minare.cache.ConnectionCache
 import com.minare.cache.InMemoryConnectionCache
@@ -75,6 +76,9 @@ class MinareModule : AbstractModule(), DatabaseNameProvider {
 
         bind(UpdateBatchCoordinator::class.java).`in`(Singleton::class.java)
         bind(CommandMessageHandler::class.java).`in`(Singleton::class.java)
+
+        // Overridable configuration
+        bind(FrameConfiguration::class.java).to(FrameConfiguration::class.java)
 
         // Overridable services
         bind(PubSubChannelStrategy::class.java).to(PerChannelPubSubStrategy::class.java).`in`(Singleton::class.java)
