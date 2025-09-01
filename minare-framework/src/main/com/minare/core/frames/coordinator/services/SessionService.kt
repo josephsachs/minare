@@ -85,7 +85,7 @@ class SessionService @Inject constructor(
 
         clearPreviousSessionState()
 
-        eventBusUtils.sendWithTracing(
+        eventBusUtils.publishWithTracing(
             ADDRESS_PREPARE_SESSION_MANIFESTS,
             JsonObject()
                 .put("sessionStartTime", sessionStartTime)
@@ -98,7 +98,7 @@ class SessionService @Inject constructor(
         publishSessionStartEvent(sessionId, sessionStartTime, announcementTime)
         announceSessionToWorkers(sessionId, sessionStartTime, announcementTime)
 
-        eventBusUtils.sendWithTracing(
+        eventBusUtils.publishWithTracing(
             ADDRESS_SESSION_INITIALIZED,
             JsonObject()
                 .put("sessionId", sessionId)
@@ -108,7 +108,7 @@ class SessionService @Inject constructor(
     fun startSession() {
         coordinatorState.pauseState = PauseState.UNPAUSED
 
-        eventBusUtils.sendWithTracing(
+        eventBusUtils.publishWithTracing(
             ADDRESS_NEXT_FRAME,
             JsonObject()
         )
@@ -155,7 +155,7 @@ class SessionService @Inject constructor(
             .put("firstFrameStartsIn", frameConfig.frameOffsetMs)
             .put("frameDuration", frameConfig.frameDurationMs)
 
-        eventBusUtils.sendWithTracing(
+        eventBusUtils.publishWithTracing(
             ADDRESS_SESSION_START,
             announcement
         )

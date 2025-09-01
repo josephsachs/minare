@@ -121,7 +121,7 @@ class FrameCoordinatorVerticle @Inject constructor(
                 assignBufferedOperations(operationsByOldFrame)
                 prepareManifestForFrame(0)
 
-                eventBusUtils.sendWithTracing(
+                eventBusUtils.publishWithTracing(
                     ADDRESS_SESSION_MANIFESTS_PREPARED,
                     JsonObject()
                 )

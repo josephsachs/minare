@@ -89,6 +89,29 @@ class EventBusUtils(
     }
 
     /**
+     * Publish a traced message to the event bus without expecting a reply (fire-and-forget)
+     */
+    fun publishWithTracing(
+        address: String,
+        message: Any,
+        parentTraceId: String? = null
+    ) {
+        val traceId = parentTraceId ?: eventLog.trace("EVENTBUS_SEND",
+            mapOf("address" to address, "component" to component))
+
+        eventLog.logSend(address, message, traceId)
+
+        val options = DeliveryOptions().addHeader("traceId", traceId)
+
+        vertx.eventBus().publish(address, message, options)
+
+        if (parentTraceId == null) {
+            eventLog.endTrace(traceId, "EVENTBUS_SEND_COMPLETE",
+                mapOf("address" to address, "status" to "sent"))
+        }
+    }
+
+    /**
      * Helper function to extract trace ID from message headers
      */
     fun extractTraceId(message: Message<*>): String? {
