@@ -77,7 +77,6 @@ class FrameWorkerVerticle @Inject constructor(
             )
 
             launch {
-                // Process the next frame
                 processLogicalFrame(frameProgress.get())
             }
         }

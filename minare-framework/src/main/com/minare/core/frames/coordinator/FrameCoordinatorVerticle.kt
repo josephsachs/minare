@@ -221,6 +221,11 @@ class FrameCoordinatorVerticle @Inject constructor(
      * such as when backpressure control is de-activated
      */
     private suspend fun preparePendingManifests() {
+        if (coordinatorState.pauseState in setOf(PauseState.REST, PauseState.SOFT)) {
+            log.info("Delayed preparing frames from ${coordinatorState.lastPreparedManifest} due to pause ${coordinatorState.pauseState}")
+            return
+        }
+
         val framesToPrepare = getFramesToPrepare()
 
         for (frame in framesToPrepare) {
@@ -232,11 +237,6 @@ class FrameCoordinatorVerticle @Inject constructor(
      * Prepare and write manifest for a specific logical frame.
      */
     private suspend fun prepareManifestForFrame(logicalFrame: Long) {
-        if (coordinatorState.pauseState in setOf(PauseState.REST, PauseState.SOFT)) {
-            //log.info("Delayed preparing frames from ${coordinatorState.lastPreparedManifest} due to pause ${coordinatorState.pauseState}")
-            return
-        }
-
         val operations = coordinatorState.extractFrameOperations(logicalFrame)
         val activeWorkers = workerRegistry.getActiveWorkers().toSet()
 
@@ -287,12 +287,12 @@ class FrameCoordinatorVerticle @Inject constructor(
 
         // Ensure the next manifest always exists before the workers advance
         if (coordinatorState.pauseState != PauseState.REST) {
+            prepareUpcomingFrames()
+
             if (sessionService.needAutoSession()) {
                 launch { doAutoSession() }
             }
         }
-
-        prepareUpcomingFrames()
 
         log.info("Broadcasting next frame event after completing frame {}", logicalFrame)
         vertx.eventBus().publish(ADDRESS_NEXT_FRAME, JsonObject())
