@@ -59,8 +59,9 @@ class WorkerFrameCompleteEvent @Inject constructor(
                     traceId
                 )
 
+                vlog.logInfo("DEBUG: Frame in progress = ${coordinatorState.frameInProgress}, last prepare manifest = ${coordinatorState.lastPreparedManifest}")
                 if (coordinatorState.frameInProgress == coordinatorState.lastPreparedManifest)  {
-                    eventBusUtils.sendWithTracing(
+                    eventBusUtils.publishWithTracing(
                         FrameCoordinatorVerticle.ADDRESS_FRAME_MANIFESTS_ALL_COMPLETE,
                         JsonObject(),
                         traceId
@@ -69,7 +70,7 @@ class WorkerFrameCompleteEvent @Inject constructor(
 
                 // Move this to error detection service
                 if (coordinatorState.frameInProgress > coordinatorState.lastPreparedManifest) {
-                    throw FrameLoopException("Frame in progress is ahead of lastPreparedManifest")
+                    throw FrameLoopException("Frame in progress is ahead of last prepared manifest")
                 }
 
                 eventBusUtils.sendWithTracing(

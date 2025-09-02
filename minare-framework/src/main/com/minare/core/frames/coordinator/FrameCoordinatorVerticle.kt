@@ -14,6 +14,7 @@ import io.vertx.core.json.JsonArray
 import io.vertx.core.json.JsonObject
 import io.vertx.kotlin.coroutines.CoroutineVerticle
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import org.slf4j.LoggerFactory
 import javax.inject.Inject
 import kotlin.math.max
@@ -232,7 +233,7 @@ class FrameCoordinatorVerticle @Inject constructor(
      */
     private suspend fun prepareManifestForFrame(logicalFrame: Long) {
         if (coordinatorState.pauseState in setOf(PauseState.REST, PauseState.SOFT)) {
-            log.info("Delayed preparing frame $logicalFrame} due to pause ${coordinatorState.pauseState}")
+            //log.info("Delayed preparing frames from ${coordinatorState.lastPreparedManifest} due to pause ${coordinatorState.pauseState}")
             return
         }
 
@@ -285,6 +286,12 @@ class FrameCoordinatorVerticle @Inject constructor(
         markFrameComplete(logicalFrame)
 
         // Ensure the next manifest always exists before the workers advance
+        if (coordinatorState.pauseState != PauseState.REST) {
+            if (sessionService.needAutoSession()) {
+                launch { doAutoSession() }
+            }
+        }
+
         prepareUpcomingFrames()
 
         log.info("Broadcasting next frame event after completing frame {}", logicalFrame)
@@ -292,6 +299,25 @@ class FrameCoordinatorVerticle @Inject constructor(
 
         cleanupCompletedFrame(logicalFrame)
         checkFrameLag(logicalFrame)
+    }
+
+    /**
+     * End the current session and begin a new one
+     */
+    private suspend fun doAutoSession() {
+        sessionService.endSession()
+
+        // TODO: Snapshot goes here
+
+        sessionService.initializeSession()
+
+        val eventMessage = eventWaiter.waitForEvent(ADDRESS_SESSION_INITIALIZED)
+
+        val newSessionId = eventMessage.getString("sessionId")
+        log.info("Frame coordinator received initial session announcement for $newSessionId")
+        coordinatorState.sessionId = newSessionId
+
+        sessionService.startSession()
     }
 
     private fun markFrameComplete(logicalFrame: Long) {
