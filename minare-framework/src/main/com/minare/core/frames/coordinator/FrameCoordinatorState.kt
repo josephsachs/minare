@@ -16,6 +16,10 @@ import javax.inject.Singleton
 /**
  * Shared state for the Frame Coordinator system.
  * Updated for event-driven coordination with monotonic time tracking.
+ *
+ * DEDUPLICATION UPDATE: Changed operationsByFrame from ConcurrentHashMap<Long, ConcurrentLinkedQueue<JsonObject>>
+ * to ConcurrentHashMap<Long, ConcurrentHashMap<String, JsonObject>> to automatically deduplicate operations
+ * by ID within each frame.
  */
 @Singleton
 class FrameCoordinatorState @Inject constructor(
@@ -37,7 +41,8 @@ class FrameCoordinatorState @Inject constructor(
     private val _lastProcessedFrame = AtomicLong(-1L)
     private val _lastPreparedManifest = AtomicLong(-1L)
 
-    private val operationsByFrame = ConcurrentHashMap<Long, ConcurrentLinkedQueue<JsonObject>>()
+    // CHANGED: Now maps frame number to a map of operation ID to operation for deduplication
+    private val operationsByFrame = ConcurrentHashMap<Long, ConcurrentHashMap<String, JsonObject>>()
     private val pendingOperations = ConcurrentLinkedQueue<JsonObject>()
     private val currentFrameCompletions = ConcurrentHashMap<String, Long>()
     private val frameProgress: IAtomicLong = hazelcastInstance.getCPSubsystem().getAtomicLong("frame-progress")
@@ -102,7 +107,7 @@ class FrameCoordinatorState @Inject constructor(
         val completed = currentFrameCompletions.keys
         val expected = workerRegistry.getActiveWorkers()
 
-        return expected.isNotEmpty() && completed.containsAll(expected)  // Added empty check
+        return expected.isNotEmpty() && completed.containsAll(expected)
     }
 
     /**
@@ -135,34 +140,47 @@ class FrameCoordinatorState @Inject constructor(
 
     /**
      * Assign all pending operations to a specific frame
+     * NOTE: This method may need updating if pending operations should also be deduplicated
      */
     fun assignPendingOperationsToFrame(targetFrame: Long) {
-        val queue = operationsByFrame.computeIfAbsent(targetFrame) { ConcurrentLinkedQueue() }
+        val frameOps = operationsByFrame.computeIfAbsent(targetFrame) { ConcurrentHashMap() }
 
         while (pendingOperations.isNotEmpty()) {
             val op = pendingOperations.poll()
             if (op != null) {
-                queue.offer(op)
+                val operationId = op.getString("id")
+                if (operationId != null) {
+                    frameOps.putIfAbsent(operationId, op)
+                } else {
+                    log.warn("Pending operation missing ID, skipping: {}", op.encode())
+                }
             }
         }
     }
 
     /**
-     * Buffer an operation to a specific logical frame
+     * Buffer an operation to a specific logical frame.
+     * UPDATED: Now uses putIfAbsent for automatic deduplication by operation ID
      */
     fun bufferOperation(operation: JsonObject, logicalFrame: Long) {
-        val queue = operationsByFrame.computeIfAbsent(logicalFrame) { ConcurrentLinkedQueue() }
-        queue.offer(operation)
+        val frameOps = operationsByFrame.computeIfAbsent(logicalFrame) { ConcurrentHashMap() }
+        val operationId = operation.getString("id")
+            ?: throw IllegalArgumentException("Operation missing ID: ${operation.encode()}")
 
-        if (log.isDebugEnabled) {
-            log.debug("Buffered operation {} to logical frame {} (queue size: {})",
-                operation.getString("id"), logicalFrame, queue.size)
+        val previous = frameOps.putIfAbsent(operationId, operation)
+
+        if (previous != null) {
+            log.debug("Skipping duplicate operation {} in frame {}", operationId, logicalFrame)
+        } else if (log.isDebugEnabled) {
+            log.debug("Buffered operation {} to logical frame {} (frame size: {})",
+                operationId, logicalFrame, frameOps.size)
         }
     }
 
     /**
      * Extract all operations for a specific frame.
      * Removes and returns the operations.
+     * UPDATED: Now extracts from a map instead of a queue, returns operations sorted by ID
      */
     fun extractFrameOperations(logicalFrame: Long): List<JsonObject> {
         // Include pending operations if this is frame 0
@@ -175,14 +193,21 @@ class FrameCoordinatorState @Inject constructor(
             ops
         } else emptyList()
 
-        // Get regular buffered operations
-        val queue = operationsByFrame.remove(logicalFrame)
-        if (queue == null) {
+        // Get regular buffered operations - now from a map instead of queue
+        val frameOps = operationsByFrame.remove(logicalFrame)
+
+        // TEMPORARY DEBUG
+        log.info("extractFrameOperations({}) extracted {} operations",
+            logicalFrame, frameOps?.size ?: 0)
+
+        if (frameOps == null) {
             log.debug("No operations found for frame {}", logicalFrame)
             return pendingOps
         }
 
-        return pendingOps + queue.toList()
+        // Return operations sorted by ID for deterministic ordering
+        val sortedOps = frameOps.values.sortedBy { it.getString("id") }
+        return pendingOps + sortedOps
     }
 
     /**
@@ -212,7 +237,6 @@ class FrameCoordinatorState @Inject constructor(
      */
     fun recordWorkerCompletion(workerId: String, frameNumber: Long) {
         // Only record if it's for the current frame
-        // TODO: This case should be prevented by frame completion logic/coordinator message
         if (frameNumber == frameProgress.get()) {
             currentFrameCompletions[workerId] = System.currentTimeMillis()
             log.debug("Worker {} completed logical frame {}", workerId, frameNumber)
@@ -240,6 +264,7 @@ class FrameCoordinatorState @Inject constructor(
 
     /**
      * Get buffered operation counts by frame (for monitoring)
+     * UPDATED: Now gets size from the inner map
      */
     fun getBufferedOperationCounts(): Map<Long, Int> {
         return operationsByFrame.mapValues { it.value.size }
@@ -247,6 +272,7 @@ class FrameCoordinatorState @Inject constructor(
 
     /**
      * Get total buffered operations across all frames
+     * UPDATED: Now sums the sizes of the inner maps
      */
     fun getTotalBufferedOperations(): Int {
         return operationsByFrame.values.sumOf { it.size } + pendingOperations.size
@@ -272,9 +298,12 @@ class FrameCoordinatorState @Inject constructor(
     /**
      * Get all buffered operations (used during session start)
      * Preserves original groupings by frame.
+     * UPDATED: Extracts values from the inner maps and sorts by ID
      */
     fun getAllBufferedOperations(): Map<Long, List<JsonObject>> {
-        return operationsByFrame.mapValues { (_, queue) -> queue.toList() }
+        return operationsByFrame.mapValues { (_, frameOps) ->
+            frameOps.values.sortedBy { it.getString("id") }
+        }
     }
 
     /**

@@ -6,6 +6,7 @@ import com.minare.core.frames.coordinator.services.*
 import com.minare.core.frames.coordinator.services.SessionService.Companion.ADDRESS_SESSION_INITIALIZED
 import com.minare.core.frames.services.WorkerRegistry
 import com.minare.core.operation.interfaces.MessageQueue
+import com.minare.core.utils.debug.OperationDebugUtils
 import com.minare.core.utils.vertx.EventBusUtils
 import com.minare.core.utils.vertx.EventWaiter
 import com.minare.core.utils.vertx.VerticleLogger
@@ -47,7 +48,8 @@ class FrameCoordinatorVerticle @Inject constructor(
     private val workerHeartbeatEvent: WorkerHeartbeatEvent,
     private val workerRegisterEvent: WorkerRegisterEvent,
     private val workerReadinessEvent: WorkerReadinessEvent,
-    private val workerHealthChangeEvent: WorkerHealthChangeEvent
+    private val workerHealthChangeEvent: WorkerHealthChangeEvent,
+    private val operationDebugUtils: OperationDebugUtils
 ) : CoroutineVerticle() {
 
     private val log = LoggerFactory.getLogger(FrameCoordinatorVerticle::class.java)
@@ -120,7 +122,6 @@ class FrameCoordinatorVerticle @Inject constructor(
                 coordinatorState.setFrameInProgress(0)
 
                 assignBufferedOperations(operationsByOldFrame)
-                prepareManifestForFrame(0)
 
                 eventBusUtils.publishWithTracing(
                     ADDRESS_SESSION_MANIFESTS_PREPARED,
@@ -182,6 +183,9 @@ class FrameCoordinatorVerticle @Inject constructor(
         operationsByOldFrame.forEach { (_, operations) ->
             operations.forEach { op ->
                 coordinatorState.bufferOperation(op, newFrame)
+
+                // TEMPORARY DEBUG
+                operationDebugUtils.logOperation(op, "FrameCoordinatorVerticle: assignBufferedOperations")
             }
             if (operations.isNotEmpty()) {
                 log.debug("Renumbered {} operations from old frame to new frame {}",
@@ -192,8 +196,12 @@ class FrameCoordinatorVerticle @Inject constructor(
 
         // Prepare manifests for all frames we have operations for
         val framesToPrepare = newFrame
-        for (frame in 0 until framesToPrepare) {
-            prepareManifestForFrame(frame)
+        if (framesToPrepare > 0) {
+            for (frame in 0 until framesToPrepare) {
+                prepareManifestForFrame(frame)
+            }
+        } else {
+            prepareManifestForFrame(0)  // Ensure frame 0 exists even with no operations
         }
 
         log.info("Session: renumbered {} old frames to frames 0-{}, prepared {} manifests",
@@ -211,6 +219,9 @@ class FrameCoordinatorVerticle @Inject constructor(
 
         oldFrameNumbers.forEach { oldFrame ->
             operationsByOldFrame[oldFrame] = coordinatorState.extractFrameOperations(oldFrame)
+
+            // TEMPORARY DEBUG
+            operationsByOldFrame[oldFrame]?.let { operationDebugUtils.logOperation(it, "FrameCoordinatorVerticle: extractBufferedOperations") }
         }
 
         return operationsByOldFrame
@@ -237,6 +248,10 @@ class FrameCoordinatorVerticle @Inject constructor(
      * Prepare and write manifest for a specific logical frame.
      */
     private suspend fun prepareManifestForFrame(logicalFrame: Long) {
+        // TEMPORARY DEBUG
+        log.info("prepareManifestForFrame({}) called, lastPreparedManifest={}",
+            logicalFrame, coordinatorState.lastPreparedManifest)
+
         val operations = coordinatorState.extractFrameOperations(logicalFrame)
         val activeWorkers = workerRegistry.getActiveWorkers().toSet()
 

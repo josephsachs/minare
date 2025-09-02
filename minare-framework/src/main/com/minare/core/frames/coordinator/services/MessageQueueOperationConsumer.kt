@@ -4,7 +4,9 @@ import com.hazelcast.core.HazelcastInstance
 import com.minare.core.frames.coordinator.FrameCoordinatorState
 import com.minare.core.frames.coordinator.handlers.LateOperationDecision
 import com.minare.core.frames.coordinator.handlers.LateOperationHandler
+import com.minare.core.frames.coordinator.FrameCoordinatorState.Companion.PauseState
 import com.minare.core.frames.services.WorkerRegistry
+import com.minare.core.utils.debug.OperationDebugUtils
 import com.minare.worker.coordinator.models.FrameManifest
 import io.vertx.core.Vertx
 import io.vertx.core.json.JsonArray
@@ -29,7 +31,8 @@ class MessageQueueOperationConsumer @Inject constructor(
     private val coordinatorState: FrameCoordinatorState,
     private val lateOperationHandler: LateOperationHandler,
     private val hazelcastInstance: HazelcastInstance,
-    private val workerRegistry: WorkerRegistry
+    private val workerRegistry: WorkerRegistry,
+    private val operationDebugUtils: OperationDebugUtils
 ) {
     private val log = LoggerFactory.getLogger(MessageQueueOperationConsumer::class.java)
 
@@ -181,10 +184,17 @@ class MessageQueueOperationConsumer @Inject constructor(
             return true
         }
 
+        // TEMPORARY DEBUG
+        operationDebugUtils.logOperation(operation, "MessageQueueConsumerVerticle: processOperation")
+        log.info("Current pause state ${coordinatorState.pauseState}")
+
         // Route to appropriate handler based on session state
-        if (coordinatorState.sessionStartTimestamp == 0L) { // TODO: Better way of determining this, centralize somewhere
+        // TODO: Better way of determining this, centralize somewhere
+        if (coordinatorState.sessionStartTimestamp == 0L || coordinatorState.pauseState == PauseState.REST) {
+            log.info("... went down handlePreSessionOperation path")
             handlePreSessionOperation(operation)
         } else {
+            log.info("...went down handleSessionOperation path")
             handleSessionOperation(operation, timestamp)
         }
 

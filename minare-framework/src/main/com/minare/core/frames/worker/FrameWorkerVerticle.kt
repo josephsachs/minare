@@ -8,6 +8,7 @@ import com.minare.core.operation.models.Operation
 import com.minare.application.config.FrameConfiguration
 import com.minare.core.utils.vertx.VerticleLogger
 import com.minare.core.frames.coordinator.FrameCoordinatorVerticle
+import com.minare.core.utils.debug.OperationDebugUtils
 import com.minare.exceptions.FrameLoopException
 import com.minare.worker.coordinator.models.FrameManifest
 import com.minare.worker.coordinator.models.OperationCompletion
@@ -30,7 +31,8 @@ import javax.inject.Inject
  */
 class FrameWorkerVerticle @Inject constructor(
     private val vlog: VerticleLogger,
-    private val hazelcastInstance: HazelcastInstance
+    private val hazelcastInstance: HazelcastInstance,
+    private val operationDebugUtils: OperationDebugUtils
 ) : CoroutineVerticle() {
 
     private val log = LoggerFactory.getLogger(FrameWorkerVerticle::class.java)
@@ -101,25 +103,6 @@ class FrameWorkerVerticle @Inject constructor(
     }
 
     /**
-     * Clear any stale manifests or completions for this worker.
-     * Called when starting a new session to ensure clean state.
-     */
-    private fun clearWorkerManifests() {
-        try {
-            // Clear any completion records for this worker
-            val completionKeys = completionMap.keys.filter { key ->
-                key.contains(workerId)
-            }
-            completionKeys.forEach { completionMap.remove(it) }
-
-            log.debug("Cleared {} stale completion records for worker {}",
-                completionKeys.size, workerId)
-        } catch (e: Exception) {
-            log.warn("Error clearing worker state in Hazelcast", e)
-        }
-    }
-
-    /**
      * Process a single logical frame.
      * Fetches manifest from Hazelcast and processes all assigned operations.
      */
@@ -156,7 +139,13 @@ class FrameWorkerVerticle @Inject constructor(
 
         // Process operations sequentially, order matters
         for (operation in operations) {
+            // TEMPORARY DEBUG
+            operationDebugUtils.logOperation(operation, "FrameWorkerVerticle: processOperations")
+
+
             if (processOperation(operation, logicalFrame)) {
+                log.info("...succeeded")
+
                 successCount++
             }
         }
