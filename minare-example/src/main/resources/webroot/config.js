@@ -21,19 +21,12 @@ export const config = {
 
 
   logging: {
-
     console: true,
-
     maxEntries: 20,
-
     verbose: false,
-
     flushIntervalMs: 1000,
-
     maxBufferSize: 2,
-
     updateLogThrottle: 10,
-
     logDetailedEntities: false
   },
 

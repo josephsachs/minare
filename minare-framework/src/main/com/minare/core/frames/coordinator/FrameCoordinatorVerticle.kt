@@ -129,6 +129,15 @@ class FrameCoordinatorVerticle @Inject constructor(
                 )
             }
         }
+
+        /**eventBusUtils.registerTracedConsumer<JsonObject>(ADDRESS_FLUSH_BUFFERED_OPERATIONS) { msg, traceId ->
+            launch {
+                val frames = msg.body().getJsonArray("frames")
+                frames.forEach { frame ->
+                    prepareManifestForFrame(frame as Long)
+                }
+            }
+        }**/
     }
 
     private suspend fun setupOperationConsumer() {
@@ -253,6 +262,13 @@ class FrameCoordinatorVerticle @Inject constructor(
             logicalFrame, coordinatorState.lastPreparedManifest)
 
         val operations = coordinatorState.extractFrameOperations(logicalFrame)
+
+        // TEMPORARY DEBUG
+        log.info("Frame {}: extracted {} operations for manifesting", logicalFrame, operations.size)
+        operations.forEach { op ->
+            log.info("  - Operation {}", op.getString("id"))
+        }
+
         val activeWorkers = workerRegistry.getActiveWorkers().toSet()
 
         if (activeWorkers.isEmpty() && operations.isNotEmpty()) {

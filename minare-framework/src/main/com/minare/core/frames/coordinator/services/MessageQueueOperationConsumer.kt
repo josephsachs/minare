@@ -190,12 +190,19 @@ class MessageQueueOperationConsumer @Inject constructor(
 
         // Route to appropriate handler based on session state
         // TODO: Better way of determining this, centralize somewhere
-        if (coordinatorState.sessionStartTimestamp == 0L || coordinatorState.pauseState == PauseState.REST) {
-            log.info("... went down handlePreSessionOperation path")
-            handlePreSessionOperation(operation)
-        } else {
-            log.info("...went down handleSessionOperation path")
-            handleSessionOperation(operation, timestamp)
+        when {
+            coordinatorState.pauseState == PauseState.SOFT -> {
+                // Buffer for next session
+                handlePreSessionOperation(operation)
+            }
+            coordinatorState.sessionStartTimestamp == 0L -> {
+                // No session yet
+                handlePreSessionOperation(operation)
+            }
+            else -> {
+                // Normal operation routing (including during REST)
+                handleSessionOperation(operation, timestamp)
+            }
         }
 
         return true // Continue processing
@@ -247,6 +254,7 @@ class MessageQueueOperationConsumer @Inject constructor(
 
         // Buffer the operation to its target frame
         coordinatorState.bufferOperation(operation, logicalFrame)
+        log.info("Buffered operation {} to frame {}", operation.getString("id"), logicalFrame)  // ADD HERE
     }
 
     /**

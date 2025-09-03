@@ -83,7 +83,30 @@ class SessionService @Inject constructor(
         val sessionStartTime = announcementTime + frameConfig.frameOffsetMs
         val sessionStartNanos = System.nanoTime() + frameCalculator.msToNanos(frameConfig.frameOffsetMs)
 
+        // TEMPORARY DEBUG
+        /**var oldFrameNumbers = coordinatorState.getBufferedFrameNumbers()
+        log.info("DEBUG_BUFFER: Extracting {} frames worth of operations", oldFrameNumbers.size)
+        oldFrameNumbers.forEach { frame ->
+            val ops = coordinatorState.extractFrameOperations(frame)
+            log.info("Frame {} has {} operations", frame, ops.size)
+        }**/
+
+        val bufferedFrames = coordinatorState.getBufferedFrameNumbers()
+        bufferedFrames.forEach { frame ->
+            val ops = coordinatorState.peekFrameOperations(frame)
+            log.info("Frame {} has {} operations pending: {}",
+                frame, ops.size, ops.map { it.getString("id") })
+        }
+
         clearPreviousSessionState()
+
+        // TEMPORARY DEBUG
+        /**oldFrameNumbers = coordinatorState.getBufferedFrameNumbers()
+        log.info("DEBUG_BUFFER: Extracting {} frames worth of operations", oldFrameNumbers.size)
+        oldFrameNumbers.forEach { frame ->
+            val ops = coordinatorState.extractFrameOperations(frame)
+            log.info("Frame {} has {} operations", frame, ops.size)
+        }**/
 
         eventBusUtils.publishWithTracing(
             ADDRESS_PREPARE_SESSION_MANIFESTS,

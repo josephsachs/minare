@@ -266,8 +266,17 @@ class FrameCoordinatorState @Inject constructor(
      * Get buffered operation counts by frame (for monitoring)
      * UPDATED: Now gets size from the inner map
      */
+    // TEMPORARY DEBUG
     fun getBufferedOperationCounts(): Map<Long, Int> {
         return operationsByFrame.mapValues { it.value.size }
+    }
+
+    // TEMPORARY DEBUG
+    fun peekFrameOperations(logicalFrame: Long): List<JsonObject> {
+        val frameOps = operationsByFrame[logicalFrame]  // Just get, don't remove
+        if (frameOps == null) return emptyList()
+
+        return frameOps.values.sortedBy { it.getString("id") }
     }
 
     /**
@@ -276,6 +285,10 @@ class FrameCoordinatorState @Inject constructor(
      */
     fun getTotalBufferedOperations(): Int {
         return operationsByFrame.values.sumOf { it.size } + pendingOperations.size
+    }
+
+    fun getBufferedFrameNumbers(): List<Long> {
+        return operationsByFrame.keys.sorted()
     }
 
     /**
