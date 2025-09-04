@@ -37,7 +37,7 @@ class RedisPubSubWorkerVerticle @Inject constructor(
         const val ADDRESS_STREAM_STARTED = "minare.change.stream.started"
         const val ADDRESS_STREAM_STOPPED = "minare.change.stream.stopped"
         const val ADDRESS_ENTITY_UPDATED = "minare.entity.update"
-        const val DEFAULT_BATCH_INTERVAL_MS = 100L // 10 frames per second
+        const val DEFAULT_BATCH_INTERVAL_MS = 25L // 10 frames per second
     }
 
     override suspend fun start() {
@@ -206,7 +206,7 @@ class RedisPubSubWorkerVerticle @Inject constructor(
      * for batched distribution via the UpdateBatchCoordinator.
      */
     private suspend fun handleRedisMessage(message: String) {
-        log.info("RedisPubSubWorker received update: {}", message)
+        log.debug("RedisPubSubWorker received update: {}", message)
 
         try {
             val messageJson = JsonObject(message)

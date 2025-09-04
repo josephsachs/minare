@@ -23,7 +23,7 @@ class UpdateBatchCoordinator @Inject constructor(
     private val pendingUpdates = ConcurrentHashMap<String, JsonObject>()
     private val isRunning = AtomicBoolean(false)
 
-    private var batchIntervalMs = 100L // 10 updates per second
+    private var batchIntervalMs = 25L // 10 updates per second
 
     private var timerId: Long? = null
 

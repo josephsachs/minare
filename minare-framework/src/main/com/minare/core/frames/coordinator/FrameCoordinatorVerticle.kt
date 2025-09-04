@@ -2,6 +2,8 @@ package com.minare.core.frames.coordinator
 
 import com.minare.application.config.FrameConfiguration
 import com.minare.core.frames.coordinator.FrameCoordinatorState.Companion.PauseState
+import com.minare.core.frames.coordinator.handlers.LateOperationDecision
+import com.minare.core.frames.coordinator.handlers.LateOperationHandler
 import com.minare.core.frames.coordinator.services.*
 import com.minare.core.frames.coordinator.services.SessionService.Companion.ADDRESS_SESSION_INITIALIZED
 import com.minare.core.frames.services.WorkerRegistry
@@ -40,6 +42,7 @@ class FrameCoordinatorVerticle @Inject constructor(
     private val messageQueueOperationConsumer: MessageQueueOperationConsumer,
     private val frameManifestBuilder: FrameManifestBuilder,
     private val frameCompletionTracker: FrameCompletionTracker,
+    private val lateOperationHandler: LateOperationHandler,
     private val startupService: StartupService,
     private val sessionService: SessionService,
     private val infraAddWorkerEvent: InfraAddWorkerEvent,
@@ -191,7 +194,38 @@ class FrameCoordinatorVerticle @Inject constructor(
         var newFrame = 0L
         operationsByOldFrame.forEach { (_, operations) ->
             operations.forEach { op ->
-                coordinatorState.bufferOperation(op, newFrame)
+                //coordinatorState.bufferOperation(op, newFrame)
+                val timestamp = op.getLong("timestamp")
+                val properFrame = coordinatorState.getLogicalFrame(timestamp)
+
+                val targetFrame = when {
+                    properFrame < 0 -> {
+                        // Operation is before session start - treat as frame 0
+                        log.warn("Operation ${op.getString("id")} has negative frame $properFrame, assigning to frame 0")
+                        0L
+                    }
+                    properFrame <= coordinatorState.frameInProgress -> {
+                        // This is late - use the late operation handler
+                        val decision = lateOperationHandler.handleLateOperation(
+                            op,
+                            properFrame,
+                            coordinatorState.frameInProgress
+                        )
+                        when (decision) {
+                            is LateOperationDecision.Drop -> {
+                                log.warn("Dropping late operation ${op.getString("id")}")
+                                return@forEach  // Skip this operation
+                            }
+                            is LateOperationDecision.Delay -> decision.targetFrame
+                        }
+                    }
+                    else -> properFrame
+                }
+
+                // TEMPORARY DEBUG
+                if (properFrame < 0) log.info("NEGATIVE_FRAME: ${timestamp} ${op}")
+
+                coordinatorState.bufferOperation(op, properFrame)
 
                 // TEMPORARY DEBUG
                 operationDebugUtils.logOperation(op, "FrameCoordinatorVerticle: assignBufferedOperations")
@@ -264,9 +298,9 @@ class FrameCoordinatorVerticle @Inject constructor(
         val operations = coordinatorState.extractFrameOperations(logicalFrame)
 
         // TEMPORARY DEBUG
-        log.info("Frame {}: extracted {} operations for manifesting", logicalFrame, operations.size)
+        log.info("OPERATION_FLOW: Frame {}: extracted {} operations for manifesting", logicalFrame, operations.size)
         operations.forEach { op ->
-            log.info("  - Operation {}", op.getString("id"))
+            log.info("OPERATION_FLOW: Operation {}", op)
         }
 
         val activeWorkers = workerRegistry.getActiveWorkers().toSet()

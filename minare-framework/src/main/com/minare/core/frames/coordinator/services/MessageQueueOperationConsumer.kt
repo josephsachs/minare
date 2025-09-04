@@ -186,7 +186,6 @@ class MessageQueueOperationConsumer @Inject constructor(
 
         // TEMPORARY DEBUG
         operationDebugUtils.logOperation(operation, "MessageQueueConsumerVerticle: processOperation")
-        log.info("Current pause state ${coordinatorState.pauseState}")
 
         // Route to appropriate handler based on session state
         // TODO: Better way of determining this, centralize somewhere
@@ -239,9 +238,9 @@ class MessageQueueOperationConsumer @Inject constructor(
                     // Do we need to assign to a prior manifest?
                     if (decision.targetFrame <= coordinatorState.lastPreparedManifest) {
                         assignToExistingManifest(operation, decision.targetFrame)
+                    } else {
+                        coordinatorState.bufferOperation(operation, decision.targetFrame)
                     }
-
-                    coordinatorState.bufferOperation(operation, decision.targetFrame)
                     return
                 }
             }

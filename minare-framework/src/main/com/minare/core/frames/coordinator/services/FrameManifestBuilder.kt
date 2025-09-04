@@ -2,6 +2,7 @@ package com.minare.core.frames.coordinator.services
 
 import com.hazelcast.core.HazelcastInstance
 import com.hazelcast.map.IMap
+import com.minare.core.utils.debug.OperationDebugUtils
 import io.vertx.core.json.JsonArray
 import io.vertx.core.json.JsonObject
 import org.slf4j.LoggerFactory
@@ -16,7 +17,8 @@ import kotlin.math.abs
  */
 @Singleton
 class FrameManifestBuilder @Inject constructor(
-    private val hazelcastInstance: HazelcastInstance
+    private val hazelcastInstance: HazelcastInstance,
+    private val operationDebugUtils: OperationDebugUtils
 ) {
     private val log = LoggerFactory.getLogger(FrameManifestBuilder::class.java)
 
@@ -45,6 +47,9 @@ class FrameManifestBuilder @Inject constructor(
         val workerList = workers.toList().sorted()
 
         return operations.groupBy { op ->
+            // TEMPORARY DEBUG
+            operationDebugUtils.logOperation(op, "FrameManifestBuilder: distributeOperations")
+
             // Use operation ID for consistent hashing
             // This keeps the operation pipeline entity-agnostic
             val operationId = op.getString("id")

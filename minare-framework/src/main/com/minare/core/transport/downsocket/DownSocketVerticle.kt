@@ -373,7 +373,7 @@ class DownSocketVerticle @Inject constructor(
             try {
                 socket.writeTextMessage(update.encode())
                 //TEMPORARY DEBUG
-                log.info("Sent update to websocket: {}", update.encode())
+                log.debug("Sent update to websocket: {}", update.encode())
                 true
             } catch (e: Exception) {
                 log.error("Failed to send update to {}", connectionId, e)
