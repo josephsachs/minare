@@ -219,12 +219,11 @@ class MessageQueueOperationConsumer @Inject constructor(
             when (decision) {
                 is LateOperationDecision.Drop -> return
                 is LateOperationDecision.Delay -> {
-                    // Do we need to assign to a prior manifest?
                     if (decision.targetFrame <= coordinatorState.lastPreparedManifest) {
                         assignToExistingManifest(operation, decision.targetFrame)
+                    } else {
+                        coordinatorState.bufferOperation(operation, decision.targetFrame)
                     }
-
-                    coordinatorState.bufferOperation(operation, decision.targetFrame)
                     return
                 }
             }

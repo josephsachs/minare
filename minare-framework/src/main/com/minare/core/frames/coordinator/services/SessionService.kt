@@ -80,8 +80,8 @@ class SessionService @Inject constructor(
         log.info("Initializing new session with ID $sessionId")
 
         val announcementTime = System.currentTimeMillis()
-        val sessionStartTime = announcementTime + frameConfig.frameOffsetMs
-        val sessionStartNanos = System.nanoTime() + frameCalculator.msToNanos(frameConfig.frameOffsetMs)
+        val sessionStartTime = announcementTime
+        val sessionStartNanos = System.nanoTime()
 
         clearPreviousSessionState()
 

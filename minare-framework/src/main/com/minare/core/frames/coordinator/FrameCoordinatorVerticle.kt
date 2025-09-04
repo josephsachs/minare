@@ -165,7 +165,6 @@ class FrameCoordinatorVerticle @Inject constructor(
 
         val newSessionId = eventMessage.getString("sessionId")
 
-        log.info("Frame coordinator received initial session announcement for $newSessionId")
         coordinatorState.sessionId = newSessionId
 
         startManifestTimer()
@@ -181,7 +180,9 @@ class FrameCoordinatorVerticle @Inject constructor(
         var newFrame = 0L
         operationsByOldFrame.forEach { (_, operations) ->
             operations.forEach { op ->
-                coordinatorState.bufferOperation(op, newFrame)
+                val timestamp = op.getLong("timestamp")
+                val properFrame = coordinatorState.getLogicalFrame(timestamp)
+                coordinatorState.bufferOperation(op, properFrame)
             }
             if (operations.isNotEmpty()) {
                 log.debug("Renumbered {} operations from old frame to new frame {}",
