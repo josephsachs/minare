@@ -115,6 +115,9 @@ class FrameCoordinatorVerticle @Inject constructor(
 
                 val operationsByOldFrame = extractBufferedOperations()
 
+                // TEMPORARY DEBUG
+                log.info("OPERATION_FLOW: Initializing session extracted operations by old frame ${operationsByOldFrame}")
+
                 coordinatorState.resetSessionState(sessionStartTime, sessionStartNanos)
                 coordinatorState.initializeFrameProgress()
                 coordinatorState.setFrameInProgress(0)
@@ -241,10 +244,8 @@ class FrameCoordinatorVerticle @Inject constructor(
         val operations = coordinatorState.extractFrameOperations(logicalFrame)
         val activeWorkers = workerRegistry.getActiveWorkers().toSet()
 
-        if (activeWorkers.isEmpty() && operations.isNotEmpty()) {
-            log.warn("No active workers available for frame {} with {} operations",
-                logicalFrame, operations.size)
-        }
+        // TEMPORARY DEBUG
+        log.info("OPERATION_FLOW: Preparing manifests for frame found operations for frame $logicalFrame: ${operations}")
 
         val assignments = frameManifestBuilder.distributeOperations(operations, activeWorkers)
 
@@ -299,7 +300,6 @@ class FrameCoordinatorVerticle @Inject constructor(
         vertx.eventBus().publish(ADDRESS_NEXT_FRAME, JsonObject())
 
         cleanupCompletedFrame(logicalFrame)
-        checkFrameLag(logicalFrame)
     }
 
     /**
@@ -354,21 +354,6 @@ class FrameCoordinatorVerticle @Inject constructor(
     private fun cleanupCompletedFrame(logicalFrame: Long) {
         frameManifestBuilder.clearFrameManifests(logicalFrame)
         frameCompletionTracker.clearFrameCompletions(logicalFrame)
-    }
-
-    /**
-     * Detects lagging workers, used to trigger worker soft pause
-     */
-    private fun checkFrameLag(logicalFrame: Long) {
-        val expectedFrame = frameCalculator.getCurrentLogicalFrame(coordinatorState.sessionStartNanos)
-
-        if (expectedFrame - logicalFrame > 5) {
-            log.warn("Frame processing falling behind - expected frame {}, just completed {}",
-                expectedFrame, logicalFrame)
-            // Could trigger pause here if needed
-        }
-
-        log.debug("Ready to process frame {}", logicalFrame + 1)
     }
 
     override suspend fun stop() {

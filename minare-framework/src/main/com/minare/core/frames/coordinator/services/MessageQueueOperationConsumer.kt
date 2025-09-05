@@ -15,6 +15,7 @@ import kotlinx.coroutines.CoroutineScope
 import org.slf4j.LoggerFactory
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.math.max
 
 /**
  * Handles Kafka consumption for the frame coordinator.
@@ -171,37 +172,14 @@ class MessageQueueOperationConsumer @Inject constructor(
      * @return true if processing should continue, false if backpressure was activated
      */
     private fun processOperation(operation: JsonObject): Boolean {
-        val timestamp = operation.getLong("timestamp")
-
-        if (timestamp == null) {
-            log.error("Operation missing timestamp, cannot assign to frame: {}",
-                operation.encode())
-
-            // Continue processing other operations
+        val timestamp = operation.getLong("timestamp") ?: run {
+            log.error("Operation missing timestamp: {}", operation.encode())
             return true
         }
 
-        // Route to appropriate handler based on session state
-        if (coordinatorState.sessionStartTimestamp == 0L) { // TODO: Better way of determining this, centralize somewhere
-            handlePreSessionOperation(operation)
-        } else {
-            handleSessionOperation(operation, timestamp)
-        }
-
-        return true // Continue processing
-    }
-
-    /**
-     * Handle operations that arrive before a session starts.
-     * These are buffered as "pending" operations.
-     */
-    private fun handlePreSessionOperation(operation: JsonObject) {
-        coordinatorState.bufferPendingOperation(operation)
-
-        if (log.isDebugEnabled) {
-            log.debug("Buffered pre-session operation {} (total pending: {})",
-                operation.getString("id"), coordinatorState.getPendingOperationCount())
-        }
+        // Always route to frame handler, even without session
+        handleSessionOperation(operation, timestamp)
+        return true
     }
 
     /**
@@ -209,11 +187,16 @@ class MessageQueueOperationConsumer @Inject constructor(
      * Routes to appropriate frame based on timestamp.
      */
     private fun handleSessionOperation(operation: JsonObject, timestamp: Long) {
-        val logicalFrame = coordinatorState.getLogicalFrame(timestamp)
+        val logicalFrame = if (coordinatorState.sessionStartTimestamp == 0L) {
+            // No session yet - all operations are "late" for frame 0
+            0L
+        } else {
+            coordinatorState.getLogicalFrame(timestamp)
+        }
 
         // Check if this is a late operation
-        val frameInProgress = coordinatorState.frameInProgress
-        if (logicalFrame <= frameInProgress) {
+        val frameInProgress = max(0, coordinatorState.frameInProgress)
+        if (logicalFrame < frameInProgress) {
             val decision = lateOperationHandler.handleLateOperation(operation, logicalFrame, frameInProgress)
 
             when (decision) {

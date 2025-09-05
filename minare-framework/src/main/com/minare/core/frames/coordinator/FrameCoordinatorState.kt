@@ -38,7 +38,6 @@ class FrameCoordinatorState @Inject constructor(
     private val _lastPreparedManifest = AtomicLong(-1L)
 
     private val operationsByFrame = ConcurrentHashMap<Long, ConcurrentLinkedQueue<JsonObject>>()
-    private val pendingOperations = ConcurrentLinkedQueue<JsonObject>()
     private val currentFrameCompletions = ConcurrentHashMap<String, Long>()
     private val frameProgress: IAtomicLong = hazelcastInstance.getCPSubsystem().getAtomicLong("frame-progress")
 
@@ -122,32 +121,6 @@ class FrameCoordinatorState @Inject constructor(
     }
 
     /**
-     * Buffer an operation before session starts
-     */
-    fun bufferPendingOperation(operation: JsonObject) {
-        pendingOperations.offer(operation)
-    }
-
-    /**
-     * Get count of pending operations
-     */
-    fun getPendingOperationCount(): Int = pendingOperations.size
-
-    /**
-     * Assign all pending operations to a specific frame
-     */
-    fun assignPendingOperationsToFrame(targetFrame: Long) {
-        val queue = operationsByFrame.computeIfAbsent(targetFrame) { ConcurrentLinkedQueue() }
-
-        while (pendingOperations.isNotEmpty()) {
-            val op = pendingOperations.poll()
-            if (op != null) {
-                queue.offer(op)
-            }
-        }
-    }
-
-    /**
      * Buffer an operation to a specific logical frame
      */
     fun bufferOperation(operation: JsonObject, logicalFrame: Long) {
@@ -165,24 +138,9 @@ class FrameCoordinatorState @Inject constructor(
      * Removes and returns the operations.
      */
     fun extractFrameOperations(logicalFrame: Long): List<JsonObject> {
-        // Include pending operations if this is frame 0
-        // TODO: This probably shouldn't work like this
-        val pendingOps = if (logicalFrame == 0L && pendingOperations.isNotEmpty()) {
-            val ops = mutableListOf<JsonObject>()
-            while (pendingOperations.isNotEmpty()) {
-                pendingOperations.poll()?.let { ops.add(it) }
-            }
-            ops
-        } else emptyList()
-
         // Get regular buffered operations
-        val queue = operationsByFrame.remove(logicalFrame)
-        if (queue == null) {
-            log.debug("No operations found for frame {}", logicalFrame)
-            return pendingOps
-        }
-
-        return pendingOps + queue.toList()
+        val queue = operationsByFrame.remove(logicalFrame) ?: return emptyList()
+        return queue.toList()
     }
 
     /**
@@ -205,6 +163,11 @@ class FrameCoordinatorState @Inject constructor(
      */
     fun markFrameProcessed(frameNumber: Long) {
         _lastProcessedFrame.set(frameNumber)
+    }
+
+
+    fun getBufferedFrameNumbers(): List<Long> {
+        return operationsByFrame.keys.sorted()
     }
 
     /**
@@ -249,7 +212,7 @@ class FrameCoordinatorState @Inject constructor(
      * Get total buffered operations across all frames
      */
     fun getTotalBufferedOperations(): Int {
-        return operationsByFrame.values.sumOf { it.size } + pendingOperations.size
+        return operationsByFrame.values.sumOf { it.size }
     }
 
     /**
@@ -282,6 +245,5 @@ class FrameCoordinatorState @Inject constructor(
      */
     fun clearAllBufferedOperations() {
         operationsByFrame.clear()
-        pendingOperations.clear()
     }
 }

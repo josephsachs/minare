@@ -31,15 +31,12 @@ class FrameCalculatorService @Inject constructor(
      */
     fun timestampToLogicalFrame(timestamp: Long, sessionStartTimestamp: Long): Long {
         if (sessionStartTimestamp == 0L) {
-            throw IllegalStateException("Session not started")
+            // No session yet - treat as very late for frame 0
+            return 0L
         }
 
         val relativeTimestamp = timestamp - sessionStartTimestamp
-        return if (relativeTimestamp < 0) {
-            -1L // Before session start
-        } else {
-            relativeTimestamp / frameConfig.frameDurationMs
-        }
+        return relativeTimestamp / frameConfig.frameDurationMs
     }
 
     /**
