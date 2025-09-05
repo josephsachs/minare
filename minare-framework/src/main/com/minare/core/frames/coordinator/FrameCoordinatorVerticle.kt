@@ -59,10 +59,8 @@ class FrameCoordinatorVerticle @Inject constructor(
         const val ADDRESS_SESSION_START = "minare.coordinator.session.start"
         const val ADDRESS_FRAME_ALL_COMPLETE = "minare.coordinator.internal.frame-all-complete"
         const val ADDRESS_FRAME_MANIFESTS_ALL_COMPLETE = "minare.coordinator.internal.frame.manifests-all-complete"
-        const val ADDRESS_PREPARE_MANIFEST = "minare.coordinator.internal.prepare-manifest"
         const val ADDRESS_PREPARE_SESSION_MANIFESTS = "minare.coordinator.prepare-session-manifests"
         const val ADDRESS_SESSION_MANIFESTS_PREPARED = "minare.coordinator.session-manifests-prepared"
-        const val ADDRESS_ALL_WORKERS_READY = "minare.coordinator.all.workers.ready"
         const val ADDRESS_NEXT_FRAME = "minare.coordinator.next.frame"  // NEW
     }
 
@@ -103,11 +101,6 @@ class FrameCoordinatorVerticle @Inject constructor(
             }
         }
 
-        // Manifest preparation request (triggered by operation arrival)
-        eventBusUtils.registerTracedConsumer<JsonObject>(ADDRESS_PREPARE_MANIFEST) { _, traceId ->
-            launch { preparePendingManifests() }
-        }
-
         eventBusUtils.registerTracedConsumer<JsonObject>(ADDRESS_PREPARE_SESSION_MANIFESTS) { msg, traceId ->
             launch {
                 val sessionStartTime = msg.body().getLong("sessionStartTime")
@@ -144,6 +137,10 @@ class FrameCoordinatorVerticle @Inject constructor(
             launch {
                 val currentFrame = frameCalculator.getCurrentLogicalFrame(coordinatorState.sessionStartNanos)
                 val targetFrame = currentFrame + frameConfig.normalOperationLookahead
+
+                if (coordinatorState.lastPreparedManifest < 0) {
+                    log.info("TIMER_DEBUG: lastPreparedManifest is a negative number, yo")
+                }
 
                 // Prepare any missing manifests up to target
                 for (frame in (coordinatorState.lastPreparedManifest + 1)..targetFrame) {
@@ -245,7 +242,9 @@ class FrameCoordinatorVerticle @Inject constructor(
         val activeWorkers = workerRegistry.getActiveWorkers().toSet()
 
         // TEMPORARY DEBUG
-        log.info("OPERATION_FLOW: Preparing manifests for frame found operations for frame $logicalFrame: ${operations}")
+        if (operations.isNotEmpty()) {
+            log.info("OPERATION_FLOW: Preparing manifests for frame found operations for frame $logicalFrame: ${operations}")
+        }
 
         val assignments = frameManifestBuilder.distributeOperations(operations, activeWorkers)
 
