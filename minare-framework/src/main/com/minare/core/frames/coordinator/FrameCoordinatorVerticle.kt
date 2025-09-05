@@ -122,8 +122,8 @@ class FrameCoordinatorVerticle @Inject constructor(
                 coordinatorState.initializeFrameProgress()
                 coordinatorState.setFrameInProgress(0)
 
-                assignBufferedOperations(operationsByOldFrame)
                 prepareManifestForFrame(0)
+                assignBufferedOperations(operationsByOldFrame)
 
                 eventBusUtils.publishWithTracing(
                     ADDRESS_SESSION_MANIFESTS_PREPARED,
