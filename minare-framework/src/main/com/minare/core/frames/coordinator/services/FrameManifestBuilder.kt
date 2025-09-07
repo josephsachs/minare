@@ -2,6 +2,7 @@ package com.minare.core.frames.coordinator.services
 
 import com.hazelcast.core.HazelcastInstance
 import com.hazelcast.map.IMap
+import com.minare.core.frames.coordinator.FrameCoordinatorState
 import io.vertx.core.json.JsonArray
 import io.vertx.core.json.JsonObject
 import org.slf4j.LoggerFactory
@@ -16,7 +17,10 @@ import kotlin.math.abs
  */
 @Singleton
 class FrameManifestBuilder @Inject constructor(
-    private val hazelcastInstance: HazelcastInstance
+    private val hazelcastInstance: HazelcastInstance,
+
+    // TEMPORARY DEBUG
+    private val frameCoordinatorState: FrameCoordinatorState
 ) {
     private val log = LoggerFactory.getLogger(FrameManifestBuilder::class.java)
 
@@ -85,6 +89,14 @@ class FrameManifestBuilder @Inject constructor(
 
             val key = "manifest:$logicalFrame:$workerId"
             manifestMap[key] = manifest
+
+            // TEMPORARY DEBUG
+            if (manifestMap.entries.isNotEmpty()) {
+                log.info("OPERATION_FLOW: Last prepared manifest: ${frameCoordinatorState.lastPreparedManifest} - " +
+                        "Frame-in-progress: ${frameCoordinatorState.frameInProgress} - " +
+                        "Currently written frame ${logicalFrame} - " +
+                        "Manifest contents ${manifestMap.entries}")
+            }
 
             log.debug("Wrote manifest for worker {} with {} operations for logical frame {}",
                 workerId, sortedOperations.size, logicalFrame)

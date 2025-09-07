@@ -32,15 +32,6 @@ open class FrameConfiguration {    /**
     val framesPerSession: Long = 100
 
     /**
-     * Offset from announcement to actual frame start.
-     * Gives workers time to prepare after frame announcement.
-     *
-     * Default: 2000ms
-     * Should be > network latency + worker prep time
-     */
-    val frameOffsetMs: Long = 2000
-
-    /**
      * How many frames ahead to prepare during normal operation.
      * Provides smooth operation without excessive pre-computation.
      *

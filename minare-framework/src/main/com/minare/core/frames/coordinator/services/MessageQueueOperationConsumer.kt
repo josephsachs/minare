@@ -187,29 +187,20 @@ class MessageQueueOperationConsumer @Inject constructor(
      * Routes to appropriate frame based on timestamp.
      */
     private fun handleSessionOperation(operation: JsonObject, timestamp: Long) {
-        val logicalFrame = if (coordinatorState.sessionStartTimestamp == 0L) {
-            // No session yet - all operations are "late" for frame 0
-            0L
-        } else {
-            coordinatorState.getLogicalFrame(timestamp)
-        }
+        val logicalFrame = coordinatorState.getLogicalFrame(timestamp)
+        val frameInProgress = coordinatorState.frameInProgress
 
-        // Check if this is a late operation
-        val frameInProgress = max(0, coordinatorState.frameInProgress)
-        if (logicalFrame < frameInProgress) {
+        if (logicalFrame <= frameInProgress) {
             val decision = lateOperationHandler.handleLateOperation(operation, logicalFrame, frameInProgress)
 
             when (decision) {
                 is LateOperationDecision.Drop -> return
                 is LateOperationDecision.Delay -> {
-                    if (decision.targetFrame <= coordinatorState.lastPreparedManifest) {
-                        assignToExistingManifest(operation, decision.targetFrame)
-                    } else {
-                        coordinatorState.bufferOperation(operation, decision.targetFrame)
-                    }
-                    return
+                    coordinatorState.bufferOperation(operation, decision.targetFrame)
                 }
             }
+
+            return
         }
 
         if (logicalFrame <= coordinatorState.lastPreparedManifest) {

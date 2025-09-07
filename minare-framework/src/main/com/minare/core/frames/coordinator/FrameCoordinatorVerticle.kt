@@ -2,10 +2,13 @@ package com.minare.core.frames.coordinator
 
 import com.minare.application.config.FrameConfiguration
 import com.minare.core.frames.coordinator.FrameCoordinatorState.Companion.PauseState
+import com.minare.core.frames.coordinator.handlers.LateOperationDecision
+import com.minare.core.frames.coordinator.handlers.LateOperationHandler
 import com.minare.core.frames.coordinator.services.*
 import com.minare.core.frames.coordinator.services.SessionService.Companion.ADDRESS_SESSION_INITIALIZED
 import com.minare.core.frames.services.WorkerRegistry
 import com.minare.core.operation.interfaces.MessageQueue
+import com.minare.core.utils.debug.OperationDebugUtils
 import com.minare.core.utils.vertx.EventBusUtils
 import com.minare.core.utils.vertx.EventWaiter
 import com.minare.core.utils.vertx.VerticleLogger
@@ -31,6 +34,7 @@ import kotlin.math.max
 class FrameCoordinatorVerticle @Inject constructor(
     private val frameConfig: FrameConfiguration,
     private val frameCalculator: FrameCalculatorService,
+    private val lateOperationHandler: LateOperationHandler,
     private val vlog: VerticleLogger,
     private val eventBusUtils: EventBusUtils,
     private val eventWaiter: EventWaiter,
@@ -47,7 +51,8 @@ class FrameCoordinatorVerticle @Inject constructor(
     private val workerHeartbeatEvent: WorkerHeartbeatEvent,
     private val workerRegisterEvent: WorkerRegisterEvent,
     private val workerReadinessEvent: WorkerReadinessEvent,
-    private val workerHealthChangeEvent: WorkerHealthChangeEvent
+    private val workerHealthChangeEvent: WorkerHealthChangeEvent,
+    private val operationDebugUtils: OperationDebugUtils
 ) : CoroutineVerticle() {
 
     private val log = LoggerFactory.getLogger(FrameCoordinatorVerticle::class.java)
@@ -108,9 +113,6 @@ class FrameCoordinatorVerticle @Inject constructor(
 
                 val operationsByOldFrame = extractBufferedOperations()
 
-                // TEMPORARY DEBUG
-                log.info("OPERATION_FLOW: Initializing session extracted operations by old frame ${operationsByOldFrame}")
-
                 coordinatorState.resetSessionState(sessionStartTime, sessionStartNanos)
                 coordinatorState.initializeFrameProgress()
                 coordinatorState.setFrameInProgress(0)
@@ -137,12 +139,6 @@ class FrameCoordinatorVerticle @Inject constructor(
             launch {
                 val currentFrame = frameCalculator.getCurrentLogicalFrame(coordinatorState.sessionStartNanos)
                 val targetFrame = currentFrame + frameConfig.normalOperationLookahead
-
-                if (coordinatorState.lastPreparedManifest < 0) {
-                    log.info("TIMER_DEBUG: lastPreparedManifest is a negative number, yo")
-                }
-
-                // Prepare any missing manifests up to target
                 for (frame in (coordinatorState.lastPreparedManifest + 1)..targetFrame) {
                     prepareManifestForFrame(frame)
                 }
@@ -178,16 +174,38 @@ class FrameCoordinatorVerticle @Inject constructor(
         // Re-buffer operations with new frame numbers, preserving groupings
         // Not sure we should be doing this here
         var newFrame = 0L
+
         operationsByOldFrame.forEach { (_, operations) ->
             operations.forEach { op ->
                 val timestamp = op.getLong("timestamp")
-                val properFrame = coordinatorState.getLogicalFrame(timestamp)
-                coordinatorState.bufferOperation(op, properFrame)
+                val calculatedFrame = coordinatorState.getLogicalFrame(timestamp)
+
+                // TEMPORARY DEBUG
+                operationDebugUtils.logOperation(op, "properFrame: ${calculatedFrame}")
+
+                // Handle negative frames as late operations
+                if (calculatedFrame < 0) {
+                    val decision = lateOperationHandler.handleLateOperation(op, calculatedFrame, 0)
+
+                    when (decision) {
+                        is LateOperationDecision.Drop -> {
+                            // Skip this operation
+                        }
+                        is LateOperationDecision.Delay -> {
+                            coordinatorState.bufferOperation(op, decision.targetFrame)
+                        }
+                    }
+                } else {
+                    coordinatorState.bufferOperation(op, calculatedFrame)
+                }
             }
+
+            // TEMPORARY DEBUG
             if (operations.isNotEmpty()) {
                 log.debug("Renumbered {} operations from old frame to new frame {}",
                     operations.size, newFrame)
             }
+
             newFrame++
         }
 
@@ -213,6 +231,9 @@ class FrameCoordinatorVerticle @Inject constructor(
         oldFrameNumbers.forEach { oldFrame ->
             operationsByOldFrame[oldFrame] = coordinatorState.extractFrameOperations(oldFrame)
         }
+
+        // TEMPORARY DEBUG
+        log.info("OPERATION_FLOW Extracting from buffer: ${operationsByOldFrame}")
 
         return operationsByOldFrame
     }
@@ -240,11 +261,6 @@ class FrameCoordinatorVerticle @Inject constructor(
     private suspend fun prepareManifestForFrame(logicalFrame: Long) {
         val operations = coordinatorState.extractFrameOperations(logicalFrame)
         val activeWorkers = workerRegistry.getActiveWorkers().toSet()
-
-        // TEMPORARY DEBUG
-        if (operations.isNotEmpty()) {
-            log.info("OPERATION_FLOW: Preparing manifests for frame found operations for frame $logicalFrame: ${operations}")
-        }
 
         val assignments = frameManifestBuilder.distributeOperations(operations, activeWorkers)
 
@@ -336,7 +352,7 @@ class FrameCoordinatorVerticle @Inject constructor(
         val lastPrepared = coordinatorState.lastPreparedManifest
 
         val wallClockFrame = frameCalculator.getCurrentLogicalFrame(coordinatorState.sessionStartNanos)
-        val neededFrame = coordinatorState.frameInProgress  // What workers actually need
+        val neededFrame = coordinatorState.frameInProgress + 1  // What workers actually need
 
         val targetFrame = max(
             wallClockFrame + frameConfig.normalOperationLookahead,

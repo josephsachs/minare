@@ -4,6 +4,7 @@ import com.hazelcast.core.HazelcastInstance
 import com.hazelcast.cp.IAtomicLong
 import com.minare.core.frames.coordinator.services.FrameCalculatorService
 import com.minare.core.frames.services.WorkerRegistry
+import com.minare.core.utils.debug.OperationDebugUtils
 import com.minare.core.utils.vertx.EventBusUtils
 import io.vertx.core.json.JsonObject
 import org.slf4j.LoggerFactory
@@ -22,7 +23,8 @@ class FrameCoordinatorState @Inject constructor(
     private val workerRegistry: WorkerRegistry,
     private val frameCalculator: FrameCalculatorService,
     private val hazelcastInstance: HazelcastInstance,
-    private val eventBusUtils: EventBusUtils
+    private val eventBusUtils: EventBusUtils,
+    private val operationDebugUtils: OperationDebugUtils
 ) {
     private val log = LoggerFactory.getLogger(FrameCoordinatorState::class.java)
 
@@ -127,10 +129,9 @@ class FrameCoordinatorState @Inject constructor(
         val queue = operationsByFrame.computeIfAbsent(logicalFrame) { ConcurrentLinkedQueue() }
         queue.offer(operation)
 
-        if (log.isDebugEnabled) {
-            log.debug("Buffered operation {} to logical frame {} (queue size: {})",
-                operation.getString("id"), logicalFrame, queue.size)
-        }
+        // TEMPORARY DEBUG
+        operationDebugUtils.logOperation(operation, "Buffered in frame $logicalFrame")
+        log.info("BUFFER_QUEUE for ${operation.getString("id")} ${logicalFrame} -- Current queue: ${queue.toList()}")
     }
 
     /**

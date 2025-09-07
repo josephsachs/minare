@@ -131,7 +131,6 @@ class SessionService @Inject constructor(
                 .put("sessionStartTimestamp", sessionStartTime)
                 .put("announcementTimestamp", announcementTime)
                 .put("frameDuration", frameConfig.frameDurationMs)
-                .put("frameOffset", frameConfig.frameOffsetMs)
                 .put("workerCount", activeWorkers.size)
                 .put("workerIds", JsonArray(activeWorkers.toList()))
                 .put("coordinatorInstance", "coordinator-${System.currentTimeMillis()}") // TODO: Use a more stable ID
@@ -152,7 +151,6 @@ class SessionService @Inject constructor(
             .put("sessionId", sessionId)
             .put("sessionStartTimestamp", sessionStartTime)
             .put("announcementTimestamp", announcementTime)
-            .put("firstFrameStartsIn", frameConfig.frameOffsetMs)
             .put("frameDuration", frameConfig.frameDurationMs)
 
         eventBusUtils.publishWithTracing(
@@ -160,7 +158,7 @@ class SessionService @Inject constructor(
             announcement
         )
 
-        log.info("Announced new session $sessionId starting at {} (in {}ms) with {} workers",
-            sessionStartTime, frameConfig.frameOffsetMs, workerRegistry.getActiveWorkers().size)
+        log.info("Announced new session $sessionId starting at {} with {} workers",
+            sessionStartTime, workerRegistry.getActiveWorkers().size)
     }
 }
