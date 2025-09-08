@@ -91,11 +91,10 @@ class FrameManifestBuilder @Inject constructor(
             manifestMap[key] = manifest
 
             // TEMPORARY DEBUG
-            if (manifestMap.entries.isNotEmpty()) {
+            if (sortedOperations.isNotEmpty()) {
                 log.info("OPERATION_FLOW: Last prepared manifest: ${frameCoordinatorState.lastPreparedManifest} - " +
                         "Frame-in-progress: ${frameCoordinatorState.frameInProgress} - " +
-                        "Currently written frame ${logicalFrame} - " +
-                        "Manifest contents ${manifestMap.entries}")
+                        "Currently written frame ${logicalFrame}")
             }
 
             log.debug("Wrote manifest for worker {} with {} operations for logical frame {}",

@@ -122,6 +122,9 @@ class FrameCoordinatorVerticle @Inject constructor(
                                                       // is damn suspicious considering the exact shape of the issue
                 assignBufferedOperations(operationsByOldFrame)
 
+                // TEMPORARY DEBUG
+                log.info("ASSIGN_BUFFERED ${coordinatorState.getBufferedOperationCounts()}")
+
                 eventBusUtils.publishWithTracing(
                     ADDRESS_SESSION_MANIFESTS_PREPARED,
                     JsonObject()
@@ -177,13 +180,13 @@ class FrameCoordinatorVerticle @Inject constructor(
         // Not sure we should be doing this here
         var newFrame = 0L
 
+        // TEMPORARY DEBUG
+        log.info("ASSIGN_BUFFERED ${operationsByOldFrame.keys}")
+
         operationsByOldFrame.forEach { (_, operations) ->
             operations.forEach { op ->
                 val timestamp = op.getLong("timestamp")
                 val calculatedFrame = coordinatorState.getLogicalFrame(timestamp)
-
-                // TEMPORARY DEBUG
-                operationDebugUtils.logOperation(op, "properFrame: ${calculatedFrame}")
 
                 // 09-08-25 The way this got solved may be related to the "bunching" problem
                 if (calculatedFrame < 0) {
@@ -194,10 +197,16 @@ class FrameCoordinatorVerticle @Inject constructor(
                             // Skip this operation
                         }
                         is LateOperationDecision.Delay -> {
+
+                            // TEMPORARY DEBUG
+                            operationDebugUtils.logOperation(op, "ASSIGN_BUFFERED DELAYED")
                             coordinatorState.bufferOperation(op, decision.targetFrame)
                         }
                     }
                 } else {
+
+                    // TEMPORARY DEBUG
+                    operationDebugUtils.logOperation(op, "ASSIGN_BUFFERED NORMAL")
                     coordinatorState.bufferOperation(op, calculatedFrame)
                 }
             }

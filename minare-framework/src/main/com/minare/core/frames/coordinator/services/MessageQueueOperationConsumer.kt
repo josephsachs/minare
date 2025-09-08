@@ -196,7 +196,11 @@ class MessageQueueOperationConsumer @Inject constructor(
             when (decision) {
                 is LateOperationDecision.Drop -> return
                 is LateOperationDecision.Delay -> {
-                    coordinatorState.bufferOperation(operation, decision.targetFrame)
+                    if (decision.targetFrame <= coordinatorState.lastPreparedManifest) {
+                        assignToExistingManifest(operation, decision.targetFrame)
+                    } else {
+                        coordinatorState.bufferOperation(operation, decision.targetFrame)
+                    }
                 }
             }
 
