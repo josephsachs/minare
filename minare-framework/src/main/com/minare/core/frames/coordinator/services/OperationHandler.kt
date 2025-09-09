@@ -1,7 +1,6 @@
 package com.minare.core.frames.coordinator.services
 
 import com.minare.core.frames.coordinator.FrameCoordinatorState
-import com.minare.core.frames.coordinator.handlers.LateOperationDecision
 import com.minare.core.frames.coordinator.handlers.LateOperationHandler
 import io.vertx.core.json.JsonObject
 import org.slf4j.LoggerFactory
@@ -34,30 +33,12 @@ class OperationHandler @Inject constructor(
      * @return true if processing should continue, false if backpressure was activated
      */
     fun handle(operation: JsonObject): Boolean {
-        val timestamp = operation.getLong("timestamp") ?: run {
-            log.error("Operation missing timestamp: {}", operation.encode())
-            return false
-        }
-
+        val timestamp = operation.getLong("timestamp")
         val logicalFrame = coordinatorState.getLogicalFrame(timestamp)
         val frameInProgress = coordinatorState.frameInProgress
 
         if (logicalFrame <= frameInProgress) {
-            val decision = lateOperationHandler.handleLateOperation(operation, logicalFrame, frameInProgress)
-
-            when (decision) {
-                is LateOperationDecision.Drop -> {
-                    // Drop operation
-                }
-                is LateOperationDecision.Delay -> {
-                    if (decision.targetFrame <= coordinatorState.lastPreparedManifest) {
-                        manifestBuilder.assignToExistingManifest(operation, decision.targetFrame)
-                    } else {
-                        coordinatorState.bufferOperation(operation, decision.targetFrame)
-                    }
-                }
-            }
-
+            lateOperationHandler.handle(operation)
             return true
         }
 
@@ -98,15 +79,7 @@ class OperationHandler @Inject constructor(
                 if (calculatedFrame < 0) {
                     // If the calculated frame is negative, then it was in flight during a session transition
                     // and is treated as a late operation
-                    val decision = lateOperationHandler.handleLateOperation(op, calculatedFrame, 0)
-                    when (decision) {
-                        is LateOperationDecision.Drop -> {
-                            // Skip this operation
-                        }
-                        is LateOperationDecision.Delay -> {
-                            coordinatorState.bufferOperation(op, decision.targetFrame)
-                        }
-                    }
+                    lateOperationHandler.handle(op)
                 } else {
                     coordinatorState.bufferOperation(op, calculatedFrame)
                 }

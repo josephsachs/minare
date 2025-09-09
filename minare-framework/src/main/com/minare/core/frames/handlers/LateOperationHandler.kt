@@ -1,5 +1,8 @@
 package com.minare.core.frames.coordinator.handlers
 
+import com.google.inject.Inject
+import com.minare.core.frames.coordinator.FrameCoordinatorState
+import com.minare.core.frames.coordinator.services.FrameManifestBuilder
 import io.vertx.core.json.JsonObject
 import org.slf4j.LoggerFactory
 
@@ -20,45 +23,25 @@ interface LateOperationHandler {
      * @param currentFrame The current logical frame being processed
      * @return LateOperationDecision indicating what to do
      */
-    fun handleLateOperation(
-        operation: JsonObject,
-        intendedFrame: Long,
-        currentFrame: Long
-    ): LateOperationDecision
-}
-
-/**
- * Decision on how to handle a late operation
- */
-sealed class LateOperationDecision {
-    object Drop : LateOperationDecision()
-    data class Delay(val targetFrame: Long) : LateOperationDecision()
+    fun handle(
+        operation: JsonObject
+    )
 }
 
 /**
  * Reject strategy - drops late operations and logs them.
  * This is the simplest and most deterministic approach.
  */
-class RejectLateOperations(
-    private val maxFramesLate: Int = 0  // For logging/metrics purposes
+
+class RejectLateOperation @Inject constructor(
+    private val coordinatorState: FrameCoordinatorState
 ) : LateOperationHandler {
-    private val log = LoggerFactory.getLogger(RejectLateOperations::class.java)
+    private val log = LoggerFactory.getLogger(RejectLateOperation::class.java)
 
-    override fun handleLateOperation(
-        operation: JsonObject,
-        intendedFrame: Long,
-        currentFrame: Long
-    ): LateOperationDecision {
-        val framesLate = currentFrame - intendedFrame
-
-        log.warn("Dropping late operation {} intended for frame {} (current: {}, {} frames late)",
-            operation.getString("id"),
-            intendedFrame,
-            currentFrame,
-            framesLate
-        )
-
-        return LateOperationDecision.Drop
+    override fun handle(
+        operation: JsonObject
+    ) {
+        log.info("Rejected late operation ${operation.getString("id")} for frame ${coordinatorState.frameInProgress}")
     }
 }
 
@@ -66,22 +49,30 @@ class RejectLateOperations(
  * Delay strategy - adds late operations to the next unprocessed frame.
  * Less deterministic but more forgiving of network delays.
  */
-class DelayLateOperations() : LateOperationHandler {
-    private val log = LoggerFactory.getLogger(DelayLateOperations::class.java)
+class DelayLateOperation @Inject constructor(
+    private val coordinatorState: FrameCoordinatorState,
+    private val manifestBuilder: FrameManifestBuilder
+) : LateOperationHandler {
+    private val log = LoggerFactory.getLogger(DelayLateOperation::class.java)
 
-    override fun handleLateOperation(
-        operation: JsonObject,
-        intendedFrame: Long,
-        currentFrame: Long
-    ): LateOperationDecision {
-        val nextFrame = currentFrame + 1
+    override fun handle(
+        operation: JsonObject
+    ) {
+        val timestamp = operation.getLong("timestamp")
+        val logicalFrame = coordinatorState.getLogicalFrame(timestamp)
+
+        val nextFrame = coordinatorState.frameInProgress + 1
+
+        if (nextFrame <= coordinatorState.lastPreparedManifest) {
+            manifestBuilder.assignToExistingManifest(operation, nextFrame)
+        } else {
+            coordinatorState.bufferOperation(operation, nextFrame)
+        }
 
         log.info("Delaying operation {} from frame {} to frame {}",
             operation.getString("id"),
-            intendedFrame,
+            logicalFrame,
             nextFrame
         )
-
-        return LateOperationDecision.Delay(nextFrame)
     }
 }
