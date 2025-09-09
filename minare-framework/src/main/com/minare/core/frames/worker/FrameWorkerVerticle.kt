@@ -1,11 +1,9 @@
 package com.minare.core.frames.worker
 
-import com.hazelcast.core.HazelcastException
 import com.hazelcast.core.HazelcastInstance
 import com.hazelcast.cp.IAtomicLong
 import com.hazelcast.map.IMap
 import com.minare.core.operation.models.Operation
-import com.minare.application.config.FrameConfiguration
 import com.minare.core.utils.vertx.VerticleLogger
 import com.minare.core.frames.coordinator.FrameCoordinatorVerticle
 import com.minare.exceptions.FrameLoopException
@@ -15,10 +13,8 @@ import io.vertx.core.json.JsonObject
 import io.vertx.kotlin.coroutines.CoroutineVerticle
 import io.vertx.kotlin.coroutines.await
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.slf4j.LoggerFactory
-import java.util.concurrent.TimeoutException
 import javax.inject.Inject
 
 /**
@@ -45,15 +41,16 @@ class FrameWorkerVerticle @Inject constructor(
 
     private var processingActive = false
 
-    // Track the current frame processing job for clean cancellation
     private var currentFrameProcessingJob: Job? = null
 
     companion object {
         const val ADDRESS_WORKER_FRAME_COMPLETE = "minare.coordinator.worker.frame.complete"
-        const val ADDRESS_WORKER_FRAME_ERROR = "minare.coordinator.worker.frame.error"
         const val ADDRESS_NEXT_FRAME = "minare.coordinator.next.frame"
     }
 
+    /**
+     * Start the worker verticle
+     */
     override suspend fun start() {
         log.info("Starting FrameWorkerVerticle")
         vlog.setVerticle(this)
@@ -77,7 +74,6 @@ class FrameWorkerVerticle @Inject constructor(
             )
 
             launch {
-                // Process the next frame
                 processLogicalFrame(frameProgress.get())
             }
         }
@@ -97,27 +93,7 @@ class FrameWorkerVerticle @Inject constructor(
 
         processingActive = true
 
-        // Now wait for subsequent frame advancement events
         log.info("Worker {} ready for frame advancement events", workerId)
-    }
-
-    /**
-     * Clear any stale manifests or completions for this worker.
-     * Called when starting a new session to ensure clean state.
-     */
-    private fun clearWorkerManifests() {
-        try {
-            // Clear any completion records for this worker
-            val completionKeys = completionMap.keys.filter { key ->
-                key.contains(workerId)
-            }
-            completionKeys.forEach { completionMap.remove(it) }
-
-            log.debug("Cleared {} stale completion records for worker {}",
-                completionKeys.size, workerId)
-        } catch (e: Exception) {
-            log.warn("Error clearing worker state in Hazelcast", e)
-        }
     }
 
     /**
@@ -182,7 +158,7 @@ class FrameWorkerVerticle @Inject constructor(
         try {
             val op = Operation.fromJson(operation)
 
-            // Add frame number to operation for delta storage
+            // Attach the frame number for marking the replay delta
             operation.put("frameNumber", logicalFrame)
 
             // Send to the appropriate processor based on action type
@@ -193,8 +169,8 @@ class FrameWorkerVerticle @Inject constructor(
                 .await()
 
             if (result.body().getBoolean("success", false)) {
-                // Mark operation as complete in distributed map
                 val completionKey = "frame-$logicalFrame:op-$operationId"
+
                 completionMap[completionKey] = OperationCompletion(
                     operationId = operationId,
                     workerId = workerId
@@ -232,6 +208,9 @@ class FrameWorkerVerticle @Inject constructor(
             logicalFrame, operationsProcessed)
     }
 
+    /**
+     * Stop the worker verticle
+     */
     override suspend fun stop() {
         log.info("Stopping FrameWorkerVerticle")
         processingActive = false

@@ -39,6 +39,7 @@ class FrameCoordinatorVerticleModule : PrivateModule() {
 
         // Request external dependencies that should be provided by parent injector
         requireBinding(Vertx::class.java)
+        requireBinding(EventBusUtils::class.java)
 
         // Expose UpSocketVerticle to the parent injector
         expose(FrameCoordinatorVerticle::class.java)

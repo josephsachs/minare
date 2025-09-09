@@ -95,4 +95,5 @@ this. To see it in action:
 8. Watch the nodes change color in waves. After the final wave, each node should be colored black and have its version incremented to 40.
 9. In the `/minare/docker` path, run `docker compose stop`.
 
-
+## License
+© 2025 Joseph Sachs. All rights reserved. License TBD.
