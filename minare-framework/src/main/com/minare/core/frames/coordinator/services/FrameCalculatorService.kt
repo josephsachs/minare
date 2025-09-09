@@ -46,6 +46,7 @@ class FrameCalculatorService @Inject constructor(
         if (sessionStartNanos == 0L) return -1L
 
         val elapsedNanos = System.nanoTime() - sessionStartNanos
+
         return nanosToLogicalFrame(elapsedNanos)
     }
 

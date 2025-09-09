@@ -1,11 +1,9 @@
 package com.minare.core.frames.worker
 
-import com.hazelcast.core.HazelcastException
 import com.hazelcast.core.HazelcastInstance
 import com.hazelcast.cp.IAtomicLong
 import com.hazelcast.map.IMap
 import com.minare.core.operation.models.Operation
-import com.minare.application.config.FrameConfiguration
 import com.minare.core.utils.vertx.VerticleLogger
 import com.minare.core.frames.coordinator.FrameCoordinatorVerticle
 import com.minare.exceptions.FrameLoopException
@@ -15,10 +13,8 @@ import io.vertx.core.json.JsonObject
 import io.vertx.kotlin.coroutines.CoroutineVerticle
 import io.vertx.kotlin.coroutines.await
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.slf4j.LoggerFactory
-import java.util.concurrent.TimeoutException
 import javax.inject.Inject
 
 /**

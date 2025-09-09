@@ -4,8 +4,6 @@ import com.hazelcast.core.HazelcastInstance
 import com.hazelcast.cp.IAtomicLong
 import com.minare.core.frames.coordinator.services.FrameCalculatorService
 import com.minare.core.frames.services.WorkerRegistry
-import com.minare.core.utils.debug.OperationDebugUtils
-import com.minare.core.utils.vertx.EventBusUtils
 import io.vertx.core.json.JsonObject
 import org.slf4j.LoggerFactory
 import java.util.concurrent.ConcurrentHashMap
@@ -34,7 +32,6 @@ class FrameCoordinatorState @Inject constructor(
     var sessionStartNanos: Long = 0L
         private set
 
-    private val _lastProcessedFrame = AtomicLong(-1L)
     private val _lastPreparedManifest = AtomicLong(-1L)
 
     private val operationsByFrame = ConcurrentHashMap<Long, ConcurrentLinkedQueue<JsonObject>>()
@@ -44,10 +41,6 @@ class FrameCoordinatorState @Inject constructor(
     var sessionId: String = ""
 
     private var _pauseState: PauseState = PauseState.UNPAUSED
-
-    var lastProcessedFrame: Long
-        get() = _lastProcessedFrame.get()
-        private set(value) = _lastProcessedFrame.set(value)
 
     var lastPreparedManifest: Long
         get() = _lastPreparedManifest.get()
@@ -111,7 +104,6 @@ class FrameCoordinatorState @Inject constructor(
     fun resetSessionState(sessionStartTimestamp: Long, sessionStartNanos: Long) {
         this.sessionStartTimestamp = sessionStartTimestamp
         this.sessionStartNanos = sessionStartNanos
-        _lastProcessedFrame.set(-1L)
         _lastPreparedManifest.set(-1L)
         frameProgress.set(-1L)
         currentFrameCompletions.clear()
@@ -151,18 +143,6 @@ class FrameCoordinatorState @Inject constructor(
     fun setFrameInProgress(frameNumber: Long) {
         frameProgress.set(frameNumber)
         currentFrameCompletions.clear()
-    }
-
-    /**
-     * Mark a frame as processed
-     */
-    fun markFrameProcessed(frameNumber: Long) {
-        _lastProcessedFrame.set(frameNumber)
-    }
-
-
-    fun getBufferedFrameNumbers(): List<Long> {
-        return operationsByFrame.keys.sorted()
     }
 
     /**
@@ -218,7 +198,6 @@ class FrameCoordinatorState @Inject constructor(
 
         return JsonObject()
             .put("frameInProgress", frameProgress.get())
-            .put("lastProcessedFrame", _lastProcessedFrame.get())
             .put("lastPreparedManifest", _lastPreparedManifest.get())
             .put("currentWallClockFrame", currentFrame)
             .put("sessionStartTimestamp", sessionStartTimestamp)

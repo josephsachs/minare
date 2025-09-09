@@ -2,7 +2,6 @@ package com.minare.core.frames.coordinator.services
 
 import com.hazelcast.core.HazelcastInstance
 import com.hazelcast.map.IMap
-import com.minare.core.frames.coordinator.FrameCoordinatorState
 import com.minare.core.frames.services.WorkerRegistry
 import com.minare.worker.coordinator.models.FrameManifest
 import io.vertx.core.json.JsonArray

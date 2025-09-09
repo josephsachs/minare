@@ -1,8 +1,5 @@
 package com.minare.core.frames.coordinator.services
 
-import com.minare.core.frames.coordinator.FrameCoordinatorState
-import com.minare.core.frames.coordinator.handlers.LateOperationDecision
-import com.minare.core.frames.coordinator.handlers.LateOperationHandler
 import io.vertx.core.Vertx
 import io.vertx.core.json.JsonArray
 import io.vertx.core.json.JsonObject
@@ -23,9 +20,7 @@ import javax.inject.Singleton
 @Singleton
 class MessageQueueOperationConsumer @Inject constructor(
     private val vertx: Vertx,
-    private val coordinatorState: FrameCoordinatorState,
-    private val manifestBuilder: FrameManifestBuilder,
-    private val lateOperationHandler: LateOperationHandler
+    private val operationHandler: OperationHandler
 ) {
     private val log = LoggerFactory.getLogger(MessageQueueOperationConsumer::class.java)
 
@@ -122,7 +117,7 @@ class MessageQueueOperationConsumer @Inject constructor(
 
             when (parsed) {
                 is JsonObject -> {
-                    handleOperation(parsed)
+                    operationHandler.handle(parsed)
                 }
                 is JsonArray -> {
                     // Process batch of operations
@@ -130,7 +125,7 @@ class MessageQueueOperationConsumer @Inject constructor(
                     // Consider refactoring outta here
                     for (i in 0 until parsed.size()) {
                         val operation = parsed.getJsonObject(i)
-                        handleOperation(operation)
+                        operationHandler.handle(operation)
                     }
                 }
             }
@@ -152,49 +147,5 @@ class MessageQueueOperationConsumer @Inject constructor(
         log.info("Resumed Kafka consumption after backpressure release")
     }
 
-    /**
-     * Process a single operation, checking buffer limits and routing to frames.
-     * Updated to properly enforce frame-based buffer limits.
-     *
-     * Note: This method does not control Kafka commits. We always commit to avoid
-     * duplicate operations. Atomicity and idempotency must be handled at the operation level.
-     *
-     * @return true if processing should continue, false if backpressure was activated
-     */
-    private fun handleOperation(operation: JsonObject): Boolean {
-        val timestamp = operation.getLong("timestamp") ?: run {
-            log.error("Operation missing timestamp: {}", operation.encode())
-            return false
-        }
 
-        val logicalFrame = coordinatorState.getLogicalFrame(timestamp)
-        val frameInProgress = coordinatorState.frameInProgress
-
-        if (logicalFrame <= frameInProgress) {
-            val decision = lateOperationHandler.handleLateOperation(operation, logicalFrame, frameInProgress)
-
-            when (decision) {
-                is LateOperationDecision.Drop -> {
-                    // Drop operation
-                }
-                is LateOperationDecision.Delay -> {
-                    if (decision.targetFrame <= coordinatorState.lastPreparedManifest) {
-                        manifestBuilder.assignToExistingManifest(operation, decision.targetFrame)
-                    } else {
-                        coordinatorState.bufferOperation(operation, decision.targetFrame)
-                    }
-                }
-            }
-
-            return true
-        }
-
-        if (logicalFrame <= coordinatorState.lastPreparedManifest) {
-            manifestBuilder.assignToExistingManifest(operation, logicalFrame)
-        } else {
-            coordinatorState.bufferOperation(operation, logicalFrame)
-        }
-
-        return true
-    }
 }
