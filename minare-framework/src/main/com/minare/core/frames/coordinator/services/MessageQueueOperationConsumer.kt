@@ -1,11 +1,8 @@
 package com.minare.core.frames.coordinator.services
 
-import com.hazelcast.core.HazelcastInstance
 import com.minare.core.frames.coordinator.FrameCoordinatorState
 import com.minare.core.frames.coordinator.handlers.LateOperationDecision
 import com.minare.core.frames.coordinator.handlers.LateOperationHandler
-import com.minare.core.frames.services.WorkerRegistry
-import com.minare.worker.coordinator.models.FrameManifest
 import io.vertx.core.Vertx
 import io.vertx.core.json.JsonArray
 import io.vertx.core.json.JsonObject
@@ -15,7 +12,6 @@ import kotlinx.coroutines.CoroutineScope
 import org.slf4j.LoggerFactory
 import javax.inject.Inject
 import javax.inject.Singleton
-import kotlin.math.max
 
 /**
  * Handles Kafka consumption for the frame coordinator.
@@ -28,9 +24,8 @@ import kotlin.math.max
 class MessageQueueOperationConsumer @Inject constructor(
     private val vertx: Vertx,
     private val coordinatorState: FrameCoordinatorState,
-    private val lateOperationHandler: LateOperationHandler,
-    private val hazelcastInstance: HazelcastInstance,
-    private val workerRegistry: WorkerRegistry
+    private val manifestBuilder: FrameManifestBuilder,
+    private val lateOperationHandler: LateOperationHandler
 ) {
     private val log = LoggerFactory.getLogger(MessageQueueOperationConsumer::class.java)
 
@@ -39,10 +34,6 @@ class MessageQueueOperationConsumer @Inject constructor(
 
     companion object {
         const val OPERATIONS_TOPIC = "minare.operations"
-
-        // Buffer limits - operations count, not frame count
-        const val MAX_BUFFER_SIZE = 10000  // Maximum operations to buffer
-        const val BUFFER_WARNING_THRESHOLD = 8000  // Warn when approaching limit
     }
 
     /**
@@ -129,10 +120,9 @@ class MessageQueueOperationConsumer @Inject constructor(
                 }
             }
 
-            // TODO: Improve how backpressure status is handled here, this is scattered logic antipattern
             when (parsed) {
                 is JsonObject -> {
-                    processOperation(parsed)
+                    handleOperation(parsed)
                 }
                 is JsonArray -> {
                     // Process batch of operations
@@ -140,7 +130,7 @@ class MessageQueueOperationConsumer @Inject constructor(
                     // Consider refactoring outta here
                     for (i in 0 until parsed.size()) {
                         val operation = parsed.getJsonObject(i)
-                        processOperation(operation)
+                        handleOperation(operation)
                     }
                 }
             }
@@ -171,22 +161,12 @@ class MessageQueueOperationConsumer @Inject constructor(
      *
      * @return true if processing should continue, false if backpressure was activated
      */
-    private fun processOperation(operation: JsonObject): Boolean {
+    private fun handleOperation(operation: JsonObject): Boolean {
         val timestamp = operation.getLong("timestamp") ?: run {
             log.error("Operation missing timestamp: {}", operation.encode())
-            return true
+            return false
         }
 
-        // Always route to frame handler, even without session
-        handleSessionOperation(operation, timestamp)
-        return true
-    }
-
-    /**
-     * Handle operations during an active session.
-     * Routes to appropriate frame based on timestamp.
-     */
-    private fun handleSessionOperation(operation: JsonObject, timestamp: Long) {
         val logicalFrame = coordinatorState.getLogicalFrame(timestamp)
         val frameInProgress = coordinatorState.frameInProgress
 
@@ -194,74 +174,27 @@ class MessageQueueOperationConsumer @Inject constructor(
             val decision = lateOperationHandler.handleLateOperation(operation, logicalFrame, frameInProgress)
 
             when (decision) {
-                is LateOperationDecision.Drop -> return
+                is LateOperationDecision.Drop -> {
+                    // Drop operation
+                }
                 is LateOperationDecision.Delay -> {
                     if (decision.targetFrame <= coordinatorState.lastPreparedManifest) {
-                        assignToExistingManifest(operation, decision.targetFrame)
+                        manifestBuilder.assignToExistingManifest(operation, decision.targetFrame)
                     } else {
                         coordinatorState.bufferOperation(operation, decision.targetFrame)
                     }
                 }
             }
 
-            return
+            return true
         }
 
         if (logicalFrame <= coordinatorState.lastPreparedManifest) {
-            assignToExistingManifest(operation, logicalFrame)
-            return
+            manifestBuilder.assignToExistingManifest(operation, logicalFrame)
+        } else {
+            coordinatorState.bufferOperation(operation, logicalFrame)
         }
 
-        // Buffer the operation to its target frame
-        coordinatorState.bufferOperation(operation, logicalFrame)
-    }
-
-    /**
-     * Handle assignment of operations to prior manifests, ex. if they belong in a logical frame
-     * we have already prepared but not begun processing
-     */
-    private fun assignToExistingManifest(operation: JsonObject, frame: Long) {
-        try {
-            val manifestMap = hazelcastInstance.getMap<String, JsonObject>("frame-manifests")
-            val activeWorkers = workerRegistry.getActiveWorkers()
-
-            val operationId = operation.getString("id")
-            val workerIndex = Math.abs(operationId.hashCode()) % activeWorkers.size
-            val workerId = activeWorkers.toList()[workerIndex]
-            val manifestKey = FrameManifest.makeKey(frame, workerId) // Note: targetFrame!
-
-            val manifestJson = manifestMap[manifestKey]
-
-            if (manifestJson != null) {
-                val manifest = FrameManifest.fromJson(manifestJson)
-                val operations = manifest.operations.toMutableList()
-                operations.add(operation)
-                operations.sortBy { it.getString("id") }
-
-                val updatedManifest = FrameManifest(
-                    workerId = manifest.workerId,
-                    logicalFrame = manifest.logicalFrame,
-                    createdAt = manifest.createdAt,
-                    operations = operations
-                )
-
-                manifestMap[manifestKey] = updatedManifest.toJson()
-            }
-        } catch (e: Exception) {
-            log.error("Buffered operation assignment: Error updating manifest", e)
-        }
-    }
-
-    /**
-     * Get current metrics for monitoring
-     */
-    fun getMetrics(): JsonObject {
-        val isActive = messageQueueConsumer != null
-
-        return JsonObject()
-            .put("topic", OPERATIONS_TOPIC)
-            .put("consumerActive", isActive)
-            .put("bufferWarningThreshold", BUFFER_WARNING_THRESHOLD)
-            .put("maxBufferSize", MAX_BUFFER_SIZE)
+        return true
     }
 }

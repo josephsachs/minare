@@ -3,6 +3,8 @@ package com.minare.core.frames.coordinator.services
 import com.hazelcast.core.HazelcastInstance
 import com.hazelcast.map.IMap
 import com.minare.core.frames.coordinator.FrameCoordinatorState
+import com.minare.core.frames.services.WorkerRegistry
+import com.minare.worker.coordinator.models.FrameManifest
 import io.vertx.core.json.JsonArray
 import io.vertx.core.json.JsonObject
 import org.slf4j.LoggerFactory
@@ -17,7 +19,8 @@ import kotlin.math.abs
  */
 @Singleton
 class FrameManifestBuilder @Inject constructor(
-    private val hazelcastInstance: HazelcastInstance
+    private val hazelcastInstance: HazelcastInstance,
+    private val workerRegistry: WorkerRegistry
 ) {
     private val log = LoggerFactory.getLogger(FrameManifestBuilder::class.java)
 
@@ -37,10 +40,7 @@ class FrameManifestBuilder @Inject constructor(
         operations: List<JsonObject>,
         workers: Set<String>
     ): Map<String, List<JsonObject>> {
-        if (workers.isEmpty()) {
-            log.debug("No workers available for operation distribution")
-            return emptyMap()
-        }
+        if (workers.isEmpty()) return emptyMap()
 
         // Sort workers for consistent hashing
         val workerList = workers.toList().sorted()
@@ -93,6 +93,43 @@ class FrameManifestBuilder @Inject constructor(
 
         log.debug("Created manifests for logical frame {} with {} total operations distributed to {} workers",
             logicalFrame, assignments.values.sumOf { it.size }, activeWorkers.size)
+    }
+
+
+    /**
+     * Handle assignment of operations to prior manifests, ex. if they belong in a logical frame
+     * we have already prepared but not begun processing
+     */
+    fun assignToExistingManifest(operation: JsonObject, frame: Long) {
+        try {
+            val manifestMap = hazelcastInstance.getMap<String, JsonObject>("frame-manifests")
+            val activeWorkers = workerRegistry.getActiveWorkers()
+
+            val operationId = operation.getString("id")
+            val workerIndex = Math.abs(operationId.hashCode()) % activeWorkers.size
+            val workerId = activeWorkers.toList()[workerIndex]
+            val manifestKey = FrameManifest.makeKey(frame, workerId) // Note: targetFrame!
+
+            val manifestJson = manifestMap[manifestKey]
+
+            if (manifestJson != null) {
+                val manifest = FrameManifest.fromJson(manifestJson)
+                val operations = manifest.operations.toMutableList()
+                operations.add(operation)
+                operations.sortBy { it.getString("id") }
+
+                val updatedManifest = FrameManifest(
+                    workerId = manifest.workerId,
+                    logicalFrame = manifest.logicalFrame,
+                    createdAt = manifest.createdAt,
+                    operations = operations
+                )
+
+                manifestMap[manifestKey] = updatedManifest.toJson()
+            }
+        } catch (e: Exception) {
+            log.error("Buffered operation assignment: Error updating manifest", e)
+        }
     }
 
     /**
