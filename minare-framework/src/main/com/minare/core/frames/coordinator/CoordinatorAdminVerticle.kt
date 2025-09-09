@@ -29,7 +29,6 @@ class CoordinatorAdminVerticle @Inject constructor(
     private val vlog: VerticleLogger,
     private val workerRegistry: WorkerRegistry,
     private val frameCoordinatorState: FrameCoordinatorState,
-    private val messageQueueOperationConsumer: MessageQueueOperationConsumer,
     private val frameCalculator: FrameCalculatorService
 ) : CoroutineVerticle() {
 
@@ -66,7 +65,6 @@ class CoordinatorAdminVerticle @Inject constructor(
         router.get("/status").handler { ctx ->
             val workerCounts = workerRegistry.getWorkerCountByStatus()
             val frameStatus = frameCoordinatorState.getCurrentFrameStatus()
-            val consumerMetrics = messageQueueOperationConsumer.getMetrics()
 
             val status = JsonObject()
                 .put("coordinator", JsonObject()
@@ -81,8 +79,7 @@ class CoordinatorAdminVerticle @Inject constructor(
                     .put("ready", workerRegistry.getActiveWorkers().size == workerRegistry.getExpectedWorkerCount()))
                 .put("buffer", JsonObject()
                     .put("totalOperations", frameCoordinatorState.getTotalBufferedOperations())
-                    .put("frameDistribution", frameCoordinatorState.getBufferedOperationCounts())
-                .put("consumer", consumerMetrics))
+                    .put("frameDistribution", frameCoordinatorState.getBufferedOperationCounts()))
 
             ctx.response()
                 .putHeader("content-type", "application/json")
@@ -122,14 +119,12 @@ class CoordinatorAdminVerticle @Inject constructor(
         router.get("/frames").handler { ctx ->
             val currentFrame = frameCoordinatorState.getCurrentLogicalFrame()
             val frameInProgress = frameCoordinatorState.frameInProgress
-            val lastProcessed = frameCoordinatorState.lastProcessedFrame
             val lastPrepared = frameCoordinatorState.lastPreparedManifest
 
             val frameStatus = JsonObject()
                 .put("running", frameCoordinatorState.isFrameLoopRunning())
                 .put("currentWallClockFrame", currentFrame)
                 .put("frameInProgress", frameInProgress)
-                .put("lastProcessedFrame", lastProcessed)
                 .put("lastPreparedManifest", lastPrepared)
                 .put("sessionStartTimestamp", frameCoordinatorState.sessionStartTimestamp)
                 .put("bufferedOperations", frameCoordinatorState.getBufferedOperationCounts())

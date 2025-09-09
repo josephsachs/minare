@@ -119,7 +119,7 @@ export class GridVisualizer {
       nodeElement.innerHTML = `
         <div class="node-label">${node.state?.label || 'Unnamed Node'}</div>
         <div class="node-content">
-          <div>ID: ${node.id}</div>
+          <div style="font-size: 10px">ID: ${node.id}</div>
           <div>Version: ${node.version}</div>
           <div>Color: ${color}</div>
         </div>

@@ -7,6 +7,7 @@ import com.minare.core.utils.vertx.EventBusUtils
 import com.minare.core.utils.vertx.VerticleLogger
 import com.minare.core.frames.coordinator.services.FrameCompletionTracker
 import com.minare.core.frames.services.WorkerRegistry
+import com.minare.exceptions.FrameLoopException
 import io.vertx.core.json.JsonObject
 
 /**
@@ -57,6 +58,19 @@ class WorkerFrameCompleteEvent @Inject constructor(
                     ),
                     traceId
                 )
+
+                if (coordinatorState.frameInProgress == coordinatorState.lastPreparedManifest)  {
+                    eventBusUtils.publishWithTracing(
+                        FrameCoordinatorVerticle.ADDRESS_FRAME_MANIFESTS_ALL_COMPLETE,
+                        JsonObject(),
+                        traceId
+                    )
+                }
+
+                // TODO: Move this to error detection
+                if (coordinatorState.frameInProgress > coordinatorState.lastPreparedManifest) {
+                    throw FrameLoopException("Frame in progress is ahead of last prepared manifest")
+                }
 
                 eventBusUtils.sendWithTracing(
                     FrameCoordinatorVerticle.ADDRESS_FRAME_ALL_COMPLETE,
