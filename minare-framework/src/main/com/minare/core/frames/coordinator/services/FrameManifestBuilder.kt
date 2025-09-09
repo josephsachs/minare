@@ -17,10 +17,7 @@ import kotlin.math.abs
  */
 @Singleton
 class FrameManifestBuilder @Inject constructor(
-    private val hazelcastInstance: HazelcastInstance,
-
-    // TEMPORARY DEBUG
-    private val frameCoordinatorState: FrameCoordinatorState
+    private val hazelcastInstance: HazelcastInstance
 ) {
     private val log = LoggerFactory.getLogger(FrameManifestBuilder::class.java)
 
@@ -89,13 +86,6 @@ class FrameManifestBuilder @Inject constructor(
 
             val key = "manifest:$logicalFrame:$workerId"
             manifestMap[key] = manifest
-
-            // TEMPORARY DEBUG
-            if (sortedOperations.isNotEmpty()) {
-                log.info("OPERATION_FLOW: Last prepared manifest: ${frameCoordinatorState.lastPreparedManifest} - " +
-                        "Frame-in-progress: ${frameCoordinatorState.frameInProgress} - " +
-                        "Currently written frame ${logicalFrame}")
-            }
 
             log.debug("Wrote manifest for worker {} with {} operations for logical frame {}",
                 workerId, sortedOperations.size, logicalFrame)

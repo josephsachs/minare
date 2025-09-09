@@ -22,9 +22,7 @@ import javax.inject.Singleton
 class FrameCoordinatorState @Inject constructor(
     private val workerRegistry: WorkerRegistry,
     private val frameCalculator: FrameCalculatorService,
-    private val hazelcastInstance: HazelcastInstance,
-    private val eventBusUtils: EventBusUtils,
-    private val operationDebugUtils: OperationDebugUtils
+    private val hazelcastInstance: HazelcastInstance
 ) {
     private val log = LoggerFactory.getLogger(FrameCoordinatorState::class.java)
 
@@ -128,10 +126,6 @@ class FrameCoordinatorState @Inject constructor(
     fun bufferOperation(operation: JsonObject, logicalFrame: Long) {
         val queue = operationsByFrame.computeIfAbsent(logicalFrame) { ConcurrentLinkedQueue() }
         queue.offer(operation)
-
-        // TEMPORARY DEBUG
-        operationDebugUtils.logOperation(operation, "Buffered in frame $logicalFrame")
-        log.info("BUFFER_QUEUE for ${operation.getString("id")} ${logicalFrame} -- Current queue: ${queue.toList()}")
     }
 
     /**

@@ -59,9 +59,6 @@ class WorkerFrameCompleteEvent @Inject constructor(
                     traceId
                 )
 
-                // 09-08-25 This maybe resulting in future manifests hanging around after session transitions
-                // We MIGHT instead need to directly check whether any manifests exist anymnore to ensure
-                // all distributed operations drain before proceeding
                 if (coordinatorState.frameInProgress == coordinatorState.lastPreparedManifest)  {
                     eventBusUtils.publishWithTracing(
                         FrameCoordinatorVerticle.ADDRESS_FRAME_MANIFESTS_ALL_COMPLETE,

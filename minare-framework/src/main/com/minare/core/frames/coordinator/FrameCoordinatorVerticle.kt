@@ -117,13 +117,8 @@ class FrameCoordinatorVerticle @Inject constructor(
                 coordinatorState.initializeFrameProgress()
                 coordinatorState.setFrameInProgress(0)
 
-                prepareManifestForFrame(0) // 09-08-25 extractBufferedOperations doesn't do anything
-                                                      // since we've already done it, but hardcoding the value to frame 0
-                                                      // is damn suspicious considering the exact shape of the issue
+                prepareManifestForFrame(0)
                 assignBufferedOperations(operationsByOldFrame)
-
-                // TEMPORARY DEBUG
-                log.info("ASSIGN_BUFFERED ${coordinatorState.getBufferedOperationCounts()}")
 
                 eventBusUtils.publishWithTracing(
                     ADDRESS_SESSION_MANIFESTS_PREPARED,
@@ -180,47 +175,31 @@ class FrameCoordinatorVerticle @Inject constructor(
         // Not sure we should be doing this here
         var newFrame = 0L
 
-        // TEMPORARY DEBUG
-        log.info("ASSIGN_BUFFERED ${operationsByOldFrame.keys}")
-
         operationsByOldFrame.forEach { (_, operations) ->
             operations.forEach { op ->
                 val timestamp = op.getLong("timestamp")
                 val calculatedFrame = coordinatorState.getLogicalFrame(timestamp)
 
-                // 09-08-25 The way this got solved may be related to the "bunching" problem
                 if (calculatedFrame < 0) {
+                    // If the calculated frame is negative, then it was in flight during a session transition
+                    // and is treated as a late operation
                     val decision = lateOperationHandler.handleLateOperation(op, calculatedFrame, 0)
-
                     when (decision) {
                         is LateOperationDecision.Drop -> {
                             // Skip this operation
                         }
                         is LateOperationDecision.Delay -> {
-
-                            // TEMPORARY DEBUG
-                            operationDebugUtils.logOperation(op, "ASSIGN_BUFFERED DELAYED")
                             coordinatorState.bufferOperation(op, decision.targetFrame)
                         }
                     }
                 } else {
-
-                    // TEMPORARY DEBUG
-                    operationDebugUtils.logOperation(op, "ASSIGN_BUFFERED NORMAL")
                     coordinatorState.bufferOperation(op, calculatedFrame)
                 }
-            }
-
-            // TEMPORARY DEBUG
-            if (operations.isNotEmpty()) {
-                log.debug("Renumbered {} operations from old frame to new frame {}",
-                    operations.size, newFrame)
             }
 
             newFrame++
         }
 
-        // Prepare manifests for all frames we have operations for
         val framesToPrepare = newFrame
         for (frame in 0 until framesToPrepare) {
             prepareManifestForFrame(frame)
@@ -242,9 +221,6 @@ class FrameCoordinatorVerticle @Inject constructor(
         oldFrameNumbers.forEach { oldFrame ->
             operationsByOldFrame[oldFrame] = coordinatorState.extractFrameOperations(oldFrame)
         }
-
-        // TEMPORARY DEBUG
-        log.info("OPERATION_FLOW Extracting from buffer: ${operationsByOldFrame}")
 
         return operationsByOldFrame
     }
@@ -363,7 +339,7 @@ class FrameCoordinatorVerticle @Inject constructor(
         val lastPrepared = coordinatorState.lastPreparedManifest
 
         val wallClockFrame = frameCalculator.getCurrentLogicalFrame(coordinatorState.sessionStartNanos)
-        val neededFrame = coordinatorState.frameInProgress + 1  // 09-08-25 - This SEEMS to be problematic at session boundaries
+        val neededFrame = coordinatorState.frameInProgress + 1
 
         val targetFrame = max(
             wallClockFrame + frameConfig.normalOperationLookahead,

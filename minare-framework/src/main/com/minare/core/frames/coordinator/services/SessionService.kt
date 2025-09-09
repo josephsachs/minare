@@ -22,7 +22,6 @@ import java.util.*
 @Singleton
 class SessionService @Inject constructor(
     private val frameConfig: FrameConfiguration,
-    private val frameCalculator: FrameCalculatorService,
     private val coordinatorState: FrameCoordinatorState,
     private val workerRegistry: WorkerRegistry,
     private val frameManifestBuilder: FrameManifestBuilder,
