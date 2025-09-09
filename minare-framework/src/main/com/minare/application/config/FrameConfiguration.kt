@@ -29,16 +29,7 @@ open class FrameConfiguration {    /**
      * Trade-off: More frequent = faster recovery but more frequent pauses
      */
     val autoSession: AutoSession = AutoSession.FRAMES_PER_SESSION
-    val framesPerSession: Long = 1000
-
-    /**
-     * Offset from announcement to actual frame start.
-     * Gives workers time to prepare after frame announcement.
-     *
-     * Default: 2000ms
-     * Should be > network latency + worker prep time
-     */
-    val frameOffsetMs: Long = 2000
+    val framesPerSession: Long = 100
 
     /**
      * How many frames ahead to prepare during normal operation.

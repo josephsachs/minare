@@ -60,16 +60,16 @@ class WorkerFrameCompleteEvent @Inject constructor(
                 )
 
                 if (coordinatorState.frameInProgress == coordinatorState.lastPreparedManifest)  {
-                    eventBusUtils.sendWithTracing(
+                    eventBusUtils.publishWithTracing(
                         FrameCoordinatorVerticle.ADDRESS_FRAME_MANIFESTS_ALL_COMPLETE,
                         JsonObject(),
                         traceId
                     )
                 }
 
-                // Move this to error detection service
+                // TODO: Move this to error detection
                 if (coordinatorState.frameInProgress > coordinatorState.lastPreparedManifest) {
-                    throw FrameLoopException("Frame in progress is ahead of lastPreparedManifest")
+                    throw FrameLoopException("Frame in progress is ahead of last prepared manifest")
                 }
 
                 eventBusUtils.sendWithTracing(

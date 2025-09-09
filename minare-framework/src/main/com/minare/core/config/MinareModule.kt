@@ -20,6 +20,7 @@ import com.minare.core.transport.downsocket.pubsub.PerChannelPubSubStrategy
 import com.minare.core.transport.CleanupVerticle
 import com.minare.core.operation.MutationVerticle
 import com.minare.core.factories.MinareVerticleFactory
+import com.minare.core.frames.coordinator.handlers.DelayLateOperation
 import com.minare.core.transport.downsocket.RedisPubSubWorkerVerticle
 import com.minare.core.frames.services.WorkerRegistryMap
 import com.minare.core.frames.services.HazelcastWorkerRegistryMap
@@ -39,7 +40,6 @@ import javax.inject.Named
 import com.minare.core.transport.downsocket.pubsub.UpdateBatchCoordinator
 import com.minare.time.DockerTimeService
 import com.minare.time.TimeService
-import com.minare.core.frames.coordinator.handlers.DelayLateOperations
 import com.minare.core.frames.coordinator.handlers.LateOperationHandler
 import com.minare.worker.upsocket.CommandMessageHandler
 import kotlin.coroutines.CoroutineContext
@@ -79,7 +79,7 @@ class MinareModule : AbstractModule(), DatabaseNameProvider {
 
         // Overridable services
         bind(PubSubChannelStrategy::class.java).to(PerChannelPubSubStrategy::class.java).`in`(Singleton::class.java)
-        bind(LateOperationHandler::class.java).to(DelayLateOperations::class.java)
+        bind(LateOperationHandler::class.java).to(DelayLateOperation::class.java)
 
         // Providers
         bind(AppState::class.java).toProvider(AppStateProvider::class.java).`in`(Singleton::class.java)

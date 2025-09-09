@@ -22,7 +22,6 @@ import java.util.*
 @Singleton
 class SessionService @Inject constructor(
     private val frameConfig: FrameConfiguration,
-    private val frameCalculator: FrameCalculatorService,
     private val coordinatorState: FrameCoordinatorState,
     private val workerRegistry: WorkerRegistry,
     private val frameManifestBuilder: FrameManifestBuilder,
@@ -80,8 +79,8 @@ class SessionService @Inject constructor(
         log.info("Initializing new session with ID $sessionId")
 
         val announcementTime = System.currentTimeMillis()
-        val sessionStartTime = announcementTime + frameConfig.frameOffsetMs
-        val sessionStartNanos = System.nanoTime() + frameCalculator.msToNanos(frameConfig.frameOffsetMs)
+        val sessionStartTime = announcementTime
+        val sessionStartNanos = System.nanoTime()
 
         clearPreviousSessionState()
 
@@ -131,7 +130,6 @@ class SessionService @Inject constructor(
                 .put("sessionStartTimestamp", sessionStartTime)
                 .put("announcementTimestamp", announcementTime)
                 .put("frameDuration", frameConfig.frameDurationMs)
-                .put("frameOffset", frameConfig.frameOffsetMs)
                 .put("workerCount", activeWorkers.size)
                 .put("workerIds", JsonArray(activeWorkers.toList()))
                 .put("coordinatorInstance", "coordinator-${System.currentTimeMillis()}") // TODO: Use a more stable ID
@@ -152,7 +150,6 @@ class SessionService @Inject constructor(
             .put("sessionId", sessionId)
             .put("sessionStartTimestamp", sessionStartTime)
             .put("announcementTimestamp", announcementTime)
-            .put("firstFrameStartsIn", frameConfig.frameOffsetMs)
             .put("frameDuration", frameConfig.frameDurationMs)
 
         eventBusUtils.publishWithTracing(
@@ -160,7 +157,7 @@ class SessionService @Inject constructor(
             announcement
         )
 
-        log.info("Announced new session $sessionId starting at {} (in {}ms) with {} workers",
-            sessionStartTime, frameConfig.frameOffsetMs, workerRegistry.getActiveWorkers().size)
+        log.info("Announced new session $sessionId starting at {} with {} workers",
+            sessionStartTime, workerRegistry.getActiveWorkers().size)
     }
 }
