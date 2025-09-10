@@ -4,6 +4,7 @@ import com.minare.application.config.FrameConfiguration
 import com.minare.core.frames.coordinator.FrameCoordinatorState.Companion.PauseState
 import com.minare.core.frames.coordinator.services.*
 import com.minare.core.frames.coordinator.services.SessionService.Companion.ADDRESS_SESSION_INITIALIZED
+import com.minare.core.frames.events.WorkerStateSnapshotCompleteEvent
 import com.minare.core.frames.services.WorkerRegistry
 import com.minare.core.utils.vertx.EventBusUtils
 import com.minare.core.utils.vertx.EventWaiter
@@ -45,7 +46,8 @@ class FrameCoordinatorVerticle @Inject constructor(
     private val workerHeartbeatEvent: WorkerHeartbeatEvent,
     private val workerRegisterEvent: WorkerRegisterEvent,
     private val workerReadinessEvent: WorkerReadinessEvent,
-    private val workerHealthChangeEvent: WorkerHealthChangeEvent
+    private val workerHealthChangeEvent: WorkerHealthChangeEvent,
+    private val workerStateSnapshotCompleteEvent: WorkerStateSnapshotCompleteEvent
 ) : CoroutineVerticle() {
 
     private val log = LoggerFactory.getLogger(FrameCoordinatorVerticle::class.java)
@@ -88,6 +90,7 @@ class FrameCoordinatorVerticle @Inject constructor(
             workerRegisterEvent.register()
             workerReadinessEvent.register()
             workerHealthChangeEvent.register()
+            workerStateSnapshotCompleteEvent.register()
         }
 
         // All workers complete a frame
@@ -178,9 +181,7 @@ class FrameCoordinatorVerticle @Inject constructor(
             return
         }
 
-        val framesToPrepare = getPendingFrames()
-
-        for (frame in framesToPrepare) {
+        for (frame in getPendingFrames()) {
             prepareManifestForFrame(frame)
         }
     }

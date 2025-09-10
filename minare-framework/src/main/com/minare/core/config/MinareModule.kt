@@ -68,6 +68,7 @@ class MinareModule : AbstractModule(), DatabaseNameProvider {
         bind(ChannelStore::class.java).to(MongoChannelStore::class.java).`in`(Singleton::class.java)
         bind(ContextStore::class.java).to(MongoContextStore::class.java).`in`(Singleton::class.java)
         bind(DeltaStore::class.java).to(RedisDeltaStore::class.java).`in`(Singleton::class.java)
+        bind(SnapshotStore::class.java).to(MongoSnapshotStore::class.java).`in`(Singleton::class.java)
 
         bind(TimeService::class.java).to(DockerTimeService::class.java).`in`(Singleton::class.java)
         bind(MutationService::class.java).`in`(Singleton::class.java)

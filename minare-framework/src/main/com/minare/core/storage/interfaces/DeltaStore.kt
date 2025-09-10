@@ -4,7 +4,7 @@ import com.minare.core.frames.models.FrameDelta
 
 /**
  * Interface for delta storage operations.
- * Handles frame-by-frame delta persistence for replay and recovery.
+ * Handles frame-by-frame delta persistence for replay and snapshots.
  */
 interface DeltaStore {
     /**
