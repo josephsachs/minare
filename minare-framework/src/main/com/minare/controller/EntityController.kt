@@ -43,15 +43,20 @@ open class EntityController @Inject constructor(
 
         log.debug("Creating new entity of type {}", entity.type)
 
-        //  Save to MongoDB to get ID assigned
-        val entityWithId = entityStore.save(entity)
-        log.debug("Entity created in MongoDB with ID: {}", entityWithId._id)
+        try {
+            //  Save to MongoDB to get ID assigned
+            val entityWithId = entityStore.save(entity)
+            log.debug("Entity created in MongoDB with ID: {}", entityWithId._id)
 
-        // Redis is source of truth for Entity state
-        val finalEntity = stateStore.save(entityWithId)
-        log.debug("Entity {} synced to Redis", finalEntity._id)
+            // Redis is source of truth for Entity state
+            val finalEntity = stateStore.save(entityWithId)
+            log.debug("Entity {} synced to Redis", finalEntity._id)
 
-        return finalEntity
+            return finalEntity
+        } catch (e: Exception) {
+            log.error("EntityController failed to write with ${e}")
+            throw e
+        }
     }
 
     /**

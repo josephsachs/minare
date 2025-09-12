@@ -1,0 +1,3 @@
+#!/bin/bash
+
+docker exec -it mongodb mongosh --quiet --eval "var allSnapshots = []; db.getSiblingDB('minare_example').getCollectionNames().filter(c => c.startsWith('snapshot_')).forEach(c => { var meta = db.getSiblingDB('minare_example')[c].findOne({_id: 'metadata'}); if(meta) { allSnapshots.push({collection: c, createdAt: meta.createdAt.toNumber()}); } }); allSnapshots.sort((a,b) => a.createdAt - b.createdAt).forEach(s => { print('\\n=== ' + s.collection + ' (' + new Date(s.createdAt) + ') ==='); db.getSiblingDB('minare_example')[s.collection].find().forEach(printjson); });"

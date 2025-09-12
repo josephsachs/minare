@@ -1,6 +1,7 @@
 package com.minare.core.storage.interfaces
 
 import com.minare.core.frames.models.FrameDelta
+import io.vertx.core.json.JsonArray
 import io.vertx.core.json.JsonObject
 
 /**
@@ -19,14 +20,14 @@ interface SnapshotStore {
      * @param sessionId The ID of the session to store in
      * @param deltas A set of FrameDelta to store
      */
-    suspend fun storeDeltas(sessionId: String, deltas: List<FrameDelta>)
+    suspend fun storeDeltas(sessionId: String, deltas: JsonObject)
 
     /**
      * Store entity state from a worker
      * @param sessionId The ID of the session to store in
      * @param entities List of JsonObjects
      */
-    suspend fun storeState(sessionId: String, entities: List<JsonObject>)
+    suspend fun storeState(sessionId: String, entities: JsonArray)
 
     /**
      * Check if a snapshot exists for a session

@@ -36,11 +36,13 @@ class FrameCoordinatorState @Inject constructor(
 
     private val operationsByFrame = ConcurrentHashMap<Long, ConcurrentLinkedQueue<JsonObject>>()
     private val currentFrameCompletions = ConcurrentHashMap<String, Long>()
+    private val snapshotEntityPartitions = ConcurrentHashMap<String, List<String>>()
+
     private val frameProgress: IAtomicLong = hazelcastInstance.getCPSubsystem().getAtomicLong("frame-progress")
 
     var sessionId: String = ""
 
-    private var _pauseState: PauseState = PauseState.UNPAUSED
+    private var _pauseState: PauseState = PauseState.SOFT // Startup in SOFT pause until session
 
     var lastPreparedManifest: Long
         get() = _lastPreparedManifest.get()
@@ -219,5 +221,28 @@ class FrameCoordinatorState @Inject constructor(
      */
     fun clearAllBufferedOperations() {
         operationsByFrame.clear()
+    }
+
+    /**
+     * Store a map of workerId and entityIds
+     */
+    fun assignEntityPartitions(partitions: Map<String, List<String>>) {
+        partitions.forEach { (workerId, entityIds) ->
+            snapshotEntityPartitions.set(workerId, entityIds)
+        }
+    }
+
+    /**
+     *
+     */
+    fun getEntityPartition(workerId: String): List<String> {
+        return snapshotEntityPartitions.get(workerId) ?: emptyList()
+    }
+
+    /**
+     * Clear all entity partition assignments
+     */
+    fun clearEntityPartitions() {
+        snapshotEntityPartitions.clear()
     }
 }

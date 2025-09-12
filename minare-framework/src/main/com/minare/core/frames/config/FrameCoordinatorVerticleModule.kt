@@ -56,13 +56,4 @@ class FrameCoordinatorVerticleModule : PrivateModule() {
     fun provideCoroutineScope(coroutineContext: CoroutineContext): CoroutineScope {
         return CoroutineScope(coroutineContext)
     }
-
-    /**
-     * Provides EventBusUtils for FrameCoordinatorVerticle
-     */
-    @Provides
-    @Singleton
-    fun provideEventBusUtils(vertx: Vertx, coroutineContext: CoroutineContext): EventBusUtils {
-        return EventBusUtils(vertx, coroutineContext, "FrameCoordinatorVerticle")
-    }
 }

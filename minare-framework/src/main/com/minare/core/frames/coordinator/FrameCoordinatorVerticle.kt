@@ -5,6 +5,8 @@ import com.minare.core.frames.coordinator.FrameCoordinatorState.Companion.PauseS
 import com.minare.core.frames.coordinator.services.*
 import com.minare.core.frames.coordinator.services.SessionService.Companion.ADDRESS_SESSION_INITIALIZED
 import com.minare.core.frames.events.WorkerStateSnapshotCompleteEvent
+import com.minare.core.frames.services.SnapshotService
+import com.minare.core.frames.services.SnapshotService.Companion.ADDRESS_SNAPSHOT_COMPLETE
 import com.minare.core.frames.services.WorkerRegistry
 import com.minare.core.utils.vertx.EventBusUtils
 import com.minare.core.utils.vertx.EventWaiter
@@ -40,6 +42,7 @@ class FrameCoordinatorVerticle @Inject constructor(
     private val frameCompletionTracker: FrameCompletionTracker,
     private val startupService: StartupService,
     private val sessionService: SessionService,
+    private val snapshotService: SnapshotService,
     private val infraAddWorkerEvent: InfraAddWorkerEvent,
     private val infraRemoveWorkerEvent: InfraRemoveWorkerEvent,
     private val workerFrameCompleteEvent: WorkerFrameCompleteEvent,
@@ -72,12 +75,12 @@ class FrameCoordinatorVerticle @Inject constructor(
 
         startupService.checkInitialWorkerStatus()
 
-        launch {
+        //launch {
             log.info("Waiting for all workers to be ready...")
             startupService.awaitAllWorkersReady()
             log.info("All workers ready, starting session")
             startupSession()
-        }
+        //}
     }
 
     private fun setupEventBusConsumers() {
@@ -159,6 +162,8 @@ class FrameCoordinatorVerticle @Inject constructor(
     private suspend fun startupSession() {
         // SessionService takes over setup, returning control to
         // ADDRESS_PREPARE_SESSION_MANIFESTS before concluding
+        coordinatorState.pauseState = PauseState.SOFT
+
         sessionService.initializeSession()
 
         val eventMessage = eventWaiter.waitForEvent(ADDRESS_SESSION_INITIALIZED)
@@ -248,7 +253,9 @@ class FrameCoordinatorVerticle @Inject constructor(
             preparePendingManifests()
 
             if (sessionService.needAutoSession()) {
-                launch { doAutoSession() }
+                launch {
+                    doAutoSession()
+                }
             }
         }
 
@@ -265,14 +272,24 @@ class FrameCoordinatorVerticle @Inject constructor(
     private suspend fun doAutoSession() {
         sessionService.endSession()
 
-        // TODO: Snapshot goes here
+        val oldSessionId = coordinatorState.sessionId
+
+        log.info("SNAPSHOT: Snapshot starting for $oldSessionId")
+
+        snapshotService.doSnapshot(oldSessionId)
+
+        eventWaiter.waitForEvent(ADDRESS_SNAPSHOT_COMPLETE)
+
+        log.info("SNAPSHOT: Control returned to verticle for session initialize")
 
         sessionService.initializeSession()
 
         val eventMessage = eventWaiter.waitForEvent(ADDRESS_SESSION_INITIALIZED)
 
         val newSessionId = eventMessage.getString("sessionId")
+
         log.info("Frame coordinator received initial session announcement for $newSessionId")
+
         coordinatorState.sessionId = newSessionId
 
         sessionService.startSession()

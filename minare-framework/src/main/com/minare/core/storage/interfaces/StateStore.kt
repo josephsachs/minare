@@ -50,4 +50,10 @@ interface StateStore {
      * @return Map of entity IDs to JsonObjects
      */
     suspend fun findEntitiesJsonByIds(entityIds: List<String>): Map<String, JsonObject>
+
+    /**
+     * Get all entity keys from the store
+     * @return List of all entity IDs (excluding frame deltas and other non-entity keys)
+     */
+    suspend fun getAllEntityKeys(): List<String>
 }

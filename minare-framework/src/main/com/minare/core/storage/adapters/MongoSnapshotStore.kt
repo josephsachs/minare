@@ -78,26 +78,21 @@ class MongoSnapshotStore @Inject constructor(
      * @param sessionId The ID of the session to store in
      * @param deltas A set of FrameDelta to store
      */
-    override suspend fun storeDeltas(sessionId: String, deltas: List<FrameDelta>) {
+    override suspend fun storeDeltas(sessionId: String, deltas: JsonObject) {
         val collection = getCollectionName(sessionId)
 
         try {
-            val deltasArray = JsonArray()
-            deltas.forEach { delta ->
-                deltasArray.add(delta.toJson())
-            }
-
             val query = JsonObject().put("_id", DELTAS_DOC_ID)
             val deltasDoc = JsonObject()
                 .put("\$set", JsonObject()
-                    .put("deltas", deltasArray)
-                    .put("deltaCount", deltas.size)
+                    .put("frames", deltas)
+                    .put("deltaCount", deltas.size())
                     .put("updatedAt", System.currentTimeMillis())
                 )
 
             mongoClient.updateCollection(collection, query, deltasDoc).await()
 
-            log.info("Stored ${deltas.size} deltas for session: $sessionId")
+            log.info("Stored deltas for session: $sessionId")
         } catch (e: Exception) {
             log.error("Failed to store deltas for session: $sessionId ${e}")
             throw e
@@ -109,7 +104,7 @@ class MongoSnapshotStore @Inject constructor(
      * @param sessionId The ID of the session to store in
      * @param entities List of JsonObjects
      */
-    override suspend fun storeState(sessionId: String, entities: List<JsonObject>) {
+    override suspend fun storeState(sessionId: String, entities: JsonArray) {
         val collection = getCollectionName(sessionId)
 
         try {
@@ -126,7 +121,7 @@ class MongoSnapshotStore @Inject constructor(
                     )
                 )
                 .put("\$inc", JsonObject()
-                    .put("entityCount", entities.size)
+                    .put("entityCount", entities.size())
                 )
                 .put("\$set", JsonObject()
                     .put("lastUpdatedAt", System.currentTimeMillis())
@@ -134,7 +129,7 @@ class MongoSnapshotStore @Inject constructor(
 
             mongoClient.updateCollection(collection, query, stateDoc).await()
 
-            log.info("Stored {} entities for session: ${entities.size} $sessionId")
+            log.info("Stored ${entities.size()} entities for session: $sessionId")
         } catch (e: Exception) {
             log.error("Failed to store state for session: $sessionId ${e}")
             throw e
