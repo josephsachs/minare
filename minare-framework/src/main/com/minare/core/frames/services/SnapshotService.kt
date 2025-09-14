@@ -14,67 +14,37 @@ import io.vertx.core.json.JsonObject
 import org.slf4j.LoggerFactory
 
 class SnapshotService @Inject constructor(
-    private val frameCoordinatorState: FrameCoordinatorState,
     private val snapshotStore: SnapshotStore,
     private val workerRegistry: WorkerRegistry,
     private val stateStore: StateStore,
     private val deltaStore: DeltaStore,
-    private val eventBusUtils: EventBusUtils,
-    private val eventWaiter: EventWaiter
+    private val eventBusUtils: EventBusUtils
 ) {
     private val log = LoggerFactory.getLogger(SnapshotService::class.java)
 
     suspend fun doSnapshot(sessionId: String) {
-        log.info("SNAPSHOT: Getting deltas...")
-
         val deltas = deltaStore.getAll()
 
-        log.info("SNAPSHOT: Storing deltas...")
-
         snapshotStore.storeDeltas(sessionId, deltas)
-
         deltaStore.clearDeltas()
 
-        log.info("SNAPSHOT: Getting entity keys")
-
         val entities = stateStore.getAllEntityKeys()
-
-        log.info("SNAPSHOT: Got keys ${entities}")
-
         val entitiesMap = stateStore.findEntitiesJsonByIds(entities)
-
-
-        //val partitions = getEntityPartitions(entities)
 
         snapshotStore.storeState(
             sessionId,
             JsonArray(entitiesMap.values.toList())
             )
 
-        log.info("SNAPSHOT: Assigning partitions")
-
-        //frameCoordinatorState.assignEntityPartitions(partitions)
-
-        log.info("SNAPSHOT: Publishing start state for workers")
-
-        /**eventBusUtils.publishWithTracing(
-              ADDRESS_WORKER_START_STATE_SNAPSHOT,
-              JsonObject()
-                  .put("sessionId", sessionId)
-        )**/
-
-        log.info("SNAPSHOT: Published, waiting...")
-
-        //eventWaiter.waitForEvent(ADDRESS_WORKER_STATE_SNAPSHOT_ALL_COMPLETE)
-
-        log.info("SNAPSHOT: Complete")
-
-       eventBusUtils.publishWithTracing(
+        eventBusUtils.publishWithTracing(
               ADDRESS_SNAPSHOT_COMPLETE,
               JsonObject().put("sessionId", sessionId)
        )
     }
 
+    /**
+     * Partitions entities for workers. Deprecated in favor of upcoming manifest service.
+     */
     suspend fun getEntityPartitions(entities: List<String>): Map<String, List<String>> {
         val workers = workerRegistry.getActiveWorkers()
 

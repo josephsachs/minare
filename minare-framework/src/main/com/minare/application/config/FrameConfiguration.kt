@@ -29,7 +29,7 @@ open class FrameConfiguration {    /**
      * Trade-off: More frequent = faster recovery but more frequent pauses
      */
     val autoSession: AutoSession = AutoSession.FRAMES_PER_SESSION
-    val framesPerSession: Long = 500
+    val framesPerSession: Long = 5000
 
     /**
      * How many frames ahead to prepare during normal operation.

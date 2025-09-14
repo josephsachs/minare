@@ -273,23 +273,16 @@ class FrameCoordinatorVerticle @Inject constructor(
         sessionService.endSession()
 
         val oldSessionId = coordinatorState.sessionId
-
-        log.info("SNAPSHOT: Snapshot starting for $oldSessionId")
-
         snapshotService.doSnapshot(oldSessionId)
 
         eventWaiter.waitForEvent(ADDRESS_SNAPSHOT_COMPLETE)
-
-        log.info("SNAPSHOT: Control returned to verticle for session initialize")
 
         sessionService.initializeSession()
 
         val eventMessage = eventWaiter.waitForEvent(ADDRESS_SESSION_INITIALIZED)
 
         val newSessionId = eventMessage.getString("sessionId")
-
         log.info("Frame coordinator received initial session announcement for $newSessionId")
-
         coordinatorState.sessionId = newSessionId
 
         sessionService.startSession()
