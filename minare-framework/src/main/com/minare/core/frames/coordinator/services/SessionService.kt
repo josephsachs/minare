@@ -12,6 +12,7 @@ import com.minare.core.frames.coordinator.FrameCoordinatorVerticle.Companion.ADD
 import com.minare.core.frames.coordinator.FrameCoordinatorVerticle.Companion.ADDRESS_SESSION_START
 import com.minare.core.frames.services.WorkerRegistry
 import com.minare.core.operation.interfaces.MessageQueue
+import com.minare.core.storage.interfaces.SnapshotStore
 import com.minare.core.utils.vertx.EventBusUtils
 import com.minare.core.utils.vertx.EventWaiter
 import io.vertx.core.json.JsonArray
@@ -23,6 +24,7 @@ import java.util.*
 class SessionService @Inject constructor(
     private val frameConfig: FrameConfiguration,
     private val coordinatorState: FrameCoordinatorState,
+    private val snapshotStore: SnapshotStore,
     private val workerRegistry: WorkerRegistry,
     private val frameManifestBuilder: FrameManifestBuilder,
     private val frameCompletionTracker: FrameCompletionTracker,
@@ -94,8 +96,11 @@ class SessionService @Inject constructor(
 
         eventWaiter.waitForEvent(ADDRESS_SESSION_MANIFESTS_PREPARED)
 
-        publishSessionStartEvent(sessionId, sessionStartTime, announcementTime)
-        announceSessionToWorkers(sessionId, sessionStartTime, announcementTime)
+        val metadata = createMetadata(sessionId, sessionStartTime, announcementTime)
+
+        publishSessionMessage(sessionId, metadata)
+        createSessionCollection(sessionId, metadata)
+        announceSessionToWorkers(sessionId, metadata)
 
         eventBusUtils.publishWithTracing(
             ADDRESS_SESSION_INITIALIZED,
@@ -120,21 +125,23 @@ class SessionService @Inject constructor(
         frameCompletionTracker.clearAllCompletions()
     }
 
-    private suspend fun publishSessionStartEvent(sessionId: String, sessionStartTime: Long, announcementTime: Long) {
+    private fun createMetadata(sessionId: String, sessionStartTime: Long, announcementTime: Long): JsonObject {
         val activeWorkers = workerRegistry.getActiveWorkers()
 
-        try {
-            val sessionEvent = JsonObject()
-                .put("eventType", "SESSION_START")
-                .put("sessionId", sessionId)
-                .put("sessionStartTimestamp", sessionStartTime)
-                .put("announcementTimestamp", announcementTime)
-                .put("frameDuration", frameConfig.frameDurationMs)
-                .put("workerCount", activeWorkers.size)
-                .put("workerIds", JsonArray(activeWorkers.toList()))
-                .put("coordinatorInstance", "coordinator-${System.currentTimeMillis()}") // TODO: Use a more stable ID
+        return JsonObject()
+            .put("eventType", "SESSION_START")
+            .put("sessionId", sessionId)
+            .put("sessionStartTimestamp", sessionStartTime)
+            .put("announcementTimestamp", announcementTime)
+            .put("frameDuration", frameConfig.frameDurationMs)
+            .put("workerCount", activeWorkers.size)
+            .put("workerIds", JsonArray(activeWorkers.toList()))
+            .put("coordinatorInstance", "coordinator-${System.currentTimeMillis()}") // TODO: Use a more stable ID
+    }
 
-            messageQueue.send("minare.system.events", JsonArray().add(sessionEvent))
+    private suspend fun publishSessionMessage(sessionId: String, metadata: JsonObject) {
+        try {
+            messageQueue.send("minare.system.events", JsonArray().add(metadata))
 
             log.info("Published session start event to Kafka for $sessionId")
         } catch (e: Exception) {
@@ -145,19 +152,20 @@ class SessionService @Inject constructor(
         }
     }
 
-    private fun announceSessionToWorkers(sessionId: String, sessionStartTime: Long, announcementTime: Long) {
-        val announcement = JsonObject()
-            .put("sessionId", sessionId)
-            .put("sessionStartTimestamp", sessionStartTime)
-            .put("announcementTimestamp", announcementTime)
-            .put("frameDuration", frameConfig.frameDurationMs)
+    private suspend fun createSessionCollection(sessionId: String, metadata: JsonObject) {
+        try {
+            snapshotStore.create(sessionId, metadata)
+        } catch (e: Exception) {
+            log.error("Failed to create session collection for snapshot", e)
+        }
+    }
 
+    private fun announceSessionToWorkers(sessionId: String, metadata: JsonObject) {
         eventBusUtils.publishWithTracing(
             ADDRESS_SESSION_START,
-            announcement
+            metadata
         )
 
-        log.info("Announced new session $sessionId starting at {} with {} workers",
-            sessionStartTime, workerRegistry.getActiveWorkers().size)
+        log.info("Announced new session $sessionId with {} workers", workerRegistry.getActiveWorkers().size)
     }
 }

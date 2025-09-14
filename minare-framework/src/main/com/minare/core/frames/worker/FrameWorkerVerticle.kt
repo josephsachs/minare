@@ -6,6 +6,9 @@ import com.hazelcast.map.IMap
 import com.minare.core.operation.models.Operation
 import com.minare.core.utils.vertx.VerticleLogger
 import com.minare.core.frames.coordinator.FrameCoordinatorVerticle
+import com.minare.core.frames.events.WorkerStartStateSnapshotEvent
+import com.minare.core.frames.events.WorkerStateSnapshotCompleteEvent
+import com.minare.core.frames.events.WorkerStateSnapshotCompleteEvent.Companion.ADDRESS_WORKER_STATE_SNAPSHOT_COMPLETE
 import com.minare.exceptions.FrameLoopException
 import com.minare.worker.coordinator.models.FrameManifest
 import com.minare.worker.coordinator.models.OperationCompletion
@@ -26,7 +29,8 @@ import javax.inject.Inject
  */
 class FrameWorkerVerticle @Inject constructor(
     private val vlog: VerticleLogger,
-    private val hazelcastInstance: HazelcastInstance
+    private val hazelcastInstance: HazelcastInstance,
+    private val workerStartStateSnapshotEvent: WorkerStartStateSnapshotEvent
 ) : CoroutineVerticle() {
 
     private val log = LoggerFactory.getLogger(FrameWorkerVerticle::class.java)
@@ -58,6 +62,8 @@ class FrameWorkerVerticle @Inject constructor(
         workerId = config.getString("workerId")
         manifestMap = hazelcastInstance.getMap("frame-manifests")
         completionMap = hazelcastInstance.getMap("operation-completions")
+
+        workerStartStateSnapshotEvent.register(workerId)
 
         vertx.eventBus().consumer<JsonObject>(FrameCoordinatorVerticle.ADDRESS_SESSION_START) { msg ->
             launch {

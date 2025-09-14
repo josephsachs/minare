@@ -49,8 +49,6 @@ class MessageHandler @Inject constructor(
             return
         }
 
-        vlog.logInfo("Message handler handling message...")
-
         val traceId = connectionTracker.getTraceId(connectionId)
         val msgTraceId = vlog.getEventLogger().trace(
             "MESSAGE_RECEIVED", mapOf(

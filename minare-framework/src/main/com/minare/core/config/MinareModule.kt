@@ -41,6 +41,7 @@ import com.minare.core.transport.downsocket.pubsub.UpdateBatchCoordinator
 import com.minare.time.DockerTimeService
 import com.minare.time.TimeService
 import com.minare.core.frames.coordinator.handlers.LateOperationHandler
+import com.minare.core.utils.vertx.EventBusUtils
 import com.minare.worker.upsocket.CommandMessageHandler
 import kotlin.coroutines.CoroutineContext
 
@@ -68,6 +69,7 @@ class MinareModule : AbstractModule(), DatabaseNameProvider {
         bind(ChannelStore::class.java).to(MongoChannelStore::class.java).`in`(Singleton::class.java)
         bind(ContextStore::class.java).to(MongoContextStore::class.java).`in`(Singleton::class.java)
         bind(DeltaStore::class.java).to(RedisDeltaStore::class.java).`in`(Singleton::class.java)
+        bind(SnapshotStore::class.java).to(MongoSnapshotStore::class.java).`in`(Singleton::class.java)
 
         bind(TimeService::class.java).to(DockerTimeService::class.java).`in`(Singleton::class.java)
         bind(MutationService::class.java).`in`(Singleton::class.java)
@@ -184,6 +186,15 @@ class MinareModule : AbstractModule(), DatabaseNameProvider {
         val map = hazelcastInstance.getMap<String, JsonObject>("worker-registry")
         log.info("Initialized distributed worker registry map")
         return HazelcastWorkerRegistryMap(map)
+    }
+
+    /**
+     * Provides EventBusUtils for FrameCoordinatorVerticle
+     */
+    @Provides
+    @Singleton
+    fun provideEventBusUtils(vertx: Vertx, coroutineContext: CoroutineContext): EventBusUtils {
+        return EventBusUtils(vertx, coroutineContext, "FrameCoordinatorVerticle")
     }
 
     override fun getDatabaseName(): String = "minare"

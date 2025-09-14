@@ -5,7 +5,12 @@ import com.minare.core.storage.interfaces.DeltaStore
 import io.vertx.core.json.JsonArray
 import io.vertx.core.json.JsonObject
 import io.vertx.kotlin.coroutines.await
+import io.vertx.redis.client.Command
 import io.vertx.redis.client.RedisAPI
+import io.vertx.redis.client.Response
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import org.slf4j.LoggerFactory
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -34,57 +39,72 @@ class RedisDeltaStore @Inject constructor(
             delta.entityId, frameNumber)
     }
 
-    override suspend fun getFrameDeltas(frameNumber: Long): List<FrameDelta> {
-        val key = "frame:${frameNumber}:deltas"
+    /**
+     * Retrieve all deltas for a specific frame
+     * @param frameNumber The logical frame number
+     * @return List of deltas for that frame, in order
+     */
+    override suspend fun getByFrame(frameNumber: Long): JsonObject? {
+        val key = "frame:$frameNumber:deltas"
+        val value = redisAPI.send(Command.create("JSON.GET"), key, ".").await()
 
-        val response = redisAPI.get(key).await()
-
-        return if (response != null && response.toString() != "null") {
-            val array = JsonArray(response.toString())
-            array.map { FrameDelta.fromJson(it as JsonObject) }
-        } else {
-            emptyList()
-        }
+        return value?.let { JsonObject(it.toString()) }
     }
 
-    override suspend fun getDeltasForFrameRange(startFrame: Long, endFrame: Long): List<FrameDelta> {
-        val allDeltas = mutableListOf<FrameDelta>()
+    /**
+     * Retrieve all deltas as a Json object
+     * @return JsonObject matching the JsonRL structure
+     */
+    override suspend fun getAll(): JsonObject {
+        val pattern = "frame:*"
+        var cursor = "0"
+        val allKeys = mutableListOf<String>()
 
-        for (frame in startFrame..endFrame) {
-            allDeltas.addAll(getFrameDeltas(frame))
-        }
+        do {
+            val scanResponse = redisAPI.scan(listOf(cursor, "MATCH", pattern, "COUNT", "100")).await()
+            cursor = scanResponse.get(0).toString()
+            val keys = scanResponse.get(1) as Response
 
-        return allDeltas
-    }
-
-    override suspend fun getDeltasForEntities(entityIds: Set<String>): List<FrameDelta> {
-        val keys = redisAPI.keys("frame:*:deltas").await()
-        val allDeltas = mutableListOf<FrameDelta>()
-
-        if (keys != null) {
             for (i in 0 until keys.size()) {
-                val key = keys.get(i).toString()
-                val frameDeltasResponse = redisAPI.lrange(key, "0", "-1").await()
+                allKeys.add(keys.get(i).toString())
+            }
+        } while (cursor != "0")
 
-                frameDeltasResponse?.forEach { element ->
-                    val delta = FrameDelta.fromJson(JsonObject(element.toString()))
-                    if (delta.entityId in entityIds) {
-                        allDeltas.add(delta)
-                    }
-                }
+        val resultObject = JsonObject()
+        coroutineScope {
+            allKeys.map { key ->
+                val value = redisAPI.jsonGet(listOf(key, "$")).await()
+                key to JsonArray(value.toString())
+            }.forEach { (key, array) ->
+                resultObject.put(key, array)
             }
         }
 
-        return allDeltas.sortedWith(compareBy({ it.frameNumber }, { it.version }))
+        log.info("SNAPSHOT: Delta Array ${resultObject}")
+
+        return resultObject
     }
 
-    override suspend fun clearAllDeltas() {
-        val keys = redisAPI.keys("frame:*:deltas").await()
+    /**
+     * Remove all frame deltas from memory
+     */
+    override suspend fun clearDeltas() {
+        val pattern = "frame:*"
+        var cursor = "0"
+        val allKeys = mutableListOf<String>()
 
-        if (keys != null && keys.size() > 0) {
-            val keyList = (0 until keys.size()).map { keys.get(it).toString() }
-            redisAPI.del(keyList).await()
-            log.info("Cleared {} frame delta keys", keyList.size)
+        do {
+            val scanResponse = redisAPI.scan(listOf(cursor, "MATCH", pattern, "COUNT", "100")).await()
+            cursor = scanResponse.get(0).toString()
+            val keys = scanResponse.get(1) as Response
+
+            for (i in 0 until keys.size()) {
+                allKeys.add(keys.get(i).toString())
+            }
+        } while (cursor != "0")
+
+        if (allKeys.isNotEmpty()) {
+            redisAPI.del(allKeys).await()
         }
     }
 }

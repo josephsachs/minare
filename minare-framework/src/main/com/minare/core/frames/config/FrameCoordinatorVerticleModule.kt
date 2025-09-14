@@ -8,6 +8,7 @@ import com.minare.core.frames.coordinator.FrameCoordinatorVerticle
 import com.minare.core.frames.coordinator.services.StartupService
 import com.minare.core.utils.vertx.EventBusUtils
 import com.minare.core.frames.coordinator.CoordinatorAdminVerticle
+import com.minare.core.frames.events.WorkerStateSnapshotCompleteEvent
 import com.minare.worker.coordinator.events.*
 import io.vertx.core.Vertx
 import io.vertx.core.impl.logging.LoggerFactory
@@ -36,6 +37,7 @@ class FrameCoordinatorVerticleModule : PrivateModule() {
         bind(WorkerHealthChangeEvent::class.java).`in`(Singleton::class.java)
         bind(WorkerRegisterEvent::class.java).`in`(Singleton::class.java)
         bind(WorkerReadinessEvent::class.java).`in`(Singleton::class.java)
+        bind(WorkerStateSnapshotCompleteEvent::class.java).`in`(Singleton::class.java)
 
         // Request external dependencies that should be provided by parent injector
         requireBinding(Vertx::class.java)
@@ -53,14 +55,5 @@ class FrameCoordinatorVerticleModule : PrivateModule() {
     @Singleton
     fun provideCoroutineScope(coroutineContext: CoroutineContext): CoroutineScope {
         return CoroutineScope(coroutineContext)
-    }
-
-    /**
-     * Provides EventBusUtils for FrameCoordinatorVerticle
-     */
-    @Provides
-    @Singleton
-    fun provideEventBusUtils(vertx: Vertx, coroutineContext: CoroutineContext): EventBusUtils {
-        return EventBusUtils(vertx, coroutineContext, "FrameCoordinatorVerticle")
     }
 }

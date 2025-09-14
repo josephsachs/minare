@@ -12,6 +12,7 @@ import io.vertx.redis.client.RedisAPI
 import org.slf4j.LoggerFactory
 import javax.inject.Inject
 import com.minare.core.storage.interfaces.StateStore
+import io.vertx.core.json.JsonArray
 
 @Singleton
 class RedisEntityStore @Inject constructor(
@@ -54,8 +55,6 @@ class RedisEntityStore @Inject constructor(
     }
 
     override suspend fun mutateState(entityId: String, delta: JsonObject): JsonObject {
-        log.debug("Mutating state for entity: $entityId with delta: $delta")
-
         // Get the current entity using our findEntityJson method
         val currentDocument = findEntityJson(entityId)
             ?: throw IllegalStateException("Entity not found: $entityId")
@@ -191,7 +190,7 @@ class RedisEntityStore @Inject constructor(
 
                 if (redisResponse != null) {
                     // Parse as JsonArray since Redis always returns an array
-                    val jsonArray = io.vertx.core.json.JsonArray(redisResponse.toString())
+                    val jsonArray = JsonArray(redisResponse.toString())
 
                     // Extract entities from the array
                     for (i in 0 until jsonArray.size()) {
@@ -217,5 +216,40 @@ class RedisEntityStore @Inject constructor(
      */
     override suspend fun findEntityJson(entityId: String): JsonObject? {
         return findEntitiesJsonByIds(listOf(entityId))[entityId]
+    }
+
+    /**
+     * Get all entity keys from the store
+     * @return List of all entity IDs (excluding frame deltas and other non-entity keys)
+     */
+    override suspend fun getAllEntityKeys(): List<String> {
+        val entityKeys = mutableListOf<String>()
+        var cursor = "0"
+
+        try {
+            do {
+                val scanResult = redisAPI.scan(listOf(cursor, "COUNT", "100")).await()
+                cursor = scanResult.get(0).toString()
+                val keys = scanResult.get(1)
+
+                if (keys != null) {
+                    keys.forEach { key ->
+                        val keyStr = key.toString()
+                        // Exclude frame delta keys
+                        if (!keyStr.startsWith("frame:")) {
+                            entityKeys.add(keyStr)
+                        }
+                    }
+                }
+            } while (cursor != "0")
+
+            // Sort for consistent ordering across calls
+            entityKeys.sort()
+
+            return entityKeys
+        } catch (e: Exception) {
+            log.error("Error getting entity keys", e)
+            return emptyList()
+        }
     }
 }

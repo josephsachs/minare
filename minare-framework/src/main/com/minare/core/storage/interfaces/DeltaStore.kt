@@ -1,10 +1,12 @@
 package com.minare.core.storage.interfaces
 
 import com.minare.core.frames.models.FrameDelta
+import io.vertx.core.json.JsonArray
+import io.vertx.core.json.JsonObject
 
 /**
  * Interface for delta storage operations.
- * Handles frame-by-frame delta persistence for replay and recovery.
+ * Handles frame-by-frame delta persistence for replay and snapshots.
  */
 interface DeltaStore {
     /**
@@ -19,25 +21,16 @@ interface DeltaStore {
      * @param frameNumber The logical frame number
      * @return List of deltas for that frame, in order
      */
-    suspend fun getFrameDeltas(frameNumber: Long): List<FrameDelta>
+    suspend fun getByFrame(frameNumber: Long): JsonObject?
 
     /**
-     * Retrieve deltas for a range of frames
-     * @param startFrame Starting frame number (inclusive)
-     * @param endFrame Ending frame number (inclusive)
-     * @return List of deltas sorted by frame number and operation order
+     * Retrieve all deltas as a Json object
+     * @return JsonObject matching the JsonRL structure
      */
-    suspend fun getDeltasForFrameRange(startFrame: Long, endFrame: Long): List<FrameDelta>
-
-    /**
-     * Retrieve deltas for specific entities across all frames
-     * @param entityIds Set of entity IDs to filter by
-     * @return List of deltas for those entities, sorted by frame/version
-     */
-    suspend fun getDeltasForEntities(entityIds: Set<String>): List<FrameDelta>
+    suspend fun getAll(): JsonObject
 
     /**
      * Clear all stored deltas (typically after successful snapshot)
      */
-    suspend fun clearAllDeltas()
+    suspend fun clearDeltas()
 }
