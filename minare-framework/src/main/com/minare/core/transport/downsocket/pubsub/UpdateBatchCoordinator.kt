@@ -87,33 +87,34 @@ class UpdateBatchCoordinator @Inject constructor(
      * If an update for the same entity already exists, it will only be replaced
      * if the new update has a higher version number.
      */
-    fun queueUpdate(entityUpdate: JsonObject) {
-        val entityId = entityUpdate.getString("_id")
-        if (entityId == null) {
-            log.warn("Received entity update without _id field: {}", entityUpdate.encode())
+    fun queueUpdate(newUpdate: JsonObject) {
+        val entityId = newUpdate.getString("_id") ?: run {
+            log.warn("Received entity update without _id field: {}", newUpdate.encode())
             return
         }
 
-        // Check if we already have an update for this entity
-        val existingUpdate = pendingUpdates[entityId]
+        pendingUpdates.compute(entityId) { _, currEntry ->
+            when {
+                currEntry == null -> {
+                    log.trace("Added entity to batch queue: id={}", entityId)
 
-        if (existingUpdate != null) {
-            // Compare versions and only replace if newer
-            val existingVersion = existingUpdate.getLong("version", 0)
-            val newVersion = entityUpdate.getLong("version", 0)
+                    newUpdate
+                }
+                newUpdate.getLong("version", 0) > currEntry.getLong("version", 0) -> {
+                    currEntry.mergeIn(newUpdate, true)
 
-            if (newVersion > existingVersion) {
-                // TODO: Merge JsonObjects instead of overwriting, with newer taking priority in case of delta conflict
-                pendingUpdates[entityId] = entityUpdate
+                    log.trace("Updated entity in batch queue: id={}, version={}",
+                        entityId, newUpdate.getLong("version", 0))
 
-                log.trace("Updated entity in batch queue: id={}, version={}", entityId, newVersion)
-            } else {
-                log.trace("Ignored outdated entity update: id={}, existing={}, new={}",
-                    entityId, existingVersion, newVersion)
+                    currEntry
+                }
+                else -> {
+                    log.trace("Ignored outdated entity update: id={}, existing={}, new={}",
+                        entityId, currEntry.getLong("version", 0), newUpdate.getLong("version", 0))
+
+                    currEntry
+                }
             }
-        } else {
-            pendingUpdates[entityId] = entityUpdate
-            log.trace("Added entity to batch queue: id={}", entityId)
         }
     }
 
@@ -183,21 +184,5 @@ class UpdateBatchCoordinator @Inject constructor(
             log.info("Distributed batch with {} entity updates in {}ms",
                 updatesBatch.size, lastTickTimeMs)
         }
-    }
-
-    /**
-     * Get performance metrics for the batch coordinator
-     */
-    fun getMetrics(): Map<String, Any> {
-        val avgTickTime = if (tickCount > 0) totalProcessingTimeMs / tickCount else 0
-
-        return mapOf(
-            "counter" to tickCount,
-            "averageTickTimeMs" to avgTickTime,
-            "lastTickTimeMs" to lastTickTimeMs,
-            "batchIntervalMs" to batchIntervalMs,
-            "utilization" to if (tickCount > 0) lastTickTimeMs.toFloat() / batchIntervalMs else 0f,
-            "pendingUpdatesCount" to pendingUpdates.size
-        )
     }
 }
