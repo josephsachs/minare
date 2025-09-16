@@ -1,5 +1,7 @@
 package com.minare.utils
 
+import com.google.inject.Inject
+import com.google.inject.Singleton
 import com.minare.core.storage.interfaces.ConnectionStore
 import com.minare.core.utils.vertx.VerticleLogger
 import io.vertx.core.Vertx
@@ -14,7 +16,8 @@ import java.util.concurrent.ConcurrentHashMap
  * Manages heartbeats for WebSocket connections to detect disconnections.
  * Provides a central place to handle heartbeat logic shared by verticles.
  */
-class HeartbeatManager(
+@Singleton
+class HeartbeatManager @Inject constructor(
     private val vertx: Vertx,
     private val logger: VerticleLogger,
     private val connectionStore: ConnectionStore,
@@ -84,7 +87,6 @@ class HeartbeatManager(
             }
         }
 
-
         heartbeatTimers[socketId] = timerId
         logger.getEventLogger().trace("HEARTBEAT_STARTED", mapOf(
             "socketId" to socketId,
@@ -115,7 +117,6 @@ class HeartbeatManager(
      */
     fun handleHeartbeatResponse(connectionId: String, message: JsonObject) {
         try {
-
             val serverTimestamp = message.getLong("timestamp")
             val clientTimestamp = message.getLong("clientTimestamp", 0L)
             val now = System.currentTimeMillis()

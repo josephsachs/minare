@@ -4,6 +4,7 @@ import com.google.inject.PrivateModule
 import com.google.inject.Provides
 import com.google.inject.Singleton
 import com.minare.cache.ConnectionCache
+import com.minare.controller.MessageController
 import com.minare.controller.OperationController
 import com.minare.core.storage.interfaces.ChannelStore
 import com.minare.core.storage.interfaces.ConnectionStore
@@ -19,7 +20,6 @@ import com.minare.worker.upsocket.UpSocketVerticle
 import com.minare.worker.upsocket.ConnectionLifecycle
 import com.minare.worker.upsocket.events.*
 import com.minare.worker.upsocket.handlers.CloseHandler
-import com.minare.worker.upsocket.handlers.MessageHandler
 import com.minare.worker.upsocket.handlers.ReconnectionHandler
 import kotlin.coroutines.CoroutineContext
 
@@ -42,7 +42,6 @@ class UpSocketVerticleModule : PrivateModule() {
 
         // Message handlers
         bind(CloseHandler::class.java).`in`(Singleton::class.java)
-        bind(MessageHandler::class.java).`in`(Singleton::class.java)
         bind(ReconnectionHandler::class.java).`in`(Singleton::class.java)
 
         // Sync handler (temporary, outside Kafka flow)
@@ -54,6 +53,7 @@ class UpSocketVerticleModule : PrivateModule() {
         requireBinding(ConnectionCache::class.java)
         requireBinding(ChannelStore::class.java)
         requireBinding(OperationController::class.java)
+        requireBinding(MessageController::class.java)
         requireBinding(EventBusUtils::class.java)
 
         // Expose UpSocketVerticle to the parent injector

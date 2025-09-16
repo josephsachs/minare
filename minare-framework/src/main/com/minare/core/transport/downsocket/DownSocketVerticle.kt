@@ -90,16 +90,6 @@ class DownSocketVerticle @Inject constructor(
             vlog.logConfig(config)
 
             initializeRouter()
-
-            // TODO: Reconsider timer here
-            //timer = UpdateTimer()
-            //timer.start(DEFAULT_TICK_INTERVAL_MS)
-            log.info("Started Timer at {${System.currentTimeMillis()}}")
-            vlog.logStartupStep("UPDATE_TIMER_STARTED", mapOf(
-                "intervalMs" to DEFAULT_TICK_INTERVAL_MS
-            ))
-
-            // Register consumer for batched updates from UpdateBatchCoordinator
             registerBatchedUpdateConsumer()
 
             vlog.logStartupStep("EVENT_BUS_HANDLERS_REGISTERED")

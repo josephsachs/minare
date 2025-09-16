@@ -12,6 +12,7 @@ import com.minare.core.utils.vertx.VerticleLogger
 import com.minare.utils.WebSocketUtils
 import io.vertx.core.Vertx
 import io.vertx.core.http.ServerWebSocket
+import io.vertx.core.impl.logging.LoggerFactory
 import io.vertx.core.json.JsonObject
 
 /**
@@ -27,6 +28,8 @@ class ConnectionLifecycle @Inject constructor(
     private val connectionTracker: ConnectionTracker,
     private val heartbeatManager: HeartbeatManager
 ) {
+    private val log = LoggerFactory.getLogger(ConnectionLifecycle::class.java)
+
     /**
      * Connect to the up socket
      */
@@ -43,8 +46,15 @@ class ConnectionLifecycle @Inject constructor(
                 mapOf("connectionId" to connection._id), traceId
             )
 
+            // TEMPORARY DEBUG
+            log.info("MESSAGE_HANDLER: websocket ID $websocket , storing...")
+
             connectionCache.storeConnection(connection)
             connectionTracker.registerConnection(connection._id, traceId, websocket)
+
+            // TEMPORARY DEBUG
+            val connectionDebug = connectionTracker.getConnectionId(websocket)
+            log.info("MESSAGE_HANDLER: after storing found connection ID $connectionDebug")
 
             vlog.getEventLogger().logStateChange(
                 "Connection", "NONE", "CREATED",

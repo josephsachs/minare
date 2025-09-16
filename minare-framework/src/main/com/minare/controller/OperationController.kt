@@ -24,7 +24,7 @@ abstract class OperationController @Inject constructor(
     private val log = LoggerFactory.getLogger(OperationController::class.java)
 
     /**
-     * Process an incoming message from the WebSocket.
+     * Process an incoming message from the MessageController.
      * This is the entry point for messages from MessageHandler.
      *
      * @param message The raw message from the client
@@ -88,11 +88,6 @@ abstract class OperationController @Inject constructor(
             log.debug("Skipping empty operation set")
             return
         }
-
-        // TODO: Re-enable BackpressureManager with proper triggering conditions
-        //if (backpressureManager.isActive()) {
-        //    throw BackpressureException("System overloaded - please retry")
-        //}
 
         log.debug("Sending {} operations to Kafka topic {}", message.size(), OPERATIONS_TOPIC)
         messageQueue.send(OPERATIONS_TOPIC, message)

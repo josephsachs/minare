@@ -2,6 +2,8 @@ package com.minare.worker.upsocket
 
 import com.minare.cache.ConnectionCache
 import com.minare.controller.ConnectionController
+import com.minare.core.transport.models.message.SyncCommand
+import com.minare.core.transport.models.message.SyncCommandType
 import io.vertx.core.Vertx
 import io.vertx.core.json.JsonObject
 import org.slf4j.LoggerFactory
@@ -23,6 +25,7 @@ class SyncCommandHandler @Inject constructor(
     /**
      * Handle a sync command
      * Sync commands are used to request the current state of data
+     * @deprecated route through MessageController
      */
     suspend fun handle(connectionId: String, message: JsonObject) {
         log.debug("Handling sync command for connection {}: {}", connectionId, message)
@@ -64,6 +67,7 @@ class SyncCommandHandler @Inject constructor(
 
     /**
      * Send an error response to the client
+     * @deprecated use MessageController
      */
     private suspend fun sendErrorToClient(connectionId: String, errorMessage: String) {
         val response = JsonObject()
@@ -75,6 +79,23 @@ class SyncCommandHandler @Inject constructor(
             socket.writeTextMessage(response.encode())
         } else {
             log.warn("Cannot send error response: up socket not found or closed for {}", connectionId)
+        }
+    }
+
+    /**
+     * Receives messsage from MessageController and invokes connectionController appropriately
+     */
+    suspend fun tryHandle(message: SyncCommand) {
+        if (message.type == SyncCommandType.CHANNEL) {
+            if (message.select.isNullOrEmpty()) {
+                connectionController.syncConnection(message.connection._id)
+            } else {
+                throw NotImplementedError("Sync specific channel not implemented")
+            }
+        } else if (message.type == SyncCommandType.ENTITY) {
+            throw NotImplementedError("Entity sync not implemented")
+        } else {
+            throw Exception("Unrecognized type")
         }
     }
 }

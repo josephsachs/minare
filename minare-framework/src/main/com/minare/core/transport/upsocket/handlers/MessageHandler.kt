@@ -20,6 +20,8 @@ import io.vertx.core.json.JsonObject
  * - Heartbeats: handled directly
  * - Sync commands: routed to SyncCommandHandler (temporary)
  * - All others: routed to OperationController for Kafka
+ *
+ * @deprecated Use MessageController
  */
 class MessageHandler @Inject constructor(
     private val vlog: VerticleLogger,
@@ -30,12 +32,6 @@ class MessageHandler @Inject constructor(
     private val operationController: OperationController,
     private val syncCommandHandler: SyncCommandHandler
 ) {
-    /**
-     * TODO: We need to implement MessageController, overridable handleMessage and MessageCommand /
-     *     in the same way that we do with preQueue and Operation. That way the developer can /
-     *     structure their client command arbitrarily.
-     */
-
     /**
      * Handle an incoming message from a client
      */
