@@ -1,7 +1,9 @@
 package com.minare.core.transport.downsocket.services
 
 import com.google.inject.Inject
+import com.google.inject.Singleton
 import com.minare.core.utils.vertx.VerticleLogger
+import io.vertx.core.Vertx
 import io.vertx.core.http.ServerWebSocket
 import io.vertx.core.json.JsonObject
 import org.slf4j.LoggerFactory
@@ -11,6 +13,7 @@ import java.util.concurrent.ConcurrentHashMap
  * Tracks WebSocket connections and their associated trace IDs.
  * Provides centralized connection tracking and state management for verticles.
  */
+@Singleton
 class ConnectionTracker @Inject constructor(
     private val componentName: String,
     private val logger: VerticleLogger

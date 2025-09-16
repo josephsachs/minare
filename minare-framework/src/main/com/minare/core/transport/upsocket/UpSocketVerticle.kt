@@ -1,5 +1,6 @@
 package com.minare.worker.upsocket
 
+import com.minare.controller.MessageController
 import com.minare.core.utils.vertx.VerticleLogger
 import com.minare.utils.HeartbeatManager
 import com.minare.core.transport.downsocket.services.ConnectionTracker
@@ -18,7 +19,6 @@ import kotlinx.coroutines.launch
 import org.slf4j.LoggerFactory
 import javax.inject.Inject
 import com.minare.worker.upsocket.handlers.CloseHandler
-import com.minare.worker.upsocket.handlers.MessageHandler
 import com.minare.worker.upsocket.handlers.ReconnectionHandler
 
 /**
@@ -30,7 +30,8 @@ class UpSocketVerticle @Inject constructor(
     private val heartbeatManager: HeartbeatManager,
     private val connectionTracker: ConnectionTracker,
     private val reconnectionHandler: ReconnectionHandler,
-    private val messageHandler: MessageHandler,
+    //private val messageHandler: MessageHandler,
+    private val messageController: MessageController,
     private val closeHandler: CloseHandler,
     private val connectionLifecycle: ConnectionLifecycle,
     private val channelCleanupEvent: ChannelCleanupEvent,
@@ -144,6 +145,10 @@ class UpSocketVerticle @Inject constructor(
 
         log.info("New up WebSocket connection from {}", websocket.remoteAddress())
 
+        // TEMPORARY DEBUG
+        val connectionId = connectionTracker.getConnectionId(websocket)
+        log.info("MESSAGE_HANDLER: upsocketverticle found connection ID = $connectionId")
+
         websocket.textMessageHandler { message ->
             CoroutineScope(vertx.dispatcher()).launch {
                 try {
@@ -158,12 +163,12 @@ class UpSocketVerticle @Inject constructor(
                         } else {
                             // For regular messages after handshake, use the standard handler
                             val msg = JsonObject(message)
-                            messageHandler.handle(websocket, msg)
+                            messageController.handleUpsocket(connectionTracker, websocket, msg)
                         }
                     } else {
                         // Regular message handling after handshake is complete
                         val msg = JsonObject(message)
-                        messageHandler.handle(websocket, msg)
+                        messageController.handleUpsocket(connectionTracker, websocket, msg)
                     }
                 } catch (e: Exception) {
                     WebSocketUtils.sendErrorResponse(
