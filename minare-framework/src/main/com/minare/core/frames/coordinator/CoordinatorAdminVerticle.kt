@@ -17,6 +17,8 @@ import org.slf4j.LoggerFactory
 import javax.inject.Inject
 import com.minare.core.frames.coordinator.services.FrameCalculatorService
 import com.minare.core.frames.services.WorkerRegistry
+import io.vertx.core.http.HttpMethod
+import io.vertx.ext.web.handler.CorsHandler
 
 /**
  * Admin HTTP interface for the Frame Coordinator.
@@ -51,6 +53,13 @@ class CoordinatorAdminVerticle @Inject constructor(
     private fun createRouter(): Router {
         val router = Router.router(vertx)
         router.route().handler(BodyHandler.create())
+
+        router.route().handler(CorsHandler.create()
+            .addOrigins(listOf("*"))
+            .allowedMethod(HttpMethod.GET)
+            .allowedMethod(HttpMethod.POST)
+            .allowedMethod(HttpMethod.OPTIONS)
+            .allowedHeader("Content-Type"))
 
         router.get("/health").handler { ctx ->
             val health = JsonObject()
