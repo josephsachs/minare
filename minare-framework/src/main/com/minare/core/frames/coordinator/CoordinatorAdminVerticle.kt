@@ -202,6 +202,45 @@ class CoordinatorAdminVerticle @Inject constructor(
             }
         }
 
+        router.post("/timeline").handler { ctx ->
+            launch {
+                try {
+                    val body = ctx.body().asJsonObject()
+                    val mode = body.getString("mode") ?: ""
+                    val frames = body.getInteger("frames") ?: 0
+
+                    when(mode) {
+                        "detach" -> {
+                            log.info("Timeline DETACH requested by coordinator admin")
+                        }
+                        "step" -> {
+                            log.info("Timeline STEP {} frames requested by coordinator admin", frames)
+                        }
+                        "resume" -> {
+                            log.info("Timeline RESUME requested by coordinator admin")
+                        }
+                        else -> {
+                            log.warn("Unknown timeline command received by coordinator admin")
+                        }
+                    }
+
+                    ctx.response()
+                        .setStatusCode(204)  // Success, no content
+                        .end()
+
+                } catch (e: Exception) {
+                    log.error("Error handling timeline command", e)
+                    ctx.response()
+                        .setStatusCode(500)
+                        .end(
+                            JsonObject()
+                                .put("error", e.message)
+                                .encode()
+                        )
+                }
+            }
+        }
+
         /**
          * IMPORTANT: Worker add and remove endpoints are the critical step when updating expected
          * workers for the frame coordinator. Infrastructure is expected to add and remove these
