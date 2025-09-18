@@ -30,7 +30,6 @@ class UpSocketVerticle @Inject constructor(
     private val heartbeatManager: HeartbeatManager,
     private val connectionTracker: ConnectionTracker,
     private val reconnectionHandler: ReconnectionHandler,
-    //private val messageHandler: MessageHandler,
     private val messageController: MessageController,
     private val closeHandler: CloseHandler,
     private val connectionLifecycle: ConnectionLifecycle,
@@ -144,10 +143,6 @@ class UpSocketVerticle @Inject constructor(
         var handshakeCompleted = false
 
         log.info("New up WebSocket connection from {}", websocket.remoteAddress())
-
-        // TEMPORARY DEBUG
-        val connectionId = connectionTracker.getConnectionId(websocket)
-        log.info("MESSAGE_HANDLER: upsocketverticle found connection ID = $connectionId")
 
         websocket.textMessageHandler { message ->
             CoroutineScope(vertx.dispatcher()).launch {

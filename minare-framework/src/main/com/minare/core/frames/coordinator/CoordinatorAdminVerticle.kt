@@ -16,6 +16,7 @@ import kotlinx.coroutines.launch
 import org.slf4j.LoggerFactory
 import javax.inject.Inject
 import com.minare.core.frames.coordinator.services.FrameCalculatorService
+import com.minare.core.frames.coordinator.services.TimelineService
 import com.minare.core.frames.services.WorkerRegistry
 import io.vertx.core.http.HttpMethod
 import io.vertx.ext.web.handler.CorsHandler
@@ -31,7 +32,8 @@ class CoordinatorAdminVerticle @Inject constructor(
     private val vlog: VerticleLogger,
     private val workerRegistry: WorkerRegistry,
     private val frameCoordinatorState: FrameCoordinatorState,
-    private val frameCalculator: FrameCalculatorService
+    private val frameCalculator: FrameCalculatorService,
+    private val timelineService: TimelineService
 ) : CoroutineVerticle() {
 
     private val log = LoggerFactory.getLogger(CoordinatorAdminVerticle::class.java)
@@ -207,17 +209,17 @@ class CoordinatorAdminVerticle @Inject constructor(
                 try {
                     val body = ctx.body().asJsonObject()
                     val mode = body.getString("mode") ?: ""
-                    val frames = body.getInteger("frames") ?: 0
+                    val frames = body.getLong("frames") ?: 0
 
                     when(mode) {
                         "detach" -> {
-                            log.info("Timeline DETACH requested by coordinator admin")
+                            timelineService.detach()
                         }
                         "step" -> {
-                            log.info("Timeline STEP {} frames requested by coordinator admin", frames)
+                            timelineService.stepFrames(frames)
                         }
                         "resume" -> {
-                            log.info("Timeline RESUME requested by coordinator admin")
+                            timelineService.resume()
                         }
                         else -> {
                             log.warn("Unknown timeline command received by coordinator admin")

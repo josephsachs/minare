@@ -43,7 +43,7 @@ class SessionService @Inject constructor(
      */
     suspend fun needAutoSession(): Boolean {
         when (frameConfig.autoSession) {
-            FrameConfiguration.Companion.AutoSession.NONE -> {
+            FrameConfiguration.Companion.AutoSession.NEVER -> {
                 return false
             }
             FrameConfiguration.Companion.AutoSession.FRAMES_PER_SESSION -> {

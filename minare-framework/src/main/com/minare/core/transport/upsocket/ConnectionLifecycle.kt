@@ -46,15 +46,8 @@ class ConnectionLifecycle @Inject constructor(
                 mapOf("connectionId" to connection._id), traceId
             )
 
-            // TEMPORARY DEBUG
-            log.info("MESSAGE_HANDLER: websocket ID $websocket , storing...")
-
             connectionCache.storeConnection(connection)
             connectionTracker.registerConnection(connection._id, traceId, websocket)
-
-            // TEMPORARY DEBUG
-            val connectionDebug = connectionTracker.getConnectionId(websocket)
-            log.info("MESSAGE_HANDLER: after storing found connection ID $connectionDebug")
 
             vlog.getEventLogger().logStateChange(
                 "Connection", "NONE", "CREATED",

@@ -118,7 +118,13 @@ abstract class MessageController @Inject constructor() {
         connectionStore.updateLastActivity(connectionId)
         val connection = connectionController.getConnection(connectionId)
 
-        handle(connection, message)
+        try {
+            handle(connection, message)
+        } catch (e: BackpressureException) {
+            WebSocketUtils.sendErrorResponse(
+                webSocket, e, connectionId, vlog
+            )
+        }
     }
 
     protected abstract suspend fun handle(connection: Connection, message: JsonObject)

@@ -1,0 +1,189 @@
+package com.minare.core.frames.coordinator.services
+
+import com.google.inject.Inject
+import com.google.inject.Singleton
+import com.minare.application.config.FrameConfiguration
+import com.minare.core.frames.coordinator.FrameCoordinatorState
+import com.minare.core.frames.coordinator.FrameCoordinatorState.Companion.PauseState
+import com.minare.core.frames.coordinator.FrameCoordinatorState.Companion.TimelineState
+import com.minare.core.frames.coordinator.FrameCoordinatorVerticle.Companion.ADDRESS_FRAME_MANIFESTS_ALL_COMPLETE
+import com.minare.core.frames.coordinator.FrameCoordinatorVerticle.Companion.ADDRESS_NEXT_FRAME
+import com.minare.core.storage.adapters.RedisDeltaStore
+import com.minare.core.storage.interfaces.SnapshotStore
+import com.minare.core.utils.vertx.EventBusUtils
+import com.minare.core.utils.vertx.EventWaiter
+import com.minare.core.utils.vertx.VerticleLogger
+import io.vertx.core.impl.logging.LoggerFactory
+import io.vertx.core.json.JsonObject
+import kotlin.math.abs
+
+@Singleton
+class TimelineService @Inject constructor(
+    private val coordinatorState: FrameCoordinatorState,
+    private val frameConfiguration: FrameConfiguration,
+    private val redisDeltaStore: RedisDeltaStore,
+    private val snapshotStore: SnapshotStore,
+    private val eventBusUtils: EventBusUtils,
+    private val eventWaiter: EventWaiter,
+    private val vlog: VerticleLogger
+) {
+    private val log = LoggerFactory.getLogger(TimelineService::class.java)
+
+    companion object {
+        val ADDRESS_TIMELINE_DETACH_COMPLETE = "minare.coordinator.timeline.detach.complete"
+        val ADDRESS_TIMELINE_STEPPED_FRAMES  = "minare.coordinator.timeline.stepped.frames"
+        val ADDRESS_TIMELINE_REPLAY_COMPLETE = "minare.coordinator.timeline.replay.complete"
+        val ADDRESS_TIMELINE_RESUME_COMPLETE = "minare.coordinator.timeline.resume.complete"
+    }
+
+    /**
+     * Detach timeline head and stop frame progress
+     * @param traceId Optional trace ID for logging
+     */
+    suspend fun detach(traceId: String = "") {
+        vlog.logInfo("Initiating timeline detach, trace ID $traceId")
+
+        if (frameConfiguration.flushOperationsOnDetach) {
+            coordinatorState.pauseState = PauseState.REST
+
+            eventWaiter.waitForEvent(ADDRESS_FRAME_MANIFESTS_ALL_COMPLETE)
+        }
+
+        coordinatorState.pauseState = if (frameConfiguration.bufferInputDuringDetach) PauseState.SOFT else PauseState.HARD
+
+        coordinatorState.timelineState = TimelineState.DETACH
+
+        eventBusUtils.publishWithTracing(
+            ADDRESS_TIMELINE_DETACH_COMPLETE,
+            JsonObject()
+                .put("traceId", traceId)
+        )
+    }
+
+    /**
+     * Step through frame deltas
+     * @param frames A positive or negative number
+     * @param traceId Optional trace ID for logging
+     */
+    suspend fun stepFrames(frames: Long, traceId: String = "") {
+        if (frames == 0L) {
+            vlog.logInfo("Frames cannot be 0L, traceId $traceId")
+            return
+        }
+
+        if (coordinatorState.timelineState != TimelineState.DETACH) {
+            vlog.logInfo("Cannot resume when timeline head not detached, trace ID $traceId")
+            return
+        }
+
+        val currentFrame = coordinatorState.frameInProgress
+        val newFrame = coordinatorState.frameInProgress + frames
+        val reverse = frames < 0
+
+        if (newFrame > currentFrame) {
+            vlog.logInfo("Cannot step ahead of current frame in progress, trace ID $traceId")
+            return
+        }
+
+        if (coordinatorState.timelineState == TimelineState.DETACH) {
+            vlog.logInfo("Stepping $frames frames, trace ID $traceId")
+        }
+
+        for (frame in frameRange(currentFrame, newFrame)) {
+            executeDeltas(frame, reverse)
+            coordinatorState.setTimelineHead(frame)
+        }
+
+        eventBusUtils.publishWithTracing(
+            ADDRESS_TIMELINE_STEPPED_FRAMES,
+            JsonObject()
+                .put("frames", frames)
+                .put("headPosition", newFrame)
+                .put("traceId", traceId)
+        )
+    }
+
+    /**
+     * Create a branch from current timeline head position and resume frame loop
+     */
+    suspend fun resume(traceId: String = "") {
+        if (coordinatorState.timelineState !in (setOf(TimelineState.DETACH, TimelineState.REPLAY))) {
+            vlog.logInfo("Cannot resume when timeline head not detached, trace ID $traceId")
+            return
+        }
+
+        branch()
+
+        if (frameConfiguration.replayOnResume) {
+            replay()
+        }
+
+        // Clean up old session state
+
+        coordinatorState.timelineState = TimelineState.PLAY
+
+        eventBusUtils.publishWithTracing(
+            ADDRESS_TIMELINE_RESUME_COMPLETE,
+            JsonObject()
+                .put("traceId", traceId)
+        )
+    }
+
+    /**
+     * Create a new session, adding root and branches metadata for traversal
+     * Mark previous deltas as stale from the point of divergence
+     */
+    private suspend fun branch() {
+        // Here be dragons
+    }
+
+    /**
+     * Replay new session up to previous frameInProgress before resuming
+     */
+    private suspend fun replay(traceId: String = "") {
+        coordinatorState.timelineState = TimelineState.REPLAY
+
+        if (frameConfiguration.bufferInputDuringReplay) {
+            // Todo: Create another coordinator state setting to decouple allow buffering
+            coordinatorState.pauseState = PauseState.SOFT
+        }
+
+        if (frameConfiguration.assignOperationsOnResume) {
+            // Create our manifests using stale deltas as a source
+        }
+
+        // Extract buffered, prepare future manifests up to frameInProgress
+
+        // Restart frame loop
+        coordinatorState.pauseState = PauseState.SOFT
+        eventBusUtils.publishWithTracing(ADDRESS_NEXT_FRAME, JsonObject())
+
+        eventWaiter.waitForEvent(ADDRESS_FRAME_MANIFESTS_ALL_COMPLETE)
+
+        eventBusUtils.publishWithTracing(
+            ADDRESS_TIMELINE_REPLAY_COMPLETE,
+            JsonObject()
+                .put("traceId", traceId)
+        )
+    }
+
+    /**
+     * Execute delta changes one frame in either direction
+     */
+    private suspend fun executeDeltas(frame: Long, reverse: Boolean, traceId: String = "") {
+        if (abs(coordinatorState.frameInProgress - frame) > 1) {
+            vlog.logInfo("Cannot executeDeltas more than one frame in either direction, trace ID $traceId")
+            return
+        }
+
+        // Do the thing
+    }
+
+    private fun frameRange(from: Long, to: Long): LongProgression {
+        return if (from < to) {
+            ((from + 1)..to)
+        } else {
+            (from downTo (to + 1))
+        }
+    }
+}
