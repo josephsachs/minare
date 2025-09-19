@@ -18,6 +18,7 @@ class FrameCompletionTracker @Inject constructor(
     private val workerRegistry: WorkerRegistry
 ) {
     private val log = LoggerFactory.getLogger(FrameCompletionTracker::class.java)
+    private val debugTraceLogs: Boolean = false
 
     private val completionMap: IMap<String, JsonObject> by lazy {
         hazelcastInstance.getMap("frame-completions")
@@ -39,8 +40,10 @@ class FrameCompletionTracker @Inject constructor(
             .put("completedAt", System.currentTimeMillis())
 
         completionMap[key] = completion
-        log.debug("Recorded completion for worker {} on logical frame {} ({} operations)",
-            workerId, logicalFrame, operationCount)
+        if (debugTraceLogs) {
+            log.debug("Recorded completion for worker {} on logical frame {} ({} operations)",
+                workerId, logicalFrame, operationCount)
+        }
     }
 
     /**
@@ -82,8 +85,10 @@ class FrameCompletionTracker @Inject constructor(
         val keysToRemove = completionMap.keys.filter { it.startsWith(prefix) }
         keysToRemove.forEach { completionMap.remove(it) }
 
-        log.debug("Cleared {} completion records for logical frame {}",
-            keysToRemove.size, logicalFrame)
+        if (debugTraceLogs) {
+            log.info("Cleared {} completion records for logical frame {}",
+                keysToRemove.size, logicalFrame)
+        }
     }
 
     /**
@@ -133,9 +138,13 @@ class FrameCompletionTracker @Inject constructor(
 
         if (keysToRemove.isNotEmpty()) {
             keysToRemove.forEach { completionMap.remove(it) }
-            log.debug("Cleared {} completion records from distributed map for new session", keysToRemove.size)
+            if (debugTraceLogs) {
+                log.debug("Cleared {} completion records from distributed map for new session", keysToRemove.size)
+            }
         } else {
-            log.debug("No completion records to clear for new session")
+            if (debugTraceLogs) {
+                log.info("No completion records to clear for new session")
+            }
         }
     }
 

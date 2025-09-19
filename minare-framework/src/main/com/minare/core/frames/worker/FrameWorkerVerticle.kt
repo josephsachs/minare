@@ -34,6 +34,7 @@ class FrameWorkerVerticle @Inject constructor(
 ) : CoroutineVerticle() {
 
     private val log = LoggerFactory.getLogger(FrameWorkerVerticle::class.java)
+    private val debugTraceLogs: Boolean = false
 
     private lateinit var workerId: String
     private lateinit var manifestMap: IMap<String, JsonObject>
@@ -112,8 +113,10 @@ class FrameWorkerVerticle @Inject constructor(
         val manifest = FrameManifest.fromJson(manifestJson)
         val operations = manifest.operations
 
-        log.info("Processing logical frame {} with {} operations",
-            logicalFrame, operations.size)
+        if (debugTraceLogs) {
+            log.info("Processing logical frame {} with {} operations",
+                logicalFrame, operations.size)
+        }
 
         var count = processOperations(operations, logicalFrame)
 
@@ -182,8 +185,7 @@ class FrameWorkerVerticle @Inject constructor(
                     workerId = workerId
                 )
 
-                log.trace("Completed operation {} for entity {}",
-                    operationId, op.getEntity())
+                if (debugTraceLogs) log.trace("Completed operation {} for entity {}", operationId, op.getEntity())
                 return true
             } else {
                 log.error("Failed to process operation {}: {}",

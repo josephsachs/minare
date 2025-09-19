@@ -26,6 +26,7 @@ class WorkerOperationHandlerVerticle @Inject constructor(
 ) : CoroutineVerticle() {
 
     private val log = LoggerFactory.getLogger(WorkerOperationHandlerVerticle::class.java)
+    private val debugTraceLogs: Boolean = false
 
     override suspend fun start() {
         log.info("Starting WorkerOperationHandlerVerticle")
@@ -98,7 +99,7 @@ class WorkerOperationHandlerVerticle @Inject constructor(
 
         val mutationCommand = buildMutationCommand(operationJson, entityId, entityType)
 
-        verticleLogger.logInfo("Processing mutate command for entity $entityId")
+        if (debugTraceLogs) verticleLogger.logInfo("Processing mutate command for entity $entityId")
 
         val processingTime = measureTimeMillis {
             val result = executeMutation(mutationCommand, connectionId)
@@ -122,7 +123,7 @@ class WorkerOperationHandlerVerticle @Inject constructor(
             )
         }
 
-        log.info("Processed MUTATE for entity {} in {}ms", entityId, processingTime)
+        if (debugTraceLogs) log.info("Processed MUTATE for entity {} in {}ms", entityId, processingTime)
     }
 
     /**

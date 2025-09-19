@@ -28,6 +28,7 @@ class TimelineService @Inject constructor(
     private val vlog: VerticleLogger
 ) {
     private val log = LoggerFactory.getLogger(TimelineService::class.java)
+    private val debugTraceLogs: Boolean = true
 
     companion object {
         val ADDRESS_TIMELINE_DETACH_COMPLETE = "minare.coordinator.timeline.detach.complete"
@@ -41,7 +42,7 @@ class TimelineService @Inject constructor(
      * @param traceId Optional trace ID for logging
      */
     suspend fun detach(traceId: String = "") {
-        vlog.logInfo("Initiating timeline detach, trace ID $traceId")
+        if (debugTraceLogs) vlog.logInfo("Initiating timeline detach, trace ID $traceId")
 
         if (frameConfiguration.flushOperationsOnDetach) {
             coordinatorState.pauseState = PauseState.REST
@@ -67,12 +68,12 @@ class TimelineService @Inject constructor(
      */
     suspend fun stepFrames(frames: Long, traceId: String = "") {
         if (frames == 0L) {
-            vlog.logInfo("Frames cannot be 0L, traceId $traceId")
+            if (debugTraceLogs) vlog.logInfo("Frames cannot be 0L, traceId $traceId")
             return
         }
 
         if (coordinatorState.timelineState != TimelineState.DETACH) {
-            vlog.logInfo("Cannot resume when timeline head not detached, trace ID $traceId")
+            if (debugTraceLogs) vlog.logInfo("Cannot resume when timeline head not detached, trace ID $traceId")
             return
         }
 
@@ -81,12 +82,12 @@ class TimelineService @Inject constructor(
         val reverse = frames < 0
 
         if (newFrame > currentFrame) {
-            vlog.logInfo("Cannot step ahead of current frame in progress, trace ID $traceId")
+            if (debugTraceLogs) vlog.logInfo("Cannot step ahead of current frame in progress, trace ID $traceId")
             return
         }
 
         if (coordinatorState.timelineState == TimelineState.DETACH) {
-            vlog.logInfo("Stepping $frames frames, trace ID $traceId")
+            if (debugTraceLogs) vlog.logInfo("Stepping $frames frames, trace ID $traceId")
         }
 
         for (frame in frameRange(currentFrame, newFrame)) {
@@ -172,7 +173,11 @@ class TimelineService @Inject constructor(
      */
     private suspend fun executeDeltas(frame: Long, reverse: Boolean, traceId: String = "") {
         if (abs(coordinatorState.frameInProgress - frame) > 1) {
-            vlog.logInfo("Cannot executeDeltas more than one frame in either direction, trace ID $traceId")
+            if (debugTraceLogs) {
+                    vlog.logInfo(
+                    "Cannot executeDeltas more than one frame in either direction, trace ID $traceId"
+                )
+            }
             return
         }
 

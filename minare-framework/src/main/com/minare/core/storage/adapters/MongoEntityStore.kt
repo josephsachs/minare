@@ -17,7 +17,6 @@ import org.slf4j.LoggerFactory
 import javax.inject.Inject
 import com.minare.core.storage.interfaces.EntityQueryStore
 import com.minare.core.storage.interfaces.EntityStore
-import com.minare.core.storage.interfaces.WriteBehindStore
 
 /**
  * MongoDB implementation of the EntityStore interface.
@@ -28,7 +27,7 @@ class MongoEntityStore @Inject constructor(
     private val mongoClient: MongoClient,
     private val entityFactory: EntityFactory,
     private val reflectionCache: ReflectionCache
-) : EntityStore, EntityQueryStore, WriteBehindStore {
+) : EntityStore, EntityQueryStore {
 
     private val log = LoggerFactory.getLogger(MongoEntityStore::class.java)
 
@@ -603,33 +602,5 @@ class MongoEntityStore @Inject constructor(
         }
 
         return parents
-    }
-
-    /**
-     * Persist entity document for write-behind storage (WriteBehindStore interface)
-     * Updated to use JsonObject instead of Entity for consistency.
-     */
-    override suspend fun persistForWriteBehind(entityDocument: JsonObject): JsonObject {
-        log.debug("Write-behind persist for entity: {}", entityDocument.getString("_id"))
-
-        val entityId = entityDocument.getString("_id")
-            ?: throw IllegalArgumentException("Entity document must have _id field")
-
-        // Use MongoDB save logic for write-behind persistence
-        val query = JsonObject().put("_id", entityId)
-        val update = JsonObject().put("${'$'}set", entityDocument)
-
-        // Upsert the document to MongoDB
-        val result = mongoClient.findOneAndReplace(collection, query, entityDocument).await()
-
-        if (result == null) {
-            // Document didn't exist, insert it
-            mongoClient.insert(collection, entityDocument).await()
-            log.debug("Write-behind: Inserted new document for entity {}", entityId)
-        } else {
-            log.debug("Write-behind: Updated existing document for entity {}", entityId)
-        }
-
-        return entityDocument
     }
 }

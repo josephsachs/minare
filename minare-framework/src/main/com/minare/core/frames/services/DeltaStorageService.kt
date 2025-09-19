@@ -13,6 +13,7 @@ class DeltaStorageService @Inject constructor(
     private val stateStore: StateStore
 ) {
     private val log = LoggerFactory.getLogger(DeltaStorageService::class.java)
+    private val debugTraceLogs: Boolean = false
 
     /**
      *
@@ -52,7 +53,7 @@ class DeltaStorageService @Inject constructor(
         }
 
         if (actualChanges.isEmpty) {
-            log.trace("No actual changes for entity {} in frame {}", entityId, frameNumber)
+            if (debugTraceLogs) log.trace("No actual changes for entity {} in frame {}", entityId, frameNumber)
             return
         }
 
@@ -82,8 +83,10 @@ class DeltaStorageService @Inject constructor(
 
         storeDelta(delta)
 
-        log.debug("Captured delta for entity {} in frame {}: {} -> version {}",
-            entityId, frameNumber, operationType, delta.version)
+        if (debugTraceLogs) {
+            log.debug("Captured delta for entity {} in frame {}: {} -> version {}",
+                entityId, frameNumber, operationType, delta.version)
+        }
     }
 
     /**
@@ -93,8 +96,10 @@ class DeltaStorageService @Inject constructor(
         try {
             deltaStore.appendDelta(delta.frameNumber, delta)
 
-            log.trace("Stored delta for entity {} in frame {} (version {})",
-                delta.entityId, delta.frameNumber, delta.version)
+            if (debugTraceLogs) {
+                log.trace("Stored delta for entity {} in frame {} (version {})",
+                    delta.entityId, delta.frameNumber, delta.version)
+            }
 
         } catch (e: Exception) {
             log.error("Failed to store delta for entity {} in frame {}",

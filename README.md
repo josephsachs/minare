@@ -51,8 +51,8 @@ wrong and be certain they are addressing the true cause.
 "Parallel interleaving" remains an unsolved problem. While you can guarantee operations are replayed in the same frames,
 in the same subsets, ordered the same, how do you ensure that closely-grouped, intra-frame operations complete in the same 
 order across the cluster? Right now, your best bet is to configure a very fast frame (that is, one containing
-fewer operations per); future efforts may include configurable per-frame work limits, or pushing the most critical
-operations through single-thread pipelines.
+fewer operations per); future efforts may include configurable per-frame work limits, single-thread pipelines for 
+designated operations, and worker/scope affinities.
 
 ## Technical Details
 

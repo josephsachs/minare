@@ -62,7 +62,6 @@ class MinareModule : AbstractModule(), DatabaseNameProvider {
         bind(EntityPublishService::class.java).to(RedisEntityPublishService::class.java).`in`(Singleton::class.java)
         bind(EntityVersioningService::class.java).`in`(Singleton::class.java)
         bind(EntityQueryStore::class.java).to(MongoEntityStore::class.java).`in`(Singleton::class.java)
-        bind(WriteBehindStore::class.java).to(MongoEntityStore::class.java).`in`(Singleton::class.java)
         bind(MessageQueue::class.java).to(KafkaMessageQueue::class.java).`in`(Singleton::class.java)
 
         bind(ConnectionStore::class.java).to(MongoConnectionStore::class.java).`in`(Singleton::class.java)

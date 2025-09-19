@@ -22,6 +22,7 @@ class FrameManifestBuilder @Inject constructor(
     private val workerRegistry: WorkerRegistry
 ) {
     private val log = LoggerFactory.getLogger(FrameManifestBuilder::class.java)
+    private val debugTraceLogs: Boolean = false
 
     private val manifestMap: IMap<String, JsonObject> by lazy {
         hazelcastInstance.getMap("frame-manifests")
@@ -86,12 +87,18 @@ class FrameManifestBuilder @Inject constructor(
             val key = "manifest:$logicalFrame:$workerId"
             manifestMap[key] = manifest
 
-            log.debug("Wrote manifest for worker {} with {} operations for logical frame {}",
-                workerId, sortedOperations.size, logicalFrame)
+            if (debugTraceLogs) {
+                log.info(
+                    "Wrote manifest for worker {} with {} operations for logical frame {}",
+                    workerId, sortedOperations.size, logicalFrame
+                )
+            }
         }
 
-        log.debug("Created manifests for logical frame {} with {} total operations distributed to {} workers",
-            logicalFrame, assignments.values.sumOf { it.size }, activeWorkers.size)
+        if (debugTraceLogs) {
+            log.info("Created manifests for logical frame {} with {} total operations distributed to {} workers",
+                logicalFrame, assignments.values.sumOf { it.size }, activeWorkers.size)
+        }
     }
 
 
@@ -141,7 +148,7 @@ class FrameManifestBuilder @Inject constructor(
 
         manifestKeys.forEach { manifestMap.remove(it) }
 
-        log.debug("Cleared {} manifests for frame {}", manifestKeys.size, logicalFrame)
+        if (debugTraceLogs) log.info("Cleared {} manifests for frame {}", manifestKeys.size, logicalFrame)
     }
 
     /**
@@ -162,9 +169,9 @@ class FrameManifestBuilder @Inject constructor(
 
         if (keysToRemove.isNotEmpty()) {
             keysToRemove.forEach { manifestMap.remove(it) }
-            log.debug("Cleared {} manifests from distributed map for new session", keysToRemove.size)
+            if (debugTraceLogs) log.info("Cleared {} manifests from distributed map for new session", keysToRemove.size)
         } else {
-            log.debug("No manifests to clear for new session")
+            if (debugTraceLogs) log.info("No manifests to clear for new session")
         }
     }
 

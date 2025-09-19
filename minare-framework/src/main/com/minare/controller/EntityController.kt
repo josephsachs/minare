@@ -2,7 +2,6 @@ package com.minare.controller
 
 import com.minare.core.entity.models.Entity
 import com.minare.core.storage.interfaces.StateStore
-import com.minare.core.storage.interfaces.WriteBehindStore
 import com.minare.core.storage.interfaces.EntityStore
 import io.vertx.core.json.JsonObject
 import org.slf4j.LoggerFactory
@@ -21,7 +20,6 @@ import javax.inject.Singleton
 @Singleton
 open class EntityController @Inject constructor(
     private val stateStore: StateStore,
-    private val writeBehindStore: WriteBehindStore,
     private val entityStore: EntityStore
 ) {
     private val log = LoggerFactory.getLogger(EntityController::class.java)
@@ -77,21 +75,7 @@ open class EntityController @Inject constructor(
 
         val savedEntity = stateStore.save(entity)
 
-        // Schedule write-behind to MongoDB using JsonObject approach
-        try {
-            // Get the entity as a JsonObject document from Redis
-            val entityDocument = stateStore.findEntityJson(savedEntity._id!!)
-
-            if (entityDocument != null) {
-                writeBehindStore.persistForWriteBehind(entityDocument)
-                log.debug("Entity {} written to MongoDB via write-behind", savedEntity._id)
-            } else {
-                log.warn("Could not retrieve entity document for write-behind: {}", savedEntity._id)
-            }
-        } catch (e: Exception) {
-            log.warn("Write-behind failed for entity {}: {}", savedEntity._id, e.message)
-            // Don't fail the operation - Redis is source of truth
-        }
+        // Update any relationship fields in Mongo entity_graph
 
         return savedEntity
     }

@@ -16,6 +16,8 @@ class CloseHandler @Inject constructor(
     private val connectionTracker: ConnectionTracker,
     private val heartbeatManager: HeartbeatManager
 ) {
+    private val debugTraceLogs: Boolean = false
+
     /**
      * Handle a socket being closed
      */
@@ -30,17 +32,21 @@ class CloseHandler @Inject constructor(
             connectionCache.removeUpSocket(connectionId)
             connectionTracker.handleSocketClosed(websocket)
 
-            vlog.getEventLogger().logStateChange(
-                "Connection", "CONNECTED", "DISCONNECTED",
-                mapOf("connectionId" to connectionId), traceId
-            )
+            if (debugTraceLogs) {
+                vlog.getEventLogger().logStateChange(
+                    "Connection", "CONNECTED", "DISCONNECTED",
+                    mapOf("connectionId" to connectionId), traceId
+                )
+            }
 
-            vlog.getEventLogger().trace(
-                "RECONNECTION_WINDOW_STARTED", mapOf(
-                    "connectionId" to connectionId,
-                    "windowMs" to CleanupVerticle.CONNECTION_RECONNECT_WINDOW_MS
-                ), traceId
-            )
+            if (debugTraceLogs) {
+                vlog.getEventLogger().trace(
+                    "RECONNECTION_WINDOW_STARTED", mapOf(
+                        "connectionId" to connectionId,
+                        "windowMs" to CleanupVerticle.CONNECTION_RECONNECT_WINDOW_MS
+                    ), traceId
+                )
+            }
         } catch (e: Exception) {
             vlog.logVerticleError("WEBSOCKET_CLOSE", e, mapOf("connectionId" to connectionId))
         }

@@ -25,6 +25,7 @@ class FrameCoordinatorState @Inject constructor(
     private val hazelcastInstance: HazelcastInstance
 ) {
     private val log = LoggerFactory.getLogger(FrameCoordinatorState::class.java)
+    private val debugTraceLogs: Boolean = false
 
     var sessionId: String = ""
 
@@ -129,8 +130,10 @@ class FrameCoordinatorState @Inject constructor(
         frameProgress.set(-1L)
         currentFrameCompletions.clear()
 
-        log.info("Started new session at timestamp {} (nanos: {})",
-            sessionStartTimestamp, sessionStartNanos)
+        if (debugTraceLogs) {
+            log.info("Started new session at timestamp {} (nanos: {})",
+                sessionStartTimestamp, sessionStartNanos)
+        }
     }
 
     /**
@@ -185,7 +188,9 @@ class FrameCoordinatorState @Inject constructor(
         // TODO: This case should be prevented by frame completion logic/coordinator message
         if (frameNumber == frameProgress.get()) {
             currentFrameCompletions[workerId] = System.currentTimeMillis()
-            log.debug("Worker {} completed logical frame {}", workerId, frameNumber)
+            if (debugTraceLogs) {
+                log.debug("Worker {} completed logical frame {}", workerId, frameNumber)
+            }
         } else {
             log.error("Ignoring completion from worker {} for old frame {} (current: {})",
                 workerId, frameNumber, frameProgress.get())

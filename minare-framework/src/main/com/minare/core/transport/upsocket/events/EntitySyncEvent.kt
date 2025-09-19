@@ -23,20 +23,26 @@ class EntitySyncEvent @Inject constructor(
     private val connectionStore: ConnectionStore
 ) {
     private val connectionTracker = ConnectionTracker("CommandSocket", vlog)
+    private var debugTraceLogs: Boolean = false
 
-    suspend fun register() {
+    suspend fun register(debugTraceLogs: Boolean) {
+        // Quiet, you
+        this.debugTraceLogs = debugTraceLogs
+
         eventBusUtils.registerTracedConsumer<JsonObject>(UpSocketVerticle.ADDRESS_ENTITY_SYNC) { message, traceId ->
             val connectionId = message.body().getString("connectionId")
             val entityId = message.body().getString("entityId")
 
             try {
-                vlog.logStartupStep(
-                    "ENTITY_SYNC_REQUEST", mapOf(
-                        "entityId" to entityId,
-                        "connectionId" to connectionId,
-                        "traceId" to traceId
+                if (debugTraceLogs) {
+                    vlog.logStartupStep(
+                        "ENTITY_SYNC_REQUEST", mapOf(
+                            "entityId" to entityId,
+                            "connectionId" to connectionId,
+                            "traceId" to traceId
+                        )
                     )
-                )
+                }
 
                 val result = handleEntitySync(connectionId, entityId)
 
@@ -60,12 +66,14 @@ class EntitySyncEvent @Inject constructor(
         val traceId = connectionTracker.getTraceId(connectionId)
 
         try {
-            vlog.getEventLogger().trace(
-                "ENTITY_SYNC_STARTED", mapOf(
-                    "entityId" to entityId,
-                    "connectionId" to connectionId
-                ), traceId
-            )
+            if (debugTraceLogs) {
+                vlog.getEventLogger().trace(
+                    "ENTITY_SYNC_STARTED", mapOf(
+                        "entityId" to entityId,
+                        "connectionId" to connectionId
+                    ), traceId
+                )
+            }
 
             // Check if connection and command socket exist
             if (!connectionCache.hasConnection(connectionId)) {
@@ -89,25 +97,33 @@ class EntitySyncEvent @Inject constructor(
 
             // Fetch the entity
             val startTime = System.currentTimeMillis()
-            vlog.getEventLogger().logDbOperation(
-                "FIND", "entities",
-                mapOf("entityId" to entityId), traceId
-            )
+
+            if (debugTraceLogs) {
+                vlog.getEventLogger().logDbOperation(
+                    "FIND", "entities",
+                    mapOf("entityId" to entityId), traceId
+                )
+            }
 
             val entities = entityStore.findEntitiesByIds(listOf(entityId))
 
             val queryTime = System.currentTimeMillis() - startTime
-            vlog.getEventLogger().logPerformance(
-                "ENTITY_QUERY", queryTime,
-                mapOf("entityId" to entityId), traceId
-            )
+
+            if (debugTraceLogs) {
+                vlog.getEventLogger().logPerformance(
+                    "ENTITY_QUERY", queryTime,
+                    mapOf("entityId" to entityId), traceId
+                )
+            }
 
             if (entities.isEmpty()) {
-                vlog.getEventLogger().trace(
-                    "ENTITY_NOT_FOUND", mapOf(
-                        "entityId" to entityId
-                    ), traceId
-                )
+                if (debugTraceLogs) {
+                    vlog.getEventLogger().trace(
+                        "ENTITY_NOT_FOUND", mapOf(
+                            "entityId" to entityId
+                        ), traceId
+                    )
+                }
                 sendSyncErrorToClient(connectionId, "Entity not found")
                 return false
             }
@@ -132,22 +148,26 @@ class EntitySyncEvent @Inject constructor(
             // Send the sync message to the client
             upSocket.writeTextMessage(syncMessage.encode())
 
-            vlog.getEventLogger().trace(
-                "ENTITY_SYNC_DATA_SENT", mapOf(
-                    "entityId" to entityId,
-                    "connectionId" to connectionId
-                ), traceId
-            )
+            if (debugTraceLogs) {
+                vlog.getEventLogger().trace(
+                    "ENTITY_SYNC_DATA_SENT", mapOf(
+                        "entityId" to entityId,
+                        "connectionId" to connectionId
+                    ), traceId
+                )
+            }
 
             // Update last activity
             connectionStore.updateLastActivity(connectionId)
 
-            vlog.getEventLogger().trace(
-                "ENTITY_SYNC_COMPLETED", mapOf(
-                    "entityId" to entityId,
-                    "connectionId" to connectionId
-                ), traceId
-            )
+            if (debugTraceLogs) {
+                vlog.getEventLogger().trace(
+                    "ENTITY_SYNC_COMPLETED", mapOf(
+                        "entityId" to entityId,
+                        "connectionId" to connectionId
+                    ), traceId
+                )
+            }
 
             return true
         } catch (e: Exception) {
@@ -176,12 +196,14 @@ class EntitySyncEvent @Inject constructor(
 
                 socket.writeTextMessage(errorResponse.encode())
 
-                vlog.getEventLogger().trace(
-                    "SYNC_ERROR_SENT", mapOf(
-                        "connectionId" to connectionId,
-                        "error" to errorMessage
+                if (debugTraceLogs) {
+                    vlog.getEventLogger().trace(
+                        "SYNC_ERROR_SENT", mapOf(
+                            "connectionId" to connectionId,
+                            "error" to errorMessage
+                        )
                     )
-                )
+                }
             } catch (e: Exception) {
                 vlog.logVerticleError(
                     "SYNC_ERROR_SEND", e, mapOf(
