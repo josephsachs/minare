@@ -3,7 +3,7 @@ package com.minare.worker.upsocket.events
 import com.google.inject.Inject
 import com.minare.cache.ConnectionCache
 import com.minare.core.storage.interfaces.ConnectionStore
-import com.minare.core.storage.interfaces.EntityStore
+import com.minare.core.storage.interfaces.EntityGraphStore
 import com.minare.core.transport.downsocket.services.ConnectionTracker
 import com.minare.core.utils.vertx.EventBusUtils
 import com.minare.core.utils.vertx.VerticleLogger
@@ -19,7 +19,7 @@ class EntitySyncEvent @Inject constructor(
     private val eventBusUtils: EventBusUtils,
     private val vlog: VerticleLogger,
     private val connectionCache: ConnectionCache,
-    private val entityStore: EntityStore,
+    private val entityGraphStore: EntityGraphStore,
     private val connectionStore: ConnectionStore
 ) {
     private val connectionTracker = ConnectionTracker("CommandSocket", vlog)
@@ -100,12 +100,12 @@ class EntitySyncEvent @Inject constructor(
 
             if (debugTraceLogs) {
                 vlog.getEventLogger().logDbOperation(
-                    "FIND", "entities",
+                    "FIND", "entity_graph",
                     mapOf("entityId" to entityId), traceId
                 )
             }
 
-            val entities = entityStore.findEntitiesByIds(listOf(entityId))
+            val entities = entityGraphStore.findEntitiesByIds(listOf(entityId))
 
             val queryTime = System.currentTimeMillis() - startTime
 
@@ -133,7 +133,7 @@ class EntitySyncEvent @Inject constructor(
             // Create a sync response message
             val syncData = JsonObject()
                 .put(
-                    "entities", JsonObject()
+                    "entity_graph", JsonObject()
                         .put("_id", entity?._id)
                         .put("type", entity?.type)
                         .put("version", entity?.version)

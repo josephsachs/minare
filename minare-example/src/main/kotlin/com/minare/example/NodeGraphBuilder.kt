@@ -45,6 +45,7 @@ class NodeGraphBuilder @Inject constructor(
 
         try {
             val savedRootNode = entityController.create(rootNode) as Node
+
             log.debug("Created root node with ID: ${savedRootNode._id}")
 
             graph.addVertex(savedRootNode)
@@ -73,14 +74,11 @@ class NodeGraphBuilder @Inject constructor(
                         child.label = "${parent.label}-${index + 1}"
 
                         val savedChild = entityController.create(child) as Node
-                        log.debug("Created child node with ID: ${savedChild._id}")
 
                         parent.addChild(savedChild)
 
                         try {
-                            log.debug("BEFORE saving parent: ${parent._id}")
                             val updatedParent = entityController.save(parent) as Node
-                            log.debug("AFTER saving parent: ${updatedParent._id}")
 
                             graph.addVertex(savedChild)
                             graph.addEdge(updatedParent, savedChild)

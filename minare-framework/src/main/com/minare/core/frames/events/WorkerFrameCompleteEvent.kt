@@ -20,24 +20,28 @@ class WorkerFrameCompleteEvent @Inject constructor(
     private val workerRegistry: WorkerRegistry,
     private val frameCompletionTracker: FrameCompletionTracker
 ) {
-    suspend fun register() {
+    suspend fun register(debugTraceLogs: Boolean = false) {
         eventBusUtils.registerTracedConsumer<JsonObject>(ADDRESS_WORKER_FRAME_COMPLETE) { message, traceId ->
             val workerId = message.body().getString("workerId")
             val logicalFrame = message.body().getLong("logicalFrame")  // Changed from frameStartTime
             val operationCount = message.body().getInteger("operationCount", 0)
 
-            vlog.getEventLogger().trace(
-                "FRAME_COMPLETE_RECEIVED",
-                mapOf(
-                    "workerId" to workerId,
-                    "logicalFrame" to logicalFrame,
-                    "operationCount" to operationCount
-                ),
-                traceId
-            )
+            if (debugTraceLogs) {
+                vlog.getEventLogger().trace(
+                    "FRAME_COMPLETE_RECEIVED",
+                    mapOf(
+                        "workerId" to workerId,
+                        "logicalFrame" to logicalFrame,
+                        "operationCount" to operationCount
+                    ),
+                    traceId
+                )
+            }
 
             if (!workerRegistry.isWorkerHealthy(workerId)) {
-                vlog.logInfo("Ignoring completion from unhealthy worker $workerId")
+                if (debugTraceLogs) {
+                    vlog.logInfo("Ignoring completion from unhealthy worker $workerId")
+                }
                 return@registerTracedConsumer
             }
 
@@ -48,16 +52,17 @@ class WorkerFrameCompleteEvent @Inject constructor(
                 val completedWorkers = coordinatorState.getCompletedWorkers(logicalFrame)
                 val activeWorkers = workerRegistry.getActiveWorkers()
 
-                vlog.logInfo("Frame $logicalFrame progress: ${completedWorkers.size}/${activeWorkers.size} workers complete")
-
-                vlog.getEventLogger().trace(
-                    "ALL_WORKERS_COMPLETE",
-                    mapOf(
-                        "logicalFrame" to logicalFrame,
-                        "workerCount" to activeWorkers.size
-                    ),
-                    traceId
-                )
+                if (debugTraceLogs) {
+                    vlog.logInfo("Frame $logicalFrame progress: ${completedWorkers.size}/${activeWorkers.size} workers complete")
+                    vlog.getEventLogger().trace(
+                        "ALL_WORKERS_COMPLETE",
+                        mapOf(
+                            "logicalFrame" to logicalFrame,
+                            "workerCount" to activeWorkers.size
+                        ),
+                        traceId
+                    )
+                }
 
                 if (coordinatorState.frameInProgress == coordinatorState.lastPreparedManifest)  {
                     eventBusUtils.publishWithTracing(

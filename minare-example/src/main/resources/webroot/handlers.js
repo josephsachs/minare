@@ -50,7 +50,11 @@ function processEntityQueue() {
     let transformedUpdates = 0;
 
     for (const batch of pendingEntities) {
+      //console.log(batch);
+
       const { entities, needsTransform } = batch;
+
+      console.log(entities);
 
       for (const entity of entities) {
         const entityId = entity._id || entity.id;

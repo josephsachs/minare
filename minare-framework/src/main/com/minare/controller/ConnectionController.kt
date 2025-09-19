@@ -17,13 +17,11 @@ import javax.inject.Singleton
  * Provides fast access to connection objects and associated websockets.
  */
 @Singleton
-open class ConnectionController @Inject constructor(
-    val connectionStore: ConnectionStore,
-    val connectionCache: ConnectionCache,
-    val channelStore: ChannelStore,
-    val contextStore: ContextStore,
-    val entityStore: EntityStore
-) {
+open class ConnectionController @Inject constructor() {
+    @Inject private lateinit var connectionStore: ConnectionStore
+    @Inject private lateinit var connectionCache: ConnectionCache
+    @Inject private lateinit var channelStore: ChannelStore
+
     private val log = LoggerFactory.getLogger(ConnectionController::class.java)
 
     /**
@@ -336,77 +334,7 @@ open class ConnectionController @Inject constructor(
         return connectionCache.isFullyConnected(connectionId)
     }
 
-    /**
-     * Synchronize a connection with all entities in its channels
-     * This is typically called when a connection is first established
-     *
-     * @param connectionId The ID of the connection to synchronize
-     * @return True if sync was successful, false otherwise
-     */
-    suspend fun syncConnection(connectionId: String): Boolean {
-        try {
-            log.info("Starting sync for connection: {}", connectionId)
 
-            val channels = channelStore.getChannelsForClient(connectionId)
-
-            if (channels.isEmpty()) {
-                log.info("No channels found for connection: {}", connectionId)
-                return true
-            }
-
-            for (channelId in channels) {
-                syncChannelToConnection(channelId, connectionId)
-            }
-
-            log.info("Sync completed for connection: {}", connectionId)
-            return true
-
-        } catch (e: Exception) {
-            log.error("Error during connection sync: {}", connectionId, e)
-            return false
-        }
-    }
-
-    /**
-     * Synchronize all entities in a channel to a specific connection
-     *
-     * @param channelId The channel containing the entities
-     * @param connectionId The connection to sync to
-     */
-    suspend fun syncChannelToConnection(channelId: String, connectionId: String) {
-        try {
-            log.debug("Syncing channel {} to connection {}", channelId, connectionId)
-            val entityIds = contextStore.getEntityIdsByChannel(channelId)
-
-            if (entityIds.isEmpty()) {
-                log.debug("No entities found in channel: {}", channelId)
-                return
-            }
-
-            val documentGraph = entityStore.buildDocumentGraph(entityIds)
-
-            val syncData = EntityGraph.documentGraphToJson(documentGraph)
-
-            syncData.put("channelId", channelId)
-            syncData.put("timestamp", System.currentTimeMillis())
-
-            val syncMessage = JsonObject()
-                .put("type", "sync")
-                .put("data", syncData)
-
-            // TODO: Return sync results via downsocket instead
-            val upSocket = getUpSocket(connectionId)
-            if (upSocket != null && !upSocket.isClosed()) {
-                upSocket.writeTextMessage(syncMessage.encode())
-                log.debug("Sent sync data for channel {} to connection {}", channelId, connectionId)
-            } else {
-                log.warn("Cannot sync: up socket not found or closed for connection {}", connectionId)
-            }
-
-        } catch (e: Exception) {
-            log.error("Error syncing channel {} to connection {}", channelId, connectionId, e)
-        }
-    }
 
     /**
      * Handles the cleanup when a connection is terminated.

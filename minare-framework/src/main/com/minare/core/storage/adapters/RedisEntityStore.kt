@@ -13,6 +13,8 @@ import org.slf4j.LoggerFactory
 import javax.inject.Inject
 import com.minare.core.storage.interfaces.StateStore
 import io.vertx.core.json.JsonArray
+import org.jgrapht.Graph
+import org.jgrapht.graph.DefaultEdge
 
 @Singleton
 class RedisEntityStore @Inject constructor(
@@ -170,6 +172,34 @@ class RedisEntityStore @Inject constructor(
         }
 
         return result
+    }
+
+    /**
+     * Hydrates graph nodes with full entity state from Redis
+     * Modifies the graph in-place by merging Redis data into each node
+     * @param graph Graph with nodes containing minimal entity info (id, type, version)
+     * @return The same graph structure but with nodes containing full state
+     */
+    override suspend fun hydrateGraph(graph: Graph<JsonObject, DefaultEdge>) {
+        val entityIds = graph.vertexSet().mapNotNull { it.getString("_id") }
+
+        if (entityIds.isEmpty()) {
+            return
+        }
+
+        // Batch fetch all entities from Redis
+        val fullEntities = findEntitiesJsonByIds(entityIds)
+
+        // Merge full state into each graph node
+        for (vertex in graph.vertexSet()) {
+            val entityId = vertex.getString("_id") ?: continue
+            fullEntities[entityId]?.let { fullEntity ->
+                // Merge the Redis state into the MongoDB node
+                // Keep the graph structure but add the full state
+                vertex.put("state", fullEntity.getJsonObject("state", JsonObject()))
+                // Add any other fields you need from Redis
+            }
+        }
     }
 
     /**

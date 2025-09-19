@@ -1,4 +1,4 @@
-package com.minare.core.storage.interfaces
+/**package com.minare.core.storage.interfaces
 
 import com.minare.core.entity.models.Entity
 import io.vertx.core.json.JsonObject
@@ -61,4 +61,4 @@ interface EntityStore {
      */
     suspend fun updateVersions(entityIds: Set<String>): JsonObject
 
-}
+}**/

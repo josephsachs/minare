@@ -90,7 +90,7 @@ class FrameCoordinatorVerticle @Inject constructor(
 
         launch {
             workerHeartbeatEvent.register()
-            workerFrameCompleteEvent.register()
+            workerFrameCompleteEvent.register(debugTraceLogs)
             workerRegisterEvent.register()
             workerReadinessEvent.register()
             workerHealthChangeEvent.register()

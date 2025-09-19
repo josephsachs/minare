@@ -1,8 +1,8 @@
 package com.minare.controller
 
 import com.minare.core.entity.models.Entity
+import com.minare.core.storage.interfaces.EntityGraphStore
 import com.minare.core.storage.interfaces.StateStore
-import com.minare.core.storage.interfaces.EntityStore
 import io.vertx.core.json.JsonObject
 import org.slf4j.LoggerFactory
 import javax.inject.Inject
@@ -20,7 +20,7 @@ import javax.inject.Singleton
 @Singleton
 open class EntityController @Inject constructor(
     private val stateStore: StateStore,
-    private val entityStore: EntityStore
+    private val entityGraphStore: EntityGraphStore
 ) {
     private val log = LoggerFactory.getLogger(EntityController::class.java)
 
@@ -39,16 +39,12 @@ open class EntityController @Inject constructor(
             throw IllegalArgumentException("Entity already has an ID - use save() for downSockets")
         }
 
-        log.debug("Creating new entity of type {}", entity.type)
-
         try {
             //  Save to MongoDB to get ID assigned
-            val entityWithId = entityStore.save(entity)
-            log.debug("Entity created in MongoDB with ID: {}", entityWithId._id)
+            val entityWithId = entityGraphStore.save(entity)
 
             // Redis is source of truth for Entity state
             val finalEntity = stateStore.save(entityWithId)
-            log.debug("Entity {} synced to Redis", finalEntity._id)
 
             return finalEntity
         } catch (e: Exception) {
@@ -75,7 +71,7 @@ open class EntityController @Inject constructor(
 
         val savedEntity = stateStore.save(entity)
 
-        // Update any relationship fields in Mongo entity_graph
+        entityGraphStore.save(savedEntity)
 
         return savedEntity
     }

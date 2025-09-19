@@ -138,7 +138,7 @@ class EntityGraph(root: Entity) {
             }
 
             return result
-                .put("entities", entitiesArray)
+                .put("entity_graph", entitiesArray)
                 .put("edges", edges)
         }
 
@@ -199,7 +199,7 @@ class EntityGraph(root: Entity) {
             }
 
             return result
-                .put("entities", entitiesArray)
+                .put("entity_graph", entitiesArray)
                 .put("edges", edges)
         }
 

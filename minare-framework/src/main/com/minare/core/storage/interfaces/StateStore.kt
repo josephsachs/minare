@@ -2,6 +2,8 @@ package com.minare.core.storage.interfaces
 
 import com.minare.core.entity.models.Entity
 import io.vertx.core.json.JsonObject
+import org.jgrapht.Graph
+import org.jgrapht.graph.DefaultEdge
 
 /**
  * Interface for state storage operations.
@@ -36,6 +38,13 @@ interface StateStore {
      * @return Map of entities with full state
      */
     suspend fun findEntitiesWithState(entityIds: List<String>): Map<String, Entity>
+
+    /**
+     * Hydrates a graph of JsonObject nodes with full entity state from Redis
+     * @param graph Graph with nodes containing minimal entity info (id, type, version)
+     * @return The same graph structure but with nodes containing full state
+     */
+    suspend fun hydrateGraph(graph: Graph<JsonObject, DefaultEdge>)
 
     /**
      * Finds an entity by ID and returns it as a JsonObject
