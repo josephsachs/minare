@@ -1,9 +1,10 @@
 package com.minare.core.storage.adapters
 
 import com.google.inject.Singleton
+import com.minare.core.entity.services.EntityInspector
 import com.minare.core.entity.models.Entity
 import com.minare.core.entity.factories.EntityFactory
-import com.minare.core.entity.ReflectionCache
+import com.minare.core.entity.annotations.Child
 import com.minare.core.entity.annotations.Parent
 import io.vertx.core.json.JsonArray
 import io.vertx.core.json.JsonObject
@@ -11,12 +12,8 @@ import io.vertx.ext.mongo.BulkOperation
 import io.vertx.ext.mongo.MongoClient
 import io.vertx.ext.mongo.WriteOption
 import io.vertx.kotlin.coroutines.await
-import org.jgrapht.Graph
-import org.jgrapht.graph.DefaultDirectedGraph
-import org.jgrapht.graph.DefaultEdge
 import org.slf4j.LoggerFactory
 import javax.inject.Inject
-import com.minare.core.storage.interfaces.EntityQueryStore
 import com.minare.core.storage.interfaces.EntityGraphStore
 
 /**
@@ -28,12 +25,11 @@ import com.minare.core.storage.interfaces.EntityGraphStore
 class MongoEntityStore @Inject constructor(
     private val mongoClient: MongoClient,
     private val entityFactory: EntityFactory,
-    private val reflectionCache: ReflectionCache
-) : EntityGraphStore, EntityQueryStore {
+    private val entityInspector: EntityInspector
+) : EntityGraphStore {
 
     companion object {
-        private const val COLLECTION_NAME = "entity_graph"
-        private const val MAX_GRAPH_DEPTH = 10
+        const val COLLECTION_NAME = "entity_graph"
     }
 
     private val log = LoggerFactory.getLogger(MongoEntityStore::class.java)
@@ -66,7 +62,6 @@ class MongoEntityStore @Inject constructor(
                 // Existing entity - update relationships
                 val query = JsonObject().put("_id", entity._id)
                 val update = JsonObject().put("\$set", document)
-                    .put("\$inc", JsonObject().put("version", 1))
 
                 val result = mongoClient.findOneAndUpdateWithOptions(
                     COLLECTION_NAME,
@@ -99,9 +94,12 @@ class MongoEntityStore @Inject constructor(
             return JsonObject()
         }
 
-        val relationshipFields = getRelationshipFieldNames()
+        val fieldNames = entityInspector
+            .getFieldsOfType(entityId, listOf(Parent::class, Child::class))
+            .map { it.name }.toSet()
+
         val filteredDelta = delta.fieldNames()
-            .filter { it in relationshipFields }
+            .filter { it in fieldNames }
             .fold(JsonObject()) { acc, field ->
                 acc.put("state.$field", delta.getValue(field))
             }
@@ -113,7 +111,6 @@ class MongoEntityStore @Inject constructor(
 
         val update = JsonObject()
             .put("\$set", filteredDelta)
-            .put("\$inc", JsonObject().put("version", 1))
 
         val query = JsonObject().put("_id", entityId)
 
@@ -198,129 +195,30 @@ class MongoEntityStore @Inject constructor(
         }
     }
 
-    /**
-     * Retrieves all ancestors of an entity using MongoDB's $graphLookup.
-     */
-    override suspend fun getAncestorGraph(entityId: String): Graph<Entity, DefaultEdge> {
-        val pipeline = JsonArray().apply {
-            // Match the starting entity
-            add(JsonObject().put("\$match", JsonObject().put("_id", entityId)))
-
-            // Graph lookup for ancestors
-            add(JsonObject().put("\$graphLookup", JsonObject().apply {
-                put("from", COLLECTION_NAME)
-                put("startWith", "\$_id")
-                put("connectFromField", "_id")
-                put("connectToField", "state.*")
-                put("as", "ancestors")
-                put("maxDepth", MAX_GRAPH_DEPTH)
-                put("depthField", "depth")
-            }))
-        }
-
-        val results = executeAggregation(pipeline)
-        return transformResultsToEntityGraph(results)
-    }
-
-    /**
-     * Builds a graph of entities based on their relationships.
-     */
-    override suspend fun buildEntityGraph(entityIds: List<String>): Graph<Entity, DefaultEdge> {
-        if (entityIds.isEmpty()) {
-            return DefaultDirectedGraph(DefaultEdge::class.java)
-        }
-
-        val documents = fetchDocumentsByIds(entityIds)
-        return buildGraphFromDocuments(documents) { createMinimalEntity(it) }
-    }
-
-    /**
-     * Builds a graph of raw MongoDB documents.
-     */
-    override suspend fun buildDocumentGraph(entityIds: List<String>): Graph<JsonObject, DefaultEdge> {
-        if (entityIds.isEmpty()) {
-            return DefaultDirectedGraph(DefaultEdge::class.java)
-        }
-
-        val documents = fetchDocumentsByIds(entityIds)
-        return buildGraphFromDocuments(documents) { it }
-    }
-
-    /**
-     * Traverses parent relationships in a document graph.
-     */
-    override fun traverseParents(
-        graph: Graph<JsonObject, DefaultEdge>,
-        document: JsonObject,
-        visited: MutableSet<String>
-    ): List<JsonObject> {
-        val documentId = document.getString("_id") ?: return emptyList()
-        visited.add(documentId)
-
-        return graph.outgoingEdgesOf(document).flatMap { edge ->
-            val parent = graph.getEdgeTarget(edge)
-            val parentId = parent.getString("_id")
-
-            if (parentId != null && parentId !in visited) {
-                listOf(parent) + traverseParents(graph, parent, visited)
-            } else {
-                emptyList()
-            }
-        }
-    }
-
-    // Private helper methods
-
     private suspend fun buildEntityDocument(entity: Entity): JsonObject {
         val document = JsonObject()
             .put("type", entity.type)
 
         // Extract only relationship fields
-        val relationshipState = extractRelationshipFields(entity)
+        val relationshipFields = entityInspector.getFieldsOfType(entity, listOf(Child::class, Parent::class))
+
+        // Build state object with field names and values
+        val relationshipState = JsonObject()
+        relationshipFields.forEach { field ->
+            field.isAccessible = true
+            val fieldValue = field.get(entity)
+            if (fieldValue != null) {
+                relationshipState.put(field.name, fieldValue)
+            }
+        }
+
         // Always include state field, even if empty
         document.put("state", relationshipState)
 
         return document
     }
 
-    private fun extractRelationshipFields(entity: Entity): JsonObject {
-        val stateJson = JsonObject()
-        val entityType = entity.type ?: return stateJson
-
-        entityFactory.useClass(entityType)?.let { entityClass ->
-            // Get both Parent and Child relationship fields
-            val parentFields = reflectionCache.getFieldsWithAnnotation<Parent>(entityClass)
-            val childFields = reflectionCache.getFieldsWithAnnotation<com.minare.core.entity.annotations.Child>(entityClass)
-
-            // Extract all relationship fields
-            (parentFields + childFields).forEach { field ->
-                field.isAccessible = true
-                try {
-                    val value = field.get(entity)
-                    // Include the field even if null to maintain consistent schema
-                    stateJson.put(field.name, value)
-                } catch (e: Exception) {
-                    log.warn("Error getting field ${field.name} from entity", e)
-                }
-            }
-        }
-
-        return stateJson
-    }
-
-    private fun getRelationshipFieldNames(): Set<String> {
-        return entityFactory.getTypeNames().flatMap { typeName ->
-            entityFactory.useClass(typeName)?.let { entityClass ->
-                val parentFields = reflectionCache.getFieldsWithAnnotation<Parent>(entityClass)
-                    .map { it.name }
-                val childFields = reflectionCache.getFieldsWithAnnotation<com.minare.core.entity.annotations.Child>(entityClass)
-                    .map { it.name }
-                parentFields + childFields
-            } ?: emptyList()
-        }.toSet()
-    }
-
-    private fun createMinimalEntity(document: JsonObject): Entity {
+    fun createMinimalEntity(document: JsonObject): Entity {
         val type = document.getString("type") ?: "unknown"
         return entityFactory.getNew(type).apply {
             _id = document.getString("_id")
@@ -329,7 +227,7 @@ class MongoEntityStore @Inject constructor(
         }
     }
 
-    private suspend fun fetchDocumentsByIds(entityIds: List<String>): List<JsonObject> {
+    suspend fun fetchDocumentsByIds(entityIds: List<String>): List<JsonObject> {
         val query = JsonObject().put(
             "\$or",
             JsonArray(entityIds.map { JsonObject().put("_id", it) })
@@ -338,7 +236,7 @@ class MongoEntityStore @Inject constructor(
         return mongoClient.find(COLLECTION_NAME, query).await()
     }
 
-    private suspend fun executeAggregation(pipeline: JsonArray): JsonArray {
+    suspend fun executeAggregation(pipeline: JsonArray): JsonArray {
         val results = JsonArray()
         val promise = io.vertx.core.Promise.promise<JsonArray>()
 
@@ -350,64 +248,9 @@ class MongoEntityStore @Inject constructor(
         return promise.future().await()
     }
 
-    private fun <T> buildGraphFromDocuments(
-        documents: List<JsonObject>,
-        nodeFactory: (JsonObject) -> T
-    ): Graph<T, DefaultEdge> {
-        val graph = DefaultDirectedGraph<T, DefaultEdge>(DefaultEdge::class.java)
-
-        if (documents.isEmpty()) {
-            return graph
-        }
-
-        // Create nodes and build lookup map
-        val nodesById = documents.associate { document ->
-            val node = nodeFactory(document)
-            graph.addVertex(node)
-            document.getString("_id") to (node to document)
-        }
-
-        // Add edges based on relationships
-        nodesById.forEach { (sourceId, nodePair) ->
-            val (sourceNode, document) = nodePair
-            val state = document.getJsonObject("state", JsonObject())
-
-            // Look for parent relationships
-            state.fieldNames().forEach { fieldName ->
-                val fieldValue = state.getValue(fieldName)
-                extractEntityId(fieldValue)?.let { targetId ->
-                    nodesById[targetId]?.let { (targetNode, _) ->
-                        graph.addEdge(sourceNode, targetNode)
-                    }
-                }
-            }
-        }
-
-        return graph
-    }
-
-    private fun extractEntityId(fieldValue: Any?): String? = when (fieldValue) {
+    fun extractEntityId(fieldValue: Any?): String? = when (fieldValue) {
         is String -> fieldValue
         is JsonObject -> fieldValue.getString("\$id") ?: fieldValue.getString("_id")
         else -> null
-    }
-
-    private fun transformResultsToEntityGraph(results: JsonArray): Graph<Entity, DefaultEdge> {
-        val graph = DefaultDirectedGraph<Entity, DefaultEdge>(DefaultEdge::class.java)
-
-        if (results.isEmpty) {
-            return graph
-        }
-
-        // Flatten all entities from results
-        val allDocuments = results.flatMap { result ->
-            val rootDoc = result as JsonObject
-            val ancestors = rootDoc.getJsonArray("ancestors", JsonArray())
-
-            listOf(rootDoc.copy().apply { remove("ancestors") }) +
-                    ancestors.map { it as JsonObject }
-        }.distinctBy { it.getString("_id") }
-
-        return buildGraphFromDocuments(allDocuments) { createMinimalEntity(it) }
     }
 }

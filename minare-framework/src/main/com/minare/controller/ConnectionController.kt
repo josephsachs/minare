@@ -2,10 +2,8 @@ package com.minare.controller
 
 import com.minare.cache.ConnectionCache
 import com.minare.core.transport.models.Connection
-import com.minare.utils.EntityGraph
 import com.minare.worker.upsocket.UpSocketVerticle
 import io.vertx.core.http.ServerWebSocket
-import io.vertx.core.json.JsonObject
 import org.slf4j.LoggerFactory
 import com.minare.core.storage.interfaces.*
 import com.minare.core.config.InternalInjectorHolder

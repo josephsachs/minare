@@ -7,11 +7,8 @@ import com.minare.core.storage.interfaces.EntityGraphStore
 import com.minare.core.storage.interfaces.StateStore
 import com.minare.core.transport.models.message.SyncCommand
 import com.minare.core.transport.models.message.SyncCommandType
-import com.minare.utils.EntityGraph
 import io.vertx.core.json.JsonArray
 import io.vertx.core.json.JsonObject
-import org.jgrapht.Graph
-import org.jgrapht.graph.DefaultEdge
 import org.slf4j.LoggerFactory
 import javax.inject.Inject
 import javax.inject.Singleton

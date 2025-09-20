@@ -60,20 +60,20 @@ open class EntityController @Inject constructor(
      * @param entity The entity to save (must already have an ID)
      * @return The saved entity with any updates
      */
-    open suspend fun save(entity: Entity): Entity {
+    open suspend fun save(entityId: String?, deltas: JsonObject, incrementVersion: Boolean = true): Entity? {
         // TODO: Only save Entity relationships to MongoDB, ignore other state, but ensure tandem write
 
-        if (entity._id.isNullOrEmpty()) {
+        if (entityId.isNullOrBlank()) {
             throw IllegalArgumentException("Entity must have an ID - use create() for new entities")
         }
 
-        log.debug("Saving existing entity {} to Redis", entity._id)
+        log.debug("Saving existing entity {} to Redis", entityId)
 
-        val savedEntity = stateStore.save(entity)
+        stateStore.mutateState(entityId, deltas, incrementVersion)
 
-        entityGraphStore.save(savedEntity)
+        entityGraphStore.updateRelationships(entityId, deltas)
 
-        return savedEntity
+        return stateStore.findEntity(entityId)
     }
 
     /**

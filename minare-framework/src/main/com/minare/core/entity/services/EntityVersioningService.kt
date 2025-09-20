@@ -8,8 +8,8 @@ import com.minare.core.entity.ReflectionCache
 import io.vertx.core.json.JsonObject
 import org.jgrapht.Graph
 import org.jgrapht.graph.DefaultEdge
-import com.minare.core.storage.interfaces.EntityQueryStore
 import com.minare.core.storage.interfaces.StateStore
+import com.minare.core.utils.graph.EntityGraphService
 
 /**
  * Updated to work with JsonObject documents instead of Entity instances,
@@ -19,7 +19,7 @@ import com.minare.core.storage.interfaces.StateStore
  */
 @Singleton
 class EntityVersioningService @Inject constructor(
-    private val entityQueryStore: EntityQueryStore,
+    private val entityGraphService: EntityGraphService,
     private val stateStore: StateStore,
     private val reflectionCache: ReflectionCache,
     private val entityFactory: EntityFactory
@@ -32,7 +32,7 @@ class EntityVersioningService @Inject constructor(
      */
     suspend fun bubbleVersions(entityId: String): JsonObject {
         // Use document graph instead of entity graph to avoid creating Entity instances
-        val documentGraph = entityQueryStore.buildDocumentGraph(listOf(entityId))
+        val documentGraph = entityGraphService.buildDocumentGraph(listOf(entityId))
         val idsToUpdate = findEntitiesForVersionUpdate(documentGraph, entityId)
         return updateVersionsInRedis(idsToUpdate)
     }
@@ -47,7 +47,7 @@ class EntityVersioningService @Inject constructor(
             ?: return idsToUpdate
 
         idsToUpdate.add(entityId)
-        val allParentDocuments = entityQueryStore.traverseParents(graph, selfDocument)
+        val allParentDocuments = entityGraphService.traverseParents(graph, selfDocument)
 
         allParentDocuments.forEach { parentDocument ->
             if (shouldBubbleVersionToParent(selfDocument, parentDocument)) {

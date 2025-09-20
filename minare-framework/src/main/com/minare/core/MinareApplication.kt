@@ -54,8 +54,6 @@ abstract class MinareApplication : CoroutineVerticle() {
     @Inject
     private lateinit var connectionController: ConnectionController
     @Inject
-    private lateinit var timeService: TimeService
-    @Inject
     lateinit var stateInitializer: StateInitializer
     @Inject
     lateinit var injector: Injector
@@ -106,9 +104,6 @@ abstract class MinareApplication : CoroutineVerticle() {
                 throw IllegalStateException("INSTANCE_ROLE environment variable is required")
 
             processorCount = Runtime.getRuntime().availableProcessors()
-
-            timeService.syncTime()
-            log.info("Time synchronization complete")
 
             if (instanceRole == "COORDINATOR") stateInitializer.initialize()
 

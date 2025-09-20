@@ -8,6 +8,7 @@ import org.slf4j.LoggerFactory
 import javax.inject.Inject
 import javax.inject.Singleton
 import com.minare.controller.EntityController
+import io.vertx.core.json.JsonObject
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.random.Random
@@ -78,7 +79,8 @@ class NodeGraphBuilder @Inject constructor(
                         parent.addChild(savedChild)
 
                         try {
-                            val updatedParent = entityController.save(parent) as Node
+                            val delta = JsonObject().put("childIds", savedChild._id)
+                            val updatedParent = entityController.save(parent._id, delta, false) as Node
 
                             graph.addVertex(savedChild)
                             graph.addEdge(updatedParent, savedChild)

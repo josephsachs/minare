@@ -23,7 +23,7 @@ interface StateStore {
      * @param delta The filtered delta containing only fields that passed consistency checks
      * @return The updated entity document
      */
-    suspend fun mutateState(entityId: String, delta: JsonObject): JsonObject
+    suspend fun mutateState(entityId: String, delta: JsonObject, incrementVersion: Boolean = true): JsonObject
 
     /**
      * Finds multiple entities by their IDs
@@ -45,6 +45,20 @@ interface StateStore {
      * @return The same graph structure but with nodes containing full state
      */
     suspend fun hydrateGraph(graph: Graph<JsonObject, DefaultEdge>)
+
+    /**
+     * Finds an entity by ID and returns it as an Entity
+     * @param entityId The ID of the entity to fetch
+     * @return The entity, or null if not found
+     */
+    suspend fun findEntity(entityId: String): Entity?
+
+    /**
+     * Finds an entity by ID and returns it as an Entity
+     * @param entityId The ID of the entity to fetch
+     * @return The entity, or null if not found
+     */
+    suspend fun findEntityType(entityId: String): String?
 
     /**
      * Finds an entity by ID and returns it as a JsonObject

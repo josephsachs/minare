@@ -15,6 +15,7 @@ import com.minare.core.storage.interfaces.StateStore
 import io.vertx.core.json.JsonArray
 import org.jgrapht.Graph
 import org.jgrapht.graph.DefaultEdge
+import javax.naming.ServiceUnavailableException
 
 @Singleton
 class RedisEntityStore @Inject constructor(
@@ -56,7 +57,7 @@ class RedisEntityStore @Inject constructor(
         return entity
     }
 
-    override suspend fun mutateState(entityId: String, delta: JsonObject): JsonObject {
+    override suspend fun mutateState(entityId: String, delta: JsonObject, incrementVersion: Boolean): JsonObject {
         // Get the current entity using our findEntityJson method
         val currentDocument = findEntityJson(entityId)
             ?: throw IllegalStateException("Entity not found: $entityId")
@@ -68,9 +69,12 @@ class RedisEntityStore @Inject constructor(
             currentState.put(fieldName, delta.getValue(fieldName))
         }
 
-        // Increment version
-        val newVersion = currentDocument.getLong("version", 1L) + 1
-        currentDocument.put("version", newVersion)
+        var version = currentDocument.getLong("version", 1L)
+        if (incrementVersion) {
+            version++
+            currentDocument.put("version", version)
+        }
+
         currentDocument.put("state", currentState)
 
         // Store updated document
@@ -80,7 +84,7 @@ class RedisEntityStore @Inject constructor(
         publishService.publishStateChange(
             entityId,
             currentDocument.getString("type"),
-            newVersion,
+            version,
             delta
         )
 
@@ -237,6 +241,38 @@ class RedisEntityStore @Inject constructor(
         }
 
         return result
+    }
+
+    /**
+     * Finds an entity by ID and returns it as an Entity
+     * @param entityId The ID of the entity to fetch
+     * @return The entity as a JsonObject, or null if not found
+     */
+    override suspend fun findEntity(entityId: String): Entity? {
+        return findEntitiesByIds(listOf(entityId))[entityId]
+    }
+
+    /**
+     * Get the type of an entity
+     * @param entityId
+     */
+    override suspend fun findEntityType(entityId: String): String? {
+        if (entityId.isEmpty()) {
+            return null
+        }
+
+        try {
+            // If stored as hash with just entityId as key
+            val response = redisAPI.jsonGet(listOf(entityId, "$.type")).await()
+
+            val jsonArray = JsonArray(response.toString())
+            val responseValue = jsonArray.getString(0)
+
+            return responseValue
+        } catch (e: Exception) {
+            // Todo: Send infrastructure alert
+            throw ServiceUnavailableException("Could not fetch from Redis: ${e.message}")
+        }
     }
 
     /**

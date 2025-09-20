@@ -3,6 +3,7 @@ package com.minare.core.frames.coordinator.services
 import com.google.inject.Inject
 import com.google.inject.Singleton
 import com.minare.application.config.FrameConfiguration
+import com.minare.controller.EntityController
 import com.minare.core.frames.coordinator.FrameCoordinatorState
 import com.minare.core.frames.coordinator.FrameCoordinatorState.Companion.PauseState
 import com.minare.core.frames.coordinator.FrameCoordinatorState.Companion.TimelineState
@@ -14,18 +15,20 @@ import com.minare.core.utils.vertx.EventBusUtils
 import com.minare.core.utils.vertx.EventWaiter
 import com.minare.core.utils.vertx.VerticleLogger
 import io.vertx.core.impl.logging.LoggerFactory
+import io.vertx.core.json.JsonArray
 import io.vertx.core.json.JsonObject
 import kotlin.math.abs
 
 @Singleton
 class TimelineService @Inject constructor(
+    private val entityController: EntityController,
     private val coordinatorState: FrameCoordinatorState,
     private val frameConfiguration: FrameConfiguration,
     private val redisDeltaStore: RedisDeltaStore,
     private val snapshotStore: SnapshotStore,
     private val eventBusUtils: EventBusUtils,
     private val eventWaiter: EventWaiter,
-    private val vlog: VerticleLogger
+    private val vlog: VerticleLogger,
 ) {
     private val log = LoggerFactory.getLogger(TimelineService::class.java)
     private val debugTraceLogs: Boolean = true
@@ -171,17 +174,101 @@ class TimelineService @Inject constructor(
     /**
      * Execute delta changes one frame in either direction
      */
+    /**
+     * Execute delta changes one frame in either direction
+     */
     private suspend fun executeDeltas(frame: Long, reverse: Boolean, traceId: String = "") {
         if (abs(coordinatorState.frameInProgress - frame) > 1) {
             if (debugTraceLogs) {
-                    vlog.logInfo(
+                vlog.logInfo(
                     "Cannot executeDeltas more than one frame in either direction, trace ID $traceId"
                 )
             }
             return
         }
 
-        // Do the thing
+        if (debugTraceLogs) {
+            vlog.logInfo(
+                "Executing deltas for frame $frame, reverse=$reverse, trace ID $traceId"
+            )
+        }
+
+        // Fetch deltas for this frame
+        val frameData = redisDeltaStore.getByFrame(frame)
+
+        if (frameData == null) {
+            if (debugTraceLogs) {
+                vlog.logInfo(
+                    "No delta data found for frame $frame, trace ID $traceId"
+                )
+            }
+            return
+        }
+
+        // Log the structure we received for debugging
+        vlog.logInfo(
+            "Retrieved frame data structure for frame $frame: ${frameData.encode()}"
+        )
+
+        // Try to extract deltas - might be wrapped or might be the array directly
+        val deltas = try {
+            if (frameData.containsKey("deltas")) {
+                frameData.getJsonArray("deltas")
+            } else {
+                // Maybe it's already an array wrapped in JsonObject?
+                JsonArray(frameData.encode())
+            }
+        } catch (e: Exception) {
+            vlog.logVerticleError(
+                "Failed to extract deltas from frame data for frame $frame: ${e.message}, " +
+                        "data structure: ${frameData.encode()}, trace ID $traceId",
+                e
+            )
+            return
+        }
+
+        if (deltas.isEmpty) {
+            if (debugTraceLogs) {
+                vlog.logInfo(
+                    "No deltas found for frame $frame, trace ID $traceId"
+                )
+            }
+            return
+        }
+
+        vlog.logInfo(
+            "Processing ${deltas.size()} deltas for frame $frame, reverse=$reverse"
+        )
+
+        // Apply each delta in the appropriate direction
+        for (i in 0 until deltas.size()) {
+            val delta = deltas.getJsonObject(i)
+            val entityId = delta.getString("entityId")
+            val stateToApply = if (reverse) {
+                delta.getJsonObject("before")
+            } else {
+                delta.getJsonObject("after")
+            }
+
+            if (debugTraceLogs) {
+                vlog.logInfo(
+                    "Applying delta for entity $entityId, " +
+                            "operation=${delta.getString("operation")}, " +
+                            "reverse=$reverse, frame=$frame, " +
+                            "state=$stateToApply"
+                )
+            }
+
+            // TODO: EntityController needs to be injected in constructor
+            // Apply state change through entity controller
+            entityController.save(entityId, stateToApply)
+        }
+
+        if (debugTraceLogs) {
+            vlog.logInfo(
+                "Completed executing ${deltas.size()} deltas for frame $frame, trace ID $traceId"
+            )
+        }
     }
 
     private fun frameRange(from: Long, to: Long): LongProgression {
