@@ -26,18 +26,25 @@ interface StateStore {
     suspend fun mutateState(entityId: String, delta: JsonObject, incrementVersion: Boolean = true): JsonObject
 
     /**
+     * Find  single entity by ID
+     * @param entityId String
+     * @return Entity?
+     */
+    suspend fun findOne(entityId: String): Entity?
+
+    /**
      * Finds multiple entities by their IDs
      * @param entityIds List of entity IDs to fetch
      * @return Map of entity IDs to entity objects
      */
-    suspend fun findEntitiesByIds(entityIds: List<String>): Map<String, Entity>
+    suspend fun find(entityIds: List<String>): Map<String, Entity>
 
     /**
      * Finds multiple entities by their IDs
      * @param entityIds List of entity IDs to fetch
      * @return Map of entities with full state
      */
-    suspend fun findEntitiesWithState(entityIds: List<String>): Map<String, Entity>
+    suspend fun setEntityState(entity: Entity, entityType: String, state: JsonObject): Entity
 
     /**
      * Hydrates a graph of JsonObject nodes with full entity state from Redis

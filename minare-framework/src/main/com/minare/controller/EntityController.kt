@@ -62,7 +62,6 @@ open class EntityController @Inject constructor(
      */
     open suspend fun save(entityId: String?, deltas: JsonObject, incrementVersion: Boolean = true): Entity? {
         // TODO: Only save Entity relationships to MongoDB, ignore other state, but ensure tandem write
-
         if (entityId.isNullOrBlank()) {
             throw IllegalArgumentException("Entity must have an ID - use create() for new entities")
         }
@@ -84,18 +83,7 @@ open class EntityController @Inject constructor(
      */
     open suspend fun findByIds(ids: List<String>): Map<String, Entity> {
         log.debug("Finding entities by IDs: {}", ids)
-        return stateStore.findEntitiesByIds(ids)
-    }
-
-    /**
-     * Find multiple entities with full state by their IDs from Redis.
-     *
-     * @param ids List of entity IDs
-     * @return Map of ID to Entity for found entities with state populated
-     */
-    open suspend fun findByIdsWithState(ids: List<String>): Map<String, Entity> {
-        log.debug("Finding entities with state by IDs: {}", ids)
-        return stateStore.findEntitiesWithState(ids)
+        return stateStore.find(ids)
     }
 
     /**

@@ -57,6 +57,9 @@ class RedisEntityStore @Inject constructor(
         return entity
     }
 
+    /**
+     * Update entity state
+     */
     override suspend fun mutateState(entityId: String, delta: JsonObject, incrementVersion: Boolean): JsonObject {
         // Get the current entity using our findEntityJson method
         val currentDocument = findEntityJson(entityId)
@@ -91,91 +94,88 @@ class RedisEntityStore @Inject constructor(
         return currentDocument
     }
 
-    override suspend fun findEntitiesByIds(entityIds: List<String>): Map<String, Entity> {
+    /**
+     * Take JsonObject from Redis Entity store and return Entity (not including state)
+     */
+    suspend fun getEntity(document: JsonObject): Entity? {
+        val entityId = document.getString("_id")
+        val entityType = document.getString("type")
+        val version = document.getLong("version", 1L)
+
+        if (null in listOf(entityId, entityType, version)) {
+            log.warn("Found missing or malformed entity for $entityId")
+            return null
+        }
+
+        val entity = entityFactory.getNew(entityType).apply {
+            this._id = entityId
+            this.version = version
+            this.type = entityType
+        }
+
+        return entity
+    }
+
+    /**
+     * Find a single Entity
+     */
+    override suspend fun findOne(entityId: String): Entity? {
+        val response = redisAPI.jsonGet(listOf(entityId, ".")).await()
+        val document = JsonObject(response.toString())
+
+        return getEntity(document)
+    }
+
+    /**
+     * Find a list of entities
+     */
+    override suspend fun find(entityIds: List<String>): Map<String, Entity> {
         if (entityIds.isEmpty()) {
             return emptyMap()
         }
 
         val result = mutableMapOf<String, Entity>()
+        val response = redisAPI.jsonMget(entityIds + "$").await()
 
-        for (entityId in entityIds) {
+        val collection = JsonArray(response.toString())
+
+        for (item in collection) {
             try {
-                val entityJson = redisAPI.jsonGet(listOf(entityId, "$")).await()
+                val document = JsonArray(item.toString()).getJsonObject(0)
 
-                if (entityJson != null) {
-                    val document = JsonObject(entityJson.toString())
-                    val entityType = document.getString("type")
-                    val version = document.getLong("version", 1L)
+                val entityId = document.getString("_id")
+                val entity = getEntity(document)
 
-                    if (entityType != null) {
-                        val entity = entityFactory.getNew(entityType).apply {
-                            this._id = entityId
-                            this.version = version
-                            this.type = entityType
-                        }
-
-                        result[entityId] = entity
-                    }
+                if (entity != null) {
+                    result[entityId] = entity
                 }
             } catch (e: Exception) {
-                // Continue with other entities
-                log.warn("Error fetching entity $entityId: ${e.message}")
+                log.warn("Error fetching entity from $entityIds: ${e.message}")
             }
         }
 
         return result
     }
 
-    override suspend fun findEntitiesWithState(entityIds: List<String>): Map<String, Entity> {
-        if (entityIds.isEmpty()) {
-            return emptyMap()
-        }
-
-        val result = mutableMapOf<String, Entity>()
-
-        for (entityId in entityIds) {
-            try {
-                val entityJson = redisAPI.jsonGet(listOf(entityId, "$")).await()
-
-                if (entityJson != null) {
-                    val document = JsonObject(entityJson.toString())
-                    val entityType = document.getString("type")
-                    val version = document.getLong("version", 1L)
-                    val state = document.getJsonObject("state", JsonObject())
-
-                    if (entityType != null) {
-                        val entity = entityFactory.getNew(entityType).apply {
-                            this._id = entityId
-                            this.version = version
-                            this.type = entityType
-                        }
-
-                        // Populate state fields using reflection
-                        entityFactory.useClass(entityType)?.let { entityClass ->
-                            val stateFields = reflectionCache.getFieldsWithAnnotation<State>(entityClass)
-                            for (field in stateFields) {
-                                field.isAccessible = true
-                                try {
-                                    val value = state.getValue(field.name)
-                                    if (value != null) {
-                                        field.set(entity, value)
-                                    }
-                                } catch (e: Exception) {
-                                    // Log error but continue with other fields
-                                }
-                            }
-                        }
-
-                        result[entityId] = entity
+    /**
+     * Populate state fields using reflection
+     */
+    override suspend fun setEntityState(entity: Entity, entityType: String, state: JsonObject): Entity {
+        entityFactory.useClass(entityType)?.let { entityClass ->
+            val stateFields = reflectionCache.getFieldsWithAnnotation<State>(entityClass)
+            for (field in stateFields) {
+                field.isAccessible = true
+                try {
+                    val value = state.getValue(field.name)
+                    if (value != null) {
+                        field.set(entity, value)
                     }
+                } catch (e: Exception) {
+                    log.warn("StateStore found Entity document with invalid state field for ${entity._id}")
                 }
-            } catch (e: Exception) {
-                // Log error but continue with other entities
-                log.warn("Error fetching entity with state $entityId: ${e.message}")
             }
         }
-
-        return result
+        return entity
     }
 
     /**
@@ -247,9 +247,11 @@ class RedisEntityStore @Inject constructor(
      * Finds an entity by ID and returns it as an Entity
      * @param entityId The ID of the entity to fetch
      * @return The entity as a JsonObject, or null if not found
+     *
+     * @deprecated Use find()
      */
     override suspend fun findEntity(entityId: String): Entity? {
-        return findEntitiesByIds(listOf(entityId))[entityId]
+        return find(listOf(entityId))[entityId]
     }
 
     /**

@@ -63,7 +63,7 @@ between my goals and the developer's experience. I chose
 - **Vert.x** because it scales up to handle massive socket pools without blinking; 
 - **Redis** because it's a proven cache with good Json support and pub-sub for free; 
 - **Hazelcast** because it has already solved numerous distributed consensus challenges that are outside my domain; 
-- and **MongoDB** because it is schemaless and Json-native, has good graph lookups and, with replica sets, is quite durable. Postgres was perhaps due a consideration here; it would not, in any case, be difficult to implement in-place, nor for that matter would something like RethinkDB. 
+- and **MongoDB** because it is schemaless and Json-native, has good graph lookups and, with replica sets, is quite durable. A graphing database was perhaps due a consideration here; it would not, in any case, be difficult to implement in-place. 
 
 ### History and Roadmap
 0.1.0 - Transport layer, Entity, datastores, publish change events, NodeGraph application
