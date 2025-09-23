@@ -1,13 +1,8 @@
 package com.minare.controller
 
-import com.google.inject.Singleton
-import com.google.inject.name.Named
 import com.minare.cache.ConnectionCache
 import com.minare.core.frames.coordinator.FrameCoordinatorState
 import com.minare.core.frames.coordinator.FrameCoordinatorState.Companion.PauseState
-import com.minare.core.operation.interfaces.MessageQueue
-import com.minare.core.operation.models.Operation
-import com.minare.core.operation.models.OperationSet
 import com.minare.core.storage.interfaces.ConnectionStore
 import com.minare.core.transport.downsocket.services.ConnectionTracker
 import com.minare.core.transport.models.Connection
@@ -16,7 +11,7 @@ import com.minare.core.utils.vertx.VerticleLogger
 import com.minare.exceptions.BackpressureException
 import com.minare.utils.HeartbeatManager
 import com.minare.utils.WebSocketUtils
-import com.minare.worker.upsocket.SyncCommandHandler
+import com.minare.core.transport.upsocket.handlers.SyncCommandHandler
 import io.vertx.core.http.ServerWebSocket
 import io.vertx.core.json.JsonObject
 import org.slf4j.LoggerFactory
@@ -118,7 +113,13 @@ abstract class MessageController @Inject constructor() {
         connectionStore.updateLastActivity(connectionId)
         val connection = connectionController.getConnection(connectionId)
 
-        handle(connection, message)
+        try {
+            handle(connection, message)
+        } catch (e: BackpressureException) {
+            WebSocketUtils.sendErrorResponse(
+                webSocket, e, connectionId, vlog
+            )
+        }
     }
 
     protected abstract suspend fun handle(connection: Connection, message: JsonObject)

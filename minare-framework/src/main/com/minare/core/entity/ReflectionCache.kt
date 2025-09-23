@@ -1,11 +1,11 @@
 package com.minare.core.entity
 
-import com.minare.core.entity.annotations.EntityType
+import com.google.inject.Singleton
 import com.minare.core.entity.factories.EntityFactory
+import io.vertx.core.impl.logging.LoggerFactory
 import java.lang.reflect.Field
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.reflect.KClass
-import kotlin.reflect.full.findAnnotation
 
 /**
  * Centralized cache for entity reflection data. Lazy-loads and stores
@@ -14,6 +14,8 @@ import kotlin.reflect.full.findAnnotation
 class ReflectionCache {
     private val classesByType = ConcurrentHashMap<String, KClass<*>>()
     private val fieldsByClass = ConcurrentHashMap<KClass<*>, List<Field>>()
+
+    private val log = LoggerFactory.getLogger(ReflectionCache::class.java)
 
     /**
      * Gets all fields for an entity class, loading from cache or reflection
@@ -58,11 +60,9 @@ class ReflectionCache {
     fun registerFromEntityFactory(entityFactory: EntityFactory) {
         val entityTypeNames = entityFactory.getTypeNames()
 
-
         entityTypeNames.forEach { typeName ->
             entityFactory.useClass(typeName)?.let { javaClass ->
                 val kClass = javaClass.kotlin
-
                 getFields(kClass)
                 classesByType[typeName] = kClass
             }
@@ -70,40 +70,9 @@ class ReflectionCache {
     }
 
     /**
-     * Register individual entity classes for pre-caching
-     */
-    fun registerEntityClasses(entityClasses: List<KClass<*>>) {
-        entityClasses.forEach { entityClass ->
-            getFields(entityClass)
-
-
-            entityClass.findAnnotation<EntityType>()?.let { annotation ->
-                classesByType[annotation.value] = entityClass
-            }
-        }
-    }
-
-    /**
-     * Get entity class by type name
-     */
-    fun getClassByType(typeName: String): KClass<*>? {
-        return classesByType[typeName]
-    }
-
-    /**
      * Clear all cached data
      */
     fun clearCache() {
         fieldsByClass.clear()
-        classesByType.clear()
-    }
-
-    /**
-     * Future-proofing: Hook for Redis integration
-     * This will be implemented later to load cached reflection data from Redis
-     */
-    fun loadFromCache(typeName: String): Boolean {
-
-        return false
     }
 }

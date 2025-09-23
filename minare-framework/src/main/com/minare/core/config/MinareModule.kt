@@ -58,11 +58,9 @@ class MinareModule : AbstractModule(), DatabaseNameProvider {
     override fun configure() {
         // Internal services, do not permit override
         bind(StateStore::class.java).to(RedisEntityStore::class.java).`in`(Singleton::class.java)
-        bind(EntityStore::class.java).to(MongoEntityStore::class.java).`in`(Singleton::class.java)
+        bind(EntityGraphStore::class.java).to(MongoEntityStore::class.java).`in`(Singleton::class.java)
         bind(EntityPublishService::class.java).to(RedisEntityPublishService::class.java).`in`(Singleton::class.java)
         bind(EntityVersioningService::class.java).`in`(Singleton::class.java)
-        bind(EntityQueryStore::class.java).to(MongoEntityStore::class.java).`in`(Singleton::class.java)
-        bind(WriteBehindStore::class.java).to(MongoEntityStore::class.java).`in`(Singleton::class.java)
         bind(MessageQueue::class.java).to(KafkaMessageQueue::class.java).`in`(Singleton::class.java)
 
         bind(ConnectionStore::class.java).to(MongoConnectionStore::class.java).`in`(Singleton::class.java)
@@ -93,7 +91,7 @@ class MinareModule : AbstractModule(), DatabaseNameProvider {
 
         bind(String::class.java).annotatedWith(Names.named("channels")).toInstance("channels")
         bind(String::class.java).annotatedWith(Names.named("contexts")).toInstance("contexts")
-        bind(String::class.java).annotatedWith(Names.named("entities")).toInstance("entities")
+        bind(String::class.java).annotatedWith(Names.named("entity_graph")).toInstance("entity_graph")
         bind(String::class.java).annotatedWith(Names.named("connections")).toInstance("connections")
 
         bind(Int::class.java)

@@ -12,7 +12,7 @@ import com.minare.core.transport.downsocket.services.ConnectionTracker
 import com.minare.core.utils.vertx.EventBusUtils
 import com.minare.utils.HeartbeatManager
 import com.minare.core.utils.vertx.VerticleLogger
-import com.minare.worker.upsocket.SyncCommandHandler
+import com.minare.core.transport.upsocket.handlers.SyncCommandHandler
 import io.vertx.core.Vertx
 import io.vertx.ext.web.Router
 import kotlinx.coroutines.CoroutineScope

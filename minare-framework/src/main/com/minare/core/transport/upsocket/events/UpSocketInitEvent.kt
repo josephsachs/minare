@@ -10,16 +10,16 @@ class UpSocketInitEvent @Inject constructor(
     private val eventBusUtils: EventBusUtils,
     private val vlog: VerticleLogger
 ) {
-    public suspend fun register() {
+    public suspend fun register(debugTraceLogs: Boolean) {
         eventBusUtils.registerTracedConsumer<JsonObject>(ADDRESS_UP_SOCKET_INITIALIZE) { message, traceId ->
             try {
-                vlog.logStartupStep("INITIALIZING_ROUTER", mapOf("traceId" to traceId))
+                if (debugTraceLogs) vlog.logStartupStep("INITIALIZING_ROUTER", mapOf("traceId" to traceId))
 
                 val startTime = System.currentTimeMillis()
                 // Router is already initialized in start() method
                 val initTime = System.currentTimeMillis() - startTime
 
-                vlog.logVerticlePerformance("ROUTER_INITIALIZATION", initTime)
+                if (debugTraceLogs) vlog.logVerticlePerformance("ROUTER_INITIALIZATION", initTime)
 
                 val reply = JsonObject()
                     .put("success", true)
@@ -27,13 +27,15 @@ class UpSocketInitEvent @Inject constructor(
 
                 eventBusUtils.tracedReply(message, reply, traceId)
 
-                vlog.logStartupStep(
-                    "ROUTER_INITIALIZED", mapOf(
-                        "status" to "success",
-                        "initTime" to initTime,
-                        "useOwnHttpServer" to true
+                if (debugTraceLogs) {
+                    vlog.logStartupStep(
+                        "ROUTER_INITIALIZED", mapOf(
+                            "status" to "success",
+                            "initTime" to initTime,
+                            "useOwnHttpServer" to true
+                        )
                     )
-                )
+                }
             } catch (e: Exception) {
                 vlog.logVerticleError("INITIALIZE_ROUTER", e)
                 message.fail(500, "Failed to initialize router: ${e.message}")

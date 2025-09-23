@@ -13,10 +13,13 @@ class ChannelCleanupEvent @Inject constructor(
     private val vlog: VerticleLogger,
     private val connectionLifecycle: ConnectionLifecycle
 ) {
-    suspend fun register() {
+    suspend fun register(debugTraceLogs: Boolean) {
         eventBusUtils.registerTracedConsumer<JsonObject>(ADDRESS_CHANNEL_CLEANUP) { message, traceId ->
             val connectionId = message.body().getString("connectionId")
-            vlog.logStartupStep("CHANNEL_CLEANUP_REQUEST", mapOf("connectionId" to connectionId))
+
+            if (debugTraceLogs) {
+                vlog.logStartupStep("CHANNEL_CLEANUP_REQUEST", mapOf("connectionId" to connectionId))
+            }
 
             try {
                 val result = connectionLifecycle.cleanupConnectionChannels(connectionId)

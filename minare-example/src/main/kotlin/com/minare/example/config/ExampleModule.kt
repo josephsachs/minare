@@ -54,5 +54,5 @@ class ExampleModule : PrivateModule(), DatabaseNameProvider {
         return CoroutineScope(coroutineContext)
     }
 
-    override fun getDatabaseName(): String = "minare_example"
+    override fun getDatabaseName(): String = "node_graph"
 }

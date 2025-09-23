@@ -19,7 +19,7 @@ class DatabaseInitializer @Inject constructor(
 
     // Collections that we manage
     private val managedCollections = listOf(
-        "entities",
+        "entity_graph",
         "connections",
         "channels",
         "contexts"
@@ -96,16 +96,16 @@ class DatabaseInitializer @Inject constructor(
         try {
             val collections = mongoClient.getCollections().await()
 
-            if (!collections.contains("entities")) {
+            if (!collections.contains("entity_graph")) {
                 log.info("Creating entities collection")
-                mongoClient.createCollection("entities").await()
+                mongoClient.createCollection("entity_graph").await()
             } else {
                 log.debug("Entities collection already exists")
             }
 
             // Create indexes (idempotent operation)
             val typeIndex = JsonObject().put("type", 1)
-            val indexResult = mongoClient.createIndex("entities", typeIndex).await()
+            val indexResult = mongoClient.createIndex("entity_graph", typeIndex).await()
 
             log.info("Initialized entities collection with index: $indexResult")
         } catch (e: Exception) {

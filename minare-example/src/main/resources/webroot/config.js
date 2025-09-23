@@ -39,7 +39,7 @@ export const config = {
 
 
   visualization: {
-    defaultType: typeof vis !== 'undefined' ? 'vis' : 'grid',
+    defaultType: 'grid',
 
     d3: {
 

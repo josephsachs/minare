@@ -99,7 +99,6 @@ class MutationService @Inject constructor(
 
     /**
      * Filter the mutation delta to only include fields that are marked as @Mutable
-     * Updated to use direct ReflectionCache calls instead of Entity wrapper methods
      */
     private fun getMutateDelta(delta: JsonObject, entityClass: Class<*>): JsonObject {
         if (delta.isEmpty) {

@@ -116,7 +116,7 @@ class MongoSnapshotStore @Inject constructor(
             val query = JsonObject().put("_id", STATE_DOC_ID)
             val stateDoc = JsonObject()
                 .put("\$push", JsonObject()
-                    .put("entities", JsonObject()
+                    .put("state", JsonObject()
                         .put("\$each", entitiesArray)
                     )
                 )

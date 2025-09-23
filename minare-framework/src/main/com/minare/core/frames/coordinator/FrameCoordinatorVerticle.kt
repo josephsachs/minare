@@ -54,6 +54,7 @@ class FrameCoordinatorVerticle @Inject constructor(
 ) : CoroutineVerticle() {
 
     private val log = LoggerFactory.getLogger(FrameCoordinatorVerticle::class.java)
+    private val debugTraceLogs: Boolean = false   // Mind over matter won't stop all your chatter
 
     var manifestTimerId: Long? = null
 
@@ -89,7 +90,7 @@ class FrameCoordinatorVerticle @Inject constructor(
 
         launch {
             workerHeartbeatEvent.register()
-            workerFrameCompleteEvent.register()
+            workerFrameCompleteEvent.register(debugTraceLogs)
             workerRegisterEvent.register()
             workerReadinessEvent.register()
             workerHealthChangeEvent.register()
@@ -182,7 +183,10 @@ class FrameCoordinatorVerticle @Inject constructor(
      */
     private suspend fun preparePendingManifests() {
         if (coordinatorState.pauseState in setOf(PauseState.REST, PauseState.SOFT)) {
-            log.info("Delayed preparing frames from ${coordinatorState.lastPreparedManifest} due to pause ${coordinatorState.pauseState}")
+            if (debugTraceLogs) {
+                log.info("Delayed preparing frames from ${coordinatorState.lastPreparedManifest} " +
+                        "due to pause ${coordinatorState.pauseState}")
+            }
             return
         }
 
@@ -239,10 +243,13 @@ class FrameCoordinatorVerticle @Inject constructor(
      * This is what permits workers to complete the next frame
      */
     private suspend fun onFrameComplete(logicalFrame: Long) {
-        log.info("Logical frame {} completed successfully", logicalFrame)
+        if (debugTraceLogs) log.info("Logical frame {} completed successfully", logicalFrame)
 
         if (coordinatorState.pauseState in setOf(PauseState.SOFT, PauseState.HARD)) {
-            log.info("Completed frame $logicalFrame, stopping due to pause ${coordinatorState.pauseState}")
+            if (debugTraceLogs) {
+                log.info("Completed frame $logicalFrame, stopping due to " +
+                        "pause ${coordinatorState.pauseState}")
+            }
             return
         }
 
@@ -259,7 +266,7 @@ class FrameCoordinatorVerticle @Inject constructor(
             }
         }
 
-        log.info("Broadcasting next frame event after completing frame {}", logicalFrame)
+        if (debugTraceLogs) log.info("Broadcasting next frame event after completing frame {}", logicalFrame)
 
         vertx.eventBus().publish(ADDRESS_NEXT_FRAME, JsonObject())
 
@@ -273,6 +280,7 @@ class FrameCoordinatorVerticle @Inject constructor(
         sessionService.endSession()
 
         val oldSessionId = coordinatorState.sessionId
+
         snapshotService.doSnapshot(oldSessionId)
 
         eventWaiter.waitForEvent(ADDRESS_SNAPSHOT_COMPLETE)
@@ -282,7 +290,9 @@ class FrameCoordinatorVerticle @Inject constructor(
         val eventMessage = eventWaiter.waitForEvent(ADDRESS_SESSION_INITIALIZED)
 
         val newSessionId = eventMessage.getString("sessionId")
-        log.info("Frame coordinator received initial session announcement for $newSessionId")
+
+        if (debugTraceLogs) log.info("Frame coordinator received initial session announcement for $newSessionId")
+
         coordinatorState.sessionId = newSessionId
 
         sessionService.startSession()

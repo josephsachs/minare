@@ -1,22 +1,22 @@
-package com.minare.utils
+package com.minare.core.utils.graph
 
+import com.minare.core.entity.services.EntityInspector
+import com.minare.core.entity.ReflectionCache
+import com.minare.core.entity.annotations.State
+import com.minare.core.entity.models.Entity
+import io.vertx.core.json.JsonArray
+import io.vertx.core.json.JsonObject
+import org.jgrapht.Graph
 import org.jgrapht.graph.DefaultEdge
 import org.jgrapht.graph.SimpleDirectedGraph
 import org.jgrapht.traverse.DepthFirstIterator
 import org.jgrapht.traverse.TopologicalOrderIterator
-import com.minare.core.entity.models.Entity
-import com.minare.core.entity.annotations.State
-import com.minare.core.entity.ReflectionCache
-import io.vertx.core.json.JsonArray
-import io.vertx.core.json.JsonObject
-import org.jgrapht.Graph
 
 /**
  * Utility for building, traversing, and serializing entity relationship graphs.
  * This helps with operations that need to understand entity hierarchies.
  */
 class EntityGraph(root: Entity) {
-
     val graph = SimpleDirectedGraph<Entity, DefaultEdge>(DefaultEdge::class.java)
     private val visited = mutableSetOf<Entity>()
 
@@ -132,13 +132,14 @@ class EntityGraph(root: Entity) {
                 val source = graph.getEdgeSource(edge)
                 val target = graph.getEdgeTarget(edge)
 
-                edges.add(JsonObject()
+                edges.add(
+                    JsonObject()
                     .put("source", source.getString("_id"))
                     .put("target", target.getString("_id")))
             }
 
             return result
-                .put("entities", entitiesArray)
+                .put("entity_graph", entitiesArray)
                 .put("edges", edges)
         }
 
@@ -193,13 +194,14 @@ class EntityGraph(root: Entity) {
                 val source = graph.getEdgeSource(edge)
                 val target = graph.getEdgeTarget(edge)
 
-                edges.add(JsonObject()
+                edges.add(
+                    JsonObject()
                     .put("source", source._id)
                     .put("target", target._id))
             }
 
             return result
-                .put("entities", entitiesArray)
+                .put("entity_graph", entitiesArray)
                 .put("edges", edges)
         }
 
@@ -212,7 +214,7 @@ class EntityGraph(root: Entity) {
          */
         suspend fun entitiesToJson(
             entities: Collection<Entity>,
-            reflectionCache: ReflectionCache? = null
+            entityInspector: EntityInspector
         ): JsonObject {
             val result = JsonObject()
             val entitiesArray = JsonArray()
@@ -222,13 +224,7 @@ class EntityGraph(root: Entity) {
                 val entityType = entity.type
 
                 if (entityType != null) {
-                    val entityClass = entity.javaClass
-
-                    val stateFields = reflectionCache?.getFieldsWithAnnotation<State>(entityClass.kotlin)
-                        ?:
-                        entityClass.declaredFields.filter {
-                            it.isAnnotationPresent(State::class.java)
-                        }
+                    val stateFields = entityInspector.getFieldsOfType(entity, listOf(State::class))
 
                     for (field in stateFields) {
                         field.isAccessible = true
@@ -253,20 +249,6 @@ class EntityGraph(root: Entity) {
             }
 
             return result.put("entities", entitiesArray)
-        }
-
-        /**
-         * Converts a map of entities to a JsonObject without edge information
-         *
-         * @param entities Map of entity IDs to Entity objects
-         * @param reflectionCache Optional reflection cache to use for annotation lookup
-         * @return JsonObject containing just the entities array
-         */
-        suspend fun entitiesToJson(
-            entities: Map<String, Entity>,
-            reflectionCache: ReflectionCache? = null
-        ): JsonObject {
-            return entitiesToJson(entities.values, reflectionCache)
         }
     }
 }

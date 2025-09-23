@@ -10,7 +10,14 @@ import java.awt.Frame
  * parameters. Overridable by application.
  *
  */
-open class FrameConfiguration {    /**
+open class FrameConfiguration {
+    /**
+     *
+     *     Frame settings
+     *
+     */
+
+    /**
      * Duration of each frame in milliseconds.
      * This is the fundamental time unit for the system.
      *
@@ -21,15 +28,58 @@ open class FrameConfiguration {    /**
     val frameDurationMs: Long = 100
 
     /**
+     *
+     *    Session settings
+     *
+     */
+
+    /**
+     * When to trigger an automatic new session. Options:
+     * NEVER
+     * FRAMES_PER_SESSION
+     */
+    val autoSession: AutoSession = AutoSession.FRAMES_PER_SESSION
+    /**
      * Number of frames between automatic sessions.
      * Sessions save snapshots, clear coordination memory
-     * and and reset frame number
+     * and reset frame number
      *
      * Default: 1000 frames
      * Trade-off: More frequent = faster recovery but more frequent pauses
      */
-    val autoSession: AutoSession = AutoSession.FRAMES_PER_SESSION
     val framesPerSession: Long = 5000
+
+    /**
+     *
+     *    Timeline settings
+     *
+     */
+
+    /**
+     * Allow frame manifests to complete processing before hard pause
+     */
+    val flushOperationsOnDetach: Boolean = true
+
+    /**
+     * Detach uses soft pause, buffering new input
+     */
+    val bufferInputDuringDetach: Boolean = true
+
+    /**
+     * Replay uses soft pause, buffering new input
+     */
+    val bufferInputDuringReplay: Boolean = true
+
+    /**
+     * Resume assigns operations from stale frames to new session,
+     * preserving temporal order
+     */
+    val assignOperationsOnResume: Boolean = false
+
+    /**
+     * Resume replays to current frameInProgress before returning play to State
+     */
+    val replayOnResume: Boolean = false
 
     /**
      * How many frames ahead to prepare during normal operation.
@@ -42,7 +92,7 @@ open class FrameConfiguration {    /**
 
     companion object {
         enum class AutoSession {
-            NONE,
+            NEVER,
             FRAMES_PER_SESSION
         }
     }

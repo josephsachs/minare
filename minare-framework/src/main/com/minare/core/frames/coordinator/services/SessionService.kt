@@ -17,6 +17,7 @@ import com.minare.core.utils.vertx.EventBusUtils
 import com.minare.core.utils.vertx.EventWaiter
 import io.vertx.core.json.JsonArray
 import io.vertx.core.json.JsonObject
+import org.apache.kafka.common.protocol.types.Field.Bool
 import org.slf4j.LoggerFactory
 import java.util.*
 
@@ -33,6 +34,7 @@ class SessionService @Inject constructor(
     private val eventWaiter: EventWaiter
 ) {
     private val log = LoggerFactory.getLogger(SessionService::class.java)
+    private val debugTraceLogs: Boolean = false
 
     companion object {
         const val ADDRESS_SESSION_INITIALIZED = "minare.coordinator.session.initialized"
@@ -43,7 +45,7 @@ class SessionService @Inject constructor(
      */
     suspend fun needAutoSession(): Boolean {
         when (frameConfig.autoSession) {
-            FrameConfiguration.Companion.AutoSession.NONE -> {
+            FrameConfiguration.Companion.AutoSession.NEVER -> {
                 return false
             }
             FrameConfiguration.Companion.AutoSession.FRAMES_PER_SESSION -> {
@@ -60,11 +62,13 @@ class SessionService @Inject constructor(
      * then pausing.
      */
     suspend fun endSession() {
-        log.info(
-            "Initiating session transition at frame {}, concluding session {}",
-            coordinatorState.frameInProgress,
-            coordinatorState.sessionId
-        )
+        if (debugTraceLogs) {
+            log.info(
+                "Initiating session transition at frame {}, concluding session {}",
+                coordinatorState.frameInProgress,
+                coordinatorState.sessionId
+            )
+        }
 
         coordinatorState.pauseState = PauseState.REST
 
@@ -117,7 +121,12 @@ class SessionService @Inject constructor(
             JsonObject()
         )
 
-        log.info("Broadcasting initial next frame event for frame 0 in session {}", coordinatorState.sessionId)
+        if (debugTraceLogs) {
+            log.info(
+                "Broadcasting initial next frame event for frame 0 in session {}",
+                coordinatorState.sessionId
+            )
+        }
     }
 
     private fun clearPreviousSessionState() {
@@ -143,7 +152,7 @@ class SessionService @Inject constructor(
         try {
             messageQueue.send("minare.system.events", JsonArray().add(metadata))
 
-            log.info("Published session start event to Kafka for $sessionId")
+            if (debugTraceLogs) log.info("Published session start event to Kafka for $sessionId")
         } catch (e: Exception) {
             // Big problem, Kafka cannot receive the announcement
             coordinatorState.pauseState = PauseState.HARD
@@ -166,6 +175,9 @@ class SessionService @Inject constructor(
             metadata
         )
 
-        log.info("Announced new session $sessionId with {} workers", workerRegistry.getActiveWorkers().size)
+        if (debugTraceLogs) log.info(
+            "Announced new session $sessionId with {} workers",
+            workerRegistry.getActiveWorkers().size
+        )
     }
 }

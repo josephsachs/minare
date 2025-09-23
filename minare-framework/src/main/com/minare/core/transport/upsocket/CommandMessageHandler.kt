@@ -48,8 +48,6 @@ open class CommandMessageHandler @Inject constructor(
      * Handle a mutate command by delegating to the MutationVerticle
      */
     protected open suspend fun handleMutate(connectionId: String, message: JsonObject) {
-        log.debug("Handling mutate command for connection {}", connectionId)
-
         val entityObject = message.getJsonObject("entity")
         val entityId = entityObject?.getString("_id")
 
@@ -58,8 +56,6 @@ open class CommandMessageHandler @Inject constructor(
             sendErrorToClient(connectionId, "Missing entity ID")
             return
         }
-
-        log.debug("Delegating mutation for entity {} to MutationVerticle", entityId)
 
         try {
             val mutationCommand = JsonObject()

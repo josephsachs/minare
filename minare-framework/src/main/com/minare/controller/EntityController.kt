@@ -1,9 +1,8 @@
 package com.minare.controller
 
 import com.minare.core.entity.models.Entity
+import com.minare.core.storage.interfaces.EntityGraphStore
 import com.minare.core.storage.interfaces.StateStore
-import com.minare.core.storage.interfaces.WriteBehindStore
-import com.minare.core.storage.interfaces.EntityStore
 import io.vertx.core.json.JsonObject
 import org.slf4j.LoggerFactory
 import javax.inject.Inject
@@ -21,8 +20,7 @@ import javax.inject.Singleton
 @Singleton
 open class EntityController @Inject constructor(
     private val stateStore: StateStore,
-    private val writeBehindStore: WriteBehindStore,
-    private val entityStore: EntityStore
+    private val entityGraphStore: EntityGraphStore
 ) {
     private val log = LoggerFactory.getLogger(EntityController::class.java)
 
@@ -41,16 +39,12 @@ open class EntityController @Inject constructor(
             throw IllegalArgumentException("Entity already has an ID - use save() for downSockets")
         }
 
-        log.debug("Creating new entity of type {}", entity.type)
-
         try {
             //  Save to MongoDB to get ID assigned
-            val entityWithId = entityStore.save(entity)
-            log.debug("Entity created in MongoDB with ID: {}", entityWithId._id)
+            val entityWithId = entityGraphStore.save(entity)
 
             // Redis is source of truth for Entity state
             val finalEntity = stateStore.save(entityWithId)
-            log.debug("Entity {} synced to Redis", finalEntity._id)
 
             return finalEntity
         } catch (e: Exception) {
@@ -66,34 +60,19 @@ open class EntityController @Inject constructor(
      * @param entity The entity to save (must already have an ID)
      * @return The saved entity with any updates
      */
-    open suspend fun save(entity: Entity): Entity {
+    open suspend fun save(entityId: String?, deltas: JsonObject, incrementVersion: Boolean = true): Entity? {
         // TODO: Only save Entity relationships to MongoDB, ignore other state, but ensure tandem write
-
-        if (entity._id.isNullOrEmpty()) {
+        if (entityId.isNullOrBlank()) {
             throw IllegalArgumentException("Entity must have an ID - use create() for new entities")
         }
 
-        log.debug("Saving existing entity {} to Redis", entity._id)
+        log.debug("Saving existing entity {} to Redis", entityId)
 
-        val savedEntity = stateStore.save(entity)
+        stateStore.mutateState(entityId, deltas, incrementVersion)
 
-        // Schedule write-behind to MongoDB using JsonObject approach
-        try {
-            // Get the entity as a JsonObject document from Redis
-            val entityDocument = stateStore.findEntityJson(savedEntity._id!!)
+        entityGraphStore.updateRelationships(entityId, deltas)
 
-            if (entityDocument != null) {
-                writeBehindStore.persistForWriteBehind(entityDocument)
-                log.debug("Entity {} written to MongoDB via write-behind", savedEntity._id)
-            } else {
-                log.warn("Could not retrieve entity document for write-behind: {}", savedEntity._id)
-            }
-        } catch (e: Exception) {
-            log.warn("Write-behind failed for entity {}: {}", savedEntity._id, e.message)
-            // Don't fail the operation - Redis is source of truth
-        }
-
-        return savedEntity
+        return stateStore.findEntity(entityId)
     }
 
     /**
@@ -104,18 +83,7 @@ open class EntityController @Inject constructor(
      */
     open suspend fun findByIds(ids: List<String>): Map<String, Entity> {
         log.debug("Finding entities by IDs: {}", ids)
-        return stateStore.findEntitiesByIds(ids)
-    }
-
-    /**
-     * Find multiple entities with full state by their IDs from Redis.
-     *
-     * @param ids List of entity IDs
-     * @return Map of ID to Entity for found entities with state populated
-     */
-    open suspend fun findByIdsWithState(ids: List<String>): Map<String, Entity> {
-        log.debug("Finding entities with state by IDs: {}", ids)
-        return stateStore.findEntitiesWithState(ids)
+        return stateStore.find(ids)
     }
 
     /**

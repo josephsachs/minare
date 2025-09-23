@@ -15,15 +15,17 @@ class UpdateConnectionEstablishedEvent @Inject constructor(
     private val eventBusUtils: EventBusUtils,
     private val downSocketVerticleCache: DownSocketVerticleCache
 ) {
-    suspend fun register() {
+    suspend fun register(debugTraceLogs: Boolean) {
         eventBusUtils.registerTracedConsumer<JsonObject>(ADDRESS_CONNECTION_ESTABLISHED) { message, traceId ->
             val connectionId = message.body().getString("connectionId")
             if (connectionId != null) {
                 downSocketVerticleCache.connectionPendingUpdates.computeIfAbsent(connectionId) { ConcurrentHashMap() }
 
-                vlog.getEventLogger().trace("CONNECTION_TRACKING_INITIALIZED", mapOf(
-                    "connectionId" to connectionId
-                ), traceId)
+                if (debugTraceLogs) {
+                    vlog.getEventLogger().trace("CONNECTION_TRACKING_INITIALIZED", mapOf(
+                        "connectionId" to connectionId
+                    ), traceId)
+                }
             }
         }
         vlog.logHandlerRegistration(ADDRESS_CONNECTION_ESTABLISHED)
