@@ -4,6 +4,9 @@ import com.minare.application.config.FrameConfiguration
 import com.minare.core.frames.coordinator.FrameCoordinatorState.Companion.PauseState
 import com.minare.core.frames.coordinator.services.*
 import com.minare.core.frames.coordinator.services.SessionService.Companion.ADDRESS_SESSION_INITIALIZED
+import com.minare.core.frames.events.WorkerStateSnapshotCompleteEvent
+import com.minare.core.frames.services.SnapshotService
+import com.minare.core.frames.services.SnapshotService.Companion.ADDRESS_SNAPSHOT_COMPLETE
 import com.minare.core.frames.services.WorkerRegistry
 import com.minare.core.utils.vertx.EventBusUtils
 import com.minare.core.utils.vertx.EventWaiter
@@ -39,16 +42,19 @@ class FrameCoordinatorVerticle @Inject constructor(
     private val frameCompletionTracker: FrameCompletionTracker,
     private val startupService: StartupService,
     private val sessionService: SessionService,
+    private val snapshotService: SnapshotService,
     private val infraAddWorkerEvent: InfraAddWorkerEvent,
     private val infraRemoveWorkerEvent: InfraRemoveWorkerEvent,
     private val workerFrameCompleteEvent: WorkerFrameCompleteEvent,
     private val workerHeartbeatEvent: WorkerHeartbeatEvent,
     private val workerRegisterEvent: WorkerRegisterEvent,
     private val workerReadinessEvent: WorkerReadinessEvent,
-    private val workerHealthChangeEvent: WorkerHealthChangeEvent
+    private val workerHealthChangeEvent: WorkerHealthChangeEvent,
+    private val workerStateSnapshotCompleteEvent: WorkerStateSnapshotCompleteEvent
 ) : CoroutineVerticle() {
 
     private val log = LoggerFactory.getLogger(FrameCoordinatorVerticle::class.java)
+    private val debugTraceLogs: Boolean = false   // Mind over matter won't stop all your chatter
 
     var manifestTimerId: Long? = null
 
@@ -70,12 +76,12 @@ class FrameCoordinatorVerticle @Inject constructor(
 
         startupService.checkInitialWorkerStatus()
 
-        launch {
+        //launch {
             log.info("Waiting for all workers to be ready...")
             startupService.awaitAllWorkersReady()
             log.info("All workers ready, starting session")
             startupSession()
-        }
+        //}
     }
 
     private fun setupEventBusConsumers() {
@@ -84,10 +90,11 @@ class FrameCoordinatorVerticle @Inject constructor(
 
         launch {
             workerHeartbeatEvent.register()
-            workerFrameCompleteEvent.register()
+            workerFrameCompleteEvent.register(debugTraceLogs)
             workerRegisterEvent.register()
             workerReadinessEvent.register()
             workerHealthChangeEvent.register()
+            workerStateSnapshotCompleteEvent.register()
         }
 
         // All workers complete a frame
@@ -156,6 +163,8 @@ class FrameCoordinatorVerticle @Inject constructor(
     private suspend fun startupSession() {
         // SessionService takes over setup, returning control to
         // ADDRESS_PREPARE_SESSION_MANIFESTS before concluding
+        coordinatorState.pauseState = PauseState.SOFT
+
         sessionService.initializeSession()
 
         val eventMessage = eventWaiter.waitForEvent(ADDRESS_SESSION_INITIALIZED)
@@ -174,13 +183,14 @@ class FrameCoordinatorVerticle @Inject constructor(
      */
     private suspend fun preparePendingManifests() {
         if (coordinatorState.pauseState in setOf(PauseState.REST, PauseState.SOFT)) {
-            log.info("Delayed preparing frames from ${coordinatorState.lastPreparedManifest} due to pause ${coordinatorState.pauseState}")
+            if (debugTraceLogs) {
+                log.info("Delayed preparing frames from ${coordinatorState.lastPreparedManifest} " +
+                        "due to pause ${coordinatorState.pauseState}")
+            }
             return
         }
 
-        val framesToPrepare = getPendingFrames()
-
-        for (frame in framesToPrepare) {
+        for (frame in getPendingFrames()) {
             prepareManifestForFrame(frame)
         }
     }
@@ -233,10 +243,13 @@ class FrameCoordinatorVerticle @Inject constructor(
      * This is what permits workers to complete the next frame
      */
     private suspend fun onFrameComplete(logicalFrame: Long) {
-        log.info("Logical frame {} completed successfully", logicalFrame)
+        if (debugTraceLogs) log.info("Logical frame {} completed successfully", logicalFrame)
 
         if (coordinatorState.pauseState in setOf(PauseState.SOFT, PauseState.HARD)) {
-            log.info("Completed frame $logicalFrame, stopping due to pause ${coordinatorState.pauseState}")
+            if (debugTraceLogs) {
+                log.info("Completed frame $logicalFrame, stopping due to " +
+                        "pause ${coordinatorState.pauseState}")
+            }
             return
         }
 
@@ -247,11 +260,13 @@ class FrameCoordinatorVerticle @Inject constructor(
             preparePendingManifests()
 
             if (sessionService.needAutoSession()) {
-                launch { doAutoSession() }
+                launch {
+                    doAutoSession()
+                }
             }
         }
 
-        log.info("Broadcasting next frame event after completing frame {}", logicalFrame)
+        if (debugTraceLogs) log.info("Broadcasting next frame event after completing frame {}", logicalFrame)
 
         vertx.eventBus().publish(ADDRESS_NEXT_FRAME, JsonObject())
 
@@ -264,14 +279,20 @@ class FrameCoordinatorVerticle @Inject constructor(
     private suspend fun doAutoSession() {
         sessionService.endSession()
 
-        // TODO: Snapshot goes here
+        val oldSessionId = coordinatorState.sessionId
+
+        snapshotService.doSnapshot(oldSessionId)
+
+        eventWaiter.waitForEvent(ADDRESS_SNAPSHOT_COMPLETE)
 
         sessionService.initializeSession()
 
         val eventMessage = eventWaiter.waitForEvent(ADDRESS_SESSION_INITIALIZED)
 
         val newSessionId = eventMessage.getString("sessionId")
-        log.info("Frame coordinator received initial session announcement for $newSessionId")
+
+        if (debugTraceLogs) log.info("Frame coordinator received initial session announcement for $newSessionId")
+
         coordinatorState.sessionId = newSessionId
 
         sessionService.startSession()

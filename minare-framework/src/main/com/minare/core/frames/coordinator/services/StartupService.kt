@@ -15,6 +15,7 @@ class StartupService @Inject constructor(
     private val workerRegistry: WorkerRegistry
 ) {
     private val log = LoggerFactory.getLogger(StartupService::class.java)
+    private val debugTraceLogs: Boolean = false
 
     private val workersReady = CompletableDeferred<Unit>()
 
@@ -40,10 +41,10 @@ class StartupService @Inject constructor(
         val activeCount = workerRegistry.getActiveWorkers().size
         val expectedCount = workerRegistry.getExpectedWorkerCount()
 
-        log.info("Worker {} ready: {}/{}", workerId, activeCount, expectedCount)
+        if (debugTraceLogs) log.info("Worker {} ready: {}/{}", workerId, activeCount, expectedCount)
 
         if (activeCount == expectedCount && !workersReady.isCompleted) {
-            log.info("All workers ready")
+            if (debugTraceLogs) log.info("All workers ready")
             workersReady.complete(Unit)
         }
     }

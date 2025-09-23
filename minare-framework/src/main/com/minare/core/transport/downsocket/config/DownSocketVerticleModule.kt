@@ -47,6 +47,7 @@ class DownSocketVerticleModule : PrivateModule() {
         requireBinding(ConnectionCache::class.java)
         requireBinding(ChannelStore::class.java)
         requireBinding(ContextStore::class.java)
+        requireBinding(EventBusUtils::class.java)
 
         // Expose DownSocketVerticle to the parent injector
         expose(DownSocketVerticle::class.java)
@@ -68,15 +69,6 @@ class DownSocketVerticleModule : PrivateModule() {
     @Singleton
     fun provideCoroutineScope(coroutineContext: CoroutineContext): CoroutineScope {
         return CoroutineScope(coroutineContext)
-    }
-
-    /**
-     * Provides EventBusUtils for DownSocketVerticle
-     */
-    @Provides
-    @Singleton
-    fun provideEventBusUtils(vertx: Vertx, coroutineContext: CoroutineContext): EventBusUtils {
-        return EventBusUtils(vertx, coroutineContext, "DownSocketVerticle")
     }
 
     /**

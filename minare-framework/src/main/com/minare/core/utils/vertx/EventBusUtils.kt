@@ -21,8 +21,8 @@ class EventBusUtils(
     private val coroutineContext: CoroutineContext,
     private val component: String
 ) {
-    private val log = LoggerFactory.getLogger(EventBusUtils::class.java)
     private val eventLog = EventLogger.forComponent(component)
+    private val debugTraceLogs: Boolean = false    // This is a big one
 
     /**
      * Send a traced message to the event bus and await a reply
@@ -35,20 +35,25 @@ class EventBusUtils(
         val traceId = parentTraceId ?: eventLog.trace("EVENTBUS_SEND",
             mapOf("address" to address, "component" to component))
 
-        eventLog.logSend(address, message, traceId)
+        if (debugTraceLogs) eventLog.logSend(address, message, traceId)
 
         val options = DeliveryOptions().addHeader("traceId", traceId)
 
         try {
             val reply = vertx.eventBus().request<T>(address, message, options).await()
 
-            eventLog.trace("EVENTBUS_REPLY_RECEIVED",
-                mapOf("address" to address, "status" to "success"), traceId)
+            if (debugTraceLogs) {
+                eventLog.trace(
+                    "EVENTBUS_REPLY_RECEIVED",
+                    mapOf("address" to address, "status" to "success"), traceId
+                )
 
-            if (parentTraceId == null) {
-
-                eventLog.endTrace(traceId, "EVENTBUS_COMPLETE",
-                    mapOf("address" to address, "status" to "success"))
+                if (parentTraceId == null) {
+                    eventLog.endTrace(
+                        traceId, "EVENTBUS_COMPLETE",
+                        mapOf("address" to address, "status" to "success")
+                    )
+                }
             }
 
             return reply.body()
@@ -76,15 +81,17 @@ class EventBusUtils(
         val traceId = parentTraceId ?: eventLog.trace("EVENTBUS_SEND",
             mapOf("address" to address, "component" to component))
 
-        eventLog.logSend(address, message, traceId)
+        if (debugTraceLogs) eventLog.logSend(address, message, traceId)
 
         val options = DeliveryOptions().addHeader("traceId", traceId)
 
         vertx.eventBus().send(address, message, options)
 
         if (parentTraceId == null) {
-            eventLog.endTrace(traceId, "EVENTBUS_SEND_COMPLETE",
-                mapOf("address" to address, "status" to "sent"))
+            if (debugTraceLogs) {
+                eventLog.endTrace(traceId, "EVENTBUS_SEND_COMPLETE",
+                    mapOf("address" to address, "status" to "sent"))
+            }
         }
     }
 
@@ -99,15 +106,17 @@ class EventBusUtils(
         val traceId = parentTraceId ?: eventLog.trace("EVENTBUS_SEND",
             mapOf("address" to address, "component" to component))
 
-        eventLog.logSend(address, message, traceId)
+        if (debugTraceLogs) eventLog.logSend(address, message, traceId)
 
         val options = DeliveryOptions().addHeader("traceId", traceId)
 
         vertx.eventBus().publish(address, message, options)
 
         if (parentTraceId == null) {
-            eventLog.endTrace(traceId, "EVENTBUS_SEND_COMPLETE",
-                mapOf("address" to address, "status" to "sent"))
+            if (debugTraceLogs) {
+                eventLog.endTrace(traceId, "EVENTBUS_SEND_COMPLETE",
+                    mapOf("address" to address, "status" to "sent"))
+            }
         }
     }
 

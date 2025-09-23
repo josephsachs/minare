@@ -4,6 +4,7 @@ import com.google.inject.PrivateModule
 import com.google.inject.Provides
 import com.google.inject.Singleton
 import com.minare.cache.ConnectionCache
+import com.minare.controller.MessageController
 import com.minare.controller.OperationController
 import com.minare.core.storage.interfaces.ChannelStore
 import com.minare.core.storage.interfaces.ConnectionStore
@@ -11,7 +12,7 @@ import com.minare.core.transport.downsocket.services.ConnectionTracker
 import com.minare.core.utils.vertx.EventBusUtils
 import com.minare.utils.HeartbeatManager
 import com.minare.core.utils.vertx.VerticleLogger
-import com.minare.worker.upsocket.SyncCommandHandler
+import com.minare.core.transport.upsocket.handlers.SyncCommandHandler
 import io.vertx.core.Vertx
 import io.vertx.ext.web.Router
 import kotlinx.coroutines.CoroutineScope
@@ -19,7 +20,6 @@ import com.minare.worker.upsocket.UpSocketVerticle
 import com.minare.worker.upsocket.ConnectionLifecycle
 import com.minare.worker.upsocket.events.*
 import com.minare.worker.upsocket.handlers.CloseHandler
-import com.minare.worker.upsocket.handlers.MessageHandler
 import com.minare.worker.upsocket.handlers.ReconnectionHandler
 import kotlin.coroutines.CoroutineContext
 
@@ -42,7 +42,6 @@ class UpSocketVerticleModule : PrivateModule() {
 
         // Message handlers
         bind(CloseHandler::class.java).`in`(Singleton::class.java)
-        bind(MessageHandler::class.java).`in`(Singleton::class.java)
         bind(ReconnectionHandler::class.java).`in`(Singleton::class.java)
 
         // Sync handler (temporary, outside Kafka flow)
@@ -54,6 +53,8 @@ class UpSocketVerticleModule : PrivateModule() {
         requireBinding(ConnectionCache::class.java)
         requireBinding(ChannelStore::class.java)
         requireBinding(OperationController::class.java)
+        requireBinding(MessageController::class.java)
+        requireBinding(EventBusUtils::class.java)
 
         // Expose UpSocketVerticle to the parent injector
         expose(UpSocketVerticle::class.java)
@@ -75,15 +76,6 @@ class UpSocketVerticleModule : PrivateModule() {
     @Singleton
     fun provideCoroutineScope(coroutineContext: CoroutineContext): CoroutineScope {
         return CoroutineScope(coroutineContext)
-    }
-
-    /**
-     * Provides EventBusUtils for UpSocketVerticle
-     */
-    @Provides
-    @Singleton
-    fun provideEventBusUtils(vertx: Vertx, coroutineContext: CoroutineContext): EventBusUtils {
-        return EventBusUtils(vertx, coroutineContext, "UpSocketVerticle")
     }
 
     /**

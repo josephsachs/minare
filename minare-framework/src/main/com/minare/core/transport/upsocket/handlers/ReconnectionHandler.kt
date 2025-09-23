@@ -22,34 +22,43 @@ class ReconnectionHandler @Inject constructor(
     private val connectionLifecycle: ConnectionLifecycle,
     private val heartbeatManager: HeartbeatManager
 ) {
+    private val debugTraceLogs: Boolean = false
+
     /**
      * Handle a reconnection attempt
      */
     suspend fun handle(websocket: ServerWebSocket, connectionId: String, deploymentId: String, traceId: String) {
-        val reconnectTraceId = vlog.getEventLogger().trace(
+        var reconnectTraceId: String = ""
+
+        if (debugTraceLogs) {
+            reconnectTraceId = vlog.getEventLogger().trace(
             "RECONNECTION_ATTEMPT", mapOf(
                 "connectionId" to connectionId,
                 "socketId" to websocket.textHandlerID(),
-                "remoteAddress" to websocket.remoteAddress().toString()
+                "remoteAddress" to websocket.remoteAddress().toString())
             )
-        )
+        }
 
         try {
-            vlog.logStartupStep(
-                "HANDLING_RECONNECTION", mapOf(
-                    "connectionId" to connectionId,
-                    "traceId" to reconnectTraceId
+            if (debugTraceLogs) {
+                vlog.logStartupStep(
+                    "HANDLING_RECONNECTION", mapOf(
+                        "connectionId" to connectionId,
+                        "traceId" to reconnectTraceId
+                    )
                 )
-            )
+            }
 
             val exists = connectionStore.exists(connectionId)
             if (!exists) {
-                vlog.getEventLogger().trace(
-                    "RECONNECTION_FAILED", mapOf(
-                        "reason" to "Connection not found",
-                        "connectionId" to connectionId
-                    ), reconnectTraceId
-                )
+                if (debugTraceLogs) {
+                    vlog.getEventLogger().trace(
+                        "RECONNECTION_FAILED", mapOf(
+                            "reason" to "Connection not found",
+                            "connectionId" to connectionId
+                        ), reconnectTraceId
+                    )
+                }
 
                 sendReconnectionResponse(websocket, false, "Connection not found")
                 connectionLifecycle.initiateConnection(websocket, deploymentId, traceId)  // Fallback to creating a new connection
@@ -96,10 +105,12 @@ class ReconnectionHandler @Inject constructor(
                 try {
                     if (!existingSocket.isClosed()) {
                         existingSocket.close()
-                        vlog.getEventLogger().logWebSocketEvent(
-                            "EXISTING_SOCKET_CLOSED", connectionId,
-                            mapOf("socketId" to existingSocket.textHandlerID()), reconnectTraceId
-                        )
+                        if (debugTraceLogs) {
+                            vlog.getEventLogger().logWebSocketEvent(
+                                "EXISTING_SOCKET_CLOSED", connectionId,
+                                mapOf("socketId" to existingSocket.textHandlerID()), reconnectTraceId
+                            )
+                        }
                     }
                 } catch (e: Exception) {
                     vlog.logVerticleError(
@@ -128,28 +139,34 @@ class ReconnectionHandler @Inject constructor(
                     .put("traceId", traceId)
             )
 
-            vlog.getEventLogger().logStateChange(
-                "Connection", "DISCONNECTED", "RECONNECTED",
-                mapOf("connectionId" to connectionId, "socketId" to socketId), reconnectTraceId
-            )
+            if (debugTraceLogs) {
+                vlog.getEventLogger().logStateChange(
+                    "Connection", "DISCONNECTED", "RECONNECTED",
+                    mapOf("connectionId" to connectionId, "socketId" to socketId), reconnectTraceId
+                )
+            }
 
             sendReconnectionResponse(websocket, true, null)
             heartbeatManager.startHeartbeat(socketId, connectionId, websocket)
 
             if (connectionCache.isFullyConnected(connectionId)) {
-                vlog.getEventLogger().logStateChange(
-                    "Connection", "RECONNECTED", "FULLY_CONNECTED",
-                    mapOf("connectionId" to connectionId), reconnectTraceId
-                )
+                if (debugTraceLogs) {
+                    vlog.getEventLogger().logStateChange(
+                        "Connection", "RECONNECTED", "FULLY_CONNECTED",
+                        mapOf("connectionId" to connectionId), reconnectTraceId
+                    )
+                }
 
                 // We want to know how to now call this on the ExampleApplication's connection controller
                 //connectionController.onClientFullyConnected(updatedConnection)
             }
 
-            vlog.getEventLogger().endTrace(
-                reconnectTraceId, "RECONNECTION_COMPLETED",
-                mapOf("connectionId" to connectionId, "success" to true)
-            )
+            if (debugTraceLogs) {
+                vlog.getEventLogger().endTrace(
+                    reconnectTraceId, "RECONNECTION_COMPLETED",
+                    mapOf("connectionId" to connectionId, "success" to true)
+                )
+            }
 
         } catch (e: Exception) {
             vlog.logVerticleError(

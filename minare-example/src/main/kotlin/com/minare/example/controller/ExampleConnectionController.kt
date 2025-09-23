@@ -1,9 +1,8 @@
 package com.minare.example.controller
 
-import com.minare.cache.ConnectionCache
 import com.minare.controller.ConnectionController
 import com.minare.core.transport.models.Connection
-import com.minare.core.storage.interfaces.*
+import com.minare.core.transport.upsocket.handlers.SyncCommandHandler
 import io.vertx.core.json.JsonObject
 import org.slf4j.LoggerFactory
 import javax.inject.Inject
@@ -15,19 +14,9 @@ import javax.inject.Singleton
  */
 @Singleton
 class ExampleConnectionController @Inject constructor(
-    connectionStore: ConnectionStore,
-    connectionCache: ConnectionCache,
-    channelStore: ChannelStore,
-    contextStore: ContextStore,
-    entityStore: EntityStore,
-    private val channelController: ExampleChannelController
-) : ConnectionController(
-    connectionStore,
-    connectionCache,
-    channelStore,
-    contextStore,
-    entityStore
-) {
+    private val channelController: ExampleChannelController,
+    private val syncCommandHandler: SyncCommandHandler
+) : ConnectionController() {
     private val log = LoggerFactory.getLogger(ExampleConnectionController::class.java)
 
     /**
@@ -45,7 +34,7 @@ class ExampleConnectionController @Inject constructor(
         }
 
         if (channelController.subscribeClientToChannel(connection._id, defaultChannelId)) {
-            syncChannelToConnection(defaultChannelId, connection._id)
+            syncCommandHandler.syncChannelToConnection(defaultChannelId, connection._id)
             sendInitialSyncComplete(connection._id)
         }
     }

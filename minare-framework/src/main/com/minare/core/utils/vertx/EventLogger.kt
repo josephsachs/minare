@@ -12,7 +12,7 @@ import java.util.UUID
  */
 class EventLogger(private val component: String) {
     private val log: Logger = LoggerFactory.getLogger("com.minare.event.$component")
-
+    private val debugTraceLogs: Boolean = false
 
     private val traces = mutableMapOf<String, Long>()
 
@@ -38,7 +38,7 @@ class EventLogger(private val component: String) {
             }
         }
 
-        log.info("[TRACE] {}", logEntry.encode())
+        if (debugTraceLogs) log.info("[TRACE] {}", logEntry.encode())
         return actualTraceId
     }
 

@@ -27,7 +27,11 @@ class App {
       toggleVisBtn: null,
       simulationContainer: null,
       simulationPanel: null,
-      simulationPanelHeader: null
+      simulationPanelHeader: null,
+      stepBackBtn: null,
+      pauseBtn: null,
+      playBtn: null,
+      stepForwardBtn: null
     };
 
 
@@ -56,7 +60,10 @@ class App {
     this.elements.simulationContainer = document.querySelector('.simulation-panel-content');
     this.elements.simulationPanel = document.querySelector('.simulation-panel');
     this.elements.simulationPanelHeader = document.querySelector('.simulation-panel h2');
-
+    this.elements.stepBackBtn = document.getElementById('stepBackBtn');
+    this.elements.pauseBtn = document.getElementById('pauseBtn');
+    this.elements.playBtn = document.getElementById('playBtn');
+    this.elements.stepForwardBtn = document.getElementById('stepForwardBtn');
 
     logger.init(this.elements.logEntries);
     logger.info('Application initialized');
@@ -91,9 +98,11 @@ class App {
     this.elements.connectBtn.addEventListener('click', () => this.handleConnect());
     this.elements.disconnectBtn.addEventListener('click', () => this.handleDisconnect());
 
-
     this.elements.toggleVisBtn.addEventListener('click', () => this.toggleVisualization());
-
+    this.elements.pauseBtn.addEventListener('click', () => this.handleTimelinePause());
+    this.elements.playBtn.addEventListener('click', () => this.handleTimelineResume());
+    this.elements.stepBackBtn.addEventListener('click', () => this.handleTimelineStep(-1));
+    this.elements.stepForwardBtn.addEventListener('click', () => this.handleTimelineStep(1));
 
     this.elements.simulationPanelHeader.addEventListener('click', () => this.toggleSimulationPanel());
 
@@ -347,6 +356,91 @@ class App {
 
     this.elements.connectBtn.disabled = connected;
     this.elements.disconnectBtn.disabled = !connected;
+  }
+
+  /**
+   * Handle timeline pause (enter detached mode)
+   */
+  async handleTimelinePause() {
+    try {
+      logger.info('Requesting timeline pause...');
+
+      const response = await fetch('http://localhost:9090/timeline', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: 'detach' })
+      });
+
+      if (response.status === 204) {
+        logger.info('Already in detached mode');
+      } else if (response.ok) {
+        logger.info('Entered timeline detached mode');
+        // Update button states
+        this.elements.pauseBtn.disabled = true;
+        this.elements.playBtn.disabled = false;
+        this.elements.stepBackBtn.disabled = false;
+        this.elements.stepForwardBtn.disabled = false;
+      } else {
+        logger.error(`Timeline pause failed: ${response.status}`);
+      }
+    } catch (error) {
+      logger.error(`Timeline pause error: ${error.message}`);
+    }
+  }
+
+  /**
+   * Handle timeline resume (exit detached mode)
+   */
+  async handleTimelineResume() {
+    try {
+      logger.info('Requesting timeline resume...');
+
+      const response = await fetch('http://localhost:9090/timeline', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: 'resume' })
+      });
+
+      if (response.ok) {
+        logger.info('Resumed from timeline detached mode');
+        // Update button states
+        this.elements.pauseBtn.disabled = false;
+        this.elements.playBtn.disabled = true;
+        this.elements.stepBackBtn.disabled = true;
+        this.elements.stepForwardBtn.disabled = true;
+      } else {
+        logger.error(`Timeline resume failed: ${response.status}`);
+      }
+    } catch (error) {
+      logger.error(`Timeline resume error: ${error.message}`);
+    }
+  }
+
+  /**
+   * Handle timeline step forward/backward
+   * @param {number} frames - Number of frames to step (negative for backward)
+   */
+  async handleTimelineStep(frames) {
+    try {
+      logger.info(`Requesting timeline step: ${frames > 0 ? 'forward' : 'backward'} ${Math.abs(frames)} frame(s)`);
+
+      const response = await fetch('http://localhost:9090/timeline', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mode: 'step',
+          frames: frames
+        })
+      });
+
+      if (response.ok) {
+        logger.info(`Stepped ${frames > 0 ? 'forward' : 'backward'} ${Math.abs(frames)} frame(s)`);
+      } else {
+        logger.error(`Timeline step failed: ${response.status}`);
+      }
+    } catch (error) {
+      logger.error(`Timeline step error: ${error.message}`);
+    }
   }
 }
 

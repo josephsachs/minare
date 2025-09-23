@@ -1,5 +1,6 @@
 package com.minare.core.frames.coordinator
 
+import DistributedEnum
 import com.hazelcast.core.HazelcastInstance
 import com.hazelcast.cp.IAtomicLong
 import com.minare.core.frames.coordinator.services.FrameCalculatorService
@@ -9,6 +10,7 @@ import org.slf4j.LoggerFactory
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicReference
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -23,6 +25,9 @@ class FrameCoordinatorState @Inject constructor(
     private val hazelcastInstance: HazelcastInstance
 ) {
     private val log = LoggerFactory.getLogger(FrameCoordinatorState::class.java)
+    private val debugTraceLogs: Boolean = false
+
+    var sessionId: String = ""
 
     @Volatile
     var sessionStartTimestamp: Long = 0L
@@ -34,26 +39,37 @@ class FrameCoordinatorState @Inject constructor(
 
     private val _lastPreparedManifest = AtomicLong(-1L)
 
-    private val operationsByFrame = ConcurrentHashMap<Long, ConcurrentLinkedQueue<JsonObject>>()
-    private val currentFrameCompletions = ConcurrentHashMap<String, Long>()
-    private val frameProgress: IAtomicLong = hazelcastInstance.getCPSubsystem().getAtomicLong("frame-progress")
-
-    var sessionId: String = ""
-
-    private var _pauseState: PauseState = PauseState.UNPAUSED
-
     var lastPreparedManifest: Long
         get() = _lastPreparedManifest.get()
         set(value) = _lastPreparedManifest.set(value)
 
+    private val operationsByFrame = ConcurrentHashMap<Long, ConcurrentLinkedQueue<JsonObject>>()
+    private val currentFrameCompletions = ConcurrentHashMap<String, Long>()
+    private val snapshotEntityPartitions = ConcurrentHashMap<String, List<String>>()
+
+    private val frameProgress: IAtomicLong = hazelcastInstance.getCPSubsystem().getAtomicLong("frame-progress")
+
     val frameInProgress: Long
         get() = frameProgress.get()
 
+    private val timelineHead = AtomicLong(-1L)
+
+    // Startup in SOFT pause until session
+    private val _pauseState = DistributedEnum(hazelcastInstance, "pause-state", PauseState::class, PauseState.SOFT)
+    private val _timelineState = DistributedEnum(hazelcastInstance, "timeline-state", TimelineState::class, TimelineState.PLAY)
+
     var pauseState: PauseState
-        get() = _pauseState
+        get() = _pauseState.get()
         set(value) {
             log.info("Pause state transitioned from {} to {}", _pauseState, value)
-            _pauseState = value
+            _pauseState.set(value)
+        }
+
+    var timelineState: TimelineState
+        get() = _timelineState.get()
+        set(value) {
+            log.info("Timeline state changed from {} to {}", _timelineState, value)
+            _timelineState.set(value)
         }
 
     companion object {
@@ -62,6 +78,12 @@ class FrameCoordinatorState @Inject constructor(
             REST,
             SOFT,
             HARD
+        }
+
+        enum class TimelineState {
+            DETACH,
+            REPLAY,
+            PLAY
         }
     }
 
@@ -108,8 +130,10 @@ class FrameCoordinatorState @Inject constructor(
         frameProgress.set(-1L)
         currentFrameCompletions.clear()
 
-        log.info("Started new session at timestamp {} (nanos: {})",
-            sessionStartTimestamp, sessionStartNanos)
+        if (debugTraceLogs) {
+            log.info("Started new session at timestamp {} (nanos: {})",
+                sessionStartTimestamp, sessionStartNanos)
+        }
     }
 
     /**
@@ -145,6 +169,17 @@ class FrameCoordinatorState @Inject constructor(
         currentFrameCompletions.clear()
     }
 
+    fun getTimelineHead(): Long {
+        return timelineHead.get()
+    }
+
+    /**
+     * Set timeline head position
+     */
+    fun setTimelineHead(frameNumber: Long) {
+        timelineHead.set(frameNumber)
+    }
+
     /**
      * Record that a worker completed a frame
      */
@@ -153,7 +188,9 @@ class FrameCoordinatorState @Inject constructor(
         // TODO: This case should be prevented by frame completion logic/coordinator message
         if (frameNumber == frameProgress.get()) {
             currentFrameCompletions[workerId] = System.currentTimeMillis()
-            log.debug("Worker {} completed logical frame {}", workerId, frameNumber)
+            if (debugTraceLogs) {
+                log.debug("Worker {} completed logical frame {}", workerId, frameNumber)
+            }
         } else {
             log.error("Ignoring completion from worker {} for old frame {} (current: {})",
                 workerId, frameNumber, frameProgress.get())
@@ -219,5 +256,28 @@ class FrameCoordinatorState @Inject constructor(
      */
     fun clearAllBufferedOperations() {
         operationsByFrame.clear()
+    }
+
+    /**
+     * Store a map of workerId and entityIds
+     */
+    fun assignEntityPartitions(partitions: Map<String, List<String>>) {
+        partitions.forEach { (workerId, entityIds) ->
+            snapshotEntityPartitions.set(workerId, entityIds)
+        }
+    }
+
+    /**
+     *
+     */
+    fun getEntityPartition(workerId: String): List<String> {
+        return snapshotEntityPartitions.get(workerId) ?: emptyList()
+    }
+
+    /**
+     * Clear all entity partition assignments
+     */
+    fun clearEntityPartitions() {
+        snapshotEntityPartitions.clear()
     }
 }

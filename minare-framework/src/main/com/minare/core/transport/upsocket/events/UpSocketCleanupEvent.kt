@@ -18,16 +18,19 @@ class UpSocketCleanupEvent @Inject constructor(
     private val vlog: VerticleLogger,
     private val connectionLifecycle: ConnectionLifecycle
 ) {
-    suspend fun register() {
+    suspend fun register(debugTraceLogs: Boolean) {
         eventBusUtils.registerTracedConsumer<JsonObject>(UpSocketVerticle.ADDRESS_SOCKET_CLEANUP) { message, traceId ->
             val connectionId = message.body().getString("connectionId")
             val hasUpdateSocket = message.body().getBoolean("hasUpdateSocket", false)
-            vlog.logStartupStep(
-                "SOCKET_CLEANUP_REQUEST", mapOf(
-                    "connectionId" to connectionId,
-                    "hasUpdateSocket" to hasUpdateSocket
+
+            if (debugTraceLogs) {
+                vlog.logStartupStep(
+                    "SOCKET_CLEANUP_REQUEST", mapOf(
+                        "connectionId" to connectionId,
+                        "hasUpdateSocket" to hasUpdateSocket
+                    )
                 )
-            )
+            }
 
             try {
                 val result = connectionLifecycle.cleanupConnectionSockets(connectionId, hasUpdateSocket)

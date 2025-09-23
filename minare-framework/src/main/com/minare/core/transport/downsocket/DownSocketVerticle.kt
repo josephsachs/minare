@@ -45,6 +45,9 @@ class DownSocketVerticle @Inject constructor(
     private lateinit var vlog: VerticleLogger
     private lateinit var eventBusUtils: EventBusUtils
 
+    // Silence is golden
+    private var debugTraceLogs: Boolean = false
+
     private lateinit var router: Router
 
     private lateinit var heartbeatManager: HeartbeatManager
@@ -90,16 +93,6 @@ class DownSocketVerticle @Inject constructor(
             vlog.logConfig(config)
 
             initializeRouter()
-
-            // TODO: Reconsider timer here
-            //timer = UpdateTimer()
-            //timer.start(DEFAULT_TICK_INTERVAL_MS)
-            log.info("Started Timer at {${System.currentTimeMillis()}}")
-            vlog.logStartupStep("UPDATE_TIMER_STARTED", mapOf(
-                "intervalMs" to DEFAULT_TICK_INTERVAL_MS
-            ))
-
-            // Register consumer for batched updates from UpdateBatchCoordinator
             registerBatchedUpdateConsumer()
 
             vlog.logStartupStep("EVENT_BUS_HANDLERS_REGISTERED")
@@ -207,15 +200,15 @@ class DownSocketVerticle @Inject constructor(
     private suspend fun registerEventBusConsumers() {
         // Guessing we disabled this when we removed individual entity updates in favor of batching
         //entityUpdatedEvent.register()
-        updateConnectionEstablishedEvent.register()
-        updateConnectionClosedEvent.register()
+        updateConnectionEstablishedEvent.register(debugTraceLogs)
+        updateConnectionClosedEvent.register(debugTraceLogs)
     }
 
     /**
      * Handle a new down socket connection
      */
     private suspend fun handleDownSocket(websocket: ServerWebSocket, traceId: String) {
-        log.info("New down socket connection from {}", websocket.remoteAddress())
+        if (debugTraceLogs) log.info("New down socket connection from {}", websocket.remoteAddress())
 
         websocket.textMessageHandler { message ->
             CoroutineScope(vertx.dispatcher()).launch {
@@ -252,9 +245,11 @@ class DownSocketVerticle @Inject constructor(
      * Associate an down socket with a connection ID
      */
     private suspend fun associateUpdateSocket(connectionId: String, websocket: ServerWebSocket, traceId: String) {
-        vlog.getEventLogger().trace("ASSOCIATING_SOCKET", mapOf(
-            "connectionId" to connectionId
-        ), traceId)
+        if (debugTraceLogs) {
+            vlog.getEventLogger().trace("ASSOCIATING_SOCKET", mapOf(
+                "connectionId" to connectionId
+            ), traceId)
+        }
 
         try {
             val connection = connectionCache.getConnection(connectionId)
@@ -287,8 +282,10 @@ class DownSocketVerticle @Inject constructor(
             heartbeatManager.startHeartbeat(socketId, connectionId, websocket)
             WebSocketUtils.sendConfirmation(websocket, "down_socket_confirm", connectionId)
 
-            vlog.getEventLogger().logStateChange("DownSocket", "CONNECTED", "REGISTERED",
-                mapOf("connectionId" to connectionId, "socketId" to socketId), traceId)
+            if (debugTraceLogs) {
+                vlog.getEventLogger().logStateChange("DownSocket", "CONNECTED", "REGISTERED",
+                    mapOf("connectionId" to connectionId, "socketId" to socketId), traceId)
+            }
 
             downSocketVerticleCache.connectionPendingUpdates.computeIfAbsent(connectionId) { ConcurrentHashMap() }
 
@@ -325,8 +322,11 @@ class DownSocketVerticle @Inject constructor(
         try {
             if (!existingSocket.isClosed()) {
                 existingSocket.close()
-                vlog.getEventLogger().logWebSocketEvent("EXISTING_SOCKET_CLOSED", connectionId,
-                    mapOf("socketId" to existingSocket.textHandlerID()), traceId)
+
+                if (debugTraceLogs) {
+                    vlog.getEventLogger().logWebSocketEvent("EXISTING_SOCKET_CLOSED", connectionId,
+                        mapOf("socketId" to existingSocket.textHandlerID()), traceId)
+                }
             }
         } catch (e: Exception) {
             vlog.logVerticleError("CLOSE_EXISTING_SOCKET", e, mapOf(
@@ -354,8 +354,10 @@ class DownSocketVerticle @Inject constructor(
                     .put("socketType", "down")
             )
 
-            vlog.getEventLogger().logStateChange("DownSocket", "REGISTERED", "DISCONNECTED",
-                mapOf("connectionId" to connectionId), traceId)
+            if (debugTraceLogs) {
+                vlog.getEventLogger().logStateChange("DownSocket", "REGISTERED", "DISCONNECTED",
+                    mapOf("connectionId" to connectionId), traceId)
+            }
         } catch (e: Exception) {
             vlog.logVerticleError("DOWN_SOCKET_CLOSE", e, mapOf(
                 "connectionId" to connectionId
@@ -378,7 +380,7 @@ class DownSocketVerticle @Inject constructor(
                 false
             }
         } else {
-            log.debug("No down socket found for connection {}", connectionId)
+            if (debugTraceLogs) log.info("No down socket found for connection {}", connectionId)
             false
         }
     }
@@ -416,7 +418,7 @@ class DownSocketVerticle @Inject constructor(
                 val socket = connectionTracker.getSocket(connectionId)
                 if (socket != null && !socket.isClosed) {
                     socket.close()
-                    log.debug("Closed down socket for connection: {}", connectionId)
+                    if (debugTraceLogs) log.debug("Closed down socket for connection: {}", connectionId)
                 }
             } catch (e: Exception) {
                 log.error("Error closing socket for connection: {}", connectionId, e)
@@ -480,10 +482,13 @@ class DownSocketVerticle @Inject constructor(
                                 processingTime > getIntervalMs() / 2 ||
                                 counter % 100 == 0L
                         )) {
-                vlog.logVerticlePerformance("TICK_UPDATE", processingTime, mapOf(
-                    "updatesProcessed" to totalUpdatesProcessed,
-                    "connectionsProcessed" to totalConnectionsProcessed
-                ))
+
+                if (debugTraceLogs) {
+                    vlog.logVerticlePerformance("TICK_UPDATE", processingTime, mapOf(
+                        "updatesProcessed" to totalUpdatesProcessed,
+                        "connectionsProcessed" to totalConnectionsProcessed
+                    ))
+                }
             }
         }
     }

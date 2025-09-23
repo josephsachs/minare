@@ -1,5 +1,6 @@
 package com.minare.worker.upsocket
 
+import com.minare.controller.MessageController
 import com.minare.core.utils.vertx.VerticleLogger
 import com.minare.utils.HeartbeatManager
 import com.minare.core.transport.downsocket.services.ConnectionTracker
@@ -18,7 +19,6 @@ import kotlinx.coroutines.launch
 import org.slf4j.LoggerFactory
 import javax.inject.Inject
 import com.minare.worker.upsocket.handlers.CloseHandler
-import com.minare.worker.upsocket.handlers.MessageHandler
 import com.minare.worker.upsocket.handlers.ReconnectionHandler
 
 /**
@@ -30,7 +30,7 @@ class UpSocketVerticle @Inject constructor(
     private val heartbeatManager: HeartbeatManager,
     private val connectionTracker: ConnectionTracker,
     private val reconnectionHandler: ReconnectionHandler,
-    private val messageHandler: MessageHandler,
+    private val messageController: MessageController,
     private val closeHandler: CloseHandler,
     private val connectionLifecycle: ConnectionLifecycle,
     private val channelCleanupEvent: ChannelCleanupEvent,
@@ -42,6 +42,9 @@ class UpSocketVerticle @Inject constructor(
 ) : CoroutineVerticle() {
 
     private val log = LoggerFactory.getLogger(UpSocketVerticle::class.java)
+    // Silence is golden
+    private val debugTraceLogs: Boolean = true
+
     private var deployedAt: Long = 0
     private var httpServer: HttpServer? = null
     lateinit var router: Router
@@ -128,12 +131,12 @@ class UpSocketVerticle @Inject constructor(
      * Register all event bus consumers
      */
     private suspend fun registerEventBusConsumers() {
-        upSocketInitEvent.register()
+        upSocketInitEvent.register(debugTraceLogs)
         upSocketGetRouterEvent.register(router)
-        channelCleanupEvent.register()
-        upSocketCleanupEvent.register()
-        connectionCleanupEvent.register()
-        entitySyncEvent.register()
+        channelCleanupEvent.register(debugTraceLogs)
+        upSocketCleanupEvent.register(debugTraceLogs)
+        connectionCleanupEvent.register(debugTraceLogs)
+        entitySyncEvent.register(debugTraceLogs)
     }
 
     /**
@@ -142,7 +145,8 @@ class UpSocketVerticle @Inject constructor(
     private suspend fun handleMessage(websocket: ServerWebSocket, traceId: String) {
         var handshakeCompleted = false
 
-        log.info("New up WebSocket connection from {}", websocket.remoteAddress())
+        if (debugTraceLogs) log.info("New up WebSocket connection from {}", websocket.remoteAddress())
+
 
         websocket.textMessageHandler { message ->
             CoroutineScope(vertx.dispatcher()).launch {
@@ -158,12 +162,12 @@ class UpSocketVerticle @Inject constructor(
                         } else {
                             // For regular messages after handshake, use the standard handler
                             val msg = JsonObject(message)
-                            messageHandler.handle(websocket, msg)
+                            messageController.handleUpsocket(connectionTracker, websocket, msg)
                         }
                     } else {
                         // Regular message handling after handshake is complete
                         val msg = JsonObject(message)
-                        messageHandler.handle(websocket, msg)
+                        messageController.handleUpsocket(connectionTracker, websocket, msg)
                     }
                 } catch (e: Exception) {
                     WebSocketUtils.sendErrorResponse(
@@ -185,25 +189,29 @@ class UpSocketVerticle @Inject constructor(
                 log.warn("Tried to close websocket ${websocket.textHandlerID()} with no connection")
             }
 
-            vlog.getEventLogger().trace(
-                "WEBSOCKET_CLOSED", mapOf(
-                    "socketId" to websocket.textHandlerID(),
-                    "connectionId" to connectionId
-                ), traceId
-            )
+            if (debugTraceLogs) {
+                vlog.getEventLogger().trace(
+                    "WEBSOCKET_CLOSED", mapOf(
+                        "socketId" to websocket.textHandlerID(),
+                        "connectionId" to connectionId
+                    ), traceId
+                )
+            }
         }
 
         websocket.accept()
 
-        vlog.getEventLogger().trace(
-            "WEBSOCKET_ACCEPTED", mapOf(
-                "socketId" to websocket.textHandlerID()
-            ), traceId
-        )
+        if (debugTraceLogs) {
+            vlog.getEventLogger().trace(
+                "WEBSOCKET_ACCEPTED", mapOf(
+                    "socketId" to websocket.textHandlerID()
+                ), traceId
+            )
+        }
 
         // If no reconnection message is received, create a new connection
         vertx.setTimer(HANDSHAKE_TIMEOUT_MS) {
-            if (!handshakeCompleted) {
+            if (!handshakeCompleted && debugTraceLogs) {
                 vlog.getEventLogger().trace(
                     "HANDSHAKE_TIMEOUT", mapOf(
                         "socketId" to websocket.textHandlerID(),

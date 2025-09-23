@@ -41,6 +41,7 @@ import com.minare.core.transport.downsocket.pubsub.UpdateBatchCoordinator
 import com.minare.time.DockerTimeService
 import com.minare.time.TimeService
 import com.minare.core.frames.coordinator.handlers.LateOperationHandler
+import com.minare.core.utils.vertx.EventBusUtils
 import com.minare.worker.upsocket.CommandMessageHandler
 import kotlin.coroutines.CoroutineContext
 
@@ -57,17 +58,16 @@ class MinareModule : AbstractModule(), DatabaseNameProvider {
     override fun configure() {
         // Internal services, do not permit override
         bind(StateStore::class.java).to(RedisEntityStore::class.java).`in`(Singleton::class.java)
-        bind(EntityStore::class.java).to(MongoEntityStore::class.java).`in`(Singleton::class.java)
+        bind(EntityGraphStore::class.java).to(MongoEntityStore::class.java).`in`(Singleton::class.java)
         bind(EntityPublishService::class.java).to(RedisEntityPublishService::class.java).`in`(Singleton::class.java)
         bind(EntityVersioningService::class.java).`in`(Singleton::class.java)
-        bind(EntityQueryStore::class.java).to(MongoEntityStore::class.java).`in`(Singleton::class.java)
-        bind(WriteBehindStore::class.java).to(MongoEntityStore::class.java).`in`(Singleton::class.java)
         bind(MessageQueue::class.java).to(KafkaMessageQueue::class.java).`in`(Singleton::class.java)
 
         bind(ConnectionStore::class.java).to(MongoConnectionStore::class.java).`in`(Singleton::class.java)
         bind(ChannelStore::class.java).to(MongoChannelStore::class.java).`in`(Singleton::class.java)
         bind(ContextStore::class.java).to(MongoContextStore::class.java).`in`(Singleton::class.java)
         bind(DeltaStore::class.java).to(RedisDeltaStore::class.java).`in`(Singleton::class.java)
+        bind(SnapshotStore::class.java).to(MongoSnapshotStore::class.java).`in`(Singleton::class.java)
 
         bind(TimeService::class.java).to(DockerTimeService::class.java).`in`(Singleton::class.java)
         bind(MutationService::class.java).`in`(Singleton::class.java)
@@ -91,7 +91,7 @@ class MinareModule : AbstractModule(), DatabaseNameProvider {
 
         bind(String::class.java).annotatedWith(Names.named("channels")).toInstance("channels")
         bind(String::class.java).annotatedWith(Names.named("contexts")).toInstance("contexts")
-        bind(String::class.java).annotatedWith(Names.named("entities")).toInstance("entities")
+        bind(String::class.java).annotatedWith(Names.named("entity_graph")).toInstance("entity_graph")
         bind(String::class.java).annotatedWith(Names.named("connections")).toInstance("connections")
 
         bind(Int::class.java)
@@ -184,6 +184,15 @@ class MinareModule : AbstractModule(), DatabaseNameProvider {
         val map = hazelcastInstance.getMap<String, JsonObject>("worker-registry")
         log.info("Initialized distributed worker registry map")
         return HazelcastWorkerRegistryMap(map)
+    }
+
+    /**
+     * Provides EventBusUtils for FrameCoordinatorVerticle
+     */
+    @Provides
+    @Singleton
+    fun provideEventBusUtils(vertx: Vertx, coroutineContext: CoroutineContext): EventBusUtils {
+        return EventBusUtils(vertx, coroutineContext, "FrameCoordinatorVerticle")
     }
 
     override fun getDatabaseName(): String = "minare"

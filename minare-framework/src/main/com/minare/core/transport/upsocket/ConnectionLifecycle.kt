@@ -12,6 +12,7 @@ import com.minare.core.utils.vertx.VerticleLogger
 import com.minare.utils.WebSocketUtils
 import io.vertx.core.Vertx
 import io.vertx.core.http.ServerWebSocket
+import io.vertx.core.impl.logging.LoggerFactory
 import io.vertx.core.json.JsonObject
 
 /**
@@ -27,6 +28,8 @@ class ConnectionLifecycle @Inject constructor(
     private val connectionTracker: ConnectionTracker,
     private val heartbeatManager: HeartbeatManager
 ) {
+    private val log = LoggerFactory.getLogger(ConnectionLifecycle::class.java)
+
     /**
      * Connect to the up socket
      */

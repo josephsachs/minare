@@ -6,6 +6,9 @@ import com.hazelcast.map.IMap
 import com.minare.core.operation.models.Operation
 import com.minare.core.utils.vertx.VerticleLogger
 import com.minare.core.frames.coordinator.FrameCoordinatorVerticle
+import com.minare.core.frames.events.WorkerStartStateSnapshotEvent
+import com.minare.core.frames.events.WorkerStateSnapshotCompleteEvent
+import com.minare.core.frames.events.WorkerStateSnapshotCompleteEvent.Companion.ADDRESS_WORKER_STATE_SNAPSHOT_COMPLETE
 import com.minare.exceptions.FrameLoopException
 import com.minare.worker.coordinator.models.FrameManifest
 import com.minare.worker.coordinator.models.OperationCompletion
@@ -26,10 +29,12 @@ import javax.inject.Inject
  */
 class FrameWorkerVerticle @Inject constructor(
     private val vlog: VerticleLogger,
-    private val hazelcastInstance: HazelcastInstance
+    private val hazelcastInstance: HazelcastInstance,
+    private val workerStartStateSnapshotEvent: WorkerStartStateSnapshotEvent
 ) : CoroutineVerticle() {
 
     private val log = LoggerFactory.getLogger(FrameWorkerVerticle::class.java)
+    private val debugTraceLogs: Boolean = false
 
     private lateinit var workerId: String
     private lateinit var manifestMap: IMap<String, JsonObject>
@@ -58,6 +63,8 @@ class FrameWorkerVerticle @Inject constructor(
         workerId = config.getString("workerId")
         manifestMap = hazelcastInstance.getMap("frame-manifests")
         completionMap = hazelcastInstance.getMap("operation-completions")
+
+        workerStartStateSnapshotEvent.register(workerId)
 
         vertx.eventBus().consumer<JsonObject>(FrameCoordinatorVerticle.ADDRESS_SESSION_START) { msg ->
             launch {
@@ -106,8 +113,10 @@ class FrameWorkerVerticle @Inject constructor(
         val manifest = FrameManifest.fromJson(manifestJson)
         val operations = manifest.operations
 
-        log.info("Processing logical frame {} with {} operations",
-            logicalFrame, operations.size)
+        if (debugTraceLogs) {
+            log.info("Processing logical frame {} with {} operations",
+                logicalFrame, operations.size)
+        }
 
         var count = processOperations(operations, logicalFrame)
 
@@ -176,8 +185,7 @@ class FrameWorkerVerticle @Inject constructor(
                     workerId = workerId
                 )
 
-                log.trace("Completed operation {} for entity {}",
-                    operationId, op.getEntity())
+                if (debugTraceLogs) log.trace("Completed operation {} for entity {}", operationId, op.getEntity())
                 return true
             } else {
                 log.error("Failed to process operation {}: {}",
