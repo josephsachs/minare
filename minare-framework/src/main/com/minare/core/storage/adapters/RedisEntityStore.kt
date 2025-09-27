@@ -217,26 +217,20 @@ class RedisEntityStore @Inject constructor(
         }
 
         val result = mutableMapOf<String, JsonObject>()
+        val response = redisAPI.jsonMget(entityIds + "$").await()
 
-        for (entityId in entityIds) {
+        val collection = JsonArray(response.toString())
+
+        for (item in collection) {
             try {
-                val redisResponse = redisAPI.jsonGet(listOf(entityId, "$")).await()
+                val document = JsonArray(item.toString()).getJsonObject(0)
+                val entityId = document.getString("_id")
 
-                if (redisResponse != null) {
-                    // Parse as JsonArray since Redis always returns an array
-                    val jsonArray = JsonArray(redisResponse.toString())
-
-                    // Extract entities from the array
-                    for (i in 0 until jsonArray.size()) {
-                        val entityJson = jsonArray.getJsonObject(i)
-                        // Get the ID from the entity JSON if possible, otherwise use the requested ID
-                        val id = entityJson.getString("_id") ?: entityId
-                        result[id] = entityJson
-                    }
+                if (entityId != null) {
+                    result[entityId] = document
                 }
             } catch (e: Exception) {
-                log.warn("Error fetching entity JSON for $entityId: ${e.message}")
-                // Continue with other entities
+                log.warn("Error fetching entity JSON from $entityIds: ${e.message}")
             }
         }
 

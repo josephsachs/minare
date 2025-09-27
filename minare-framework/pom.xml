@@ -12,11 +12,6 @@
 
     <artifactId>minare-framework</artifactId>
 
-    <properties>
-        <!-- This seems wrong -->
-        <main.class>com.minare.example.ExampleApplication</main.class>
-    </properties>
-
     <dependencies>
         <!-- Vert.x -->
         <dependency>
