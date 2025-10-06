@@ -18,10 +18,10 @@ import javax.inject.Inject
  * - Applications must bind it in their module (to this class or their extension)
  * - Applications can extend this class to customize behavior
  */
-abstract class OperationController @Inject constructor(
-    private val messageQueue: MessageQueue
-) {
+abstract class OperationController @Inject constructor() {
     private val log = LoggerFactory.getLogger(OperationController::class.java)
+
+    @Inject private lateinit var messageQueue: MessageQueue
 
     /**
      * Process an incoming message from the MessageController.

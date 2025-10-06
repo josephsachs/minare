@@ -31,7 +31,6 @@ class MutationVerticle @Inject constructor(
             launch(vertx.dispatcher()) {
                 try {
                     val command = message.body()
-                    val connectionId = command.getString("connectionId")
                     val entityObject = command.getJsonObject("entity")
                     val entityId = entityObject?.getString("_id")
                     val entityType = entityObject?.getString("type")
@@ -45,8 +44,6 @@ class MutationVerticle @Inject constructor(
                         message.fail(400, "Missing entity type")
                         return@launch
                     }
-
-                    log.debug("Processing mutation for entity '$entityId' from connection '$connectionId'")
 
                     try {
                         val entityJson = stateStore.findEntityJson(entityId)

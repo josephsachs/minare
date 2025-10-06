@@ -4,6 +4,8 @@ import com.minare.controller.OperationController
 import com.minare.core.operation.interfaces.MessageQueue
 import com.minare.core.operation.models.Operation
 import com.minare.core.operation.models.OperationType
+import com.minare.example.ExampleEntityFactory
+import com.minare.example.models.Node
 import io.vertx.core.json.JsonObject
 import org.slf4j.LoggerFactory
 import javax.inject.Inject
@@ -15,8 +17,8 @@ import javax.inject.Singleton
  */
 @Singleton
 class ExampleOperationController @Inject constructor(
-    messageQueue: MessageQueue
-) : OperationController(messageQueue) {
+    private var exampleEntityFactory: ExampleEntityFactory
+) : OperationController() {
 
     private val log = LoggerFactory.getLogger(ExampleOperationController::class.java)
 
@@ -50,14 +52,24 @@ class ExampleOperationController @Inject constructor(
                     .action(OperationType.MUTATE)
                     .delta(entityObject.getJsonObject("state") ?: JsonObject())
 
+                /**
+                 * NodeGraph only deals with Nodes, application must perform dispatch if more
+                 * than one type. For more complicated entity schemes decomposition of preQueue
+                 * into specific handler services is recommended.
+                 */
+                operation.entityType(Node::class)
+
                 // Add version if present
                 entityObject.getLong("version")?.let {
                     operation.version(it)
                 }
 
                 // Add connection context as metadata
-                operation.value("connectionId", connectionId)
-                operation.value("entityType", entityObject.getString("type"))
+                operation.meta(
+                    JsonObject()
+                        .put("connectionId", connectionId)
+                        .toString()
+                )
 
                 log.debug("Created MUTATE operation for entity {} from connection {}", entityId, connectionId)
 

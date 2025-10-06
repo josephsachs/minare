@@ -1,7 +1,9 @@
 package com.minare.core.operation.models
 
+import com.minare.core.entity.models.Entity
 import io.vertx.core.json.JsonObject
 import java.util.UUID
+import kotlin.reflect.KClass
 
 /**
  * Represents a single operation to be processed.
@@ -10,11 +12,13 @@ import java.util.UUID
 class Operation {
     private var id: String = UUID.randomUUID().toString()
     private var entity: String? = null
+    private var entityType: String? = null
     private var action: OperationType? = null
     private var values = JsonObject()
     private var delta: JsonObject? = null
     private var version: Long? = null
     private var timestamp: Long = System.currentTimeMillis()
+    private var meta: String? = null
 
     /**
      * Set the unique identifier for this operation.
@@ -37,6 +41,28 @@ class Operation {
      */
     fun entity(entity: String) = apply {
         this.entity = entity
+    }
+
+    /**
+     * Accept a Java class for Operation creation
+     */
+    fun entityType(type: Class<*>) = apply {
+        this.entityType = type.simpleName
+    }
+
+    /**
+     * Accept a Kotlin class for Operation creation
+     */
+    fun entityType(type: KClass<*>) = apply {
+        this.entityType = type.simpleName
+            ?: throw IllegalArgumentException("Entity class must have a name")
+    }
+
+    /**
+     * Deserialize entity type
+     */
+    private fun entityType(type: String) = apply {
+        this.entityType = type
     }
 
     /**
@@ -65,6 +91,10 @@ class Operation {
      */
     fun timestamp(timestamp: Long) = apply {
         this.timestamp = timestamp
+    }
+
+    fun meta(meta: String) = apply {
+        this.meta = meta
     }
 
     /***
@@ -96,11 +126,13 @@ class Operation {
      */
     fun build(): JsonObject {
         requireNotNull(entity) { "Entity ID is required" }
+        requireNotNull(entityType) { "Entity type is required" }
         requireNotNull(action) { "Action is required" }
 
         val operation = JsonObject()
             .put("id", id)
             .put("entityId", entity)
+            .put("entityType", entityType)
             .put("action", action.toString())
             .put("timestamp", timestamp)
 
@@ -109,6 +141,9 @@ class Operation {
 
         // Add delta if present
         delta?.let { operation.put("delta", it) }
+
+        // Add meta if present
+        meta?.let { operation.put("meta", it ) }
 
         // Merge any additional values
         operation.mergeIn(values)
@@ -134,6 +169,8 @@ class Operation {
             // Required fields
             op.entity(json.getString("entityId")
                 ?: throw IllegalArgumentException("Missing entityId"))
+            op.entity(json.getString("entityType")
+                ?: throw IllegalArgumentException("Missing entityType"))
             op.action(
                 OperationType.valueOf(json.getString("action")
                 ?: throw IllegalArgumentException("Missing action")))
@@ -142,10 +179,13 @@ class Operation {
             json.getLong("timestamp")?.let { op.timestamp(it) }
             json.getLong("version")?.let { op.version(it) }
             json.getJsonObject("delta")?.let { op.delta(it) }
+            json.getString("meta")?.let { op.meta(it) }
 
             // Copy any other fields to values
             json.fieldNames()
-                .filter { it !in setOf("id", "entityId", "action", "timestamp", "version", "delta") }
+                .filter { it !in setOf(
+                    "id", "entityId", "entityType", "action", "timestamp", "version", "delta", "meta"
+                ) }
                 .forEach { key ->
                     op.value(key, json.getValue(key))
                 }

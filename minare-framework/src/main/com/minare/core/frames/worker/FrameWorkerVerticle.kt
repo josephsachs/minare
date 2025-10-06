@@ -167,14 +167,16 @@ class FrameWorkerVerticle @Inject constructor(
         try {
             val op = Operation.fromJson(operation)
 
-            // Attach the frame number for marking the replay delta
-            operation.put("frameNumber", logicalFrame)
-
             // Send to the appropriate processor based on action type
             val processorAddress = "worker.process.${op.getAction()}"
 
+            // Produce processing context
+            val processingContext = JsonObject()
+                .put("operation", operation)
+                .put("frameNumber", logicalFrame)
+
             val result = vertx.eventBus()
-                .request<JsonObject>(processorAddress, operation)
+                .request<JsonObject>(processorAddress, processingContext)
                 .await()
 
             if (result.body().getBoolean("success", false)) {

@@ -82,14 +82,16 @@ class WorkerOperationHandlerVerticle @Inject constructor(
      * Process a MUTATE operation.
      * Requires an existing entity, captures before/after states for delta storage.
      */
-    private suspend fun processMutateOperation(operationJson: JsonObject) {
+    private suspend fun processMutateOperation(context: JsonObject) {
+        val frameNumber = context.getLong("frameNumber")
+            ?: throw IllegalArgumentException("Frame number required")
+        val operationJson = context.getJsonObject("operation")
         val entityId = extractEntityId(operationJson)
             ?: throw IllegalArgumentException("Entity ID required for MUTATE operation")
-        val entityType = operationJson.getString("entityType")
+        val entityType = extractEntityType(operationJson)
             ?: throw IllegalArgumentException("Entity type required for MUTATE operation")
-        val frameNumber = extractFrameNumber(operationJson)
         val operationId = extractOperationId(operationJson)
-        val connectionId = extractConnectionId(operationJson)
+
 
         log.debug("Processing MUTATE operation {} for entity {}", operationId, entityId)
 
@@ -102,7 +104,7 @@ class WorkerOperationHandlerVerticle @Inject constructor(
         if (debugTraceLogs) verticleLogger.logInfo("Processing mutate command for entity $entityId")
 
         val processingTime = measureTimeMillis {
-            val result = executeMutation(mutationCommand, connectionId)
+            val result = executeMutation(mutationCommand)
 
             if (!result.getBoolean("success", false)) {
                 throw Exception(result.getString("error", "Mutation failed"))
@@ -131,9 +133,7 @@ class WorkerOperationHandlerVerticle @Inject constructor(
      * Creates a new entity, no before state exists.
      */
     private suspend fun processCreateOperation(operationJson: JsonObject) {
-        val frameNumber = extractFrameNumber(operationJson)
         val operationId = extractOperationId(operationJson)
-        val connectionId = extractConnectionId(operationJson)
 
         log.debug("Processing CREATE operation {}", operationId)
 
@@ -151,7 +151,6 @@ class WorkerOperationHandlerVerticle @Inject constructor(
     private suspend fun processDeleteOperation(operationJson: JsonObject) {
         val entityId = extractEntityId(operationJson)
             ?: throw IllegalArgumentException("Entity ID required for DELETE operation")
-        val frameNumber = extractFrameNumber(operationJson)
         val operationId = extractOperationId(operationJson)
 
         log.debug("Processing DELETE operation {} for entity {}", operationId, entityId)
@@ -166,14 +165,6 @@ class WorkerOperationHandlerVerticle @Inject constructor(
     // ===== Common extraction functions =====
 
     /**
-     * Extract frame number from operation JSON.
-     * Required for all operations for delta storage.
-     */
-    private fun extractFrameNumber(operationJson: JsonObject): Long =
-        operationJson.getLong("frameNumber")
-            ?: throw IllegalArgumentException("Frame number required")
-
-    /**
      * Extract operation ID.
      * Required for tracking and delta storage.
      */
@@ -182,18 +173,17 @@ class WorkerOperationHandlerVerticle @Inject constructor(
             ?: throw IllegalArgumentException("Operation ID required")
 
     /**
-     * Extract connection ID for tracking operation source.
-     * Defaults to "frame-processor" if not present.
-     */
-    private fun extractConnectionId(operationJson: JsonObject): String =
-        operationJson.getString("connectionId") ?: "frame-processor"
-
-    /**
      * Extract entity ID from operation.
      * Returns null if not present (valid for CREATE operations).
      */
     private fun extractEntityId(operationJson: JsonObject): String? =
         operationJson.getString("entityId")
+
+    /**
+     * Extract entity type from operation. Returns null if not present.
+     */
+    private fun extractEntityType(operationJson: JsonObject): String? =
+        operationJson.getString("entityType")
 
     // ===== MUTATE-specific helper functions =====
 
@@ -219,13 +209,11 @@ class WorkerOperationHandlerVerticle @Inject constructor(
      * Execute mutation via event bus to MutationVerticle.
      */
     private suspend fun executeMutation(
-        mutationCommand: JsonObject,
-        connectionId: String
+        mutationCommand: JsonObject
     ): JsonObject {
         return vertx.eventBus()
             .request<JsonObject>("minare.mutation.process",
                 JsonObject()
-                    .put("connectionId", connectionId)
                     .put("entity", mutationCommand.getJsonObject("entity"))
             )
             .await()

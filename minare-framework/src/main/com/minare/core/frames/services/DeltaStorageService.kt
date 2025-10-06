@@ -9,8 +9,7 @@ import io.vertx.core.json.JsonObject
 import org.slf4j.LoggerFactory
 
 class DeltaStorageService @Inject constructor(
-    private val deltaStore: DeltaStore,
-    private val stateStore: StateStore
+    private val deltaStore: DeltaStore
 ) {
     private val log = LoggerFactory.getLogger(DeltaStorageService::class.java)
     private val debugTraceLogs: Boolean = false
