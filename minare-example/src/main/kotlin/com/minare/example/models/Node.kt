@@ -6,7 +6,6 @@ import com.minare.core.entity.models.Entity
 @EntityType("Node")
 class Node() : Entity() {
     init {
-
         type = "Node"
     }
 

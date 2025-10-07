@@ -1,7 +1,7 @@
 package com.minare.core.entity.annotations
 
 /**
- * Annotation to specify the entity type name
+ * Defines an Entity type for active state management
  */
 @Retention(AnnotationRetention.RUNTIME)
-annotation class EntityType(val value: String)
+annotation class EntityType(val value: String) { }

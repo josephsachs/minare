@@ -19,7 +19,6 @@ import javax.inject.Singleton
 class ExampleOperationController @Inject constructor(
     private var exampleEntityFactory: ExampleEntityFactory
 ) : OperationController() {
-
     private val log = LoggerFactory.getLogger(ExampleOperationController::class.java)
 
     /**
