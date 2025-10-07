@@ -14,7 +14,7 @@ import kotlin.reflect.KClass
 @Singleton
 class ExampleEntityFactory : EntityFactory {
     private val log = LoggerFactory.getLogger(ExampleEntityFactory::class.java)
-    private val classes: HashMap<String, Class<*>> = HashMap()
+    private val classes: HashMap<String, Class<out Entity>> = HashMap()
 
     init {
         classes["node"] = Node::class.java
@@ -23,7 +23,7 @@ class ExampleEntityFactory : EntityFactory {
         log.info("Registered entity types: ${classes.keys.joinToString()}")
     }
 
-    override fun useClass(type: String): Class<*>? {
+    override fun useClass(type: String): Class<out Entity>? {
         val normalizedType = type.lowercase()
         val result = classes[normalizedType]
         if (result == null) {

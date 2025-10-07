@@ -14,7 +14,7 @@ interface EntityFactory {
     /**
      * Get the Java class for a given entity type name
      */
-    fun useClass(type: String): Class<*>?
+    fun useClass(type: String): Class<out Entity>?
 
     /**
      * Create a new instance of an entity based on its type name.

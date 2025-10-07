@@ -16,13 +16,13 @@ import kotlin.reflect.KClass
 @Singleton
 class DefaultEntityFactory : EntityFactory {
     private val log = LoggerFactory.getLogger(DefaultEntityFactory::class.java)
-    private val classes: HashMap<String, Class<*>> = HashMap()
+    private val classes: HashMap<String, Class<out Entity>> = HashMap()
 
     init {
         classes["entity"] = Entity::class.java
     }
 
-    override fun useClass(type: String): Class<*>? {
+    override fun useClass(type: String): Class<out Entity>? {
         return classes[type.lowercase()]
     }
 

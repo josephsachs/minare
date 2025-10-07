@@ -1,5 +1,6 @@
 package com.minare.core.entity
 
+import com.google.inject.Inject
 import com.google.inject.Singleton
 import com.minare.core.entity.factories.EntityFactory
 import com.minare.core.entity.models.Entity
@@ -13,7 +14,10 @@ import kotlin.reflect.KClass
  * Centralized cache for entity reflection data. Lazy-loads and stores
  * reflection information to avoid repeated reflection operations.
  */
-class ReflectionCache {
+@Singleton
+class ReflectionCache @Inject constructor(
+    private val entityFactory: EntityFactory
+) {
     private val KClassesByType = ConcurrentHashMap<String, KClass<out Entity>>()
     private val JClassesByType = ConcurrentHashMap<String, Class<out Entity>>()
     private val fieldsByKClass = ConcurrentHashMap<KClass<*>, List<Field>>()
@@ -24,6 +28,21 @@ class ReflectionCache {
     private val functionsByJClass = ConcurrentHashMap<Class<*>, List<Method>>()
 
     private val log = LoggerFactory.getLogger(ReflectionCache::class.java)
+
+    /**
+     * Lazily populate type caches from EntityFactory if not already populated
+     */
+    private fun ensureTypes() {
+        if (JClassesByType.isEmpty() && KClassesByType.isEmpty()) {
+            entityFactory.getTypeNames().forEach { typeName ->
+                entityFactory.useClass(typeName)?.let { javaClass ->
+                    val kClass = javaClass.kotlin
+                    JClassesByType[typeName] = javaClass
+                    KClassesByType[typeName] = kClass
+                }
+            }
+        }
+    }
 
     /**
      * Gets fields for an entity class
@@ -130,6 +149,7 @@ class ReflectionCache {
      * @internal
      */
     fun getKTypesHavingFunctionImpl(annotationClass: KClass<out Annotation>): Set<KClass<out Entity>> {
+        ensureTypes()
         return KClassesByFunction.computeIfAbsent(annotationClass) {
             KClassesByType.values.filter { entityClass ->
                 val allMethods = getFunctions(entityClass)
@@ -143,6 +163,7 @@ class ReflectionCache {
      * @internal
      */
     fun getJTypesHavingFunctionImpl(annotationClass: Class<out Annotation>): Set<Class<out Entity>> {
+        ensureTypes()
         return JClassesByFunction.computeIfAbsent(annotationClass) {
             JClassesByType.values.filter { entityClass ->
                 val allMethods = getFunctions(entityClass)
@@ -161,7 +182,7 @@ class ReflectionCache {
     /**
      * Gets all entity types that have at least one function with the specified annotation
      */
-    inline fun <reified A : Annotation> getJTypesHavingFunction(): Set<Class<*>> {
+    inline fun <reified A : Annotation> getJTypesHavingFunction(): Set<Class<out Entity>> {
         return getJTypesHavingFunctionImpl(A::class.java)
     }
 
