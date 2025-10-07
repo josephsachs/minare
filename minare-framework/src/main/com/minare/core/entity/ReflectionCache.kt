@@ -12,7 +12,7 @@ import kotlin.reflect.KClass
  * Centralized cache for entity reflection data. Lazy-loads and stores
  * reflection information to avoid repeated reflection operations.
  */
-internal class ReflectionCache {
+class ReflectionCache {
     private val KClassesByType = ConcurrentHashMap<String, KClass<*>>()
     private val JClassesByType = ConcurrentHashMap<String, Class<*>>()
     private val fieldsByKClass = ConcurrentHashMap<KClass<*>, List<Field>>()

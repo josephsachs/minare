@@ -141,7 +141,7 @@ class MutationService @Inject constructor(
             val field = findFieldByStateName(mutableFields, fieldName) ?: return@any false
             val mutableAnnotation = field.getAnnotation(Mutable::class.java)
 
-            mutableAnnotation.consistency == com.minare.core.entity.annotations.ConsistencyLevel.STRICT &&
+            mutableAnnotation.consistency == Mutable.Companion.ConsistencyLevel.STRICT &&
                     currentVersion != requestedVersion
         }
 
@@ -158,14 +158,14 @@ class MutationService @Inject constructor(
             val mutableAnnotation = field.getAnnotation(Mutable::class.java)
 
             when (mutableAnnotation.consistency) {
-                com.minare.core.entity.annotations.ConsistencyLevel.OPTIMISTIC ->
+                Mutable.Companion.ConsistencyLevel.OPTIMISTIC ->
                     result.put(fieldName, delta.getValue(fieldName))
-                com.minare.core.entity.annotations.ConsistencyLevel.PESSIMISTIC -> {
+                Mutable.Companion.ConsistencyLevel.PESSIMISTIC -> {
                     if (requestedVersion >= currentVersion) {
                         result.put(fieldName, delta.getValue(fieldName))
                     }
                 }
-                com.minare.core.entity.annotations.ConsistencyLevel.STRICT ->
+                Mutable.Companion.ConsistencyLevel.STRICT ->
                     result.put(fieldName, delta.getValue(fieldName)) // Already checked above
             }
         }
