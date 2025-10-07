@@ -45,14 +45,13 @@ class ExampleEntityFactory : EntityFactory {
         }
     }
 
-    @Suppress("UNCHECKED_CAST")
-    override fun <T : Entity> createEntity(entityClass: Class<T>): T {
+    override fun createEntity(entityClass: Class<*>): Entity {
         return when {
-            Node::class.java.isAssignableFrom(entityClass) -> Node() as T
-            Entity::class.java.isAssignableFrom(entityClass) -> Entity() as T
+            Node::class.java.isAssignableFrom(entityClass) -> Node()
+            Entity::class.java.isAssignableFrom(entityClass) -> Entity()
             else -> {
                 log.warn("Unknown entity class requested: ${entityClass.name}, returning generic Entity")
-                Entity() as T
+                Entity()
             }
         }
     }

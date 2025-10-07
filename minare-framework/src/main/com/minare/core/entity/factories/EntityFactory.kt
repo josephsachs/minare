@@ -27,7 +27,7 @@ interface EntityFactory {
      * This version allows for type-safe entity creation.
      * Framework dependencies will be automatically injected.
      */
-    fun <T : Entity> createEntity(entityClass: Class<T>): T
+    fun createEntity(entityClass: Class<*>): Entity
 
     /**
      * Get a list of registered entity type names

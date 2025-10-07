@@ -36,13 +36,12 @@ class DefaultEntityFactory : EntityFactory {
         }
     }
 
-    @Suppress("UNCHECKED_CAST")
-    override fun <T : Entity> createEntity(entityClass: Class<T>): T {
+    override fun createEntity(entityClass: Class<*>): Entity {
         return when {
-            entityClass.isAssignableFrom(Entity::class.java) -> Entity() as T
+            entityClass.isAssignableFrom(Entity::class.java) -> Entity()
             else -> {
                 log.warn("Unsupported entity class: ${entityClass.name} - falling back to base Entity")
-                Entity() as T
+                Entity()
             }
         }
     }

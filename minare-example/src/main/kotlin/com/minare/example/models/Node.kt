@@ -2,9 +2,12 @@ package com.minare.example.models
 
 import com.minare.core.entity.annotations.*
 import com.minare.core.entity.models.Entity
+import org.slf4j.LoggerFactory
 
 @EntityType("Node")
 class Node() : Entity() {
+    private val log = LoggerFactory.getLogger(Node::class.java) // Bad, tick testing only
+
     init {
         type = "Node"
     }
@@ -36,5 +39,10 @@ class Node() : Entity() {
         }
 
         child.parentId = this._id
+    }
+
+    @Task
+    fun tick() {
+        log.info("Task for Entity with $_id called ${System.currentTimeMillis()}")
     }
 }

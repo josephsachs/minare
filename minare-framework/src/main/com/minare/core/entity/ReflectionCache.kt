@@ -2,6 +2,7 @@ package com.minare.core.entity
 
 import com.google.inject.Singleton
 import com.minare.core.entity.factories.EntityFactory
+import com.minare.core.entity.models.Entity
 import io.vertx.core.impl.logging.LoggerFactory
 import java.lang.reflect.Field
 import java.lang.reflect.Method
@@ -13,12 +14,12 @@ import kotlin.reflect.KClass
  * reflection information to avoid repeated reflection operations.
  */
 class ReflectionCache {
-    private val KClassesByType = ConcurrentHashMap<String, KClass<*>>()
-    private val JClassesByType = ConcurrentHashMap<String, Class<*>>()
+    private val KClassesByType = ConcurrentHashMap<String, KClass<out Entity>>()
+    private val JClassesByType = ConcurrentHashMap<String, Class<out Entity>>()
     private val fieldsByKClass = ConcurrentHashMap<KClass<*>, List<Field>>()
     private val fieldsByJClass = ConcurrentHashMap<Class<*>, List<Field>>()
-    private val KClassesByFunction = ConcurrentHashMap<KClass<out Annotation>, Set<KClass<*>>>()
-    private val JClassesByFunction = ConcurrentHashMap<Class<out Annotation>, Set<Class<*>>>()
+    private val KClassesByFunction = ConcurrentHashMap<KClass<out Annotation>, Set<KClass<out Entity>>>()
+    private val JClassesByFunction = ConcurrentHashMap<Class<out Annotation>, Set<Class<out Entity>>>()
     private val functionsByKClass = ConcurrentHashMap<KClass<*>, List<Method>>()
     private val functionsByJClass = ConcurrentHashMap<Class<*>, List<Method>>()
 
@@ -124,7 +125,11 @@ class ReflectionCache {
         return getFunctionsWithAnnotation<A>(entityClass.kotlin)
     }
 
-    fun getKTypesHavingFunctionImpl(annotationClass: KClass<out Annotation>): Set<KClass<*>> {
+    /**
+     * Implementation of inline method, use getKTypesHavingFunction instead
+     * @internal
+     */
+    fun getKTypesHavingFunctionImpl(annotationClass: KClass<out Annotation>): Set<KClass<out Entity>> {
         return KClassesByFunction.computeIfAbsent(annotationClass) {
             KClassesByType.values.filter { entityClass ->
                 val allMethods = getFunctions(entityClass)
@@ -133,7 +138,11 @@ class ReflectionCache {
         }
     }
 
-    fun getJTypesHavingFunctionImpl(annotationClass: Class<out Annotation>): Set<Class<*>> {
+    /**
+     * Implementation of inline method, use getJTypesHavingFunction instead
+     * @internal
+     */
+    fun getJTypesHavingFunctionImpl(annotationClass: Class<out Annotation>): Set<Class<out Entity>> {
         return JClassesByFunction.computeIfAbsent(annotationClass) {
             JClassesByType.values.filter { entityClass ->
                 val allMethods = getFunctions(entityClass)
@@ -145,7 +154,7 @@ class ReflectionCache {
     /**
      * Gets all entity types that have at least one function with the specified annotation
      */
-    inline fun <reified A : Annotation> getKTypesHavingFunction(): Set<KClass<*>> {
+    inline fun <reified A : Annotation> getKTypesHavingFunction(): Set<KClass<out Entity>> {
         return getKTypesHavingFunctionImpl(A::class)
     }
 
@@ -154,21 +163,6 @@ class ReflectionCache {
      */
     inline fun <reified A : Annotation> getJTypesHavingFunction(): Set<Class<*>> {
         return getJTypesHavingFunctionImpl(A::class.java)
-    }
-
-    /**
-     * Register entity classes using the EntityFactory
-     */
-    fun registerFromEntityFactory(entityFactory: EntityFactory) {
-        val entityTypeNames = entityFactory.getTypeNames()
-
-        entityTypeNames.forEach { typeName ->
-            entityFactory.useClass(typeName)?.let { javaClass ->
-                val kClass = javaClass.kotlin
-                getFields(kClass)
-                KClassesByType[typeName] = kClass
-            }
-        }
     }
 
     /**

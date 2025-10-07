@@ -9,6 +9,7 @@ import com.minare.application.adapters.ClusteredAppState
 import com.minare.core.config.HazelcastInstanceHolder
 import com.minare.core.config.*
 import com.minare.controller.ConnectionController
+import com.minare.core.MinareApplication.ConnectionEvents.ADDRESS_TASK_COORDINATOR_STARTED
 import com.minare.worker.upsocket.UpSocketVerticle
 import com.minare.core.transport.downsocket.DownSocketVerticle
 import com.minare.time.TimeService
@@ -32,6 +33,7 @@ import javax.inject.Inject
 import com.minare.core.config.AppStateProvider
 import com.minare.core.factories.MinareVerticleFactory
 import com.minare.core.frames.coordinator.CoordinatorAdminVerticle
+import com.minare.core.frames.coordinator.CoordinatorTaskVerticle
 import com.minare.core.frames.coordinator.FrameCoordinatorVerticle
 import com.minare.core.frames.services.WorkerRegistryMap
 import com.minare.core.frames.worker.FrameWorkerHealthMonitorVerticle
@@ -64,6 +66,7 @@ abstract class MinareApplication : CoroutineVerticle() {
     // Verticle deployment information
     private var processorCount: Number? = null
     private var frameCoordinatorVerticleDeploymentId: String? = null
+    private var coordinatorTaskVerticleDeploymentId: String? = null
     private var mutationVerticleDeploymentId: String? = null
     private var upSocketVerticleDeploymentId: String? = null
     private var redisPubSubWorkerDeploymentId: String? = null
@@ -91,6 +94,7 @@ abstract class MinareApplication : CoroutineVerticle() {
         const val ADDRESS_CONNECTION_COMPLETE = "minare.connection.complete"
 
         const val ADDRESS_COORDINATOR_STARTED = "minare.cluster.coordinator.started"
+        const val ADDRESS_TASK_COORDINATOR_STARTED = "minare.cluster.task.coordinator.started"
         const val ADDRESS_WORKER_STARTED = "minare.cluster.worker.started"
     }
 
@@ -143,6 +147,14 @@ abstract class MinareApplication : CoroutineVerticle() {
 
         vertx.eventBus().publish(ADDRESS_COORDINATOR_STARTED, JsonObject())
         log.info("Coordinator verticle deployed with ID: $frameCoordinatorVerticleDeploymentId")
+
+        coordinatorTaskVerticleDeploymentId = vertx.deployVerticle(
+            "guice:" + CoordinatorTaskVerticle::class.java.name,
+            frameCordinatorVerticleOptions
+        ).await()
+
+        vertx.eventBus().publish(ADDRESS_TASK_COORDINATOR_STARTED, JsonObject())
+        log.info("Coordinator verticle deployed with ID: $coordinatorTaskVerticleDeploymentId")
 
         val frameHealthMonitorVerticleOptions = DeploymentOptions()
             .setInstances(1)
