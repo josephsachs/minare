@@ -17,14 +17,14 @@ class ExampleEntityFactory : EntityFactory {
     private val classes: HashMap<String, Class<out Entity>> = HashMap()
 
     init {
-        classes["node"] = Node::class.java
-        classes["entity"] = Entity::class.java
+        classes["Node"] = Node::class.java
+        classes["Entity"] = Entity::class.java
 
         log.info("Registered entity types: ${classes.keys.joinToString()}")
     }
 
     override fun useClass(type: String): Class<out Entity>? {
-        val normalizedType = type.lowercase()
+        val normalizedType = type
         val result = classes[normalizedType]
         if (result == null) {
             log.warn("Unknown entity type requested: $type")
@@ -33,11 +33,10 @@ class ExampleEntityFactory : EntityFactory {
     }
 
     override fun getNew(type: String): Entity {
-        val normalizedType = type.lowercase()
-        return when (normalizedType) {
-            "node" -> Node()
+        return when (type) {
+            "Node" -> Node()
             else -> {
-                if (normalizedType != "entity") {
+                if (type != "Entity") {
                     log.warn("Unknown entity type requested: $type, returning generic Entity")
                 }
                 Entity()

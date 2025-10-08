@@ -1,7 +1,9 @@
 package com.minare.example.models
 
+import com.google.inject.Inject
 import com.minare.core.entity.annotations.*
 import com.minare.core.entity.models.Entity
+import io.vertx.kotlin.core.Vertx
 import org.slf4j.LoggerFactory
 
 @EntityType("Node")
@@ -42,7 +44,7 @@ class Node() : Entity() {
     }
 
     @Task
-    fun tick() {
-        log.info("Task for Entity with $_id called ${System.currentTimeMillis()}")
+    fun tick(workerId: String? = null) {
+        log.info("Task for Entity with $_id; current color is $color")
     }
 }

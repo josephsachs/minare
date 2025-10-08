@@ -68,6 +68,20 @@ interface StateStore {
     suspend fun findEntityType(entityId: String): String?
 
     /**
+     * Finds all entity keys for a given entity type
+     * @param type String
+     * @return List<String>
+     */
+    suspend fun findKeysByType(type: String): List<String>
+
+    /**
+     * Finds multiple entities by their IDs and returns as JsonObjects
+     * @param entityIds List of entity IDs to fetch
+     * @return Map of entity IDs to JsonObject documents
+     */
+    suspend fun findEntitiesJson(entityIds: List<String>): Map<String, JsonObject>
+
+    /**
      * Finds an entity by ID and returns it as a JsonObject
      * @param entityId The ID of the entity to fetch
      * @return The entity as a JsonObject, or null if not found

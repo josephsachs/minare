@@ -43,9 +43,10 @@ class FrameCoordinatorVerticleModule : PrivateModule() {
         requireBinding(Vertx::class.java)
         requireBinding(EventBusUtils::class.java)
 
-        // Expose UpSocketVerticle to the parent injector
         expose(FrameCoordinatorVerticle::class.java)
         expose(CoordinatorAdminVerticle::class.java)
+        expose(StartupService::class.java)
+
     }
 
     /**

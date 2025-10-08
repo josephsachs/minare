@@ -19,16 +19,16 @@ class DefaultEntityFactory : EntityFactory {
     private val classes: HashMap<String, Class<out Entity>> = HashMap()
 
     init {
-        classes["entity"] = Entity::class.java
+        classes["Entity"] = Entity::class.java
     }
 
     override fun useClass(type: String): Class<out Entity>? {
-        return classes[type.lowercase()]
+        return classes[type]
     }
 
     override fun getNew(type: String): Entity {
-        return when (type.lowercase()) {
-            "entity" -> Entity()
+        return when (type) {
+            "Entity" -> Entity()
             else -> {
                 log.warn("Unknown entity type: $type - falling back to base Entity")
                 Entity()

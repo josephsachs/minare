@@ -39,6 +39,7 @@ import com.minare.core.frames.services.WorkerRegistryMap
 import com.minare.core.frames.worker.FrameWorkerHealthMonitorVerticle
 import com.minare.core.frames.worker.FrameWorkerVerticle
 import com.minare.core.frames.worker.WorkerOperationHandlerVerticle
+import com.minare.core.frames.worker.WorkerTaskVerticle
 import com.minare.core.operation.MutationVerticle
 import com.minare.core.transport.downsocket.RedisPubSubWorkerVerticle
 import com.minare.core.storage.services.StateInitializer
@@ -148,9 +149,12 @@ abstract class MinareApplication : CoroutineVerticle() {
         vertx.eventBus().publish(ADDRESS_COORDINATOR_STARTED, JsonObject())
         log.info("Coordinator verticle deployed with ID: $frameCoordinatorVerticleDeploymentId")
 
+        val coordinatorTaskVerticleOptions = DeploymentOptions()
+            .setInstances(1)
+
         coordinatorTaskVerticleDeploymentId = vertx.deployVerticle(
             "guice:" + CoordinatorTaskVerticle::class.java.name,
-            frameCordinatorVerticleOptions
+            coordinatorTaskVerticleOptions
         ).await()
 
         vertx.eventBus().publish(ADDRESS_TASK_COORDINATOR_STARTED, JsonObject())
@@ -282,6 +286,17 @@ abstract class MinareApplication : CoroutineVerticle() {
         ).await()
 
         log.info("Frame worker verticle deployed with ID: {}", frameWorkerDeploymentId)
+
+        val workerTaskVerticleOptions = DeploymentOptions()
+            .setInstances(1)
+            .setConfig(JsonObject().put("workerId", workerId))
+
+        val workerTaskDeploymentId = vertx.deployVerticle(
+            "guice:" + WorkerTaskVerticle::class.java.name,
+            workerTaskVerticleOptions
+        ).await()
+
+        log.info("Worker task verticle deployed with ID: {}", workerTaskDeploymentId)
 
         // Connect the clustered AppState
         val sharedMap = vertx.sharedData()

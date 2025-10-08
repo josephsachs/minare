@@ -16,6 +16,7 @@ import io.vertx.core.json.JsonArray
 import org.jgrapht.Graph
 import org.jgrapht.graph.DefaultEdge
 import javax.naming.ServiceUnavailableException
+import kotlin.reflect.typeOf
 
 @Singleton
 class RedisEntityStore @Inject constructor(
@@ -28,31 +29,28 @@ class RedisEntityStore @Inject constructor(
     private val log = LoggerFactory.getLogger(RedisEntityStore::class.java)
 
     override suspend fun save(entity: Entity): Entity {
+        val entityType = entity.type!!
         val stateJson = JsonObject()
 
-        val entityType = entity.type
-        if (entityType != null) {
-            entityFactory.useClass(entityType)?.let { entityClass ->
-                val stateFields = reflectionCache.getFieldsWithAnnotation<State>(entityClass)
-                for (field in stateFields) {
-                    field.isAccessible = true
-                    val value = field.get(entity)
-                    if (value != null) {
-                        stateJson.put(field.name, value)
-                    }
+        entityFactory.useClass(entityType)?.let { entityClass ->
+            val stateFields = reflectionCache.getFieldsWithAnnotation<State>(entityClass)
+            for (field in stateFields) {
+                field.isAccessible = true
+                val value = field.get(entity)
+                if (value != null) {
+                    stateJson.put(field.name, value)
                 }
             }
         }
 
-        // Build full document
         val document = JsonObject()
             .put("_id", entity._id)
-            .put("type", entity.type)
+            .put("type", entityType)
             .put("version", entity.version ?: 1)
             .put("state", stateJson)
 
-        // Store in Redis using entity ID as key
         redisAPI.jsonSet(listOf(entity._id!!, "$", document.encode())).await()
+        redisAPI.sadd(listOf("entity:types:$entityType", entity._id!!)).await()
 
         return entity
     }
@@ -163,19 +161,36 @@ class RedisEntityStore @Inject constructor(
     override suspend fun setEntityState(entity: Entity, entityType: String, state: JsonObject): Entity {
         entityFactory.useClass(entityType)?.let { entityClass ->
             val stateFields = reflectionCache.getFieldsWithAnnotation<State>(entityClass)
+
             for (field in stateFields) {
                 field.isAccessible = true
                 try {
                     val value = state.getValue(field.name)
                     if (value != null) {
-                        field.set(entity, value)
+                        field.set(entity, convertValue(value))
                     }
+
                 } catch (e: Exception) {
                     log.warn("StateStore found Entity document with invalid state field for ${entity._id}")
+
                 }
             }
         }
+
         return entity
+    }
+
+    private fun convertValue(value: Any): Any {
+        val convertedValue = when (value) {
+            is JsonArray -> {
+                value.list.mapNotNull { it?.toString() }.toMutableList()
+            }
+            is JsonObject -> {
+                value.map
+            }
+            else -> value
+        }
+        return value
     }
 
     /**
@@ -269,6 +284,53 @@ class RedisEntityStore @Inject constructor(
             // Todo: Send infrastructure alert
             throw ServiceUnavailableException("Could not fetch from Redis: ${e.message}")
         }
+    }
+
+    /**
+     * Finds all entity keys for a given entity type
+     * @param type String
+     * @return List<String>
+     */
+    override suspend fun findKeysByType(type: String): List<String> {
+        val response = redisAPI.smembers("entity:types:$type").await()
+        val uuids = response?.map { it.toString() } ?: emptyList()
+        return uuids
+    }
+
+    /**
+     * Finds multiple entities by their IDs and returns as JsonObjects
+     * @param entityIds List of entity IDs to fetch
+     * @return Map of entity IDs to JsonObject documents
+     */
+    override suspend fun findEntitiesJson(entityIds: List<String>): Map<String, JsonObject> {
+        if (entityIds.isEmpty()) {
+            return emptyMap()
+        }
+
+        val result = mutableMapOf<String, JsonObject>()
+        val response = redisAPI.jsonMget(entityIds + listOf("$")).await()
+
+        if (response == null) {
+            log.warn("jsonMget returned null for keys: $entityIds")
+            return emptyMap()
+        }
+
+        val collection = JsonArray(response.toString())
+
+        for ((index, item) in collection.withIndex()) {
+            try {
+                if (item != null) {
+                    // Each item is wrapped in an array - extract element 0
+                    val document = JsonArray(item.toString()).getJsonObject(0)
+                    val entityId = entityIds[index]
+                    result[entityId] = document
+                }
+            } catch (e: Exception) {
+                log.warn("Error parsing entity JSON at index $index: ${e.message}")
+            }
+        }
+
+        return result
     }
 
     /**
