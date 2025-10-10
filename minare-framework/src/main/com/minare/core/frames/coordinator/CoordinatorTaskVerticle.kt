@@ -36,10 +36,6 @@ class CoordinatorTaskVerticle @Inject constructor(
     override suspend fun start() {
         log.info("Starting CoordinatorTaskVerticle")
         vlog.setVerticle(this)
-
-        /**startupService.checkInitialWorkerStatus()
-
-        startupService.awaitAllWorkersReady()**/
         startTaskLoop()
     }
 
@@ -62,7 +58,7 @@ class CoordinatorTaskVerticle @Inject constructor(
 
     private suspend fun processTick() {
         // TEMPORARY DEBUG
-        log.info("CoordinatorTaskVerticle ticking")
+        log.info("TURN_CONTROLLER: CoordinatorTaskVerticle ticking")
         workDispatchService.dispatch(
             "entity.tasks.tick",
             WorkDispatchService.Companion.WorkDispatchStrategy.RANGE,
@@ -70,6 +66,8 @@ class CoordinatorTaskVerticle @Inject constructor(
         )
 
         eventWaiter.waitFor("${WorkDispatchService.ADDRESS_WORK_COMPLETE_EVENT}.entity.tasks.tick")
+
+        log.info("TURN_CONTROLLER: CoordinatorTaskVerticle received ${WorkDispatchService.ADDRESS_WORK_COMPLETE_EVENT}.entity.tasks.tick")
     }
 
     override suspend fun stop() {

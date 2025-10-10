@@ -7,6 +7,7 @@ import com.hazelcast.map.IMap
 import com.minare.core.config.InternalInjectorHolder
 import com.minare.core.frames.services.WorkerRegistry
 import com.minare.core.utils.vertx.EventBusUtils
+import com.minare.core.utils.vertx.EventWaiter
 import io.vertx.core.Vertx
 import io.vertx.core.eventbus.MessageConsumer
 import io.vertx.core.json.JsonObject
@@ -21,6 +22,7 @@ class WorkDispatchService @Inject constructor(
     private val hazelcastInstance: HazelcastInstance,
     private val workerRegistry: WorkerRegistry,
     private val eventBusUtils: EventBusUtils,
+    private val eventWaiter: EventWaiter,
     private val vertx: Vertx
 ) {
     private val log = LoggerFactory.getLogger(WorkDispatchService::class.java)
@@ -46,28 +48,43 @@ class WorkDispatchService @Inject constructor(
         val items = workUnit.prepare()
 
         // TEMPORARY DEBUG
-        log.info("TURN_CONTROLLER: Finished preparing")
+        log.info("TURN_CONTROLLER: WorkDispatchService Finished preparing in Coordinator context")
 
         manifestMap[event] = distribute(items, strategy)
 
         // TEMPORARY DEBUG
-        log.info("TURN_CONTROLLER: Finished distributing")
+        log.info("TURN_CONTROLLER: WorkDispatchService Finished distributing in Coordinator context")
 
         completedWorkers[event] = ConcurrentHashMap.newKeySet()
 
         // TEMPORARY DEBUG
-        log.info("TURN_CONTROLLER: Finished registering event listener for $event")
+        log.info("TURN_CONTROLLER: WorkDispatchService Finished registering event listener for $event in Coordinator context")
 
-        registerListener(event)
+        //registerListener(event)
 
         // TEMPORARY DEBUG
-        log.info("TURN_CONTROLLER: Publishing event")
+        log.info("TURN_CONTROLLER: WorkDispatchService Publishing ADDRESS_DISTRIBUTE_WORK_EVENT event in Coordinator context")
 
         eventBusUtils.publishWithTracing(
             ADDRESS_DISTRIBUTE_WORK_EVENT,
             JsonObject()
                 .put("event", event)
                 .put("workUnit", workUnit.javaClass.name)
+        )
+
+        eventWaiter.waitForAll("$ADDRESS_WORK_DONE_EVENT.$event")
+
+        // TEMPORARY DEBUG
+        log.info("TURN_CONTROLLER: WorkDispatchService dispatch() WaitForAll passed for $ADDRESS_WORK_DONE_EVENT.$event event in Coordinator context")
+
+        completedWorkers.remove(event)
+        manifestMap.remove(event)
+        eventConsumers.remove(event)?.unregister()
+
+        eventBusUtils.publishWithTracing(
+            "$ADDRESS_WORK_COMPLETE_EVENT.$event",
+            JsonObject()
+                .put("event", event)
         )
     }
 
@@ -79,13 +96,13 @@ class WorkDispatchService @Inject constructor(
             val worker = message.body().getString("workerKey")
 
             // TEMPORARY DEBUG
-            log.info("TURN_CONTROLLER: Worker $worker completed work")
+            log.info("TURN_CONTROLLER: WorkDispatchService registerListener Worker $worker completed work in Coordinator context")
 
             completedWorkers[event]?.add(worker)
 
             if (completedWorkers[event]?.size == workerRegistry.getActiveWorkers().size) {
                 // TEMPORARY DEBUG
-                log.info("TURN_CONTROLLER: Workers completed work, publishing $ADDRESS_WORK_COMPLETE_EVENT.$event")
+                log.info("TURN_CONTROLLER: WorkDispatchService Workers completed work, publishing $ADDRESS_WORK_COMPLETE_EVENT.$event in Coordinator context")
 
                 eventBusUtils.publishWithTracing(
                     "$ADDRESS_WORK_COMPLETE_EVENT.$event",
@@ -133,7 +150,7 @@ class WorkDispatchService @Inject constructor(
      */
     suspend fun workerHandle(message: JsonObject, workerKey: String): Any? {
         // TEMPORARY DEBUG
-        log.info("TURN_CONTROLLER: Worker $workerKey began handling ")
+        log.info("TURN_CONTROLLER: WorkDispatchService Worker $workerKey began handling in Worker $workerKey context")
 
         val event = message.getString("event")
         val className = message.getString("workUnit")
@@ -142,7 +159,7 @@ class WorkDispatchService @Inject constructor(
         val workUnit = InternalInjectorHolder.getInjector().getInstance(workUnitClass)
 
         // TEMPORARY DEBUG
-        log.info("TURN_CONTROLLER: Worker $workerKey found workUnit ${workUnit.javaClass.simpleName}")
+        log.info("TURN_CONTROLLER: WorkDispatchService Worker $workerKey found workUnit ${workUnit.javaClass.simpleName} in Worker $workerKey context")
 
         val manifestItems = manifestMap[event]?.get(workerKey)?.filterNotNull() ?: emptyList()
 
@@ -151,12 +168,14 @@ class WorkDispatchService @Inject constructor(
         }
 
         // TEMPORARY DEBUG
-        log.info("TURN_CONTROLLER: Publishing completion event $ADDRESS_WORK_DONE_EVENT.$event")
+        log.info("TURN_CONTROLLER: WorkDispatchService Publishing completion event $ADDRESS_WORK_DONE_EVENT.$event in Worker $workerKey context")
 
         eventBusUtils.publishWithTracing(
             "$ADDRESS_WORK_DONE_EVENT.$event",
-            JsonObject().put("workerKey", workerKey)
+            JsonObject().put("workerId", workerKey)
         )
+
+        log.info("TURN_CONTROLLER: Published ")
 
         return result
     }

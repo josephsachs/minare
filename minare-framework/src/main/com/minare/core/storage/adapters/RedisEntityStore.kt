@@ -230,34 +230,16 @@ class RedisEntityStore @Inject constructor(
         if (entityIds.isEmpty()) {
             return emptyMap()
         }
-        // TEMPORARY DEBUG
-        log.info("REDIS_ENTITY_STORE: $entityIds")
 
         val result = mutableMapOf<String, JsonObject>()
         val response = redisAPI.jsonMget(entityIds + "$").await()
 
         val collection = JsonArray(response.toString())
-        log.info("REDIS_ENTITY_STORE: $collection")
-
-        // TEMPORARY DEBUG
-        log.info("REDIS_ENTITY_STORE: Iterating...")
 
         for (item in collection) {
             try {
-
-                // TEMPORARY DEBUG
-                log.info("REDIS_ENTITY_STORE: #1 $item")
-
                 val document = JsonArray(item.toString()).getJsonObject(0)
-
-                // TEMPORARY DEBUG
-                log.info("REDIS_ENTITY_STORE: #2 $document")
-
                 val entityId = document.getString("_id")
-
-
-                // TEMPORARY DEBUG
-                log.info("REDIS_ENTITY_STORE: #3 $entityId")
 
                 if (entityId != null) {
                     result[entityId] = document

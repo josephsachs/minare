@@ -74,11 +74,6 @@ class FrameCoordinatorVerticle @Inject constructor(
         setupEventBusConsumers()
         setupOperationConsumer()
 
-        /**startupService.checkInitialWorkerStatus()
-
-        log.info("Waiting for all workers to be ready...")
-        startupService.awaitAllWorkersReady()
-        log.info("All workers ready, starting session")**/
         startupSession()
     }
 

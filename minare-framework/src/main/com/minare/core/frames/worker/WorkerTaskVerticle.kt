@@ -28,6 +28,8 @@ class WorkerTaskVerticle @Inject constructor(
     suspend fun registerListener() {
         vertx.eventBus().consumer(ADDRESS_DISTRIBUTE_WORK_EVENT) { message ->
             launch {
+                // TEMPORARY DEBUG
+                log.info("TURN_CONTROLLER: Handling event $ADDRESS_DISTRIBUTE_WORK_EVENT in $workerId")
                 workDispatchService.workerHandle(message.body(), workerId)
             }
         }

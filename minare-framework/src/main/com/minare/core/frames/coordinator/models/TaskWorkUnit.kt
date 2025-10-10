@@ -8,6 +8,8 @@ import com.minare.core.storage.interfaces.StateStore
 import com.minare.core.work.WorkUnit
 import io.vertx.core.json.JsonObject
 import org.slf4j.LoggerFactory
+import kotlin.reflect.full.callSuspend
+import kotlin.reflect.jvm.kotlinFunction
 
 class TaskWorkUnit @Inject constructor(
 ): WorkUnit {
@@ -41,14 +43,24 @@ class TaskWorkUnit @Inject constructor(
         // TEMPORARY DEBUG
         log.info("TURN_CONTROLLER: CoordinatorTaskVerticle work unit processing")
 
+        log.info("TURN_CONTROLLER: $workerId received ${items.toString()}}")
+
         val keys = items.map { it.toString() }
+
+        log.info("TURN_CONTROLLER: TaskWorkUnit process Next 1")
 
         // Batch fetch all entity JSONs from Redis
         val entityJsons = stateStore.findEntitiesJson(keys)
 
+        log.info("TURN_CONTROLLER: TaskWorkUnit process Next 2")
+
         entityJsons.forEach { (entityKey, entityJson) ->
+            log.info("TURN_CONTROLLER: TaskWorkUnit process Next 3")
+
             val entityType = entityJson.getString("type")
             val entityClass = entityFactory.useClass(entityType) ?: return@forEach
+
+            log.info("TURN_CONTROLLER: TaskWorkUnit process Next 4")
 
             val entity = entityFactory.createEntity(entityClass).apply {
                 _id = entityJson.getString("_id")
@@ -56,15 +68,30 @@ class TaskWorkUnit @Inject constructor(
                 type = entityType
             }
 
+            log.info("TURN_CONTROLLER: TaskWorkUnit process Next 5")
+
             val stateJson = entityJson.getJsonObject("state", JsonObject())
+
+            log.info("TURN_CONTROLLER: TaskWorkUnit about to sppend state with" +
+                    "$entityType")
+            log.info("${entityClass.simpleName}")
+            log.info("${entity._id}")
+            log.info("${entity.type}")
+            log.info("${entity.version}")
+            log.info("${stateJson}")
+
             stateStore.setEntityState(entity, entityType, stateJson)
+
+            log.info("TURN_CONTROLLER: TaskWorkUnit process Next 6")
 
             // Get and invoke @Task methods
             val taskMethods = reflectionCache.getFunctionsWithAnnotation<Task>(entityClass)
 
+            log.info("TURN_CONTROLLER: TaskWorkUnit process Next 7 with ${taskMethods}")
+
             taskMethods.forEach { method ->
                 method.isAccessible = true
-                method.invoke(entity, workerId)
+                method.kotlinFunction?.callSuspend(entity)
             }
         }
 
