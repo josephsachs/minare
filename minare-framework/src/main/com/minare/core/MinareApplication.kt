@@ -144,32 +144,6 @@ abstract class MinareApplication : CoroutineVerticle() {
         startupService.checkInitialWorkerStatus()
         startupService.awaitAllWorkersReady()
 
-        val frameCordinatorVerticleOptions = DeploymentOptions()
-            .setInstances(1)
-            .setConfig(
-                JsonObject()
-                    .put("role", "coordinator")
-            )
-
-        frameCoordinatorVerticleDeploymentId = vertx.deployVerticle(
-            "guice:" + FrameCoordinatorVerticle::class.java.name,
-            frameCordinatorVerticleOptions
-        ).await()
-
-        vertx.eventBus().publish(ADDRESS_COORDINATOR_STARTED, JsonObject())
-        log.info("Coordinator verticle deployed with ID: $frameCoordinatorVerticleDeploymentId")
-
-        val coordinatorTaskVerticleOptions = DeploymentOptions()
-            .setInstances(1)
-
-        coordinatorTaskVerticleDeploymentId = vertx.deployVerticle(
-            "guice:" + CoordinatorTaskVerticle::class.java.name,
-            coordinatorTaskVerticleOptions
-        ).await()
-
-        vertx.eventBus().publish(ADDRESS_TASK_COORDINATOR_STARTED, JsonObject())
-        log.info("Coordinator verticle deployed with ID: $coordinatorTaskVerticleDeploymentId")
-
         val frameHealthMonitorVerticleOptions = DeploymentOptions()
             .setInstances(1)
             .setConfig(JsonObject().put("role", "coordinator-admin"))
@@ -202,6 +176,32 @@ abstract class MinareApplication : CoroutineVerticle() {
         log.info("Starting application...")
 
         onApplicationStart()
+
+        val frameCordinatorVerticleOptions = DeploymentOptions()
+            .setInstances(1)
+            .setConfig(
+                JsonObject()
+                    .put("role", "coordinator")
+            )
+
+        frameCoordinatorVerticleDeploymentId = vertx.deployVerticle(
+            "guice:" + FrameCoordinatorVerticle::class.java.name,
+            frameCordinatorVerticleOptions
+        ).await()
+
+        vertx.eventBus().publish(ADDRESS_COORDINATOR_STARTED, JsonObject())
+        log.info("Coordinator verticle deployed with ID: $frameCoordinatorVerticleDeploymentId")
+
+        val coordinatorTaskVerticleOptions = DeploymentOptions()
+            .setInstances(1)
+
+        coordinatorTaskVerticleDeploymentId = vertx.deployVerticle(
+            "guice:" + CoordinatorTaskVerticle::class.java.name,
+            coordinatorTaskVerticleOptions
+        ).await()
+
+        vertx.eventBus().publish(ADDRESS_TASK_COORDINATOR_STARTED, JsonObject())
+        log.info("Coordinator verticle deployed with ID: $coordinatorTaskVerticleDeploymentId")
 
         log.info("Application startup completed.")
     }
