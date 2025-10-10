@@ -12,7 +12,6 @@ import com.minare.controller.ConnectionController
 import com.minare.core.MinareApplication.ConnectionEvents.ADDRESS_TASK_COORDINATOR_STARTED
 import com.minare.worker.upsocket.UpSocketVerticle
 import com.minare.core.transport.downsocket.DownSocketVerticle
-import com.minare.time.TimeService
 import com.minare.worker.coordinator.config.FrameCoordinatorVerticleModule
 import com.minare.worker.downsocket.config.DownSocketVerticleModule
 import com.minare.worker.upsocket.config.UpSocketVerticleModule
@@ -35,6 +34,9 @@ import com.minare.core.factories.MinareVerticleFactory
 import com.minare.core.frames.coordinator.CoordinatorAdminVerticle
 import com.minare.core.frames.coordinator.CoordinatorTaskVerticle
 import com.minare.core.frames.coordinator.FrameCoordinatorVerticle
+import com.minare.core.frames.coordinator.services.StartupService
+import com.minare.core.frames.services.ActiveWorkerSet
+import com.minare.core.frames.services.WorkerRegistry
 import com.minare.core.frames.services.WorkerRegistryMap
 import com.minare.core.frames.worker.FrameWorkerHealthMonitorVerticle
 import com.minare.core.frames.worker.FrameWorkerVerticle
@@ -44,6 +46,7 @@ import com.minare.core.operation.MutationVerticle
 import com.minare.core.transport.downsocket.RedisPubSubWorkerVerticle
 import com.minare.core.storage.services.StateInitializer
 import com.minare.core.transport.CleanupVerticle
+import com.minare.core.utils.vertx.EventWaiter
 import kotlin.system.exitProcess
 
 /**
@@ -56,6 +59,8 @@ abstract class MinareApplication : CoroutineVerticle() {
     // Dependency injections
     @Inject
     private lateinit var connectionController: ConnectionController
+    @Inject
+    private lateinit var startupService: StartupService
     @Inject
     lateinit var stateInitializer: StateInitializer
     @Inject
@@ -74,6 +79,8 @@ abstract class MinareApplication : CoroutineVerticle() {
     private var cleanupVerticleDeploymentId: String? = null
     private var downSocketVerticleDeploymentId: String? = null
     private var coordinatorAdminDeploymentId: String? = null
+    private var frameWorkerVerticleDeploymentId: String? = null
+    private var taskWorkerVerticleDeploymentId: String? = null
     private var frameWorkerHealthMonitorVerticleDeploymentId: String? = null
     private var workerOperationHandlerVerticleDeploymentId: String? = null
 
@@ -134,6 +141,9 @@ abstract class MinareApplication : CoroutineVerticle() {
      * Initialize the coordinator
      */
     private suspend fun initializeCoordinator() {
+        startupService.checkInitialWorkerStatus()
+        startupService.awaitAllWorkersReady()
+
         val frameCordinatorVerticleOptions = DeploymentOptions()
             .setInstances(1)
             .setConfig(
@@ -180,15 +190,17 @@ abstract class MinareApplication : CoroutineVerticle() {
         ).await()
         log.info("Coordinator admin interface deployed with ID: {} on port 9090", coordinatorAdminDeploymentId)
 
-        // Initialize clustered app state
         val sharedMap = vertx.sharedData()
             .getClusterWideMap<String, String>("app-state").await()
         appState = ClusteredAppState(sharedMap)
+
         AppStateProvider.setInstance(appState)
+
         log.info("Initialized clustered app state for coordinator")
 
         // Delegate application startup
         log.info("Starting application...")
+
         onApplicationStart()
 
         log.info("Application startup completed.")
@@ -280,32 +292,32 @@ abstract class MinareApplication : CoroutineVerticle() {
             .setInstances(1)
             .setConfig(JsonObject().put("workerId", workerId))
 
-        val frameWorkerDeploymentId = vertx.deployVerticle(
+        frameWorkerVerticleDeploymentId = vertx.deployVerticle(
             "guice:" + FrameWorkerVerticle::class.java.name,
             frameWorkerOptions
         ).await()
 
-        log.info("Frame worker verticle deployed with ID: {}", frameWorkerDeploymentId)
+        log.info("Frame worker verticle deployed with ID: {}", frameWorkerVerticleDeploymentId)
 
         val workerTaskVerticleOptions = DeploymentOptions()
             .setInstances(1)
             .setConfig(JsonObject().put("workerId", workerId))
 
-        val workerTaskDeploymentId = vertx.deployVerticle(
+        taskWorkerVerticleDeploymentId = vertx.deployVerticle(
             "guice:" + WorkerTaskVerticle::class.java.name,
             workerTaskVerticleOptions
         ).await()
 
-        log.info("Worker task verticle deployed with ID: {}", workerTaskDeploymentId)
+        log.info("Worker task verticle deployed with ID: {}", taskWorkerVerticleDeploymentId)
 
-        // Connect the clustered AppState
         val sharedMap = vertx.sharedData()
             .getClusterWideMap<String, String>("app-state").await()
         appState = ClusteredAppState(sharedMap)
+
         AppStateProvider.setInstance(appState)
+
         log.info("Initialized clustered app state for worker")
 
-        // Register up socket initialize event
         val initResult = vertx.eventBus().request<JsonObject>(
             UpSocketVerticle.ADDRESS_UP_SOCKET_INITIALIZE,
             JsonObject()
@@ -324,7 +336,7 @@ abstract class MinareApplication : CoroutineVerticle() {
 
         registerConnectionEventHandlers()
 
-        workerGetRegistryMap()
+        workerGetRegistry()
 
         // Announce worker is ready
         vertx.eventBus().publish(ADDRESS_WORKER_STARTED, JsonObject()
@@ -334,11 +346,12 @@ abstract class MinareApplication : CoroutineVerticle() {
         log.info("Worker instance deployed with ID: $deploymentID")
     }
 
-    private fun workerGetRegistryMap() {
+    private fun workerGetRegistry() {
         val workerId = System.getenv("HOSTNAME") ?: throw IllegalStateException("HOSTNAME not set")
 
         // Get the worker registry map from dependency injection
         val workerRegistryMap = injector.getInstance(WorkerRegistryMap::class.java)
+        val activeWorkerSet = injector.getInstance(ActiveWorkerSet::class.java)
 
         // Check if worker was pre-registered by infrastructure
         val existingState = workerRegistryMap.get(workerId)
@@ -349,6 +362,7 @@ abstract class MinareApplication : CoroutineVerticle() {
             existingState.put("status", "ACTIVE")
             existingState.put("lastHeartbeat", System.currentTimeMillis())
             workerRegistryMap.put(workerId, existingState)
+            activeWorkerSet.put(workerId)
         } else {
             // Self-register if not pre-registered
             log.info("Self-registering worker {} in distributed registry", workerId)
@@ -358,6 +372,7 @@ abstract class MinareApplication : CoroutineVerticle() {
                 .put("lastHeartbeat", System.currentTimeMillis())
                 .put("addedAt", System.currentTimeMillis())
             workerRegistryMap.put(workerId, newState)
+            activeWorkerSet.put(workerId)
         }
 
         log.info("Worker {} registered in distributed map", workerId)
@@ -464,6 +479,24 @@ abstract class MinareApplication : CoroutineVerticle() {
                 log.info("PubSub socket verticle undeployed successfully")
             } catch (e: Exception) {
                 log.error("Error undeploying PubSub socket verticle", e)
+            }
+        }
+
+        if (frameWorkerVerticleDeploymentId != null) {
+            try {
+                vertx.undeploy(frameWorkerVerticleDeploymentId).await()
+                log.info("Frame worker verticle undeployed successfully")
+            } catch (e: Exception) {
+                log.error("Error undeploying frame worker verticle", e)
+            }
+        }
+
+        if (taskWorkerVerticleDeploymentId != null) {
+            try {
+                vertx.undeploy(taskWorkerVerticleDeploymentId).await()
+                log.info("Task worker verticle undeployed successfully")
+            } catch (e: Exception) {
+                log.error("Error undeploying task worker verticle", e)
             }
         }
 

@@ -40,6 +40,8 @@ import com.minare.core.transport.downsocket.pubsub.UpdateBatchCoordinator
 import com.minare.time.DockerTimeService
 import com.minare.time.TimeService
 import com.minare.core.frames.coordinator.handlers.LateOperationHandler
+import com.minare.core.frames.services.ActiveWorkerSet
+import com.minare.core.frames.services.HazelcastActiveWorkerSet
 import com.minare.core.utils.vertx.EventBusUtils
 import com.minare.worker.upsocket.CommandMessageHandler
 import kotlin.coroutines.CoroutineContext
@@ -183,6 +185,17 @@ class MinareModule : AbstractModule(), DatabaseNameProvider {
         val map = hazelcastInstance.getMap<String, JsonObject>("worker-registry")
         log.info("Initialized distributed worker registry map")
         return HazelcastWorkerRegistryMap(map)
+    }
+
+    /**
+     * Provides the distributed worker registry map
+     */
+    @Provides
+    @Singleton
+    fun provideActiveWorkerSet(hazelcastInstance: HazelcastInstance): ActiveWorkerSet {
+        val set = hazelcastInstance.getSet<String>("active-workers")
+        log.info("Initialized distributed active worker set")
+        return HazelcastActiveWorkerSet(set)
     }
 
     /**

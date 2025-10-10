@@ -23,6 +23,8 @@ class WorkDispatchService @Inject constructor(
     private val eventBusUtils: EventBusUtils,
     private val vertx: Vertx
 ) {
+    private val log = LoggerFactory.getLogger(WorkDispatchService::class.java)
+
     private val manifestMap: IMap<String, Map<String, Collection<Any?>>> by lazy {
         hazelcastInstance.getMap("work-dispatch-manifests")
     }
@@ -43,10 +45,23 @@ class WorkDispatchService @Inject constructor(
     ) {
         val items = workUnit.prepare()
 
+        // TEMPORARY DEBUG
+        log.info("TURN_CONTROLLER: Finished preparing")
+
         manifestMap[event] = distribute(items, strategy)
+
+        // TEMPORARY DEBUG
+        log.info("TURN_CONTROLLER: Finished distributing")
+
         completedWorkers[event] = ConcurrentHashMap.newKeySet()
 
+        // TEMPORARY DEBUG
+        log.info("TURN_CONTROLLER: Finished registering event listener for $event")
+
         registerListener(event)
+
+        // TEMPORARY DEBUG
+        log.info("TURN_CONTROLLER: Publishing event")
 
         eventBusUtils.publishWithTracing(
             ADDRESS_DISTRIBUTE_WORK_EVENT,
@@ -62,9 +77,16 @@ class WorkDispatchService @Inject constructor(
     private suspend fun registerListener(event: String) {
         val consumer = vertx.eventBus().consumer<JsonObject>("$ADDRESS_WORK_DONE_EVENT.$event") { message ->
             val worker = message.body().getString("workerKey")
+
+            // TEMPORARY DEBUG
+            log.info("TURN_CONTROLLER: Worker $worker completed work")
+
             completedWorkers[event]?.add(worker)
 
             if (completedWorkers[event]?.size == workerRegistry.getActiveWorkers().size) {
+                // TEMPORARY DEBUG
+                log.info("TURN_CONTROLLER: Workers completed work, publishing $ADDRESS_WORK_COMPLETE_EVENT.$event")
+
                 eventBusUtils.publishWithTracing(
                     "$ADDRESS_WORK_COMPLETE_EVENT.$event",
                     JsonObject()
@@ -83,13 +105,13 @@ class WorkDispatchService @Inject constructor(
      * Execute the distribution function
      */
     private suspend fun distribute(items: Collection<*>, strategy: WorkDispatchStrategy): Map<String, Collection<Any?>> {
-        val workers = workerRegistry.getActiveWorkers().toList()
+        val workers = workerRegistry.getActiveWorkers()
 
         return when (strategy) {
             WorkDispatchStrategy.RANGE -> {
                 val chunkSize = (items.size + workers.size - 1) / workers.size
                 items.chunked(chunkSize)
-                    .mapIndexed { index, chunk -> workers[index] to chunk }
+                    .mapIndexed { index, chunk -> workers.toList()[index] to chunk }
                     .toMap()
             }
             WorkDispatchStrategy.CONSISTENT_HASH -> {
@@ -110,17 +132,26 @@ class WorkDispatchService @Inject constructor(
      * @param workerKey The registered name of this worker
      */
     suspend fun workerHandle(message: JsonObject, workerKey: String): Any? {
+        // TEMPORARY DEBUG
+        log.info("TURN_CONTROLLER: Worker $workerKey began handling ")
+
         val event = message.getString("event")
         val className = message.getString("workUnit")
 
         val workUnitClass = Class.forName(className) as Class<out WorkUnit>
         val workUnit = InternalInjectorHolder.getInjector().getInstance(workUnitClass)
 
+        // TEMPORARY DEBUG
+        log.info("TURN_CONTROLLER: Worker $workerKey found workUnit ${workUnit.javaClass.simpleName}")
+
         val manifestItems = manifestMap[event]?.get(workerKey)?.filterNotNull() ?: emptyList()
 
         val result = manifestItems.let {
             workUnit.process(it)
         }
+
+        // TEMPORARY DEBUG
+        log.info("TURN_CONTROLLER: Publishing completion event $ADDRESS_WORK_DONE_EVENT.$event")
 
         eventBusUtils.publishWithTracing(
             "$ADDRESS_WORK_DONE_EVENT.$event",

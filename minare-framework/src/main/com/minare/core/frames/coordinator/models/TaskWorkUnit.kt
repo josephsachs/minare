@@ -15,10 +15,15 @@ class TaskWorkUnit @Inject constructor(
     @Inject private lateinit var entityFactory: EntityFactory
     @Inject private lateinit var stateStore: StateStore
 
+    private var log = LoggerFactory.getLogger(TaskWorkUnit::class.java)
+
     /** @return Collection<String> of entity keys */
     override suspend fun prepare(): Collection<Any> {
         val entityTypes = reflectionCache.getJTypesHavingFunction<Task>()
         val allKeys = mutableListOf<String>()
+
+        // TEMPORARY DEBUG
+        log.info("TURN_CONTROLLER: CoordinatorTaskVerticle work unit preparing")
 
         entityTypes.forEach { entityClass ->
             val typeName = entityClass.simpleName
@@ -32,6 +37,9 @@ class TaskWorkUnit @Inject constructor(
     /** @param items Collection<String> of entity keys */
     override suspend fun process(items: Collection<Any>): Any {
         val workerId = System.getenv("HOSTNAME") ?: "unknown"
+
+        // TEMPORARY DEBUG
+        log.info("TURN_CONTROLLER: CoordinatorTaskVerticle work unit processing")
 
         val keys = items.map { it.toString() }
 

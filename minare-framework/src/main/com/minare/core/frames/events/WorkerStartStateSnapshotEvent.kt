@@ -21,25 +21,15 @@ class WorkerStartStateSnapshotEvent @Inject constructor(
         eventBusUtils.registerTracedConsumer<JsonObject>(ADDRESS_WORKER_START_STATE_SNAPSHOT) { message, traceId ->
             val sessionId = message.body().getString("sessionId")
 
-            log.info("SNAPSHOT: Getting partitions for snapshot $sessionId")
-
             //val entityIds = coordinatorState.getEntityPartition(workerId)
 
             //log.info("SNAPSHOT: got partitions for $workerId containing ${entityIds}")
 
             /**if (entityIds.isNotEmpty()) {
-                log.info("SNAPSHOT: getting entity IDs")
-
                 val entities = stateStore.findEntitiesJsonByIds(entityIds).values.toList()
 
-                log.info("SNAPSHOT: got entityIds, storing...")
-
                 snapshotStore.storeState(sessionId, entities)
-
-                log.info("SNAPSHOT: Stored...")
             }**/
-
-            log.info("SNAPSHOT: Publishing completion event for $workerId")
 
             eventBusUtils.publishWithTracing(
                 ADDRESS_WORKER_STATE_SNAPSHOT_COMPLETE,

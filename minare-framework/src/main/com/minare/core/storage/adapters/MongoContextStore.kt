@@ -53,7 +53,7 @@ class MongoContextStore @Inject constructor(
 
             // Handle the case where result is null (expected with replica sets)
             if (result == null) {
-                log.info("MongoDB insert operation completed but returned null ID for contextId: $contextId")
+                log.debug("MongoDB insert operation completed but returned null ID for contextId: $contextId")
 
                 // Verify the document was actually inserted
                 val query = JsonObject().put("_id", contextId)
