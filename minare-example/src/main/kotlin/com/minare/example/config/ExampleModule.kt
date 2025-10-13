@@ -3,6 +3,7 @@ package com.minare.example.config
 import com.google.inject.PrivateModule
 import com.google.inject.Provides
 import com.google.inject.Singleton
+import com.google.inject.multibindings.OptionalBinder
 import com.google.inject.name.Names
 import com.minare.controller.ChannelController
 import com.minare.controller.ConnectionController
@@ -30,16 +31,16 @@ class ExampleModule : PrivateModule(), DatabaseNameProvider {
     private val log = LoggerFactory.getLogger(ExampleModule::class.java)
 
     override fun configure() {
-        bind(EntityFactory::class.java).annotatedWith(Names.named("userEntityFactory"))
-            .to(ExampleEntityFactory::class.java).`in`(Singleton::class.java)
+        bind(EntityFactory::class.java)
+            .annotatedWith(Names.named("user"))
+            .to(ExampleEntityFactory::class.java)
 
         bind(ChannelController::class.java).to(ExampleChannelController::class.java).`in`(Singleton::class.java)
         bind(ConnectionController::class.java).to(ExampleConnectionController::class.java).`in`(Singleton::class.java)
         bind(OperationController::class.java).to(ExampleOperationController::class.java).`in`(Singleton::class.java)
         bind(MessageController::class.java).to(ExampleMessageController::class.java).`in`(Singleton::class.java)
 
-        // Expose the named user factory (framework will wrap it)
-        expose(EntityFactory::class.java).annotatedWith(Names.named("userEntityFactory"))
+        expose(EntityFactory::class.java).annotatedWith(Names.named("user"))
         expose(ChannelController::class.java)
         expose(ConnectionController::class.java)
         expose(OperationController::class.java)

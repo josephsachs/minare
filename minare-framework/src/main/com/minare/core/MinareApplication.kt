@@ -172,9 +172,8 @@ abstract class MinareApplication : CoroutineVerticle() {
 
         log.info("Initialized clustered app state for coordinator")
 
-        // Delegate application startup
+        // Wait until user defined tasks have finished
         log.info("Starting application...")
-
         onApplicationStart()
 
         val frameCordinatorVerticleOptions = DeploymentOptions()

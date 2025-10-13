@@ -24,9 +24,6 @@ class TaskWorkUnit @Inject constructor(
         val entityTypes = reflectionCache.getJTypesHavingFunction<Task>()
         val allKeys = mutableListOf<String>()
 
-        // TEMPORARY DEBUG
-        log.info("TURN_CONTROLLER: CoordinatorTaskVerticle work unit preparing")
-
         entityTypes.forEach { entityClass ->
             val typeName = entityClass.simpleName
             val keys = stateStore.findKeysByType(typeName)
@@ -40,27 +37,14 @@ class TaskWorkUnit @Inject constructor(
     override suspend fun process(items: Collection<Any>): Any {
         val workerId = System.getenv("HOSTNAME") ?: "unknown"
 
-        // TEMPORARY DEBUG
-        log.info("TURN_CONTROLLER: CoordinatorTaskVerticle work unit processing")
-
-        log.info("TURN_CONTROLLER: $workerId received ${items.toString()}}")
-
         val keys = items.map { it.toString() }
-
-        log.info("TURN_CONTROLLER: TaskWorkUnit process Next 1")
 
         // Batch fetch all entity JSONs from Redis
         val entityJsons = stateStore.findEntitiesJson(keys)
 
-        log.info("TURN_CONTROLLER: TaskWorkUnit process Next 2")
-
         entityJsons.forEach { (entityKey, entityJson) ->
-            log.info("TURN_CONTROLLER: TaskWorkUnit process Next 3")
-
             val entityType = entityJson.getString("type")
             val entityClass = entityFactory.useClass(entityType) ?: return@forEach
-
-            log.info("TURN_CONTROLLER: TaskWorkUnit process Next 4")
 
             val entity = entityFactory.createEntity(entityClass).apply {
                 _id = entityJson.getString("_id")
@@ -68,30 +52,24 @@ class TaskWorkUnit @Inject constructor(
                 type = entityType
             }
 
-            log.info("TURN_CONTROLLER: TaskWorkUnit process Next 5")
-
             val stateJson = entityJson.getJsonObject("state", JsonObject())
 
-            log.info("TURN_CONTROLLER: TaskWorkUnit about to sppend state with" +
-                    "$entityType")
-            log.info("${entityClass.simpleName}")
-            log.info("${entity._id}")
-            log.info("${entity.type}")
-            log.info("${entity.version}")
-            log.info("${stateJson}")
-
             stateStore.setEntityState(entity, entityType, stateJson)
-
-            log.info("TURN_CONTROLLER: TaskWorkUnit process Next 6")
 
             // Get and invoke @Task methods
             val taskMethods = reflectionCache.getFunctionsWithAnnotation<Task>(entityClass)
 
-            log.info("TURN_CONTROLLER: TaskWorkUnit process Next 7 with ${taskMethods}")
-
             taskMethods.forEach { method ->
                 method.isAccessible = true
-                method.kotlinFunction?.callSuspend(entity)
+                val kFunction = method.kotlinFunction
+
+                if (kFunction != null) {
+                    if (kFunction.isSuspend) {
+                        kFunction.callSuspend(entity)
+                    } else {
+                        kFunction.call(entity)
+                    }
+                }
             }
         }
 

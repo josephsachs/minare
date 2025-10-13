@@ -1,12 +1,14 @@
 package com.minare.core.config
 
 import com.google.inject.*
+import com.google.inject.multibindings.OptionalBinder
 import com.google.inject.name.Names
 import com.hazelcast.core.HazelcastInstance
 import com.minare.application.interfaces.AppState
 import com.minare.cache.ConnectionCache
 import com.minare.cache.InMemoryConnectionCache
 import com.minare.core.entity.ReflectionCache
+import com.minare.core.entity.factories.DefaultEntityFactory
 import com.minare.core.entity.factories.EntityFactory
 import com.minare.core.entity.services.EntityPublishService
 import com.minare.core.entity.services.EntityVersioningService
@@ -77,6 +79,7 @@ class MinareModule : AbstractModule(), DatabaseNameProvider {
 
         bind(UpdateBatchCoordinator::class.java).`in`(Singleton::class.java)
         bind(CommandMessageHandler::class.java).`in`(Singleton::class.java)
+        bind(DefaultEntityFactory::class.java).`in`(Singleton::class.java)
 
         // Overridable services
         bind(PubSubChannelStrategy::class.java).to(PerChannelPubSubStrategy::class.java).`in`(Singleton::class.java)
@@ -107,6 +110,19 @@ class MinareModule : AbstractModule(), DatabaseNameProvider {
         bind(CleanupVerticle::class.java)
     }
 
+    @Provides
+    @Singleton
+    fun provideEntityFactory(
+        injector: Injector,
+        defaultFactory: DefaultEntityFactory
+    ): EntityFactory {
+        return try {
+            injector.getInstance(Key.get(EntityFactory::class.java, Names.named("user")))
+        } catch (e: Exception) {
+            defaultFactory
+        }
+    }
+
     /**
      * Provides the MinareVerticleFactory
      */
@@ -114,18 +130,6 @@ class MinareModule : AbstractModule(), DatabaseNameProvider {
     @Singleton
     fun provideMinareVerticleFactory(injector: Injector): MinareVerticleFactory {
         return MinareVerticleFactory(injector)
-    }
-
-    /**
-     * Direct EntityFactory binding - no wrapper needed since Entity has no dependencies.
-     * Applications provide their EntityFactory implementation with @Named("userEntityFactory").
-     */
-    @Provides
-    @Singleton
-    fun provideEntityFactory(
-        @Named("userEntityFactory") userEntityFactory: EntityFactory
-    ): EntityFactory {
-        return userEntityFactory
     }
 
     @Provides

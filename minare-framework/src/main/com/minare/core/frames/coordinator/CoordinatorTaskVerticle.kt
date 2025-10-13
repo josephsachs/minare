@@ -57,8 +57,6 @@ class CoordinatorTaskVerticle @Inject constructor(
     }
 
     private suspend fun processTick() {
-        // TEMPORARY DEBUG
-        log.info("TURN_CONTROLLER: CoordinatorTaskVerticle ticking")
         workDispatchService.dispatch(
             "entity.tasks.tick",
             WorkDispatchService.Companion.WorkDispatchStrategy.RANGE,
@@ -66,8 +64,6 @@ class CoordinatorTaskVerticle @Inject constructor(
         )
 
         eventWaiter.waitFor("${WorkDispatchService.ADDRESS_WORK_COMPLETE_EVENT}.entity.tasks.tick")
-
-        log.info("TURN_CONTROLLER: CoordinatorTaskVerticle received ${WorkDispatchService.ADDRESS_WORK_COMPLETE_EVENT}.entity.tasks.tick")
     }
 
     override suspend fun stop() {
