@@ -1,12 +1,14 @@
 package com.minare.core.config
 
 import com.google.inject.*
+import com.google.inject.multibindings.OptionalBinder
 import com.google.inject.name.Names
 import com.hazelcast.core.HazelcastInstance
 import com.minare.application.interfaces.AppState
 import com.minare.cache.ConnectionCache
 import com.minare.cache.InMemoryConnectionCache
 import com.minare.core.entity.ReflectionCache
+import com.minare.core.entity.factories.DefaultEntityFactory
 import com.minare.core.entity.factories.EntityFactory
 import com.minare.core.entity.services.EntityPublishService
 import com.minare.core.entity.services.EntityVersioningService
@@ -40,6 +42,8 @@ import com.minare.core.transport.downsocket.pubsub.UpdateBatchCoordinator
 import com.minare.time.DockerTimeService
 import com.minare.time.TimeService
 import com.minare.core.frames.coordinator.handlers.LateOperationHandler
+import com.minare.core.frames.services.ActiveWorkerSet
+import com.minare.core.frames.services.HazelcastActiveWorkerSet
 import com.minare.core.utils.vertx.EventBusUtils
 import com.minare.worker.upsocket.CommandMessageHandler
 import kotlin.coroutines.CoroutineContext
@@ -75,6 +79,7 @@ class MinareModule : AbstractModule(), DatabaseNameProvider {
 
         bind(UpdateBatchCoordinator::class.java).`in`(Singleton::class.java)
         bind(CommandMessageHandler::class.java).`in`(Singleton::class.java)
+        bind(DefaultEntityFactory::class.java).`in`(Singleton::class.java)
 
         // Overridable services
         bind(PubSubChannelStrategy::class.java).to(PerChannelPubSubStrategy::class.java).`in`(Singleton::class.java)
@@ -105,6 +110,19 @@ class MinareModule : AbstractModule(), DatabaseNameProvider {
         bind(CleanupVerticle::class.java)
     }
 
+    @Provides
+    @Singleton
+    fun provideEntityFactory(
+        injector: Injector,
+        defaultFactory: DefaultEntityFactory
+    ): EntityFactory {
+        return try {
+            injector.getInstance(Key.get(EntityFactory::class.java, Names.named("user")))
+        } catch (e: Exception) {
+            defaultFactory
+        }
+    }
+
     /**
      * Provides the MinareVerticleFactory
      */
@@ -112,18 +130,6 @@ class MinareModule : AbstractModule(), DatabaseNameProvider {
     @Singleton
     fun provideMinareVerticleFactory(injector: Injector): MinareVerticleFactory {
         return MinareVerticleFactory(injector)
-    }
-
-    /**
-     * Direct EntityFactory binding - no wrapper needed since Entity has no dependencies.
-     * Applications provide their EntityFactory implementation with @Named("userEntityFactory").
-     */
-    @Provides
-    @Singleton
-    fun provideEntityFactory(
-        @Named("userEntityFactory") userEntityFactory: EntityFactory
-    ): EntityFactory {
-        return userEntityFactory
     }
 
     @Provides
@@ -183,6 +189,17 @@ class MinareModule : AbstractModule(), DatabaseNameProvider {
         val map = hazelcastInstance.getMap<String, JsonObject>("worker-registry")
         log.info("Initialized distributed worker registry map")
         return HazelcastWorkerRegistryMap(map)
+    }
+
+    /**
+     * Provides the distributed worker registry map
+     */
+    @Provides
+    @Singleton
+    fun provideActiveWorkerSet(hazelcastInstance: HazelcastInstance): ActiveWorkerSet {
+        val set = hazelcastInstance.getSet<String>("active-workers")
+        log.info("Initialized distributed active worker set")
+        return HazelcastActiveWorkerSet(set)
     }
 
     /**

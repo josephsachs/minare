@@ -1,3 +1,5 @@
+import com.google.inject.Inject
+import com.google.inject.Singleton
 import com.hazelcast.core.HazelcastInstance
 import com.hazelcast.cp.IAtomicReference
 import kotlin.reflect.KClass
@@ -8,6 +10,23 @@ class DistributedEnum<T : Enum<T>>(
     private val enumClass: KClass<T>,
     private val initialValue: T
 ) {
+    @Singleton
+    class Factory @Inject constructor(
+        private val hazelcastInstance: HazelcastInstance
+    ) {
+        fun <T : Enum<T>> create(name: String,
+                                 enumClass: KClass<T>,
+                                 initialValue: T
+        ): DistributedEnum<T> {
+            return DistributedEnum(
+                hazelcastInstance,
+                name,
+                enumClass,
+                initialValue
+            )
+        }
+    }
+
     private val atomicRef: IAtomicReference<String> = hazelcastInstance.cpSubsystem
         .getAtomicReference(name)
 

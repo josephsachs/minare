@@ -1,5 +1,6 @@
 package com.minare.controller
 
+import com.minare.core.entity.factories.EntityFactory
 import com.minare.core.entity.models.Entity
 import com.minare.core.storage.interfaces.EntityGraphStore
 import com.minare.core.storage.interfaces.StateStore
@@ -20,7 +21,8 @@ import javax.inject.Singleton
 @Singleton
 open class EntityController @Inject constructor(
     private val stateStore: StateStore,
-    private val entityGraphStore: EntityGraphStore
+    private val entityGraphStore: EntityGraphStore,
+    private val entityFactory: EntityFactory
 ) {
     private val log = LoggerFactory.getLogger(EntityController::class.java)
 
@@ -83,7 +85,27 @@ open class EntityController @Inject constructor(
      */
     open suspend fun findByIds(ids: List<String>): Map<String, Entity> {
         log.debug("Finding entities by IDs: {}", ids)
-        return stateStore.find(ids)
+
+        var results = mutableMapOf<String, Entity>()
+        val entityJsons = stateStore.findEntitiesJson(ids)
+
+        entityJsons.forEach { (entityKey, entityJson) ->
+            val entityType = entityJson.getString("type")
+            val entityClass = entityFactory.useClass(entityType) ?: return@forEach
+
+            val entity = entityFactory.createEntity(entityClass).apply {
+                _id = entityJson.getString("_id")
+                version = entityJson.getLong("version")
+                type = entityType
+            }
+
+            val stateJson = entityJson.getJsonObject("state", JsonObject())
+            stateStore.setEntityState(entity, entityType, stateJson)
+
+            results[entityKey] = entity
+        }
+
+        return results
     }
 
     /**

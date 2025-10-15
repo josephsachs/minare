@@ -1,13 +1,11 @@
 package com.minare.example.models
 
-import com.google.inject.Inject
 import com.minare.core.entity.annotations.*
 import com.minare.core.entity.models.Entity
-import io.vertx.kotlin.core.Vertx
 import org.slf4j.LoggerFactory
 
 @EntityType("Node")
-class Node() : Entity() {
+class Node(): Entity() {
     private val log = LoggerFactory.getLogger(Node::class.java) // Bad, tick testing only
 
     init {
@@ -44,7 +42,6 @@ class Node() : Entity() {
     }
 
     @Task
-    fun tick(workerId: String? = null) {
-        log.info("Task for Entity with $_id; current color is $color")
+    suspend fun tick() {
     }
 }

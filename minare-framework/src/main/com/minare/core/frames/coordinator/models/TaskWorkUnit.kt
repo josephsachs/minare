@@ -8,12 +8,16 @@ import com.minare.core.storage.interfaces.StateStore
 import com.minare.core.work.WorkUnit
 import io.vertx.core.json.JsonObject
 import org.slf4j.LoggerFactory
+import kotlin.reflect.full.callSuspend
+import kotlin.reflect.jvm.kotlinFunction
 
 class TaskWorkUnit @Inject constructor(
 ): WorkUnit {
     @Inject private lateinit var reflectionCache: ReflectionCache
     @Inject private lateinit var entityFactory: EntityFactory
     @Inject private lateinit var stateStore: StateStore
+
+    private var log = LoggerFactory.getLogger(TaskWorkUnit::class.java)
 
     /** @return Collection<String> of entity keys */
     override suspend fun prepare(): Collection<Any> {
@@ -49,6 +53,7 @@ class TaskWorkUnit @Inject constructor(
             }
 
             val stateJson = entityJson.getJsonObject("state", JsonObject())
+
             stateStore.setEntityState(entity, entityType, stateJson)
 
             // Get and invoke @Task methods
@@ -56,7 +61,15 @@ class TaskWorkUnit @Inject constructor(
 
             taskMethods.forEach { method ->
                 method.isAccessible = true
-                method.invoke(entity, workerId)
+                val kFunction = method.kotlinFunction
+
+                if (kFunction != null) {
+                    if (kFunction.isSuspend) {
+                        kFunction.callSuspend(entity)
+                    } else {
+                        kFunction.call(entity)
+                    }
+                }
             }
         }
 

@@ -80,8 +80,6 @@ class RedisDeltaStore @Inject constructor(
             }
         }
 
-        log.info("SNAPSHOT: Delta Array ${resultObject}")
-
         return resultObject
     }
 

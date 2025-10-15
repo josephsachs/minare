@@ -6,7 +6,9 @@ import com.hazelcast.core.HazelcastInstance
 import com.hazelcast.map.IMap
 import com.minare.core.config.InternalInjectorHolder
 import com.minare.core.frames.services.WorkerRegistry
+import com.minare.core.utils.PushVar
 import com.minare.core.utils.vertx.EventBusUtils
+import com.minare.core.utils.vertx.EventWaiter
 import io.vertx.core.Vertx
 import io.vertx.core.eventbus.MessageConsumer
 import io.vertx.core.json.JsonObject
@@ -21,8 +23,10 @@ class WorkDispatchService @Inject constructor(
     private val hazelcastInstance: HazelcastInstance,
     private val workerRegistry: WorkerRegistry,
     private val eventBusUtils: EventBusUtils,
-    private val vertx: Vertx
+    private val eventWaiter: EventWaiter
 ) {
+    private val log = LoggerFactory.getLogger(WorkDispatchService::class.java)
+
     private val manifestMap: IMap<String, Map<String, Collection<Any?>>> by lazy {
         hazelcastInstance.getMap("work-dispatch-manifests")
     }
@@ -44,9 +48,8 @@ class WorkDispatchService @Inject constructor(
         val items = workUnit.prepare()
 
         manifestMap[event] = distribute(items, strategy)
-        completedWorkers[event] = ConcurrentHashMap.newKeySet()
 
-        registerListener(event)
+        completedWorkers[event] = ConcurrentHashMap.newKeySet()
 
         eventBusUtils.publishWithTracing(
             ADDRESS_DISTRIBUTE_WORK_EVENT,
@@ -54,42 +57,41 @@ class WorkDispatchService @Inject constructor(
                 .put("event", event)
                 .put("workUnit", workUnit.javaClass.name)
         )
-    }
 
-    /**
-     * Registers the work done listener
-     */
-    private suspend fun registerListener(event: String) {
-        val consumer = vertx.eventBus().consumer<JsonObject>("$ADDRESS_WORK_DONE_EVENT.$event") { message ->
-            val worker = message.body().getString("workerKey")
-            completedWorkers[event]?.add(worker)
+        eventWaiter.waitForAll("$ADDRESS_WORK_DONE_EVENT.$event")
 
-            if (completedWorkers[event]?.size == workerRegistry.getActiveWorkers().size) {
-                eventBusUtils.publishWithTracing(
-                    "$ADDRESS_WORK_COMPLETE_EVENT.$event",
-                    JsonObject()
-                )
+        completedWorkers.remove(event)
+        manifestMap.remove(event)
+        eventConsumers.remove(event)?.unregister()
 
-                completedWorkers.remove(event)
-                manifestMap.remove(event)
-                eventConsumers.remove(event)?.unregister()
-            }
-        }
-
-        eventConsumers[event] = consumer
+        eventBusUtils.publishWithTracing(
+            "$ADDRESS_WORK_COMPLETE_EVENT.$event",
+            JsonObject()
+                .put("event", event)
+        )
     }
 
     /**
      * Execute the distribution function
      */
     private suspend fun distribute(items: Collection<*>, strategy: WorkDispatchStrategy): Map<String, Collection<Any?>> {
-        val workers = workerRegistry.getActiveWorkers().toList()
+        val workers = workerRegistry.getActiveWorkers()
+
+        if (workers.isEmpty()) {
+            log.info("WorkDispatchService: Task did not process because no workers were available, returning empty map")
+            return emptyMap()
+        }
 
         return when (strategy) {
             WorkDispatchStrategy.RANGE -> {
+                if (items.isEmpty()) {
+                    log.info("WorkDispatcher with strategy RANGE received no items, returning empty map")
+                    return emptyMap()
+                }
+
                 val chunkSize = (items.size + workers.size - 1) / workers.size
                 items.chunked(chunkSize)
-                    .mapIndexed { index, chunk -> workers[index] to chunk }
+                    .mapIndexed { index, chunk -> workers.toList()[index] to chunk }
                     .toMap()
             }
             WorkDispatchStrategy.CONSISTENT_HASH -> {
@@ -124,7 +126,7 @@ class WorkDispatchService @Inject constructor(
 
         eventBusUtils.publishWithTracing(
             "$ADDRESS_WORK_DONE_EVENT.$event",
-            JsonObject().put("workerKey", workerKey)
+            JsonObject().put("workerId", workerKey)
         )
 
         return result

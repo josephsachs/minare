@@ -36,17 +36,12 @@ class CoordinatorTaskVerticle @Inject constructor(
     override suspend fun start() {
         log.info("Starting CoordinatorTaskVerticle")
         vlog.setVerticle(this)
-
-        startupService.checkInitialWorkerStatus()
-
-        //launch {
-        log.info("Waiting for all workers to be ready...")
-        startupService.awaitAllWorkersReady()
-        log.info("All workers ready, starting session")
         startTaskLoop()
     }
 
     private suspend fun startTaskLoop() {
+        log.info("CoordinatorTaskVerticle starting task process")
+
         taskTimerId = vertx.setPeriodic(taskConfiguration.msPerTick) {
             if (!isProcessing) {
                 launch {
@@ -68,7 +63,7 @@ class CoordinatorTaskVerticle @Inject constructor(
             taskWorkUnit
         )
 
-        eventWaiter.waitForEvent("${WorkDispatchService.ADDRESS_WORK_COMPLETE_EVENT}.entity.tasks.tick")
+        eventWaiter.waitFor("${WorkDispatchService.ADDRESS_WORK_COMPLETE_EVENT}.entity.tasks.tick")
     }
 
     override suspend fun stop() {
