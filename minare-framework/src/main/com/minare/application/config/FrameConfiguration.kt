@@ -1,7 +1,5 @@
 package com.minare.application.config
 
-import java.awt.Frame
-
 /**
  * Configuration for frame-based processing in Minare.
  *

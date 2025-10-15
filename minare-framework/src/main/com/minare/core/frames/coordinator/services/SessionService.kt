@@ -72,7 +72,7 @@ class SessionService @Inject constructor(
 
         coordinatorState.pauseState = PauseState.REST
 
-        eventWaiter.waitForEvent(ADDRESS_FRAME_MANIFESTS_ALL_COMPLETE)
+        eventWaiter.waitFor(ADDRESS_FRAME_MANIFESTS_ALL_COMPLETE)
 
         coordinatorState.pauseState = PauseState.SOFT
     }
@@ -98,7 +98,7 @@ class SessionService @Inject constructor(
                 .put("announcementTime", announcementTime)
         )
 
-        eventWaiter.waitForEvent(ADDRESS_SESSION_MANIFESTS_PREPARED)
+        eventWaiter.waitFor(ADDRESS_SESSION_MANIFESTS_PREPARED)
 
         val metadata = createMetadata(sessionId, sessionStartTime, announcementTime)
 

@@ -50,7 +50,7 @@ class TimelineService @Inject constructor(
         if (frameConfiguration.flushOperationsOnDetach) {
             coordinatorState.pauseState = PauseState.REST
 
-            eventWaiter.waitForEvent(ADDRESS_FRAME_MANIFESTS_ALL_COMPLETE)
+            eventWaiter.waitFor(ADDRESS_FRAME_MANIFESTS_ALL_COMPLETE)
         }
 
         coordinatorState.pauseState = if (frameConfiguration.bufferInputDuringDetach) PauseState.SOFT else PauseState.HARD
@@ -162,7 +162,7 @@ class TimelineService @Inject constructor(
         coordinatorState.pauseState = PauseState.SOFT
         eventBusUtils.publishWithTracing(ADDRESS_NEXT_FRAME, JsonObject())
 
-        eventWaiter.waitForEvent(ADDRESS_FRAME_MANIFESTS_ALL_COMPLETE)
+        eventWaiter.waitFor(ADDRESS_FRAME_MANIFESTS_ALL_COMPLETE)
 
         eventBusUtils.publishWithTracing(
             ADDRESS_TIMELINE_REPLAY_COMPLETE,

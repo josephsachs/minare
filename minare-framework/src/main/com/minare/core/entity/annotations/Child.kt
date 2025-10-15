@@ -1,9 +1,7 @@
 package com.minare.core.entity.annotations
 
-import com.minare.core.entity.models.Entity
-
 /**
- * Annotation to mark fields that reference child entities
+ * Entity field is a key to a parent entity
  */
 @Retention(AnnotationRetention.RUNTIME)
 @Target(AnnotationTarget.FIELD)

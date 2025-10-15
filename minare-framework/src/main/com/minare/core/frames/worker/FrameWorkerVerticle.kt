@@ -7,8 +7,6 @@ import com.minare.core.operation.models.Operation
 import com.minare.core.utils.vertx.VerticleLogger
 import com.minare.core.frames.coordinator.FrameCoordinatorVerticle
 import com.minare.core.frames.events.WorkerStartStateSnapshotEvent
-import com.minare.core.frames.events.WorkerStateSnapshotCompleteEvent
-import com.minare.core.frames.events.WorkerStateSnapshotCompleteEvent.Companion.ADDRESS_WORKER_STATE_SNAPSHOT_COMPLETE
 import com.minare.exceptions.FrameLoopException
 import com.minare.worker.coordinator.models.FrameManifest
 import com.minare.worker.coordinator.models.OperationCompletion

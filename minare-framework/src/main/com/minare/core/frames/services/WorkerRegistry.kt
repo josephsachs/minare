@@ -13,7 +13,8 @@ import javax.inject.Singleton
  */
 @Singleton
 class WorkerRegistry @Inject constructor(
-    private val workerRegistryMap: WorkerRegistryMap
+    private val workerRegistryMap: WorkerRegistryMap,
+    private val activeWorkerSet: ActiveWorkerSet
 ) {
     private val log = LoggerFactory.getLogger(WorkerRegistry::class.java)
 
@@ -77,6 +78,7 @@ class WorkerRegistry @Inject constructor(
         if (json != null) {
             val state = WorkerState.fromJson(json)
             workerRegistryMap.put(workerId, state.copy(status = WorkerStatus.REMOVING).toJson())
+            activeWorkerSet.remove(workerId)
         }
     }
 
@@ -101,6 +103,7 @@ class WorkerRegistry @Inject constructor(
                     status = WorkerStatus.ACTIVE,
                     lastHeartbeat = System.currentTimeMillis()
                 ).toJson())
+                activeWorkerSet.put(workerId)
                 true
             }
             state.status == WorkerStatus.ACTIVE -> {
@@ -108,6 +111,7 @@ class WorkerRegistry @Inject constructor(
                 workerRegistryMap.put(workerId, state.copy(
                     lastHeartbeat = System.currentTimeMillis()
                 ).toJson())
+                activeWorkerSet.put(workerId)
                 true
             }
             else -> {
@@ -146,6 +150,7 @@ class WorkerRegistry @Inject constructor(
                     workerId, now - state.lastHeartbeat)
 
                 workerRegistryMap.put(workerId, state.copy(status = WorkerStatus.UNHEALTHY).toJson())
+                activeWorkerSet.remove(workerId)
             }
         }
     }
@@ -153,10 +158,8 @@ class WorkerRegistry @Inject constructor(
     /**
      * Get list of active workers
      */
-    fun getActiveWorkers(): List<String> {
-        return workerRegistryMap.entries()
-            .filter { WorkerState.fromJson(it.value).status == WorkerStatus.ACTIVE }
-            .map { it.key }
+    fun getActiveWorkers(): Set<String> {
+        return activeWorkerSet.entries()
     }
 
     /**

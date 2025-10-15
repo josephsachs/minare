@@ -74,14 +74,7 @@ class FrameCoordinatorVerticle @Inject constructor(
         setupEventBusConsumers()
         setupOperationConsumer()
 
-        startupService.checkInitialWorkerStatus()
-
-        //launch {
-            log.info("Waiting for all workers to be ready...")
-            startupService.awaitAllWorkersReady()
-            log.info("All workers ready, starting session")
-            startupSession()
-        //}
+        startupSession()
     }
 
     private fun setupEventBusConsumers() {
@@ -167,7 +160,7 @@ class FrameCoordinatorVerticle @Inject constructor(
 
         sessionService.initializeSession()
 
-        val eventMessage = eventWaiter.waitForEvent(ADDRESS_SESSION_INITIALIZED)
+        val eventMessage = eventWaiter.waitFor(ADDRESS_SESSION_INITIALIZED)
 
         val newSessionId = eventMessage.getString("sessionId")
 
@@ -283,11 +276,11 @@ class FrameCoordinatorVerticle @Inject constructor(
 
         snapshotService.doSnapshot(oldSessionId)
 
-        eventWaiter.waitForEvent(ADDRESS_SNAPSHOT_COMPLETE)
+        eventWaiter.waitFor(ADDRESS_SNAPSHOT_COMPLETE)
 
         sessionService.initializeSession()
 
-        val eventMessage = eventWaiter.waitForEvent(ADDRESS_SESSION_INITIALIZED)
+        val eventMessage = eventWaiter.waitFor(ADDRESS_SESSION_INITIALIZED)
 
         val newSessionId = eventMessage.getString("sessionId")
 

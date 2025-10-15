@@ -22,6 +22,7 @@ import javax.inject.Singleton
 class FrameCoordinatorState @Inject constructor(
     private val workerRegistry: WorkerRegistry,
     private val frameCalculator: FrameCalculatorService,
+    private val enumFactory: DistributedEnum.Factory,
     private val hazelcastInstance: HazelcastInstance
 ) {
     private val log = LoggerFactory.getLogger(FrameCoordinatorState::class.java)
@@ -55,20 +56,20 @@ class FrameCoordinatorState @Inject constructor(
     private val timelineHead = AtomicLong(-1L)
 
     // Startup in SOFT pause until session
-    private val _pauseState = DistributedEnum(hazelcastInstance, "pause-state", PauseState::class, PauseState.SOFT)
-    private val _timelineState = DistributedEnum(hazelcastInstance, "timeline-state", TimelineState::class, TimelineState.PLAY)
+    private val _pauseState = enumFactory.create("pause-state", PauseState::class, PauseState.SOFT)
+    private val _timelineState = enumFactory.create("timeline-state", TimelineState::class, TimelineState.PLAY)
 
     var pauseState: PauseState
         get() = _pauseState.get()
         set(value) {
-            log.info("Pause state transitioned from {} to {}", _pauseState, value)
+            log.info("Pause state transitioned from {} to {}", _pauseState.get(), value)
             _pauseState.set(value)
         }
 
     var timelineState: TimelineState
         get() = _timelineState.get()
         set(value) {
-            log.info("Timeline state changed from {} to {}", _timelineState, value)
+            log.info("Timeline state changed from {} to {}", _timelineState.get(), value)
             _timelineState.set(value)
         }
 
