@@ -43,6 +43,5 @@ class Node(): Entity() {
 
     @Task
     suspend fun tick() {
-        log.info("Task for Entity with $_id; current color is $color")
     }
 }

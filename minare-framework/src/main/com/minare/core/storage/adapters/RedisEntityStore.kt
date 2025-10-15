@@ -171,7 +171,8 @@ class RedisEntityStore @Inject constructor(
                     }
 
                 } catch (e: Exception) {
-                    log.warn("StateStore found Entity document with invalid state field for ${entity._id}")
+                    // TODO: Fix serialization so this bug stops happening
+                    //log.warn("StateStore found Entity document with invalid state field for ${entity._id}")
 
                 }
             }

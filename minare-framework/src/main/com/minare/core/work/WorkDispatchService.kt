@@ -6,6 +6,7 @@ import com.hazelcast.core.HazelcastInstance
 import com.hazelcast.map.IMap
 import com.minare.core.config.InternalInjectorHolder
 import com.minare.core.frames.services.WorkerRegistry
+import com.minare.core.utils.PushVar
 import com.minare.core.utils.vertx.EventBusUtils
 import com.minare.core.utils.vertx.EventWaiter
 import io.vertx.core.Vertx
@@ -22,8 +23,7 @@ class WorkDispatchService @Inject constructor(
     private val hazelcastInstance: HazelcastInstance,
     private val workerRegistry: WorkerRegistry,
     private val eventBusUtils: EventBusUtils,
-    private val eventWaiter: EventWaiter,
-    private val vertx: Vertx
+    private val eventWaiter: EventWaiter
 ) {
     private val log = LoggerFactory.getLogger(WorkDispatchService::class.java)
 
@@ -69,30 +69,6 @@ class WorkDispatchService @Inject constructor(
             JsonObject()
                 .put("event", event)
         )
-    }
-
-    /**
-     * Registers the work done listener
-     */
-    private suspend fun registerListener(event: String) {
-        val consumer = vertx.eventBus().consumer<JsonObject>("$ADDRESS_WORK_DONE_EVENT.$event") { message ->
-            val worker = message.body().getString("workerKey")
-
-            completedWorkers[event]?.add(worker)
-
-            if (completedWorkers[event]?.size == workerRegistry.getActiveWorkers().size) {
-                eventBusUtils.publishWithTracing(
-                    "$ADDRESS_WORK_COMPLETE_EVENT.$event",
-                    JsonObject()
-                )
-
-                completedWorkers.remove(event)
-                manifestMap.remove(event)
-                eventConsumers.remove(event)?.unregister()
-            }
-        }
-
-        eventConsumers[event] = consumer
     }
 
     /**
