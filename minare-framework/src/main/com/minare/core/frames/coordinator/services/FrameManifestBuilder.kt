@@ -132,6 +132,10 @@ class FrameManifestBuilder @Inject constructor(
                 )
 
                 manifestMap[manifestKey] = updatedManifest.toJson()
+
+                if (debugTraceLogs) {
+                    log.info("Assigned operation $operationId to existing manifest for $frame")
+                }
             }
         } catch (e: Exception) {
             log.error("Buffered operation assignment: Error updating manifest", e)

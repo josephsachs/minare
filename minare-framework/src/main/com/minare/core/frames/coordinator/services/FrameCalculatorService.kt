@@ -3,6 +3,7 @@ package com.minare.core.frames.coordinator.services
 import com.minare.application.config.FrameConfiguration
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.math.max
 
 /**
  * Injectable utility for frame-related calculations.
@@ -48,6 +49,12 @@ class FrameCalculatorService @Inject constructor(
         val elapsedNanos = System.nanoTime() - sessionStartNanos
 
         return nanosToLogicalFrame(elapsedNanos)
+    }
+
+    fun msUntilFrameEnd(currentFrame: Long, sessionStartNanos: Long): Long {
+        val nextFrameStart = getFrameStartNanos(currentFrame + 1, sessionStartNanos)
+        val delayNanos = nextFrameStart - System.nanoTime()
+        return max(0, nanosToMs(delayNanos))
     }
 
     /**

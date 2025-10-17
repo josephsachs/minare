@@ -2,6 +2,7 @@ package com.minare.core.frames.coordinator.services
 
 import com.minare.core.frames.coordinator.FrameCoordinatorState
 import com.minare.core.frames.coordinator.handlers.LateOperationHandler
+import com.minare.core.utils.debug.OperationDebugUtils
 import io.vertx.core.json.JsonObject
 import org.slf4j.LoggerFactory
 import javax.inject.Inject
@@ -18,10 +19,11 @@ import javax.inject.Singleton
 class OperationHandler @Inject constructor(
     private val coordinatorState: FrameCoordinatorState,
     private val manifestBuilder: FrameManifestBuilder,
-    private val lateOperationHandler: LateOperationHandler
+    private val lateOperationHandler: LateOperationHandler,
+    private val operationDebugUtils: OperationDebugUtils
 ) {
     private val log = LoggerFactory.getLogger(OperationHandler::class.java)
-
+    private val debugTraceLogs: Boolean = false
 
     /**
      * Process a single operation, checking buffer limits and routing to frames.
@@ -36,6 +38,10 @@ class OperationHandler @Inject constructor(
         val timestamp = operation.getLong("timestamp")
         val logicalFrame = coordinatorState.getLogicalFrame(timestamp)
         val frameInProgress = coordinatorState.frameInProgress
+
+        if (debugTraceLogs) {
+            operationDebugUtils.logOperation(operation, "OperationHandler.handle(operation): frameInProgress = $frameInProgress - logicalFrame = $logicalFrame - timestamp = $timestamp")
+        }
 
         if (logicalFrame <= frameInProgress) {
             lateOperationHandler.handle(operation)
@@ -59,7 +65,17 @@ class OperationHandler @Inject constructor(
         val operationsByOldFrame = mutableMapOf<Long, List<JsonObject>>()
 
         oldFrameNumbers.forEach { oldFrame ->
-            operationsByOldFrame[oldFrame] = coordinatorState.extractFrameOperations(oldFrame)
+            val extracted = coordinatorState.extractFrameOperations(oldFrame)
+
+            if (debugTraceLogs) {
+                operationDebugUtils.logOperation(extracted, "OperationHandler.extractBuffered(): oldFrame = $oldFrame")
+            }
+
+            operationsByOldFrame[oldFrame] = extracted
+        }
+
+        if (debugTraceLogs) {
+            log.info("Extracted operations from old frames: ${operationsByOldFrame.entries}")
         }
 
         return operationsByOldFrame
@@ -77,10 +93,18 @@ class OperationHandler @Inject constructor(
                 val calculatedFrame = coordinatorState.getLogicalFrame(timestamp)
 
                 if (calculatedFrame < 0) {
+                    if (debugTraceLogs) {
+                        operationDebugUtils.logOperation(op, "OperationHandler.assignBuffered() handle - calculatedFrame = $calculatedFrame - timestamp = $timestamp")
+                    }
+
                     // If the calculated frame is negative, then it was in flight during a session transition
                     // and is treated as a late operation
                     lateOperationHandler.handle(op)
                 } else {
+                    if (debugTraceLogs) {
+                        operationDebugUtils.logOperation(op, "OperationHandler.assignBuffered() bufferOperation - calculatedFrame = $calculatedFrame - timestamp = $timestamp")
+                    }
+
                     coordinatorState.bufferOperation(op, calculatedFrame)
                 }
             }
