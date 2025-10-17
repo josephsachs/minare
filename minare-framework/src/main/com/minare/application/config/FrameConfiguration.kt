@@ -23,7 +23,16 @@ open class FrameConfiguration {
      * Trade-off: Faster = faster response and more reliable ordering but
      *     more processor overhead
      */
-    val frameDurationMs: Long = 100
+    val frameDurationMs: Long = 500
+
+    /**
+     * How many frames ahead to prepare during normal operation.
+     * Provides smooth operation without excessive pre-computation.
+     *
+     * Default: 2 frames
+     * Balances low latency with operational buffer
+     */
+    val normalOperationLookahead: Int = 250
 
     /**
      *
@@ -45,7 +54,7 @@ open class FrameConfiguration {
      * Default: 1000 frames
      * Trade-off: More frequent = faster recovery but more frequent pauses
      */
-    val framesPerSession: Long = 5000
+    val framesPerSession: Long = 150
 
     /**
      *
@@ -78,15 +87,6 @@ open class FrameConfiguration {
      * Resume replays to current frameInProgress before returning play to State
      */
     val replayOnResume: Boolean = false
-
-    /**
-     * How many frames ahead to prepare during normal operation.
-     * Provides smooth operation without excessive pre-computation.
-     *
-     * Default: 2 frames
-     * Balances low latency with operational buffer
-     */
-    val normalOperationLookahead: Int = 2
 
     companion object {
         enum class AutoSession {

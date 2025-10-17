@@ -13,6 +13,7 @@ import org.slf4j.LoggerFactory
 import javax.inject.Inject
 import com.minare.core.storage.interfaces.StateStore
 import io.vertx.core.json.JsonArray
+import io.vertx.redis.client.Command
 import org.jgrapht.Graph
 import org.jgrapht.graph.DefaultEdge
 import javax.naming.ServiceUnavailableException
@@ -59,37 +60,70 @@ class RedisEntityStore @Inject constructor(
      * Update entity state
      */
     override suspend fun mutateState(entityId: String, delta: JsonObject, incrementVersion: Boolean): JsonObject {
-        // Get the current entity using our findEntityJson method
-        val currentDocument = findEntityJson(entityId)
-            ?: throw IllegalStateException("Entity not found: $entityId")
+        val version = if (incrementVersion) {
+            log.info("About to execute atomic version increment for entity $entityId")
 
-        val currentState = currentDocument.getJsonObject("state", JsonObject())
+            val response = redisAPI.send(
+                Command.create("EVAL"),
+                atomicIncrement(),
+                "1",
+                entityId,
+                delta.encode()
+            ).await()
 
-        // Apply delta to state
-        delta.fieldNames().forEach { fieldName ->
-            currentState.put(fieldName, delta.getValue(fieldName))
+            log.info("Atomic version increment completed for entity $entityId, new version: ${response.toLong()}")
+            response.toLong()
+        } else {
+            val currentDocument = findEntityJson(entityId)
+                ?: throw IllegalStateException("Entity not found: $entityId")
+            val currentState = currentDocument.getJsonObject("state", JsonObject())
+            delta.fieldNames().forEach { fieldName ->
+                currentState.put(fieldName, delta.getValue(fieldName))
+            }
+            currentDocument.put("state", currentState)
+            redisAPI.jsonSet(listOf(entityId, "$", currentDocument.encode())).await()
+            currentDocument.getLong("version", 1L)
         }
 
-        var version = currentDocument.getLong("version", 1L)
-        if (incrementVersion) {
-            version++
-            currentDocument.put("version", version)
-        }
+        // Fetch updated document for publishing
+        val updatedDocument = findEntityJson(entityId)!!
 
-        currentDocument.put("state", currentState)
-
-        // Store updated document
-        redisAPI.jsonSet(listOf(entityId, "$", currentDocument.encode())).await()
-
-        // Publish the change
         publishService.publishStateChange(
             entityId,
-            currentDocument.getString("type"),
+            updatedDocument.getString("type"),
             version,
             delta
         )
 
-        return currentDocument
+        return updatedDocument
+    }
+
+    /**
+     * Lua script for atomically incrementing version
+     */
+    private fun atomicIncrement(): String {
+        return """
+            local doc_json = redis.call('JSON.GET', KEYS[1])
+            if not doc_json then
+                error('Entity not found: ' .. KEYS[1])
+            end
+            
+            local doc = cjson.decode(doc_json)
+            local delta = cjson.decode(ARGV[1])
+            
+            -- Apply delta to state
+            local state = doc.state or {}
+            for key, value in pairs(delta) do
+                state[key] = value
+            end
+            doc.state = state
+            
+            -- Increment version
+            doc.version = (doc.version or 1) + 1
+            
+            redis.call('JSON.SET', KEYS[1], '${'$'}', cjson.encode(doc))
+            return doc.version
+        """
     }
 
     /**

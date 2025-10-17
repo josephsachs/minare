@@ -92,8 +92,9 @@ class WorkerOperationHandlerVerticle @Inject constructor(
             ?: throw IllegalArgumentException("Entity type required for MUTATE operation")
         val operationId = extractOperationId(operationJson)
 
-
-        log.debug("Processing MUTATE operation {} for entity {}", operationId, entityId)
+        if (debugTraceLogs) {
+            log.info("Processing MUTATE operation {} for entity {}", operationId, entityId)
+        }
 
         // Capture BEFORE state
         val beforeEntity = stateStore.findEntityJson(entityId)
@@ -125,7 +126,7 @@ class WorkerOperationHandlerVerticle @Inject constructor(
             )
         }
 
-        if (debugTraceLogs) log.info("Processed MUTATE for entity {} in {}ms", entityId, processingTime)
+        if (debugTraceLogs) log.info("Processed MUTATE operation {} for entity {} in {}ms", operationId, entityId, processingTime)
     }
 
     /**
