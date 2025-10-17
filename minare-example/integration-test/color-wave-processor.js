@@ -230,7 +230,7 @@ function startColorWaves(context, events, done) {
 
   let currentEntityIndex = 0;
   let currentColorIndex = 0;
-  let currentDelay = 1000; // Start at 1000ms
+  let currentDelay = 100; // Start at 1000ms
 
   // Helper function to send a single mutation
   function sendMutation(entity, color) {

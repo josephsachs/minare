@@ -54,8 +54,7 @@ class FrameCoordinatorVerticle @Inject constructor(
 ) : CoroutineVerticle() {
 
     private val log = LoggerFactory.getLogger(FrameCoordinatorVerticle::class.java)
-    // TEMPORARY DEBUG
-    private val debugTraceLogs: Boolean = true   // Mind over matter won't stop all your chatter
+    private val debugTraceLogs: Boolean = false   // Mind over matter won't stop all your chatter
 
     var manifestTimerId: Long? = null
 
@@ -139,7 +138,9 @@ class FrameCoordinatorVerticle @Inject constructor(
         manifestTimerId = vertx.setPeriodic(frameConfig.frameDurationMs) {
             launch {
                 if (coordinatorState.pauseState in setOf(PauseState.REST, PauseState.SOFT)) {
-                    log.info("Blocked manifest prep timer due to pause state ${coordinatorState.pauseState}")
+                    if (debugTraceLogs) {
+                        log.info("Blocked manifest prep timer due to pause state ${coordinatorState.pauseState}")
+                    }
                     return@launch
                 }
 
@@ -223,14 +224,6 @@ class FrameCoordinatorVerticle @Inject constructor(
      * Prepare and write manifest for a specific logical frame.
      */
     private suspend fun prepareManifestForFrame(logicalFrame: Long) {
-        /**if (coordinatorState.pauseState in setOf(PauseState.REST, PauseState.SOFT)) {
-            if (debugTraceLogs) {
-                log.info("Did not prepare frame from ${coordinatorState.lastPreparedManifest} " +
-                        "due to pause ${coordinatorState.pauseState}")
-            }
-            return
-        }**/
-
         val operations = coordinatorState.extractFrameOperations(logicalFrame)
         val activeWorkers = workerRegistry.getActiveWorkers().toSet()
 

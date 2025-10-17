@@ -23,7 +23,7 @@ open class FrameConfiguration {
      * Trade-off: Faster = faster response and more reliable ordering but
      *     more processor overhead
      */
-    val frameDurationMs: Long = 1000
+    val frameDurationMs: Long = 500
 
     /**
      * How many frames ahead to prepare during normal operation.
@@ -32,7 +32,7 @@ open class FrameConfiguration {
      * Default: 2 frames
      * Balances low latency with operational buffer
      */
-    val normalOperationLookahead: Int = 100
+    val normalOperationLookahead: Int = 250
 
     /**
      *

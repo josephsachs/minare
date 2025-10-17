@@ -22,8 +22,7 @@ class FrameManifestBuilder @Inject constructor(
     private val workerRegistry: WorkerRegistry
 ) {
     private val log = LoggerFactory.getLogger(FrameManifestBuilder::class.java)
-    // TEMPORARY DEBUG
-    private val debugTraceLogs: Boolean = true
+    private val debugTraceLogs: Boolean = false
 
     private val manifestMap: IMap<String, JsonObject> by lazy {
         hazelcastInstance.getMap("frame-manifests")
@@ -133,6 +132,10 @@ class FrameManifestBuilder @Inject constructor(
                 )
 
                 manifestMap[manifestKey] = updatedManifest.toJson()
+
+                if (debugTraceLogs) {
+                    log.info("Assigned operation $operationId to existing manifest for $frame")
+                }
             }
         } catch (e: Exception) {
             log.error("Buffered operation assignment: Error updating manifest", e)
