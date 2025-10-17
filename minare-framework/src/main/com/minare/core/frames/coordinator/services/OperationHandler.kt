@@ -20,7 +20,7 @@ class OperationHandler @Inject constructor(
     private val coordinatorState: FrameCoordinatorState,
     private val manifestBuilder: FrameManifestBuilder,
     private val lateOperationHandler: LateOperationHandler,
-    private val operationDebugUtils: OperationDebugUtils // TEMPORARY DEBUG
+    private val operationDebugUtils: OperationDebugUtils
 ) {
     private val log = LoggerFactory.getLogger(OperationHandler::class.java)
     private val debugTraceLogs: Boolean = false
