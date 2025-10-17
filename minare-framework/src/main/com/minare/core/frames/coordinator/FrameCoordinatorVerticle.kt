@@ -14,6 +14,7 @@ import com.minare.core.utils.vertx.VerticleLogger
 import com.minare.worker.coordinator.events.*
 import io.vertx.core.json.JsonObject
 import io.vertx.kotlin.coroutines.CoroutineVerticle
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.slf4j.LoggerFactory
 import javax.inject.Inject
@@ -40,7 +41,6 @@ class FrameCoordinatorVerticle @Inject constructor(
     private val messageQueueOperationConsumer: MessageQueueOperationConsumer,
     private val frameManifestBuilder: FrameManifestBuilder,
     private val frameCompletionTracker: FrameCompletionTracker,
-    private val startupService: StartupService,
     private val sessionService: SessionService,
     private val snapshotService: SnapshotService,
     private val infraAddWorkerEvent: InfraAddWorkerEvent,
@@ -54,7 +54,8 @@ class FrameCoordinatorVerticle @Inject constructor(
 ) : CoroutineVerticle() {
 
     private val log = LoggerFactory.getLogger(FrameCoordinatorVerticle::class.java)
-    private val debugTraceLogs: Boolean = false   // Mind over matter won't stop all your chatter
+    // TEMPORARY DEBUG
+    private val debugTraceLogs: Boolean = true   // Mind over matter won't stop all your chatter
 
     var manifestTimerId: Long? = null
 
@@ -137,6 +138,11 @@ class FrameCoordinatorVerticle @Inject constructor(
     private suspend fun startManifestTimer() {
         manifestTimerId = vertx.setPeriodic(frameConfig.frameDurationMs) {
             launch {
+                if (coordinatorState.pauseState in setOf(PauseState.REST, PauseState.SOFT)) {
+                    log.info("Blocked manifest prep timer due to pause state ${coordinatorState.pauseState}")
+                    return@launch
+                }
+
                 val currentFrame = frameCalculator.getCurrentLogicalFrame(coordinatorState.sessionStartNanos)
                 val targetFrame = currentFrame + frameConfig.normalOperationLookahead
 
@@ -217,6 +223,14 @@ class FrameCoordinatorVerticle @Inject constructor(
      * Prepare and write manifest for a specific logical frame.
      */
     private suspend fun prepareManifestForFrame(logicalFrame: Long) {
+        /**if (coordinatorState.pauseState in setOf(PauseState.REST, PauseState.SOFT)) {
+            if (debugTraceLogs) {
+                log.info("Did not prepare frame from ${coordinatorState.lastPreparedManifest} " +
+                        "due to pause ${coordinatorState.pauseState}")
+            }
+            return
+        }**/
+
         val operations = coordinatorState.extractFrameOperations(logicalFrame)
         val activeWorkers = workerRegistry.getActiveWorkers().toSet()
 
@@ -259,11 +273,20 @@ class FrameCoordinatorVerticle @Inject constructor(
             }
         }
 
+        delay(getRemainingMs())
+
         if (debugTraceLogs) log.info("Broadcasting next frame event after completing frame {}", logicalFrame)
 
         vertx.eventBus().publish(ADDRESS_NEXT_FRAME, JsonObject())
 
         cleanupCompletedFrame(logicalFrame)
+    }
+
+    private suspend fun getRemainingMs(): Long {
+        return frameCalculator.msUntilFrameEnd(
+            coordinatorState.frameInProgress,
+            coordinatorState.sessionStartNanos
+        )
     }
 
     /**

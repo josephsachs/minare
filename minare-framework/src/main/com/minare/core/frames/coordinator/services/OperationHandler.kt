@@ -22,7 +22,6 @@ class OperationHandler @Inject constructor(
 ) {
     private val log = LoggerFactory.getLogger(OperationHandler::class.java)
 
-
     /**
      * Process a single operation, checking buffer limits and routing to frames.
      * Updated to properly enforce frame-based buffer limits.

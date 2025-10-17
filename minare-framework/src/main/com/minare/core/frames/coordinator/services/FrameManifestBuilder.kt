@@ -22,7 +22,8 @@ class FrameManifestBuilder @Inject constructor(
     private val workerRegistry: WorkerRegistry
 ) {
     private val log = LoggerFactory.getLogger(FrameManifestBuilder::class.java)
-    private val debugTraceLogs: Boolean = false
+    // TEMPORARY DEBUG
+    private val debugTraceLogs: Boolean = true
 
     private val manifestMap: IMap<String, JsonObject> by lazy {
         hazelcastInstance.getMap("frame-manifests")
