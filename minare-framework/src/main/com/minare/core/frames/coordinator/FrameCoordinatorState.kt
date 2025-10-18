@@ -5,6 +5,8 @@ import com.hazelcast.core.HazelcastInstance
 import com.hazelcast.cp.IAtomicLong
 import com.minare.core.frames.coordinator.services.FrameCalculatorService
 import com.minare.core.frames.services.WorkerRegistry
+import com.minare.core.utils.debug.DebugLogger
+import com.minare.core.utils.debug.DebugLogger.Companion.Type
 import io.vertx.core.json.JsonObject
 import org.slf4j.LoggerFactory
 import java.util.concurrent.ConcurrentHashMap
@@ -23,10 +25,10 @@ class FrameCoordinatorState @Inject constructor(
     private val workerRegistry: WorkerRegistry,
     private val frameCalculator: FrameCalculatorService,
     private val enumFactory: DistributedEnum.Factory,
-    private val hazelcastInstance: HazelcastInstance
+    private val hazelcastInstance: HazelcastInstance,
+    private val debug: DebugLogger
 ) {
     private val log = LoggerFactory.getLogger(FrameCoordinatorState::class.java)
-    private val debugTraceLogs: Boolean = false
 
     var sessionId: String = ""
 
@@ -131,10 +133,7 @@ class FrameCoordinatorState @Inject constructor(
         frameProgress.set(-1L)
         currentFrameCompletions.clear()
 
-        if (debugTraceLogs) {
-            log.info("Started new session at timestamp {} (nanos: {})",
-                sessionStartTimestamp, sessionStartNanos)
-        }
+        debug.log(Type.COORDINATOR_STATE_RESET_SESSION, listOf(sessionStartTimestamp, sessionStartNanos))
     }
 
     /**
@@ -185,13 +184,10 @@ class FrameCoordinatorState @Inject constructor(
      * Record that a worker completed a frame
      */
     fun recordWorkerCompletion(workerId: String, frameNumber: Long) {
-        // Only record if it's for the current frame
-        // TODO: This case should be prevented by frame completion logic/coordinator message
         if (frameNumber == frameProgress.get()) {
             currentFrameCompletions[workerId] = System.currentTimeMillis()
-            if (debugTraceLogs) {
-                log.debug("Worker {} completed logical frame {}", workerId, frameNumber)
-            }
+
+            debug.log(Type.COORDINATOR_STATE_WORKER_FRAME_COMPLETE, listOf(workerId, frameNumber))
         } else {
             log.error("Ignoring completion from worker {} for old frame {} (current: {})",
                 workerId, frameNumber, frameProgress.get())
