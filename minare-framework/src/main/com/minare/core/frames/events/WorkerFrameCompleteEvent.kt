@@ -7,6 +7,7 @@ import com.minare.core.utils.vertx.EventBusUtils
 import com.minare.core.utils.vertx.VerticleLogger
 import com.minare.core.frames.coordinator.services.FrameCompletionTracker
 import com.minare.core.frames.services.WorkerRegistry
+import com.minare.core.utils.debug.DebugLogger
 import com.minare.exceptions.FrameLoopException
 import io.vertx.core.json.JsonObject
 
@@ -16,6 +17,7 @@ import io.vertx.core.json.JsonObject
 class WorkerFrameCompleteEvent @Inject constructor(
     private val eventBusUtils: EventBusUtils,
     private val vlog: VerticleLogger,
+    private val debug: DebugLogger,
     private val coordinatorState: FrameCoordinatorState,
     private val workerRegistry: WorkerRegistry,
     private val frameCompletionTracker: FrameCompletionTracker
@@ -39,9 +41,7 @@ class WorkerFrameCompleteEvent @Inject constructor(
             }
 
             if (!workerRegistry.isWorkerHealthy(workerId)) {
-                if (debugTraceLogs) {
-                    vlog.logInfo("Ignoring completion from unhealthy worker $workerId")
-                }
+                // TODO: Probable recovery trigger
                 return@registerTracedConsumer
             }
 
@@ -51,20 +51,14 @@ class WorkerFrameCompleteEvent @Inject constructor(
             if (coordinatorState.isFrameComplete(logicalFrame)) {
                 val completedWorkers = coordinatorState.getCompletedWorkers(logicalFrame)
                 val activeWorkers = workerRegistry.getActiveWorkers()
+                val lastPreparedManifest = coordinatorState.lastPreparedManifest
+                val frameInProgress = coordinatorState.frameInProgress
+                val completed = completedWorkers.size
+                val active = activeWorkers.size
 
-                if (debugTraceLogs) {
-                    vlog.logInfo("Frame $logicalFrame progress: ${completedWorkers.size}/${activeWorkers.size} workers complete")
-                    vlog.getEventLogger().trace(
-                        "ALL_WORKERS_COMPLETE",
-                        mapOf(
-                            "logicalFrame" to logicalFrame,
-                            "workerCount" to activeWorkers.size
-                        ),
-                        traceId
-                    )
-                }
+                debug.log(DebugLogger.Companion.Type.COORDINATOR_WORKER_FRAME_COMPLETE_EVENT, listOf(vlog, completed, active, logicalFrame, traceId))
 
-                if (coordinatorState.frameInProgress == coordinatorState.lastPreparedManifest)  {
+                if (frameInProgress == lastPreparedManifest)  {
                     eventBusUtils.publishWithTracing(
                         FrameCoordinatorVerticle.ADDRESS_FRAME_MANIFESTS_ALL_COMPLETE,
                         JsonObject(),
@@ -72,8 +66,7 @@ class WorkerFrameCompleteEvent @Inject constructor(
                     )
                 }
 
-                // TODO: Move this to error detection
-                if (coordinatorState.frameInProgress > coordinatorState.lastPreparedManifest) {
+                if (frameInProgress > lastPreparedManifest) {
                     throw FrameLoopException("Frame in progress is ahead of last prepared manifest")
                 }
 

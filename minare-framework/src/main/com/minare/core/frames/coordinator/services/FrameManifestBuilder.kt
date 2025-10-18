@@ -3,10 +3,12 @@ package com.minare.core.frames.coordinator.services
 import com.hazelcast.core.HazelcastInstance
 import com.hazelcast.map.IMap
 import com.minare.core.frames.services.WorkerRegistry
+import com.minare.core.utils.debug.DebugLogger
+import com.minare.exceptions.FrameLoopException
+import com.minare.core.utils.debug.DebugLogger.Companion.Type
 import com.minare.worker.coordinator.models.FrameManifest
 import io.vertx.core.json.JsonArray
 import io.vertx.core.json.JsonObject
-import org.slf4j.LoggerFactory
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.math.abs
@@ -19,11 +21,9 @@ import kotlin.math.abs
 @Singleton
 class FrameManifestBuilder @Inject constructor(
     private val hazelcastInstance: HazelcastInstance,
-    private val workerRegistry: WorkerRegistry
+    private val workerRegistry: WorkerRegistry,
+    private val debug: DebugLogger
 ) {
-    private val log = LoggerFactory.getLogger(FrameManifestBuilder::class.java)
-    private val debugTraceLogs: Boolean = false
-
     private val manifestMap: IMap<String, JsonObject> by lazy {
         hazelcastInstance.getMap("frame-manifests")
     }
@@ -87,18 +87,19 @@ class FrameManifestBuilder @Inject constructor(
             val key = "manifest:$logicalFrame:$workerId"
             manifestMap[key] = manifest
 
-            if (debugTraceLogs) {
-                log.info(
-                    "Wrote manifest for worker {} with {} operations for logical frame {}",
-                    workerId, sortedOperations.size, logicalFrame
-                )
-            }
+            debug.log(
+                Type.COORDINATOR_MANIFEST_BUILDER_WROTE_WORKER,
+                listOf(workerId, sortedOperations.size, logicalFrame)
+            )
         }
 
-        if (debugTraceLogs) {
-            log.info("Created manifests for logical frame {} with {} total operations distributed to {} workers",
-                logicalFrame, assignments.values.sumOf { it.size }, activeWorkers.size)
-        }
+        debug.log(
+            Type.COORDINATOR_MANIFEST_BUILDER_WROTE_ALL, listOf(
+                logicalFrame,
+                assignments.values.sumOf { it.size },
+                activeWorkers.size
+            )
+        )
     }
 
 
@@ -133,12 +134,10 @@ class FrameManifestBuilder @Inject constructor(
 
                 manifestMap[manifestKey] = updatedManifest.toJson()
 
-                if (debugTraceLogs) {
-                    log.info("Assigned operation $operationId to existing manifest for $frame")
-                }
+                debug.log(Type.COORDINATOR_MANIFEST_BUILDER_ASSIGNED_OPERATIONS, listOf(operationId, frame))
             }
         } catch (e: Exception) {
-            log.error("Buffered operation assignment: Error updating manifest", e)
+            throw FrameLoopException("Buffered operation assignment: Error updating manifest ${e}")
         }
     }
 
@@ -152,7 +151,7 @@ class FrameManifestBuilder @Inject constructor(
 
         manifestKeys.forEach { manifestMap.remove(it) }
 
-        if (debugTraceLogs) log.info("Cleared {} manifests for frame {}", manifestKeys.size, logicalFrame)
+        debug.log(Type.COORDINATOR_MANIFEST_BUILDER_CLEAR_FRAMES, listOf(manifestKeys.size, logicalFrame))
     }
 
     /**
@@ -173,9 +172,7 @@ class FrameManifestBuilder @Inject constructor(
 
         if (keysToRemove.isNotEmpty()) {
             keysToRemove.forEach { manifestMap.remove(it) }
-            if (debugTraceLogs) log.info("Cleared {} manifests from distributed map for new session", keysToRemove.size)
-        } else {
-            if (debugTraceLogs) log.info("No manifests to clear for new session")
+            debug.log(Type.COORDINATOR_MANIFEST_BUILDER_CLEAR_ALL, listOf(keysToRemove.size))
         }
     }
 
