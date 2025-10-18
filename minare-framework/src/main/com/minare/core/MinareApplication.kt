@@ -47,6 +47,7 @@ import com.minare.core.transport.downsocket.RedisPubSubWorkerVerticle
 import com.minare.core.storage.services.StateInitializer
 import com.minare.core.transport.CleanupVerticle
 import com.minare.core.utils.vertx.EventWaiter
+import com.minare.worker.coordinator.events.WorkerReadinessEvent
 import kotlin.system.exitProcess
 
 /**
@@ -57,14 +58,11 @@ abstract class MinareApplication : CoroutineVerticle() {
     private val log = LoggerFactory.getLogger(MinareApplication::class.java)
 
     // Dependency injections
-    @Inject
-    private lateinit var connectionController: ConnectionController
-    @Inject
-    private lateinit var startupService: StartupService
-    @Inject
-    lateinit var stateInitializer: StateInitializer
-    @Inject
-    lateinit var injector: Injector
+    @Inject private lateinit var connectionController: ConnectionController
+    @Inject private lateinit var startupService: StartupService
+    @Inject private lateinit var workerReadinessEvent: WorkerReadinessEvent
+    @Inject lateinit var stateInitializer: StateInitializer
+    @Inject lateinit var injector: Injector
 
     // Application utilities
     protected lateinit var appState: AppState
@@ -142,7 +140,7 @@ abstract class MinareApplication : CoroutineVerticle() {
      */
     private suspend fun initializeCoordinator() {
         startupService.checkInitialWorkerStatus()
-        startupService.awaitAllWorkersReady()
+        startupService.awaitAllWorkersReady(workerReadinessEvent)
 
         val frameHealthMonitorVerticleOptions = DeploymentOptions()
             .setInstances(1)

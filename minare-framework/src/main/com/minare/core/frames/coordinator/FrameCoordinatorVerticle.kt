@@ -48,7 +48,6 @@ class FrameCoordinatorVerticle @Inject constructor(
     private val workerFrameCompleteEvent: WorkerFrameCompleteEvent,
     private val workerHeartbeatEvent: WorkerHeartbeatEvent,
     private val workerRegisterEvent: WorkerRegisterEvent,
-    private val workerReadinessEvent: WorkerReadinessEvent,
     private val workerHealthChangeEvent: WorkerHealthChangeEvent,
     private val workerStateSnapshotCompleteEvent: WorkerStateSnapshotCompleteEvent
 ) : CoroutineVerticle() {
@@ -85,7 +84,6 @@ class FrameCoordinatorVerticle @Inject constructor(
             workerHeartbeatEvent.register()
             workerFrameCompleteEvent.register(debugTraceLogs)
             workerRegisterEvent.register()
-            workerReadinessEvent.register()
             workerHealthChangeEvent.register()
             workerStateSnapshotCompleteEvent.register()
         }
