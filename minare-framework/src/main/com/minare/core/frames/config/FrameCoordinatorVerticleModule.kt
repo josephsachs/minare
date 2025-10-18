@@ -36,7 +36,6 @@ class FrameCoordinatorVerticleModule : PrivateModule() {
         bind(WorkerHeartbeatEvent::class.java).`in`(Singleton::class.java)
         bind(WorkerHealthChangeEvent::class.java).`in`(Singleton::class.java)
         bind(WorkerRegisterEvent::class.java).`in`(Singleton::class.java)
-        bind(WorkerReadinessEvent::class.java).`in`(Singleton::class.java)
         bind(WorkerStateSnapshotCompleteEvent::class.java).`in`(Singleton::class.java)
 
         // Request external dependencies that should be provided by parent injector
