@@ -8,6 +8,8 @@ import com.minare.core.frames.events.WorkerStateSnapshotCompleteEvent
 import com.minare.core.frames.services.SnapshotService
 import com.minare.core.frames.services.SnapshotService.Companion.ADDRESS_SNAPSHOT_COMPLETE
 import com.minare.core.frames.services.WorkerRegistry
+import com.minare.core.utils.debug.DebugLogger
+import com.minare.core.utils.debug.DebugLogger.Companion.Type
 import com.minare.core.utils.vertx.EventBusUtils
 import com.minare.core.utils.vertx.EventWaiter
 import com.minare.core.utils.vertx.VerticleLogger
@@ -34,6 +36,7 @@ class FrameCoordinatorVerticle @Inject constructor(
     private val frameCalculator: FrameCalculatorService,
     private val operationHandler: OperationHandler,
     private val vlog: VerticleLogger,
+    private val debug: DebugLogger,
     private val eventBusUtils: EventBusUtils,
     private val eventWaiter: EventWaiter,
     private val workerRegistry: WorkerRegistry,
@@ -53,7 +56,6 @@ class FrameCoordinatorVerticle @Inject constructor(
 ) : CoroutineVerticle() {
 
     private val log = LoggerFactory.getLogger(FrameCoordinatorVerticle::class.java)
-    private val debugTraceLogs: Boolean = false   // Mind over matter won't stop all your chatter
 
     var manifestTimerId: Long? = null
 
@@ -82,7 +84,7 @@ class FrameCoordinatorVerticle @Inject constructor(
 
         launch {
             workerHeartbeatEvent.register()
-            workerFrameCompleteEvent.register(debugTraceLogs)
+            workerFrameCompleteEvent.register()
             workerRegisterEvent.register()
             workerHealthChangeEvent.register()
             workerStateSnapshotCompleteEvent.register()
@@ -135,10 +137,10 @@ class FrameCoordinatorVerticle @Inject constructor(
     private suspend fun startManifestTimer() {
         manifestTimerId = vertx.setPeriodic(frameConfig.frameDurationMs) {
             launch {
-                if (coordinatorState.pauseState in setOf(PauseState.REST, PauseState.SOFT)) {
-                    if (debugTraceLogs) {
-                        log.info("Blocked manifest prep timer due to pause state ${coordinatorState.pauseState}")
-                    }
+                val pauseState = coordinatorState.pauseState
+
+                if (pauseState in setOf(PauseState.REST, PauseState.SOFT)) {
+                    debug.log(Type.COORDINATOR_MANIFEST_TIMER_BLOCKED_TICK, listOf(pauseState))
                     return@launch
                 }
 
@@ -159,8 +161,6 @@ class FrameCoordinatorVerticle @Inject constructor(
      * new logical frames according to the time of receipt.
      */
     private suspend fun startupSession() {
-        // SessionService takes over setup, returning control to
-        // ADDRESS_PREPARE_SESSION_MANIFESTS before concluding
         coordinatorState.pauseState = PauseState.SOFT
 
         sessionService.initializeSession()
@@ -180,11 +180,11 @@ class FrameCoordinatorVerticle @Inject constructor(
      * such as when backpressure control is de-activated
      */
     private suspend fun preparePendingManifests() {
+        val pauseState = coordinatorState.pauseState
+        val lastPreparedManifest = coordinatorState.lastPreparedManifest
+
         if (coordinatorState.pauseState in setOf(PauseState.REST, PauseState.SOFT)) {
-            if (debugTraceLogs) {
-                log.info("Delayed preparing frames from ${coordinatorState.lastPreparedManifest} " +
-                        "due to pause ${coordinatorState.pauseState}")
-            }
+            debug.log(Type.COORDINATOR_PREPARE_PENDING_MANIFESTS, listOf(lastPreparedManifest, pauseState))
             return
         }
 
@@ -241,21 +241,19 @@ class FrameCoordinatorVerticle @Inject constructor(
      * This is what permits workers to complete the next frame
      */
     private suspend fun onFrameComplete(logicalFrame: Long) {
-        if (debugTraceLogs) log.info("Logical frame {} completed successfully", logicalFrame)
+        debug.log(Type.COORDINATOR_ON_FRAME_COMPLETE_CALLED, listOf(logicalFrame))
 
-        if (coordinatorState.pauseState in setOf(PauseState.SOFT, PauseState.HARD)) {
-            if (debugTraceLogs) {
-                log.info("Completed frame $logicalFrame, stopping due to " +
-                        "pause ${coordinatorState.pauseState}")
-            }
+        val pauseState = coordinatorState.pauseState
+
+        if (pauseState in setOf(PauseState.SOFT, PauseState.HARD)) {
+            debug.log(Type.COORDINATOR_ON_FRAME_COMPLETE_BLOCKED, listOf(logicalFrame, pauseState))
             return
         }
 
         markFrameComplete(logicalFrame)
 
-        if (coordinatorState.pauseState != PauseState.REST) {
-            // Ensure the next manifest always exists before the workers advance
-            preparePendingManifests()
+        if (pauseState != PauseState.REST) {
+            preparePendingManifests()   // Ensure the next always exists before workers advance
 
             if (sessionService.needAutoSession()) {
                 launch {
@@ -266,9 +264,8 @@ class FrameCoordinatorVerticle @Inject constructor(
 
         delay(getRemainingMs())
 
-        if (debugTraceLogs) log.info("Broadcasting next frame event after completing frame {}", logicalFrame)
-
         vertx.eventBus().publish(ADDRESS_NEXT_FRAME, JsonObject())
+        debug.log(Type.COORDINATOR_NEXT_FRAME_EVENT, listOf(logicalFrame))
 
         cleanupCompletedFrame(logicalFrame)
     }
@@ -298,7 +295,7 @@ class FrameCoordinatorVerticle @Inject constructor(
 
         val newSessionId = eventMessage.getString("sessionId")
 
-        if (debugTraceLogs) log.info("Frame coordinator received initial session announcement for $newSessionId")
+        debug.log(DebugLogger.Companion.Type.COORDINATOR_SESSION_ANNOUNCEMENT, listOf(newSessionId))
 
         coordinatorState.sessionId = newSessionId
 
