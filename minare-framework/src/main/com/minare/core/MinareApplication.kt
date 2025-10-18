@@ -329,6 +329,7 @@ abstract class MinareApplication : CoroutineVerticle() {
 
         // Delegate application routes setup
         log.info("Setting up application routes...")
+        onWorkerStart()
         setupApplicationRoutes()
 
         registerConnectionEventHandlers()
@@ -377,6 +378,7 @@ abstract class MinareApplication : CoroutineVerticle() {
 
     /**
      * Override to add application-specific HTTP routes.
+     * Runs in worker context.
      */
     protected open suspend fun setupApplicationRoutes() {
 
@@ -384,9 +386,16 @@ abstract class MinareApplication : CoroutineVerticle() {
 
     /**
      * Application-specific initialization logic.
-     * Called after the server has started successfully.
+     * Called after the coordinator has started successfully.
      */
     protected open suspend fun onApplicationStart() {
+
+    }
+
+    /**
+     * Worker-specific initialization, use for registering worker events
+     */
+    protected open suspend fun onWorkerStart() {
 
     }
 
