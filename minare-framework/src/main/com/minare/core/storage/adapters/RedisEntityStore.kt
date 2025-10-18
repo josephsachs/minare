@@ -61,8 +61,6 @@ class RedisEntityStore @Inject constructor(
      */
     override suspend fun mutateState(entityId: String, delta: JsonObject, incrementVersion: Boolean): JsonObject {
         val version = if (incrementVersion) {
-            log.info("About to execute atomic version increment for entity $entityId")
-
             val response = redisAPI.send(
                 Command.create("EVAL"),
                 atomicIncrement(),
@@ -71,21 +69,22 @@ class RedisEntityStore @Inject constructor(
                 delta.encode()
             ).await()
 
-            log.info("Atomic version increment completed for entity $entityId, new version: ${response.toLong()}")
             response.toLong()
         } else {
             val currentDocument = findEntityJson(entityId)
                 ?: throw IllegalStateException("Entity not found: $entityId")
+
             val currentState = currentDocument.getJsonObject("state", JsonObject())
+
             delta.fieldNames().forEach { fieldName ->
                 currentState.put(fieldName, delta.getValue(fieldName))
             }
+
             currentDocument.put("state", currentState)
             redisAPI.jsonSet(listOf(entityId, "$", currentDocument.encode())).await()
             currentDocument.getLong("version", 1L)
         }
 
-        // Fetch updated document for publishing
         val updatedDocument = findEntityJson(entityId)!!
 
         publishService.publishStateChange(
