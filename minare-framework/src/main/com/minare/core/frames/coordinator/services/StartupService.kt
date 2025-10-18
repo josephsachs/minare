@@ -1,6 +1,7 @@
 package com.minare.core.frames.coordinator.services
 
 import com.minare.core.frames.services.WorkerRegistry
+import com.minare.worker.coordinator.events.WorkerReadinessEvent
 import kotlinx.coroutines.CompletableDeferred
 import org.slf4j.LoggerFactory
 import javax.inject.Inject
@@ -52,7 +53,8 @@ class StartupService @Inject constructor(
     /**
      * Wait for all workers to be ready.
      */
-    suspend fun awaitAllWorkersReady() {
+    suspend fun awaitAllWorkersReady(event: WorkerReadinessEvent) {
+        event.register()
         workersReady.await()
     }
 }

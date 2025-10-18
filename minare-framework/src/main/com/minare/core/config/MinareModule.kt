@@ -45,6 +45,7 @@ import com.minare.core.frames.coordinator.handlers.LateOperationHandler
 import com.minare.core.frames.services.ActiveWorkerSet
 import com.minare.core.frames.services.HazelcastActiveWorkerSet
 import com.minare.core.utils.vertx.EventBusUtils
+import com.minare.worker.coordinator.events.WorkerReadinessEvent
 import com.minare.worker.upsocket.CommandMessageHandler
 import kotlin.coroutines.CoroutineContext
 
