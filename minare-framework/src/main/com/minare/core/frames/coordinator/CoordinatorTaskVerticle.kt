@@ -6,16 +6,20 @@ import com.minare.core.entity.ReflectionCache
 import com.minare.core.entity.annotations.Task
 import com.minare.core.entity.factories.EntityFactory
 import com.minare.core.entity.models.Entity
+import com.minare.core.frames.coordinator.FrameCoordinatorVerticle.Companion.ADDRESS_NEXT_FRAME
+import com.minare.core.frames.coordinator.models.FixedTaskWorkUnit
 import com.minare.core.frames.coordinator.models.TaskWorkUnit
 import com.minare.core.frames.coordinator.services.StartupService
 import com.minare.core.frames.services.WorkerRegistry
 import com.minare.core.frames.worker.WorkerTaskVerticle
 import com.minare.core.storage.interfaces.StateStore
+import com.minare.core.utils.debug.DebugLogger
 import com.minare.core.utils.vertx.EventWaiter
 import com.minare.core.utils.vertx.VerticleLogger
 import com.minare.core.work.WorkDispatchService
 import io.vertx.core.Vertx
 import io.vertx.core.impl.logging.LoggerFactory
+import io.vertx.core.json.JsonObject
 import io.vertx.kotlin.coroutines.CoroutineVerticle
 import kotlinx.coroutines.launch
 
@@ -23,7 +27,7 @@ class CoordinatorTaskVerticle @Inject constructor(
     private val taskConfiguration: TaskConfiguration,
     private val workDispatchService: WorkDispatchService,
     private val taskWorkUnit: TaskWorkUnit,
-    private val startupService: StartupService,
+    private val fixedTaskWorkUnit: FixedTaskWorkUnit,
     private val eventWaiter: EventWaiter,
     private val vlog: VerticleLogger,
     private val vertx: Vertx
@@ -31,11 +35,13 @@ class CoordinatorTaskVerticle @Inject constructor(
     private val log = LoggerFactory.getLogger(CoordinatorTaskVerticle::class.java)
 
     private var taskTimerId: Long = 0L
-    private var isProcessing = false
+    private var isTaskProcessing = false
+    private var isFixedTaskProcesing = false
 
     override suspend fun start() {
         log.info("Starting CoordinatorTaskVerticle")
         vlog.setVerticle(this)
+        registerFixedTaskEvent()
         startTaskLoop()
     }
 
@@ -43,17 +49,32 @@ class CoordinatorTaskVerticle @Inject constructor(
         log.info("CoordinatorTaskVerticle starting task process")
 
         taskTimerId = vertx.setPeriodic(taskConfiguration.msPerTick) {
-            if (!isProcessing) {
+            if (!isTaskProcessing) {
                 launch {
-                    isProcessing = true
+                    isTaskProcessing = true
                     try {
                         processTick()
                     } finally {
-                        isProcessing = false
+                        isTaskProcessing = false
                     }
                 }
             }
         }
+    }
+
+    private suspend fun registerFixedTaskEvent() {
+        vertx.eventBus().consumer<JsonObject>(ADDRESS_NEXT_FRAME, { msg ->
+            if (!isFixedTaskProcesing) {
+                launch {
+                    isFixedTaskProcesing = true
+                    try {
+                        processFixedTick()
+                    } finally {
+                        isFixedTaskProcesing = false
+                    }
+                }
+            }
+        })
     }
 
     private suspend fun processTick() {
@@ -64,6 +85,16 @@ class CoordinatorTaskVerticle @Inject constructor(
         )
 
         eventWaiter.waitFor("${WorkDispatchService.ADDRESS_WORK_COMPLETE_EVENT}.entity.tasks.tick")
+    }
+
+    private suspend fun processFixedTick() {
+        workDispatchService.dispatch(
+            "entity.tasks.fixed.tick",
+            WorkDispatchService.Companion.WorkDispatchStrategy.RANGE,
+            fixedTaskWorkUnit
+        )
+
+        eventWaiter.waitFor("${WorkDispatchService.ADDRESS_WORK_COMPLETE_EVENT}.entity.tasks.fixed.tick")
     }
 
     override suspend fun stop() {
