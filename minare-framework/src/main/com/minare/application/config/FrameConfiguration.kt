@@ -23,7 +23,7 @@ open class FrameConfiguration {
      * Trade-off: Faster = faster response and more reliable ordering but
      *     more processor overhead
      */
-    val frameDurationMs: Long = 500
+    open val frameDurationMs: Long = 500
 
     /**
      * How many frames ahead to prepare during normal operation.
@@ -32,7 +32,7 @@ open class FrameConfiguration {
      * Default: 2 frames
      * Balances low latency with operational buffer
      */
-    val normalOperationLookahead: Int = 250
+    open val normalOperationLookahead: Int = 250
 
     /**
      *
@@ -45,7 +45,7 @@ open class FrameConfiguration {
      * NEVER
      * FRAMES_PER_SESSION
      */
-    val autoSession: AutoSession = AutoSession.FRAMES_PER_SESSION
+    open val autoSession: AutoSession = AutoSession.FRAMES_PER_SESSION
     /**
      * Number of frames between automatic sessions.
      * Sessions save snapshots, clear coordination memory
@@ -54,7 +54,7 @@ open class FrameConfiguration {
      * Default: 1000 frames
      * Trade-off: More frequent = faster recovery but more frequent pauses
      */
-    val framesPerSession: Long = 150
+    open val framesPerSession: Long = 150
 
     /**
      *
@@ -65,28 +65,28 @@ open class FrameConfiguration {
     /**
      * Allow frame manifests to complete processing before hard pause
      */
-    val flushOperationsOnDetach: Boolean = true
+    open val flushOperationsOnDetach: Boolean = true
 
     /**
      * Detach uses soft pause, buffering new input
      */
-    val bufferInputDuringDetach: Boolean = true
+    open val bufferInputDuringDetach: Boolean = true
 
     /**
      * Replay uses soft pause, buffering new input
      */
-    val bufferInputDuringReplay: Boolean = true
+    open val bufferInputDuringReplay: Boolean = true
 
     /**
      * Resume assigns operations from stale frames to new session,
      * preserving temporal order
      */
-    val assignOperationsOnResume: Boolean = false
+    open val assignOperationsOnResume: Boolean = false
 
     /**
      * Resume replays to current frameInProgress before returning play to State
      */
-    val replayOnResume: Boolean = false
+    open val replayOnResume: Boolean = false
 
     companion object {
         enum class AutoSession {

@@ -264,7 +264,10 @@ class FrameCoordinatorVerticle @Inject constructor(
 
         delay(getRemainingMs())
 
-        vertx.eventBus().publish(ADDRESS_NEXT_FRAME, JsonObject())
+        vertx.eventBus().publish(
+            ADDRESS_NEXT_FRAME,
+            JsonObject().put("logicalFrame", logicalFrame)
+        )
         debug.log(Type.COORDINATOR_NEXT_FRAME_EVENT, listOf(logicalFrame))
 
         cleanupCompletedFrame(logicalFrame)
