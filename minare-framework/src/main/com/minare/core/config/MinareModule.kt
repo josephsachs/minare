@@ -4,6 +4,8 @@ import com.google.inject.*
 import com.google.inject.multibindings.OptionalBinder
 import com.google.inject.name.Names
 import com.hazelcast.core.HazelcastInstance
+import com.minare.application.config.FrameConfiguration
+import com.minare.application.config.TaskConfiguration
 import com.minare.application.interfaces.AppState
 import com.minare.cache.ConnectionCache
 import com.minare.cache.InMemoryConnectionCache
