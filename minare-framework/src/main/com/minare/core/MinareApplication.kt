@@ -718,6 +718,9 @@ abstract class MinareApplication : CoroutineVerticle() {
                     override fun configure() {
                         // Correct order is required:
                         // framework (provides defaults)
+                        install(vertxModule)
+                        install(dbNameModule)
+
                         install(frameworkModule)
                         install(upSocketVerticleModule)
                         install(downSocketVerticleModule)
@@ -725,8 +728,7 @@ abstract class MinareApplication : CoroutineVerticle() {
                         // Then app module (overrides framework if needed)
                         install(appModule)
                         // Then vertx and database modules
-                        install(vertxModule)
-                        install(dbNameModule)
+
                     }
                 }
 
