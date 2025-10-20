@@ -49,6 +49,7 @@ class UpSocketVerticleModule : PrivateModule() {
 
         // Request external dependencies that should be provided by parent injector
         requireBinding(Vertx::class.java)
+        requireBinding(CoroutineScope::class.java)
         requireBinding(ConnectionStore::class.java)
         requireBinding(ConnectionCache::class.java)
         requireBinding(ChannelStore::class.java)
@@ -67,15 +68,6 @@ class UpSocketVerticleModule : PrivateModule() {
     @Singleton
     fun provideRouter(vertx: Vertx): Router {
         return Router.router(vertx)
-    }
-
-    /**
-     * Provides a CoroutineScope using the Vertx dispatcher
-     */
-    @Provides
-    @Singleton
-    fun provideCoroutineScope(coroutineContext: CoroutineContext): CoroutineScope {
-        return CoroutineScope(coroutineContext)
     }
 
     /**

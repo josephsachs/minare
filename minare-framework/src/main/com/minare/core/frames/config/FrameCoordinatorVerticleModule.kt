@@ -41,19 +41,11 @@ class FrameCoordinatorVerticleModule : PrivateModule() {
         // Request external dependencies that should be provided by parent injector
         requireBinding(Vertx::class.java)
         requireBinding(EventBusUtils::class.java)
+        requireBinding(CoroutineScope::class.java)
 
         expose(FrameCoordinatorVerticle::class.java)
         expose(CoordinatorAdminVerticle::class.java)
         expose(StartupService::class.java)
 
-    }
-
-    /**
-     * Provides a CoroutineScope using the Vertx dispatcher
-     */
-    @Provides
-    @Singleton
-    fun provideCoroutineScope(coroutineContext: CoroutineContext): CoroutineScope {
-        return CoroutineScope(coroutineContext)
     }
 }

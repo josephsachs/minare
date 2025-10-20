@@ -54,8 +54,10 @@ class FixedTaskWorkUnit @Inject constructor(
             }
 
             val stateJson = entityJson.getJsonObject("state", JsonObject())
-
             stateStore.setEntityState(entity, entityType, stateJson)
+
+            val propertiesJson = entityJson.getJsonObject("properties", JsonObject())
+            stateStore.setEntityProperties(entity, entityType, propertiesJson)
 
             // Get and invoke @Task methods
             val taskMethods = reflectionCache.getFunctionsWithAnnotation<FixedTask>(entityClass)

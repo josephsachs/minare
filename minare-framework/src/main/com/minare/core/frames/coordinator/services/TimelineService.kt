@@ -261,7 +261,7 @@ class TimelineService @Inject constructor(
 
             // TODO: EntityController needs to be injected in constructor
             // Apply state change through entity controller
-            entityController.save(entityId, stateToApply)
+            entityController.saveState(entityId, stateToApply)
         }
 
         if (debugTraceLogs) {
