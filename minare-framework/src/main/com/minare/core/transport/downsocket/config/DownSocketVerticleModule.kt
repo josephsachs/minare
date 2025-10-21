@@ -3,6 +3,7 @@ package com.minare.worker.downsocket.config
 import com.google.inject.PrivateModule
 import com.google.inject.Provides
 import com.google.inject.Singleton
+import com.google.inject.name.Named
 import com.minare.cache.ConnectionCache
 import com.minare.core.storage.interfaces.ChannelStore
 import com.minare.core.storage.interfaces.ConnectionStore
@@ -19,6 +20,7 @@ import com.minare.worker.downsocket.events.EntityUpdatedEvent
 import com.minare.worker.downsocket.events.UpdateConnectionClosedEvent
 import com.minare.worker.downsocket.events.UpdateConnectionEstablishedEvent
 import com.minare.worker.downsocket.handlers.EntityUpdateHandler
+import io.vertx.kotlin.coroutines.dispatcher
 import kotlin.coroutines.CoroutineContext
 
 /**
@@ -43,6 +45,7 @@ class DownSocketVerticleModule : PrivateModule() {
 
         // Request external dependencies that should be provided by parent injector
         requireBinding(Vertx::class.java)
+        requireBinding(CoroutineContext::class.java)
         requireBinding(CoroutineScope::class.java)
         requireBinding(ConnectionStore::class.java)
         requireBinding(ConnectionCache::class.java)
@@ -63,6 +66,14 @@ class DownSocketVerticleModule : PrivateModule() {
         return Router.router(vertx)
     }
 
+
+    @Provides
+    @Singleton
+    @Named("verticle-scoped")
+    fun provideCoroutineScope(coroutineContext: CoroutineContext): CoroutineScope {
+        return CoroutineScope(coroutineContext)
+    }
+
     /**
      * Provides HeartbeatManager for DownSocketVerticle
      */
@@ -72,7 +83,7 @@ class DownSocketVerticleModule : PrivateModule() {
         vertx: Vertx,
         verticleLogger: VerticleLogger,
         connectionStore: ConnectionStore,
-        coroutineScope: CoroutineScope
+        @Named("verticle-scoped") coroutineScope: CoroutineScope
     ): HeartbeatManager {
         val heartbeatManager = HeartbeatManager(vertx, verticleLogger, connectionStore, coroutineScope)
         heartbeatManager.setHeartbeatInterval(DownSocketVerticle.HEARTBEAT_INTERVAL_MS)

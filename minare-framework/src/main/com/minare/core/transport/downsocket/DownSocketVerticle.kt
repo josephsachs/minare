@@ -1,5 +1,6 @@
 package com.minare.core.transport.downsocket
 
+import com.google.inject.name.Named
 import com.minare.core.MinareApplication
 import com.minare.cache.ConnectionCache
 import com.minare.core.Timer
@@ -38,7 +39,8 @@ class DownSocketVerticle @Inject constructor(
     private val connectionCache: ConnectionCache,
     private val downSocketVerticleCache: DownSocketVerticleCache,
     private val updateConnectionClosedEvent: UpdateConnectionClosedEvent,
-    private val updateConnectionEstablishedEvent: UpdateConnectionEstablishedEvent
+    private val updateConnectionEstablishedEvent: UpdateConnectionEstablishedEvent,
+    private val heartbeatManager: HeartbeatManager
 ) : CoroutineVerticle() {
 
     private val log = LoggerFactory.getLogger(DownSocketVerticle::class.java)
@@ -50,7 +52,7 @@ class DownSocketVerticle @Inject constructor(
 
     private lateinit var router: Router
 
-    private lateinit var heartbeatManager: HeartbeatManager
+    //private lateinit var heartbeatManager: HeartbeatManager
     private lateinit var connectionTracker: ConnectionTracker
 
     private var httpServer: HttpServer? = null
@@ -86,7 +88,7 @@ class DownSocketVerticle @Inject constructor(
             registerEventBusConsumers()
 
             connectionTracker = ConnectionTracker("DownSocket", vlog)
-            heartbeatManager = HeartbeatManager(vertx, vlog, connectionStore, CoroutineScope(vertx.dispatcher()))
+            //heartbeatManager = HeartbeatManager(vertx, vlog, connectionStore, CoroutineScope(vertx.dispatcher()))
             heartbeatManager.setHeartbeatInterval(UpSocketVerticle.HEARTBEAT_INTERVAL_MS)
 
             vlog.logStartupStep("STARTING")

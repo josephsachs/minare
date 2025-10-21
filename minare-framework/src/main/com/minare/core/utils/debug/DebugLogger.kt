@@ -33,10 +33,12 @@ class DebugLogger @Inject constructor(
         Type.COORDINATOR_OPERATION_HANDLER_EXTRACT_BUFFERED to false,
         Type.COORDINATOR_OPERATION_HANDLER_EXTRACTED_OPS to false,
         Type.COORDINATOR_OPERATION_HANDLER_ASSIGN_OPERATION to false,
-        Type.COORDINATOR_OPERATION_HANDLER_ASSIGN_LATE_OPERATION to false
+        Type.COORDINATOR_OPERATION_HANDLER_ASSIGN_LATE_OPERATION to false,
+        Type.COORDINATOR_WORK_DISPATCH_DISTRIBUTE_NO_ITEMS to false,
+        Type.COORDINATOR_WORK_DISPATCH_DISTRIBUTE_NO_WORKERS to false
     )
 
-    fun log(type: Type, args: List<Any>) {
+    fun log(type: Type, args: List<Any> = listOf()) {
         if (isEnabled[type] == false) return
 
         val message: String = when (type) {
@@ -78,6 +80,8 @@ class DebugLogger @Inject constructor(
             Type.COORDINATOR_OPERATION_HANDLER_ASSIGN_LATE_OPERATION -> {
                 "OperationHandler.assignBuffered() bufferOperation ${args[0]} - calculatedFrame = ${args[1]} - timestamp = ${args[2]}"
             }
+            Type.COORDINATOR_WORK_DISPATCH_DISTRIBUTE_NO_ITEMS -> { "WorkDispatcher with strategy RANGE received no items, returning empty map" }
+            Type.COORDINATOR_WORK_DISPATCH_DISTRIBUTE_NO_WORKERS -> { "WorkUnit did not distribute because no workers were available, returning empty map" }
         }
 
         log.info(message)
@@ -104,7 +108,9 @@ class DebugLogger @Inject constructor(
             COORDINATOR_OPERATION_HANDLER_EXTRACT_BUFFERED,
             COORDINATOR_OPERATION_HANDLER_EXTRACTED_OPS,
             COORDINATOR_OPERATION_HANDLER_ASSIGN_OPERATION,
-            COORDINATOR_OPERATION_HANDLER_ASSIGN_LATE_OPERATION
+            COORDINATOR_OPERATION_HANDLER_ASSIGN_LATE_OPERATION,
+            COORDINATOR_WORK_DISPATCH_DISTRIBUTE_NO_ITEMS,
+            COORDINATOR_WORK_DISPATCH_DISTRIBUTE_NO_WORKERS
         }
     }
 }

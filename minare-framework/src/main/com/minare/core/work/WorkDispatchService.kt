@@ -7,6 +7,7 @@ import com.hazelcast.map.IMap
 import com.minare.core.config.InternalInjectorHolder
 import com.minare.core.frames.services.WorkerRegistry
 import com.minare.core.utils.PushVar
+import com.minare.core.utils.debug.DebugLogger
 import com.minare.core.utils.vertx.EventBusUtils
 import com.minare.core.utils.vertx.EventWaiter
 import io.vertx.core.Vertx
@@ -23,7 +24,8 @@ class WorkDispatchService @Inject constructor(
     private val hazelcastInstance: HazelcastInstance,
     private val workerRegistry: WorkerRegistry,
     private val eventBusUtils: EventBusUtils,
-    private val eventWaiter: EventWaiter
+    private val eventWaiter: EventWaiter,
+    private val debug: DebugLogger
 ) {
     private val log = LoggerFactory.getLogger(WorkDispatchService::class.java)
 
@@ -78,14 +80,14 @@ class WorkDispatchService @Inject constructor(
         val workers = workerRegistry.getActiveWorkers()
 
         if (workers.isEmpty()) {
-            log.info("WorkDispatchService: Task did not process because no workers were available, returning empty map")
+            debug.log(DebugLogger.Companion.Type.COORDINATOR_WORK_DISPATCH_DISTRIBUTE_NO_WORKERS)
             return emptyMap()
         }
 
         return when (strategy) {
             WorkDispatchStrategy.RANGE -> {
                 if (items.isEmpty()) {
-                    log.info("WorkDispatcher with strategy RANGE received no items, returning empty map")
+                    debug.log(DebugLogger.Companion.Type.COORDINATOR_WORK_DISPATCH_DISTRIBUTE_NO_ITEMS)
                     return emptyMap()
                 }
 

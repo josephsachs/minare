@@ -110,33 +110,6 @@ class HeartbeatManager @Inject constructor(
     }
 
     /**
-     * Handle a heartbeat response from a client
-     *
-     * @param connectionId Connection ID
-     * @param message Heartbeat response message
-     */
-    fun handleHeartbeatResponse(connectionId: String, message: JsonObject) {
-        try {
-            val serverTimestamp = message.getLong("timestamp")
-            val clientTimestamp = message.getLong("clientTimestamp", 0L)
-            val now = System.currentTimeMillis()
-            val roundTripTime = now - serverTimestamp
-
-            if (Math.random() < 0.1) { // % of heartbeat responses
-                logger.getEventLogger().trace("HEARTBEAT_RESPONSE", mapOf(
-                    "connectionId" to connectionId,
-                    "roundTripMs" to roundTripTime,
-                    "clientTimestamp" to clientTimestamp
-                ))
-            }
-        } catch (e: Exception) {
-            logger.logVerticleError("HEARTBEAT_PROCESSING", e, mapOf(
-                "connectionId" to connectionId
-            ))
-        }
-    }
-
-    /**
      * Stop all heartbeats
      */
     fun stopAll() {

@@ -46,9 +46,11 @@ import com.minare.time.TimeService
 import com.minare.core.frames.coordinator.handlers.LateOperationHandler
 import com.minare.core.frames.services.ActiveWorkerSet
 import com.minare.core.frames.services.HazelcastActiveWorkerSet
+import com.minare.core.transport.upsocket.handlers.SyncCommandHandler
 import com.minare.core.utils.vertx.EventBusUtils
 import com.minare.worker.coordinator.events.WorkerReadinessEvent
 import com.minare.worker.upsocket.CommandMessageHandler
+import kotlinx.coroutines.CoroutineScope
 import kotlin.coroutines.CoroutineContext
 
 /**
@@ -82,6 +84,7 @@ class MinareModule : AbstractModule(), DatabaseNameProvider {
 
         bind(UpdateBatchCoordinator::class.java).`in`(Singleton::class.java)
         bind(CommandMessageHandler::class.java).`in`(Singleton::class.java)
+        bind(SyncCommandHandler::class.java).`in`(Singleton::class.java)
         bind(DefaultEntityFactory::class.java).`in`(Singleton::class.java)
 
         // Overridable services
@@ -139,6 +142,12 @@ class MinareModule : AbstractModule(), DatabaseNameProvider {
     @Singleton
     fun provideCoroutineContext(vertx: Vertx): CoroutineContext {
         return vertx.dispatcher()
+    }
+
+    @Provides
+    @Singleton
+    fun provideCoroutineScope(coroutineContext: CoroutineContext): CoroutineScope {
+        return CoroutineScope(coroutineContext)
     }
 
     @Provides

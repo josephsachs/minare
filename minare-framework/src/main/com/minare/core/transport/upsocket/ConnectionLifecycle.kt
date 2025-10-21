@@ -2,6 +2,7 @@ package com.minare.worker.upsocket
 
 import com.google.inject.Inject
 import com.google.inject.Singleton
+import com.google.inject.name.Named
 import com.minare.core.MinareApplication
 import com.minare.cache.ConnectionCache
 import com.minare.core.storage.interfaces.ChannelStore

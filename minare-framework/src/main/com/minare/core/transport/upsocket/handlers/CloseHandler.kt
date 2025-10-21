@@ -1,6 +1,7 @@
 package com.minare.worker.upsocket.handlers
 
 import com.google.inject.Inject
+import com.google.inject.name.Named
 import com.minare.cache.ConnectionCache
 import com.minare.core.storage.interfaces.ConnectionStore
 import com.minare.core.transport.downsocket.services.ConnectionTracker
