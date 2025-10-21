@@ -79,7 +79,7 @@ class MutationService @Inject constructor(
 
         // Apply the mutation to the entity state
         try {
-            stateStore.mutateState(entityId, allowedChanges)
+            stateStore.saveState(entityId, allowedChanges)
 
             // Temporarily disabled
             // We need to fix delta updates to merge rather than replace

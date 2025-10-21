@@ -111,10 +111,9 @@ class EntityVersioningService @Inject constructor(
             var updatedCount = 0
 
             for (entityId in idsToUpdate) {
-                val result = stateStore.mutateState(entityId, JsonObject().put("_versionIncrement", 1))
-                if (result != null && result.containsKey("version")) {
-                    updatedCount++
-                }
+                if (stateStore.saveState(entityId, JsonObject(), true)
+                              .containsKey("_id")
+                    ) { updatedCount++ }
             }
 
             return JsonObject()

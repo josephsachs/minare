@@ -81,7 +81,7 @@ class NodeGraphBuilder @Inject constructor(
                         try {
                             val delta = JsonObject().put("childIds", savedChild._id)
 
-                            val updatedParent = entityController.save(parent._id, delta, false) as Node
+                            val updatedParent = entityController.saveState(parent._id!!, delta, false) as Node
 
                             graph.addVertex(savedChild)
                             graph.addEdge(updatedParent, savedChild)

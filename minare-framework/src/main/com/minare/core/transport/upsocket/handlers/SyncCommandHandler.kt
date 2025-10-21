@@ -3,7 +3,6 @@ package com.minare.core.transport.upsocket.handlers
 import com.minare.cache.ConnectionCache
 import com.minare.core.storage.interfaces.ChannelStore
 import com.minare.core.storage.interfaces.ContextStore
-import com.minare.core.storage.interfaces.EntityGraphStore
 import com.minare.core.storage.interfaces.StateStore
 import com.minare.core.transport.models.message.SyncCommand
 import com.minare.core.transport.models.message.SyncCommandType
@@ -22,7 +21,6 @@ class SyncCommandHandler @Inject constructor(
     private val connectionCache: ConnectionCache,
     private val channelStore: ChannelStore,
     private val contextStore: ContextStore,
-    private val entityGraphStore: EntityGraphStore,
     private val stateStore: StateStore
 ) {
     private val log = LoggerFactory.getLogger(SyncCommandHandler::class.java)

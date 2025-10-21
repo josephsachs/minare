@@ -3,6 +3,7 @@ package com.minare.core.storage.adapters
 import com.google.inject.Singleton
 import com.minare.core.entity.factories.EntityFactory
 import com.minare.core.entity.ReflectionCache
+import com.minare.core.entity.annotations.Property
 import com.minare.core.entity.annotations.State
 import com.minare.core.entity.models.Entity
 import com.minare.core.entity.services.EntityPublishService
@@ -59,7 +60,7 @@ class RedisEntityStore @Inject constructor(
     /**
      * Update entity state
      */
-    override suspend fun mutateState(entityId: String, delta: JsonObject, incrementVersion: Boolean): JsonObject {
+    override suspend fun saveState(entityId: String, delta: JsonObject, incrementVersion: Boolean): JsonObject {
         val version = if (incrementVersion) {
             val response = redisAPI.send(
                 Command.create("EVAL"),
@@ -123,6 +124,38 @@ class RedisEntityStore @Inject constructor(
             redis.call('JSON.SET', KEYS[1], '${'$'}', cjson.encode(doc))
             return doc.version
         """
+    }
+
+    /**
+     * Save properties to document. Properties are stored in a Json box similar to state,
+     * and expect a delta. Updating properties does not result in a version increment.
+     * Default is no pubsub notification.
+     */
+    override suspend fun saveProperties(entityId: String, delta: JsonObject, publish: Boolean): JsonObject {
+        val currentDocument = findEntityJson(entityId)
+            ?: throw IllegalStateException("Entity not found: $entityId")
+
+        val currentProperties = currentDocument.getJsonObject("properties", JsonObject())
+
+        delta.fieldNames().forEach { fieldName ->
+            currentProperties.put(fieldName, delta.getValue(fieldName))
+        }
+
+        currentDocument.put("properties", currentProperties)
+        redisAPI.jsonSet(listOf(entityId, "$", currentDocument.encode())).await()
+
+        val updatedDocument = findEntityJson(entityId)!!
+
+        if (publish) {
+            publishService.publishStateChange(
+                entityId,
+                updatedDocument.getString("type"),
+                currentDocument.getLong("version", 1L),
+                delta
+            )
+        }
+
+        return updatedDocument
     }
 
     /**
@@ -214,6 +247,32 @@ class RedisEntityStore @Inject constructor(
         return entity
     }
 
+    /**
+     * Populate state fields using reflection
+     */
+    override suspend fun setEntityProperties(entity: Entity, entityType: String, properties: JsonObject): Entity {
+        entityFactory.useClass(entityType)?.let { entityClass ->
+            val propertyFields = reflectionCache.getFieldsWithAnnotation<Property>(entityClass)
+
+            for (field in propertyFields) {
+                field.isAccessible = true
+                try {
+                    val value = properties.getValue(field.name)
+                    if (value != null) {
+                        field.set(entity, convertValue(value))
+                    }
+
+                } catch (e: Exception) {
+                    // TODO: Fix serialization so this bug stops happening
+                    //log.warn("StateStore found Entity document with invalid property field for ${entity._id}")
+
+                }
+            }
+        }
+
+        return entity
+    }
+
     private fun convertValue(value: Any): Any {
         val convertedValue = when (value) {
             is JsonArray -> {
@@ -250,6 +309,7 @@ class RedisEntityStore @Inject constructor(
                 // Merge the Redis state into the MongoDB node
                 // Keep the graph structure but add the full state
                 vertex.put("state", fullEntity.getJsonObject("state", JsonObject()))
+                vertex.put("properties", fullEntity.getJsonObject("properties", JsonObject()))
                 // Add any other fields you need from Redis
             }
         }

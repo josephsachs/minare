@@ -1,5 +1,6 @@
 package com.minare.worker.upsocket
 
+import com.google.inject.name.Named
 import com.minare.controller.MessageController
 import com.minare.core.utils.vertx.VerticleLogger
 import com.minare.utils.HeartbeatManager

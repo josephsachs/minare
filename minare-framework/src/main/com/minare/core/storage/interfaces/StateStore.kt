@@ -23,7 +23,16 @@ interface StateStore {
      * @param delta The filtered delta containing only fields that passed consistency checks
      * @return The updated entity document
      */
-    suspend fun mutateState(entityId: String, delta: JsonObject, incrementVersion: Boolean = true): JsonObject
+    suspend fun saveState(entityId: String, delta: JsonObject, incrementVersion: Boolean = true): JsonObject
+
+    /**
+     * Persists all of an entity's properties
+     * @param entityId The ID of the entity to update
+     * @param delta
+     * @param publish Send pubsub notification
+     * @return The updated entity document
+     */
+    suspend fun saveProperties(entityId: String, delta: JsonObject, publish: Boolean = false): JsonObject
 
     /**
      * Find  single entity by ID
@@ -45,6 +54,13 @@ interface StateStore {
      * @return Map of entities with full state
      */
     suspend fun setEntityState(entity: Entity, entityType: String, state: JsonObject): Entity
+
+    /**
+     * Finds multiple entities by their IDs
+     * @param entityIds List of entity IDs to fetch
+     * @return Map of entities with full state
+     */
+    suspend fun setEntityProperties(entity: Entity, entityType: String, properties: JsonObject): Entity
 
     /**
      * Hydrates a graph of JsonObject nodes with full entity state from Redis
