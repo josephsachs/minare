@@ -6,6 +6,7 @@ import com.minare.core.entity.ReflectionCache
 import com.minare.core.entity.annotations.Property
 import com.minare.core.entity.annotations.State
 import com.minare.core.entity.models.Entity
+import com.minare.core.entity.services.EntityFieldDeserializer
 import com.minare.core.entity.services.EntityPublishService
 import io.vertx.core.json.JsonObject
 import io.vertx.kotlin.coroutines.await
@@ -25,7 +26,8 @@ class RedisEntityStore @Inject constructor(
     private val redisAPI: RedisAPI,
     private val reflectionCache: ReflectionCache,
     private val entityFactory: EntityFactory,
-    private val publishService: EntityPublishService
+    private val publishService: EntityPublishService,
+    private val entityStateDeserializer: EntityFieldDeserializer
 ) : StateStore {
 
     private val log = LoggerFactory.getLogger(RedisEntityStore::class.java)
@@ -33,6 +35,7 @@ class RedisEntityStore @Inject constructor(
     override suspend fun save(entity: Entity): Entity {
         val entityType = entity.type!!
         val stateJson = JsonObject()
+        val propJson = JsonObject()
 
         entityFactory.useClass(entityType)?.let { entityClass ->
             val stateFields = reflectionCache.getFieldsWithAnnotation<State>(entityClass)
@@ -45,11 +48,23 @@ class RedisEntityStore @Inject constructor(
             }
         }
 
+        entityFactory.useClass(entityType)?.let { entityClass ->
+            val propFields = reflectionCache.getFieldsWithAnnotation<Property>(entityClass)
+            for (field in propFields) {
+                field.isAccessible = true
+                val value = field.get(entity)
+                if (value != null) {
+                    propJson.put(field.name, value)
+                }
+            }
+        }
+
         val document = JsonObject()
             .put("_id", entity._id)
             .put("type", entityType)
             .put("version", entity.version ?: 1)
             .put("state", stateJson)
+            .put("properties", propJson)
 
         redisAPI.jsonSet(listOf(entity._id!!, "$", document.encode())).await()
         redisAPI.sadd(listOf("entity:types:$entityType", entity._id!!)).await()
@@ -231,9 +246,12 @@ class RedisEntityStore @Inject constructor(
             for (field in stateFields) {
                 field.isAccessible = true
                 try {
-                    val value = state.getValue(field.name)
+                    val value = entityStateDeserializer.deserialize(
+                        state.getValue(field.name),
+                        field
+                    )
                     if (value != null) {
-                        field.set(entity, convertValue(value))
+                        field.set(entity, value)
                     }
 
                 } catch (e: Exception) {
@@ -257,9 +275,12 @@ class RedisEntityStore @Inject constructor(
             for (field in propertyFields) {
                 field.isAccessible = true
                 try {
-                    val value = properties.getValue(field.name)
+                    val value = entityStateDeserializer.deserialize(
+                        properties.getValue(field.name),
+                        field
+                    )
                     if (value != null) {
-                        field.set(entity, convertValue(value))
+                        field.set(entity, value)
                     }
 
                 } catch (e: Exception) {
@@ -271,19 +292,6 @@ class RedisEntityStore @Inject constructor(
         }
 
         return entity
-    }
-
-    private fun convertValue(value: Any): Any {
-        val convertedValue = when (value) {
-            is JsonArray -> {
-                value.list.mapNotNull { it?.toString() }.toMutableList()
-            }
-            is JsonObject -> {
-                value.map
-            }
-            else -> value
-        }
-        return value
     }
 
     /**
