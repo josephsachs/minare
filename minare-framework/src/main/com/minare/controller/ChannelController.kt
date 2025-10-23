@@ -1,8 +1,15 @@
 package com.minare.controller
 
+import com.minare.cache.ConnectionCache
 import com.minare.core.entity.models.Entity
 import com.minare.core.storage.interfaces.ChannelStore
 import com.minare.core.storage.interfaces.ContextStore
+import com.minare.core.transport.downsocket.DownSocketVerticle
+import com.minare.core.transport.downsocket.DownSocketVerticle.Companion.ADDRESS_BROADCAST_CHANNEL
+import com.minare.core.utils.debug.DebugLogger
+import com.minare.core.utils.debug.DebugLogger.Companion.Type
+import com.minare.core.utils.vertx.EventBusUtils
+import io.vertx.core.json.JsonObject
 import org.slf4j.LoggerFactory
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -11,10 +18,12 @@ import javax.inject.Singleton
  * Controller responsible for managing entity-channel relationships
  */
 @Singleton
-open class ChannelController @Inject constructor(
-    private val channelStore: ChannelStore,
-    private val contextStore: ContextStore
-) {
+open class ChannelController @Inject constructor() {
+    @Inject private lateinit var channelStore: ChannelStore
+    @Inject private lateinit var contextStore: ContextStore
+    @Inject private lateinit var eventBusUtils: EventBusUtils
+    @Inject private lateinit var debug: DebugLogger
+
     private val log = LoggerFactory.getLogger(ChannelController::class.java)
 
     /**
@@ -24,11 +33,11 @@ open class ChannelController @Inject constructor(
      * @param channelId The channel ID
      * @return True if successfully added, false otherwise
      */
-    suspend fun addEntityToChannel(entity: Entity, channelId: String): Boolean {
+    open suspend fun addEntityToChannel(entity: Entity, channelId: String): Boolean {
         return entity._id?.let { entityId ->
             try {
                 val contextId = contextStore.createContext(entityId, channelId)
-                log.debug("Added entity ${entity._id} to channel $channelId with context $contextId")
+                debug.log(Type.CHANNEL_CONTROLLER_ADD_ENTITY_CHANNEL, listOf(entity._id!!, channelId, contextId))
                 true
             } catch (e: Exception) {
                 log.error("Failed to add entity ${entity._id} to channel $channelId", e)
@@ -44,7 +53,7 @@ open class ChannelController @Inject constructor(
      * @param channelId The channel ID
      * @return True if successfully removed, false otherwise
      */
-    suspend fun removeEntityFromChannel(entity: Entity, channelId: String): Boolean {
+    open suspend fun removeEntityFromChannel(entity: Entity, channelId: String): Boolean {
         return entity._id?.let { entityId ->
             contextStore.removeContext(entityId, channelId)
         } ?: false
@@ -57,7 +66,7 @@ open class ChannelController @Inject constructor(
      * @param channelId The channel ID
      * @return The number of entities successfully added
      */
-    suspend fun addEntitiesToChannel(entities: List<Entity>, channelId: String): Int {
+    open suspend fun addEntitiesToChannel(entities: List<Entity>, channelId: String): Int {
         var successCount = 0
 
         for (entity in entities) {
@@ -66,7 +75,7 @@ open class ChannelController @Inject constructor(
             }
         }
 
-        log.info("Added $successCount out of ${entities.size} entities to channel $channelId")
+        debug.log(Type.CHANNEL_CONTROLLER_ADD_ENTITIES_CHANNEL, listOf(successCount, entities.size, channelId))
         return successCount
     }
 
@@ -75,7 +84,7 @@ open class ChannelController @Inject constructor(
      *
      * @return The ID of the created channel
      */
-    suspend fun createChannel(): String {
+    open suspend fun createChannel(): String {
         return channelStore.createChannel()
     }
 
@@ -86,10 +95,10 @@ open class ChannelController @Inject constructor(
      * @param channelId The channel ID
      * @return True if subscription was successful
      */
-    suspend fun subscribeClientToChannel(connectionId: String, channelId: String): Boolean {
+    open suspend fun subscribeClientToChannel(connectionId: String, channelId: String): Boolean {
         return try {
-            channelStore.addClientToChannel(connectionId, channelId)
-            log.info("Client {} subscribed to channel {}", connectionId, channelId)
+            channelStore.addClientToChannel(channelId, connectionId)
+            debug.log(Type.CHANNEL_CONTROLLER_ADD_CLIENT_CHANNEL, listOf(connectionId, channelId))
             true
         } catch (e: Exception) {
             log.error("Failed to subscribe client {} to channel {}", connectionId, channelId, e)
@@ -103,7 +112,18 @@ open class ChannelController @Inject constructor(
      * @param channelId The channel ID
      * @return List of entity IDs in the channel
      */
-    suspend fun getEntityIdsInChannel(channelId: String): List<String> {
+    open suspend fun getEntityIdsInChannel(channelId: String): List<String> {
         return contextStore.getEntityIdsByChannel(channelId)
+    }
+
+    /**
+     * Get all connections in a channel
+     */
+    open suspend fun broadcastToChannel(channelId: String, message: JsonObject) {
+        eventBusUtils.publishWithTracing(ADDRESS_BROADCAST_CHANNEL,
+            JsonObject()
+                .put("channelId", channelId)
+                .put("message", message)
+        )
     }
 }
