@@ -6,6 +6,8 @@ import com.minare.core.storage.interfaces.ChannelStore
 import com.minare.core.storage.interfaces.ContextStore
 import com.minare.core.transport.downsocket.DownSocketVerticle
 import com.minare.core.transport.downsocket.DownSocketVerticle.Companion.ADDRESS_BROADCAST_CHANNEL
+import com.minare.core.utils.debug.DebugLogger
+import com.minare.core.utils.debug.DebugLogger.Companion.Type
 import com.minare.core.utils.vertx.EventBusUtils
 import io.vertx.core.json.JsonObject
 import org.slf4j.LoggerFactory
@@ -20,6 +22,7 @@ open class ChannelController @Inject constructor() {
     @Inject private lateinit var channelStore: ChannelStore
     @Inject private lateinit var contextStore: ContextStore
     @Inject private lateinit var eventBusUtils: EventBusUtils
+    @Inject private lateinit var debug: DebugLogger
 
     private val log = LoggerFactory.getLogger(ChannelController::class.java)
 
@@ -34,7 +37,7 @@ open class ChannelController @Inject constructor() {
         return entity._id?.let { entityId ->
             try {
                 val contextId = contextStore.createContext(entityId, channelId)
-                log.debug("Added entity ${entity._id} to channel $channelId with context $contextId")
+                debug.log(Type.CHANNEL_CONTROLLER_ADD_ENTITY_CHANNEL, listOf(entity._id!!, channelId, contextId))
                 true
             } catch (e: Exception) {
                 log.error("Failed to add entity ${entity._id} to channel $channelId", e)
@@ -72,7 +75,7 @@ open class ChannelController @Inject constructor() {
             }
         }
 
-        log.info("Added $successCount out of ${entities.size} entities to channel $channelId")
+        debug.log(Type.CHANNEL_CONTROLLER_ADD_ENTITIES_CHANNEL, listOf(successCount, entities.size, channelId))
         return successCount
     }
 
@@ -95,7 +98,7 @@ open class ChannelController @Inject constructor() {
     open suspend fun subscribeClientToChannel(connectionId: String, channelId: String): Boolean {
         return try {
             channelStore.addClientToChannel(channelId, connectionId)
-            log.info("Client {} subscribed to channel {}", connectionId, channelId)
+            debug.log(Type.CHANNEL_CONTROLLER_ADD_CLIENT_CHANNEL, listOf(connectionId, channelId))
             true
         } catch (e: Exception) {
             log.error("Failed to subscribe client {} to channel {}", connectionId, channelId, e)

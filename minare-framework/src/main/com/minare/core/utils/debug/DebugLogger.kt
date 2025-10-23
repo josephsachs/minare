@@ -8,9 +8,7 @@ import io.vertx.core.impl.logging.LoggerFactory
 import io.vertx.core.json.JsonObject
 
 @Singleton
-class DebugLogger @Inject constructor(
-    private val operationDebugUtils: OperationDebugUtils
-) {
+class DebugLogger @Inject constructor() {
     private val log = LoggerFactory.getLogger(DebugLogger::class.java)
 
     /**  Mind over matter won't stop all your chatter */
@@ -35,7 +33,10 @@ class DebugLogger @Inject constructor(
         Type.COORDINATOR_OPERATION_HANDLER_ASSIGN_OPERATION to false,
         Type.COORDINATOR_OPERATION_HANDLER_ASSIGN_LATE_OPERATION to false,
         Type.COORDINATOR_WORK_DISPATCH_DISTRIBUTE_NO_ITEMS to false,
-        Type.COORDINATOR_WORK_DISPATCH_DISTRIBUTE_NO_WORKERS to false
+        Type.COORDINATOR_WORK_DISPATCH_DISTRIBUTE_NO_WORKERS to false,
+        Type.CHANNEL_CONTROLLER_ADD_CLIENT_CHANNEL to false,
+        Type.CHANNEL_CONTROLLER_ADD_ENTITY_CHANNEL to false,
+        Type.CHANNEL_CONTROLLER_ADD_ENTITIES_CHANNEL to false
     )
 
     fun log(type: Type, args: List<Any> = listOf()) {
@@ -82,6 +83,9 @@ class DebugLogger @Inject constructor(
             }
             Type.COORDINATOR_WORK_DISPATCH_DISTRIBUTE_NO_ITEMS -> { "WorkDispatcher with strategy RANGE received no items, returning empty map" }
             Type.COORDINATOR_WORK_DISPATCH_DISTRIBUTE_NO_WORKERS -> { "WorkUnit did not distribute because no workers were available, returning empty map" }
+            Type.CHANNEL_CONTROLLER_ADD_CLIENT_CHANNEL -> { "Client ${args[0]} subscribed to channel ${args[1]}" }
+            Type.CHANNEL_CONTROLLER_ADD_ENTITY_CHANNEL -> { "Added entity ${args[0]} to channel ${args[1]} with context ${args[2]}" }
+            Type.CHANNEL_CONTROLLER_ADD_ENTITIES_CHANNEL -> { "Added ${args[0]} out of ${args[1]} entities to channel ${args[2]}" }
         }
 
         log.info(message)
@@ -110,7 +114,10 @@ class DebugLogger @Inject constructor(
             COORDINATOR_OPERATION_HANDLER_ASSIGN_OPERATION,
             COORDINATOR_OPERATION_HANDLER_ASSIGN_LATE_OPERATION,
             COORDINATOR_WORK_DISPATCH_DISTRIBUTE_NO_ITEMS,
-            COORDINATOR_WORK_DISPATCH_DISTRIBUTE_NO_WORKERS
+            COORDINATOR_WORK_DISPATCH_DISTRIBUTE_NO_WORKERS,
+            CHANNEL_CONTROLLER_ADD_CLIENT_CHANNEL,
+            CHANNEL_CONTROLLER_ADD_ENTITY_CHANNEL,
+            CHANNEL_CONTROLLER_ADD_ENTITIES_CHANNEL
         }
     }
 }

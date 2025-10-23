@@ -7,9 +7,11 @@ import io.vertx.kotlin.coroutines.await
 import org.slf4j.LoggerFactory
 import javax.inject.Inject
 import com.minare.core.storage.interfaces.ChannelStore
+import com.minare.core.utils.debug.DebugLogger
 
 class MongoChannelStore @Inject constructor(
-    private val mongoClient: MongoClient
+    private val mongoClient: MongoClient,
+    private val debug: DebugLogger
 ) : ChannelStore {
     private val collection = "channels"
     private val log = LoggerFactory.getLogger(MongoChannelStore::class.java)
@@ -39,18 +41,13 @@ class MongoChannelStore @Inject constructor(
             val query = JsonObject().put("_id", JsonObject().put("\$oid", channelId))
             val update = JsonObject().put("\$addToSet", JsonObject().put("clients", clientId))
 
-            log.debug("Adding client $clientId to channel $channelId, query: $query")
-
             val result = mongoClient.updateCollection(collection, query, update).await()
-
-            log.info("DEBUG_CHANNEL: Update result - matched: ${result.docMatched}, modified: ${result.docModified}")
 
             if (result.docMatched == 0L) {
                 log.warn("No channel found with ID: $channelId")
                 return false
             }
 
-            log.debug("Client $clientId added to channel $channelId, matched: ${result.docMatched}, modified: ${result.docModified}")
             return result.docModified > 0
         } catch (e: Exception) {
             log.error("Failed to add client $clientId to channel $channelId", e)
