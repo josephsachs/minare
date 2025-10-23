@@ -83,7 +83,7 @@ open class EntityController @Inject constructor(
      * @param entity The entity to save (must already have an ID)
      * @return The saved entity with any updates
      */
-    open suspend fun saveProperties(entityId: String, deltas: JsonObject, incrementVersion: Boolean = true): Entity? {
+    open suspend fun saveProperties(entityId: String, deltas: JsonObject): Entity? {
         if (entityId.isBlank()) {
             throw IllegalArgumentException("Entity must have an ID - use create() for new entities")
         }

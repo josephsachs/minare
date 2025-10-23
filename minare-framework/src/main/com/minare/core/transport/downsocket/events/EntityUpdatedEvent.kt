@@ -1,4 +1,4 @@
-package com.minare.worker.downsocket.events
+package com.minare.core.transport.downsocket.events
 
 import com.google.inject.Inject
 import com.minare.core.utils.vertx.EventBusUtils

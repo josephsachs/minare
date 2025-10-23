@@ -13,10 +13,10 @@ import com.minare.utils.HeartbeatManager
 import com.minare.core.utils.vertx.VerticleLogger
 import com.minare.core.transport.downsocket.DownSocketVerticle
 import com.minare.core.transport.downsocket.DownSocketVerticleCache
+import com.minare.core.transport.downsocket.events.EntityUpdatedEvent
 import io.vertx.core.Vertx
 import io.vertx.ext.web.Router
 import kotlinx.coroutines.CoroutineScope
-import com.minare.worker.downsocket.events.EntityUpdatedEvent
 import com.minare.worker.downsocket.events.UpdateConnectionClosedEvent
 import com.minare.worker.downsocket.events.UpdateConnectionEstablishedEvent
 import com.minare.worker.downsocket.handlers.EntityUpdateHandler

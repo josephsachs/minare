@@ -15,10 +15,8 @@ import javax.inject.Singleton
  */
 @Singleton
 class ExampleChannelController @Inject constructor(
-    channelStore: ChannelStore,
-    contextStore: ContextStore,
     private val appStateProvider: Provider<AppState>
-) : ChannelController(channelStore, contextStore) {
+) : ChannelController() {
     private val log = LoggerFactory.getLogger(ExampleChannelController::class.java)
 
     companion object {
