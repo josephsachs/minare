@@ -36,12 +36,14 @@ class MongoChannelStore @Inject constructor(
      */
     override suspend fun addClientToChannel(channelId: String, clientId: String): Boolean {
         try {
-            val query = JsonObject().put("_id", channelId)
+            val query = JsonObject().put("_id", JsonObject().put("\$oid", channelId))
             val update = JsonObject().put("\$addToSet", JsonObject().put("clients", clientId))
 
             log.debug("Adding client $clientId to channel $channelId, query: $query")
 
             val result = mongoClient.updateCollection(collection, query, update).await()
+
+            log.info("DEBUG_CHANNEL: Update result - matched: ${result.docMatched}, modified: ${result.docModified}")
 
             if (result.docMatched == 0L) {
                 log.warn("No channel found with ID: $channelId")
@@ -64,7 +66,7 @@ class MongoChannelStore @Inject constructor(
      */
     override suspend fun removeClientFromChannel(channelId: String, clientId: String): Boolean {
         try {
-            val query = JsonObject().put("_id", channelId)
+            val query = JsonObject().put("_id", JsonObject().put("\$oid", channelId))
             val update = JsonObject().put("\$pull", JsonObject().put("clients", clientId))
 
             val result = mongoClient.updateCollection(collection, query, update).await()
@@ -114,7 +116,7 @@ class MongoChannelStore @Inject constructor(
      */
     override suspend fun getChannel(channelId: String): JsonObject? {
         try {
-            val query = JsonObject().put("_id", channelId)
+            val query = JsonObject().put("_id", JsonObject().put("\$oid", channelId))
             return mongoClient.findOne(collection, query, null).await()
         } catch (e: Exception) {
             log.error("Failed to get channel $channelId", e)

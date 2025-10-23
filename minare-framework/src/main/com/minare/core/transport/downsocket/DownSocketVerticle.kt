@@ -3,6 +3,7 @@ package com.minare.core.transport.downsocket
 import com.google.inject.name.Named
 import com.minare.core.MinareApplication
 import com.minare.cache.ConnectionCache
+import com.minare.controller.ConnectionController
 import com.minare.core.Timer
 import com.minare.core.storage.interfaces.ConnectionStore
 import com.minare.core.transport.downsocket.pubsub.UpdateBatchCoordinator
@@ -37,6 +38,7 @@ import com.minare.worker.downsocket.events.UpdateConnectionEstablishedEvent.Comp
 class DownSocketVerticle @Inject constructor(
     private val connectionStore: ConnectionStore,
     private val connectionCache: ConnectionCache,
+    private val connectionController: ConnectionController,
     private val downSocketVerticleCache: DownSocketVerticleCache,
     private val updateConnectionClosedEvent: UpdateConnectionClosedEvent,
     private val updateConnectionEstablishedEvent: UpdateConnectionEstablishedEvent,
@@ -328,6 +330,8 @@ class DownSocketVerticle @Inject constructor(
                     .put("deploymentId", deploymentID)
                     .put("traceId", traceId)
             )
+
+            connectionController.onClientFullyConnected(connection)
         } catch (e: Exception) {
             vlog.logVerticleError("ASSOCIATE_DOWN_SOCKET", e, mapOf(
                 "connectionId" to connectionId

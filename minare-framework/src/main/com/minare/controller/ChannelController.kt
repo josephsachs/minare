@@ -94,7 +94,7 @@ open class ChannelController @Inject constructor() {
      */
     open suspend fun subscribeClientToChannel(connectionId: String, channelId: String): Boolean {
         return try {
-            channelStore.addClientToChannel(connectionId, channelId)
+            channelStore.addClientToChannel(channelId, connectionId)
             log.info("Client {} subscribed to channel {}", connectionId, channelId)
             true
         } catch (e: Exception) {
