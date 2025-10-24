@@ -7,16 +7,18 @@ import io.vertx.core.eventbus.MessageConsumer
 import io.vertx.core.json.JsonObject
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
-import java.util.LinkedList
 
-typealias StateAction = suspend (EventStateMachineContext) -> Unit
+typealias StateAction = suspend (StateFlowContext) -> Unit
 
-class EventStateMachine(
+/**
+ * A simple state machine coordinated by internal vert.x events.
+ */
+class EventStateFlow(
     private val eventKey: String,
     private val coroutineScope: CoroutineScope,
     private val vertx: Vertx,
     private val looping: Boolean = false
-) : EventStateMachineContext {
+) : StateFlowContext {
     private var _baseKey: String = "event.state.machine.$eventKey"
 
     @Volatile
@@ -89,7 +91,7 @@ class EventStateMachine(
 
                 coroutineScope.launch {
                     try {
-                        action(this@EventStateMachine) // Execute state logic
+                        action(this@EventStateFlow) // Execute state logic
                     } catch (e: Exception) {
                         // Log errors from the state action
                         System.err.println("Error executing state '$stateName' for $eventKey: ${e.message}")
