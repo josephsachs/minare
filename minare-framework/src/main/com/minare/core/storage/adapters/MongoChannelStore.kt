@@ -36,7 +36,7 @@ class MongoChannelStore @Inject constructor(
      * @param clientId The client ID to add
      * @return Boolean indicating success or failure
      */
-    override suspend fun addClientToChannel(channelId: String, clientId: String): Boolean {
+    override suspend fun addChannelClient(channelId: String, clientId: String): Boolean {
         try {
             val query = JsonObject().put("_id", JsonObject().put("\$oid", channelId))
             val update = JsonObject().put("\$addToSet", JsonObject().put("clients", clientId))
@@ -61,7 +61,7 @@ class MongoChannelStore @Inject constructor(
      * @param clientId The client ID to remove
      * @return Boolean indicating success or failure
      */
-    override suspend fun removeClientFromChannel(channelId: String, clientId: String): Boolean {
+    override suspend fun removeChannelClient(channelId: String, clientId: String): Boolean {
         try {
             val query = JsonObject().put("_id", JsonObject().put("\$oid", channelId))
             val update = JsonObject().put("\$pull", JsonObject().put("clients", clientId))

@@ -1,5 +1,8 @@
 package com.minare.core.utils
 
+/**
+ * A List with looping iterator
+ */
 class LoopingList<T>(
     private val sequence: List<T>,
     private val looping: Boolean

@@ -1,10 +1,8 @@
 package com.minare.controller
 
-import com.minare.cache.ConnectionCache
 import com.minare.core.entity.models.Entity
 import com.minare.core.storage.interfaces.ChannelStore
 import com.minare.core.storage.interfaces.ContextStore
-import com.minare.core.transport.downsocket.DownSocketVerticle
 import com.minare.core.transport.downsocket.DownSocketVerticle.Companion.ADDRESS_BROADCAST_CHANNEL
 import com.minare.core.utils.debug.DebugLogger
 import com.minare.core.utils.debug.DebugLogger.Companion.Type
@@ -15,7 +13,8 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Controller responsible for managing entity-channel relationships
+ * Controls channel and context models, including channel subscriptions
+ * and entity channel contexts, and provides message broadcast capability.
  */
 @Singleton
 open class ChannelController @Inject constructor() {
@@ -33,10 +32,10 @@ open class ChannelController @Inject constructor() {
      * @param channelId The channel ID
      * @return True if successfully added, false otherwise
      */
-    open suspend fun addEntityToChannel(entity: Entity, channelId: String): Boolean {
+    open suspend fun addEntity(entity: Entity, channelId: String): Boolean {
         return entity._id?.let { entityId ->
             try {
-                val contextId = contextStore.createContext(entityId, channelId)
+                val contextId = contextStore.create(entityId, channelId)
                 debug.log(Type.CHANNEL_CONTROLLER_ADD_ENTITY_CHANNEL, listOf(entity._id!!, channelId, contextId))
                 true
             } catch (e: Exception) {
@@ -53,9 +52,9 @@ open class ChannelController @Inject constructor() {
      * @param channelId The channel ID
      * @return True if successfully removed, false otherwise
      */
-    open suspend fun removeEntityFromChannel(entity: Entity, channelId: String): Boolean {
+    open suspend fun removeEntity(entity: Entity, channelId: String): Boolean {
         return entity._id?.let { entityId ->
-            contextStore.removeContext(entityId, channelId)
+            contextStore.remove(entityId, channelId)
         } ?: false
     }
 
@@ -71,7 +70,7 @@ open class ChannelController @Inject constructor() {
 
         for (entity in entities) {
             try {
-                addEntityToChannel(entity, channelId)
+                addEntity(entity, channelId)
                 count++
             } catch (e: Exception) {
                 log.error("ChannelController could not add entity ${entity} to channel \n${e}")
@@ -101,9 +100,9 @@ open class ChannelController @Inject constructor() {
      * @param channelId The channel ID
      * @return True if subscription was successful
      */
-    open suspend fun subscribeClientToChannel(connectionId: String, channelId: String): Boolean {
+    open suspend fun addClient(connectionId: String, channelId: String): Boolean {
         return try {
-            channelStore.addClientToChannel(channelId, connectionId)
+            channelStore.addChannelClient(channelId, connectionId)
             debug.log(Type.CHANNEL_CONTROLLER_ADD_CLIENT_CHANNEL, listOf(connectionId, channelId))
             true
         } catch (e: Exception) {
@@ -113,19 +112,9 @@ open class ChannelController @Inject constructor() {
     }
 
     /**
-     * Get all entity IDs in a channel
-     *
-     * @param channelId The channel ID
-     * @return List of entity IDs in the channel
-     */
-    open suspend fun getEntityIdsInChannel(channelId: String): List<String> {
-        return contextStore.getEntityIdsByChannel(channelId)
-    }
-
-    /**
      * Get all connections in a channel
      */
-    open suspend fun broadcastToChannel(channelId: String, message: JsonObject) {
+    open suspend fun broadcast(channelId: String, message: JsonObject) {
         eventBusUtils.publishWithTracing(ADDRESS_BROADCAST_CHANNEL,
             JsonObject()
                 .put("channelId", channelId)

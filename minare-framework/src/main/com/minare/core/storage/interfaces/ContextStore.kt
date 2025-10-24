@@ -7,7 +7,7 @@ interface ContextStore {
      * @param channelId The channel ID
      * @return The generated context ID
      */
-    suspend fun createContext(entityId: String, channelId: String): String
+    suspend fun create(entityId: String, channelId: String): String
 
     /**
      * Removes a context
@@ -15,7 +15,7 @@ interface ContextStore {
      * @param channelId The channel ID
      * @return A Future indicating success or failure
      */
-    suspend fun removeContext(entityId: String, channelId: String): Boolean
+    suspend fun remove(entityId: String, channelId: String): Boolean
 
     /**
      * Gets all channel IDs associated with an entity
