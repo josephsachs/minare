@@ -66,17 +66,19 @@ open class ChannelController @Inject constructor() {
      * @param channelId The channel ID
      * @return The number of entities successfully added
      */
-    open suspend fun addEntitiesToChannel(entities: List<Entity>, channelId: String): Int {
-        var successCount = 0
+    open suspend fun addEntitiesToChannel(entities: List<Entity>, channelId: String) {
+        var count: Int = 0
 
         for (entity in entities) {
-            if (addEntityToChannel(entity, channelId)) {
-                successCount++
+            try {
+                addEntityToChannel(entity, channelId)
+                count++
+            } catch (e: Exception) {
+                log.error("ChannelController could not add entity ${entity} to channel \n${e}")
             }
         }
 
-        debug.log(Type.CHANNEL_CONTROLLER_ADD_ENTITIES_CHANNEL, listOf(successCount, entities.size, channelId))
-        return successCount
+        debug.log(Type.CHANNEL_CONTROLLER_ADD_ENTITIES_CHANNEL, listOf(count, entities.size, channelId))
     }
 
     /**
@@ -85,7 +87,11 @@ open class ChannelController @Inject constructor() {
      * @return The ID of the created channel
      */
     open suspend fun createChannel(): String {
-        return channelStore.createChannel()
+        val result = channelStore.createChannel()
+
+        debug.log(Type.CHANNEL_CONTROLLER_CREATE_CHANNEL, listOf(result))
+
+        return result
     }
 
     /**
