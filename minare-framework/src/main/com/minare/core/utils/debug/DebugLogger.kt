@@ -2,10 +2,8 @@ package com.minare.core.utils.debug
 
 import com.google.inject.Inject
 import com.google.inject.Singleton
-import com.minare.core.operation.models.Operation
 import com.minare.core.utils.vertx.VerticleLogger
 import io.vertx.core.impl.logging.LoggerFactory
-import io.vertx.core.json.JsonObject
 
 @Singleton
 class DebugLogger @Inject constructor() {
@@ -36,10 +34,23 @@ class DebugLogger @Inject constructor() {
         Type.COORDINATOR_WORK_DISPATCH_DISTRIBUTE_NO_WORKERS to false,
         Type.CHANNEL_CONTROLLER_ADD_CLIENT_CHANNEL to false,
         Type.CHANNEL_CONTROLLER_ADD_ENTITY_CHANNEL to false,
-        Type.CHANNEL_CONTROLLER_ADD_ENTITIES_CHANNEL to false
+        Type.CHANNEL_CONTROLLER_ADD_ENTITIES_CHANNEL to false,
+        Type.CHANNEL_CONTROLLER_CREATE_CHANNEL to true,
+        Type.CONNECTION_CONTROLLER_CREATE_CONNECTION to false,
+        Type.CONNECTION_CONTROLLER_FOUND_CONNECTION to false,
+        Type.CONNECTION_CONTROLLER_STORED_CONNECTION to false,
+        Type.CONNECTION_CONTROLLER_UPDATE_CONNECTION to false,
+        Type.CONNECTION_CONTROLLER_UPDATE_SOCKETS to false,
+        Type.CONNECTION_CONTROLLER_UPSOCKET_DISCONNECT to false,
+        Type.CONNECTION_CONTROLLER_CONNECTION_DELETED to false,
+        Type.CONNECTION_CONTROLLER_REMOVE_UPSOCKET to false,
+        Type.CONNECTION_CONTROLLER_REMOVE_DOWNSOCKET to false,
+        Type.CONNECTION_CONTROLLER_UPSOCKET_CLOSED to false,
+        Type.CONNECTION_CONTROLLER_CLEANUP_CONNECTION to false,
+        Type.CONNECTION_CONTROLLER_ALREADY_DELETED_WARNING to false
     )
 
-    fun log(type: Type, args: List<Any> = listOf()) {
+    fun log(type: Type, args: List<Any?> = listOf()) {
         if (isEnabled[type] == false) return
 
         val message: String = when (type) {
@@ -86,6 +97,20 @@ class DebugLogger @Inject constructor() {
             Type.CHANNEL_CONTROLLER_ADD_CLIENT_CHANNEL -> { "Client ${args[0]} subscribed to channel ${args[1]}" }
             Type.CHANNEL_CONTROLLER_ADD_ENTITY_CHANNEL -> { "Added entity ${args[0]} to channel ${args[1]} with context ${args[2]}" }
             Type.CHANNEL_CONTROLLER_ADD_ENTITIES_CHANNEL -> { "Added ${args[0]} out of ${args[1]} entities to channel ${args[2]}" }
+            Type.CHANNEL_CONTROLLER_CREATE_CHANNEL -> { "ChannelController creating new channel with ID: ${args[0]}" }
+            Type.ENTITY_CONTROLLER_SAVE_ENTITY -> { "Saving existing entity to Redis with key ${args[0]}" }
+            Type.CONNECTION_CONTROLLER_CREATE_CONNECTION -> { "Connection created and stored with id ${args[0]} — upSocketId ${args[1]} — downSocketId ${args[2]}" }
+            Type.CONNECTION_CONTROLLER_STORED_CONNECTION -> { "Stored un-cached connection in database: id ${args[0]} — upSocketId ${args[1]} — downSocketId ${args[2]}"}
+            Type.CONNECTION_CONTROLLER_FOUND_CONNECTION -> { "Connection found in cache: id ${args[0]} — upSocketId ${args[1]} — downSocketId ${args[2]}" }
+            Type.CONNECTION_CONTROLLER_UPDATE_CONNECTION -> { "Connection loaded from database to cache: id ${args[0]} — upSocketId ${args[1]} — downSocketId ${args[2]}" }
+            Type.CONNECTION_CONTROLLER_UPDATE_SOCKETS -> { "Connection updated transport sockets id ${args[0]} — upSocketId ${args[1]} — downSocketId ${args[2]}"}
+            Type.CONNECTION_CONTROLLER_REMOVE_UPSOCKET -> { "Connection ${args[0]} deleted from database" }
+            Type.CONNECTION_CONTROLLER_UPSOCKET_DISCONNECT -> { "Up socket for connection ${args[0]} marked as disconnected, available for reconnection" }
+            Type.CONNECTION_CONTROLLER_CONNECTION_DELETED -> { "Connection ${args[0]} deleted from database" }
+            Type.CONNECTION_CONTROLLER_REMOVE_DOWNSOCKET -> { "Down socket removed for connection ${args[0]}" }
+            Type.CONNECTION_CONTROLLER_UPSOCKET_CLOSED -> { "Up socket closed for connection ${args[0]}, marking for potential reconnection" }
+            Type.CONNECTION_CONTROLLER_CLEANUP_CONNECTION -> { "Cleaned up connection ${args[0]} from ${args[1]} channels" }
+            Type.CONNECTION_CONTROLLER_ALREADY_DELETED_WARNING -> { "Could not delete connection ${args[0]} from database - it may already be deleted\nException message: {e}" }
         }
 
         log.info(message)
@@ -117,7 +142,21 @@ class DebugLogger @Inject constructor() {
             COORDINATOR_WORK_DISPATCH_DISTRIBUTE_NO_WORKERS,
             CHANNEL_CONTROLLER_ADD_CLIENT_CHANNEL,
             CHANNEL_CONTROLLER_ADD_ENTITY_CHANNEL,
-            CHANNEL_CONTROLLER_ADD_ENTITIES_CHANNEL
+            CHANNEL_CONTROLLER_ADD_ENTITIES_CHANNEL,
+            CHANNEL_CONTROLLER_CREATE_CHANNEL,
+            ENTITY_CONTROLLER_SAVE_ENTITY,
+            CONNECTION_CONTROLLER_CREATE_CONNECTION,
+            CONNECTION_CONTROLLER_FOUND_CONNECTION,
+            CONNECTION_CONTROLLER_STORED_CONNECTION,
+            CONNECTION_CONTROLLER_UPDATE_CONNECTION,
+            CONNECTION_CONTROLLER_UPDATE_SOCKETS,
+            CONNECTION_CONTROLLER_UPSOCKET_DISCONNECT,
+            CONNECTION_CONTROLLER_CONNECTION_DELETED,
+            CONNECTION_CONTROLLER_REMOVE_UPSOCKET,
+            CONNECTION_CONTROLLER_REMOVE_DOWNSOCKET,
+            CONNECTION_CONTROLLER_UPSOCKET_CLOSED,
+            CONNECTION_CONTROLLER_CLEANUP_CONNECTION,
+            CONNECTION_CONTROLLER_ALREADY_DELETED_WARNING
         }
     }
 }

@@ -4,6 +4,7 @@ import com.minare.core.entity.factories.EntityFactory
 import com.minare.core.entity.models.*
 import com.minare.core.storage.interfaces.EntityGraphStore
 import com.minare.core.storage.interfaces.StateStore
+import com.minare.core.utils.debug.DebugLogger
 import io.vertx.core.json.JsonObject
 import org.slf4j.LoggerFactory
 import javax.inject.Inject
@@ -19,12 +20,14 @@ import javax.inject.Singleton
  * - Applications can extend this class to customize behavior
  */
 @Singleton
-open class EntityController @Inject constructor(
-    private val stateStore: StateStore,
-    private val entityGraphStore: EntityGraphStore,
-    private val entityFactory: EntityFactory
-) {
+open class EntityController @Inject constructor() {
+    @Inject private lateinit var stateStore: StateStore
+    @Inject private lateinit var entityGraphStore: EntityGraphStore
+    @Inject private lateinit var entityFactory: EntityFactory
+    @Inject private lateinit var debug: DebugLogger
+
     private val log = LoggerFactory.getLogger(EntityController::class.java)
+
 
     /**
      * Create a new entity with proper two-phase lifecycle.
@@ -38,7 +41,7 @@ open class EntityController @Inject constructor(
      */
     open suspend fun create(entity: Entity): Entity {
         if (!entity._id.isNullOrEmpty()) {
-            throw IllegalArgumentException("Entity already has an ID - use save() for downSockets")
+            throw IllegalArgumentException("Entity already has an ID - use save()")
         }
 
         try {
@@ -67,7 +70,7 @@ open class EntityController @Inject constructor(
             throw IllegalArgumentException("Entity must have an ID - use create() for new entities")
         }
 
-        log.debug("Saving existing entity {} to Redis", entityId)
+        debug.log(DebugLogger.Companion.Type.ENTITY_CONTROLLER_SAVE_ENTITY, listOf(entityId))
 
         stateStore.saveState(entityId, deltas, incrementVersion)
 
@@ -100,8 +103,6 @@ open class EntityController @Inject constructor(
      * @return Map of ID to Entity for found entities
      */
     open suspend fun findByIds(ids: List<String>): Map<String, Entity> {
-        log.debug("Finding entities by IDs: {}", ids)
-
         var results = mutableMapOf<String, Entity>()
         val entityJsons = stateStore.findEntitiesJson(ids)
 

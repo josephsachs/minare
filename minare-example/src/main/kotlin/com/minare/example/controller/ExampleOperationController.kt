@@ -16,9 +16,7 @@ import javax.inject.Singleton
  * Handles conversion of client commands to Operations for Kafka.
  */
 @Singleton
-class ExampleOperationController @Inject constructor(
-    private var exampleEntityFactory: ExampleEntityFactory
-) : OperationController() {
+class ExampleOperationController @Inject constructor() : OperationController() {
     private val log = LoggerFactory.getLogger(ExampleOperationController::class.java)
 
     /**
