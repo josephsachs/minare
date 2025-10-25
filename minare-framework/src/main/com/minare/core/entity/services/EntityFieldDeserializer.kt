@@ -1,17 +1,23 @@
 package com.minare.core.entity.services
 
 import com.google.inject.Singleton
+import com.minare.core.entity.models.serializable.Vector2
 import io.vertx.core.json.JsonArray
 import io.vertx.core.json.JsonObject
+import org.slf4j.LoggerFactory
 import java.lang.reflect.Field
 import java.lang.reflect.ParameterizedType
 
 @Singleton
 class EntityFieldDeserializer {
+    private val log = LoggerFactory.getLogger(EntityFieldDeserializer::class.java)
     /**
      * Deserialize Entity field from Redis
      */
     fun deserialize(value: Any?, field: Field): Any? = when {
+        /**
+        * Primitives
+         */
         value == null -> null
         field.type == String::class.java -> value
         field.type == Int::class.java -> (value as Number).toInt()
@@ -20,6 +26,19 @@ class EntityFieldDeserializer {
         field.type.isEnum -> {
             field.type.enumConstants.first { (it as Enum<*>).name == value }
         }
+        /**
+         * Helper types
+         */
+        field.type == Vector2::class.java -> {
+            log.info("BEHAVIOR: $value is ${field.type}")
+            if (value is Vector2) {
+                Vector2(value.x, value.y)
+            }
+            Vector2
+        }
+        /**
+         * Raw Json types
+         */
         value is JsonArray -> {
             deserializeCollection(value, field)
         }
@@ -33,6 +52,10 @@ class EntityFieldDeserializer {
         }
     }
 
+    /**
+     * Collections are handled as Json primitives for now
+     * TODO: Deserialize helpers and Entity relationships
+     */
     private fun deserializeCollection(jsonArray: JsonArray, field: Field): Any? {
         val fieldType = field.type
         val genericType = field.genericType

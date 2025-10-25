@@ -19,7 +19,6 @@ import io.vertx.redis.client.Command
 import org.jgrapht.Graph
 import org.jgrapht.graph.DefaultEdge
 import javax.naming.ServiceUnavailableException
-import kotlin.reflect.typeOf
 
 @Singleton
 class RedisEntityStore @Inject constructor(
@@ -245,6 +244,7 @@ class RedisEntityStore @Inject constructor(
 
             for (field in stateFields) {
                 field.isAccessible = true
+                log.info("BEHAVIOR: setEntityState field is ${state.getValue(field.name)} : ${field}")
                 try {
                     val value = entityStateDeserializer.deserialize(
                         state.getValue(field.name),

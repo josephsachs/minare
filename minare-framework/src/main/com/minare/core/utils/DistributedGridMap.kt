@@ -3,12 +3,9 @@ package com.minare.core.utils
 import com.google.inject.Inject
 import com.hazelcast.core.HazelcastInstance
 import com.hazelcast.map.IMap
+import com.hazelcast.query.Predicates
+import com.minare.core.entity.models.serializable.Vector2
 import java.io.Serializable
-
-data class GridCoordinate(
-    val xAxis: Int,
-    val yAxis: Int
-) : Serializable
 
 /**
  * A grid-map implemented with Hazelcast's IMap.
@@ -18,13 +15,13 @@ class DistributedGridMap<T : Serializable> @Inject constructor(
     private val hz: HazelcastInstance,
     private val mapName: String
 ) {
-    private var map: IMap<GridCoordinate, T> = hz.getMap(mapName)
+    private var map: IMap<Vector2, T> = hz.getMap(mapName)
 
     /**
      * Atomically retrieves a single data point using the composite key.
      */
     fun get(xAxis: Int, yAxis: Int): T? {
-        val key = GridCoordinate(xAxis, yAxis)
+        val key = Vector2(xAxis, yAxis)
         return map[key]
     }
 
@@ -32,8 +29,38 @@ class DistributedGridMap<T : Serializable> @Inject constructor(
      * Atomically updates a single data point.
      */
     fun put(xAxis: Int, yAxis: Int, data: T) {
-        val key = GridCoordinate(xAxis, yAxis)
+        val key = Vector2(xAxis, yAxis)
         map.put(key, data)
+    }
+
+    fun toDiagnosticString(): String {
+        val stringBuilder = StringBuilder()
+        stringBuilder.append("--- Distributed Grid Map Contents (${mapName}) ---\n")
+
+        val allEntries = map.entrySet(Predicates.alwaysTrue())
+
+        if (allEntries.isEmpty()) {
+            stringBuilder.append("Map is currently empty (sparse).\n")
+        } else {
+            val sortedEntries = allEntries.sortedWith(
+                compareBy(
+                    { it.key.y },
+                    { it.key.x }
+                )
+            )
+
+            for (entry in sortedEntries) {
+                val coord = entry.key
+                val data = entry.value
+
+                stringBuilder.append(sortedEntries.joinToString("\n") {
+                    "(${it.key.x}, ${it.key.y}) -> ${it.value}"
+                })
+            }
+        }
+        stringBuilder.append("---------------------------------------------------\n")
+
+        return stringBuilder.toString()
     }
 
     class Factory(val baseMapName: String = "GridMap") {
@@ -43,7 +70,6 @@ class DistributedGridMap<T : Serializable> @Inject constructor(
          * for different data types.
          */
         inline fun <reified T : Serializable> create(hazelcastInstance: HazelcastInstance): DistributedGridMap<T> {
-            // Generates a unique, descriptive map name, e.g., "GridMap_TileData"
             val typeName = T::class.java.simpleName
             val fullMapName = "${baseMapName}_$typeName"
 

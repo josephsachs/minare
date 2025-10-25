@@ -189,7 +189,7 @@ class FrameCoordinatorState @Inject constructor(
 
             debug.log(Type.COORDINATOR_STATE_WORKER_FRAME_COMPLETE, listOf(workerId, frameNumber))
         } else {
-            log.error("Ignoring completion from worker {} for old frame {} (current: {})",
+            log.debug("Ignoring completion from worker {} for old frame {} (current: {})",
                 workerId, frameNumber, frameProgress.get())
         }
     }
