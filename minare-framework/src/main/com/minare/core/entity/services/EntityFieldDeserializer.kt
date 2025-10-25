@@ -1,7 +1,8 @@
 package com.minare.core.entity.services
 
 import com.google.inject.Singleton
-import com.minare.core.entity.models.serializable.Vector2
+import com.minare.core.utils.JsonSerializable
+import com.minare.exceptions.EntitySerializationException
 import io.vertx.core.json.JsonArray
 import io.vertx.core.json.JsonObject
 import org.slf4j.LoggerFactory
@@ -29,18 +30,14 @@ class EntityFieldDeserializer {
         /**
          * Helper types
          */
-        field.type == Vector2::class.java -> {
+        JsonSerializable::class.java.isAssignableFrom(field.type) -> {
             when (value) {
-                is Vector2 -> Vector2(value.x, value.y) // Already a Vector2, just create a copy
-                is JsonObject -> Vector2(value.getInteger("x"), value.getInteger("y")) // JSON representation
-                is String -> {
-                    val json = JsonObject(value)
-                    Vector2(json.getInteger("x"), json.getInteger("y")) // String JSON representation
-                }
-                else -> {
-                    log.error("Value of ${field.name} cannot be deserialized to Vector2")
-                    null
-                }
+                is JsonObject -> value.mapTo(field.type)
+                is String -> JsonObject(value).mapTo(field.type)
+                else -> throw EntitySerializationException(
+                    "Cannot deserialize field '${field.name}' of type ${field.type.simpleName}: " +
+                            "expected JsonObject or JSON String, got ${value?.javaClass?.simpleName}"
+                )
             }
         }
         /**

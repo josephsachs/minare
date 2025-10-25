@@ -1,50 +1,22 @@
 package com.minare.core.entity.models.serializable
 
-import java.io.DataInput
-import java.io.DataOutput
+import com.fasterxml.jackson.annotation.JsonCreator
+import com.fasterxml.jackson.annotation.JsonProperty
+import com.minare.core.utils.JsonSerializable
+import io.vertx.core.json.JsonObject
 import java.io.Serializable
-import io.vertx.core.buffer.Buffer
 
-data class Vector2(
-    val x: Int,
-    val y: Int
-) : Serializable {
-    companion object {
-        /**
-         * Writes the Vector2 instance data to the output stream.
-         */
-        fun writeBytes(output: DataOutput, vector: Vector2) {
-            output.writeInt(vector.x)
-            output.writeInt(vector.y)
-        }
-
-        /**
-         * Reads the data from the input stream and reconstructs the Vector2.
-         */
-        fun readBytes(input: DataInput): Vector2 {
-            val x = input.readInt()
-            val y = input.readInt()
-            return Vector2(x, y)
-        }
-
-        const val BYTE_SIZE = 8
-
-        /**
-         * Encodes the Vector2 into a Vert.x Buffer (8 bytes).
-         */
-        fun encodeToBuffer(vector: Vector2): Buffer {
-            return Buffer.buffer(BYTE_SIZE)
-                .appendInt(vector.x) // Writes the first 4 bytes (X)
-                .appendInt(vector.y) // Writes the next 4 bytes (Y)
-        }
-
-        /**
-         * Decodes a Vert.x Buffer (8 bytes) back into a Vector2.
-         */
-        fun decodeFromBuffer(buffer: Buffer): Vector2 {
-            val x = buffer.getInt(0) // Read 4 bytes starting at index 0
-            val y = buffer.getInt(4) // Read 4 bytes starting at index 4
-            return Vector2(x, y)
-        }
-    }
+/**
+ * Two-dimensional integer vector.
+ *
+ * Implements Serializable for use as Hazelcast map keys in DistributedGridMap.
+ * Implements JsonSerializable for use as @State fields in Entity classes.
+ */
+data class Vector2 @JsonCreator constructor(
+    @JsonProperty("x") val x: Int,
+    @JsonProperty("y") val y: Int
+) : Serializable, JsonSerializable {
+    override fun toJson(): JsonObject = JsonObject()
+        .put("x", x)
+        .put("y", y)
 }
