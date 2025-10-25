@@ -31,10 +31,15 @@ class EntityFieldDeserializer {
          */
         field.type == Vector2::class.java -> {
             log.info("BEHAVIOR: $value is ${field.type}")
-            if (value is Vector2) {
-                Vector2(value.x, value.y)
+            when (value) {
+                is Vector2 -> Vector2(value.x, value.y) // Already a Vector2, just create a copy
+                is JsonObject -> Vector2(value.getInteger("x"), value.getInteger("y")) // JSON representation
+                is String -> {
+                    val json = JsonObject(value)
+                    Vector2(json.getInteger("x"), json.getInteger("y")) // String JSON representation
+                }
+                else -> null // Handle unexpected case
             }
-            Vector2
         }
         /**
          * Raw Json types
