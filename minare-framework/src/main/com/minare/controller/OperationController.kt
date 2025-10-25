@@ -3,6 +3,8 @@ package com.minare.controller
 import com.minare.core.operation.interfaces.MessageQueue
 import com.minare.core.operation.models.Operation
 import com.minare.core.operation.models.OperationSet
+import com.minare.core.utils.debug.DebugLogger
+import com.minare.core.utils.debug.DebugLogger.Companion.Type as DebugType
 import io.vertx.core.json.JsonArray
 import io.vertx.core.json.JsonObject
 import org.slf4j.LoggerFactory
@@ -22,6 +24,7 @@ abstract class OperationController @Inject constructor() {
     private val log = LoggerFactory.getLogger(OperationController::class.java)
 
     @Inject private lateinit var messageQueue: MessageQueue
+    @Inject private lateinit var debug: DebugLogger
 
     /**
      * Process an incoming message from the MessageController.
@@ -30,12 +33,14 @@ abstract class OperationController @Inject constructor() {
      * @param message The raw message from the client
      */
     suspend fun process(message: JsonObject) {
+        debug.log(DebugType.OPERATION_CONTROLLER_PROCESS_MESSAGE, listOf(message))
+
         // Pass message to application layer for packaging into Operations
         val operations = preQueue(message)
 
         // If application returns nothing, proceed
         if (operations == null) {
-            log.debug("Application preQueue returned null, skipping message")
+            log.warn("Application preQueue returned null, skipping message")
             return
         }
 
@@ -54,6 +59,8 @@ abstract class OperationController @Inject constructor() {
             is Operation -> JsonArray().add(operations.build())
             else -> throw IllegalArgumentException("Expected Operation or OperationSet, got ${operations::class.simpleName}")
         }
+
+        debug.log(DebugType.OPERATION_CONTROLLER_QUEUE, listOf(message.size(), message.toString()))
 
         sendMessage(message)
         postQueue(message)
@@ -85,9 +92,11 @@ abstract class OperationController @Inject constructor() {
      */
     private suspend fun sendMessage(message: JsonArray) {
         if (message.isEmpty) {
-            log.debug("Skipping empty operation set")
+            log.warn("Skipping empty operation set")
             return
         }
+
+        debug.log(DebugType.OPERATION_CONTROLLER_SEND_MESSAGE, listOf(message.size(), message.toString()))
 
         log.debug("Sending {} operations to Kafka topic {}", message.size(), OPERATIONS_TOPIC)
         messageQueue.send(OPERATIONS_TOPIC, message)

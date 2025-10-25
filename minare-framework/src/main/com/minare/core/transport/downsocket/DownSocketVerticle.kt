@@ -136,19 +136,12 @@ class DownSocketVerticle @Inject constructor(
      */
     private fun registerBroadcastChannelEvent() {
         eventBusUtils.registerTracedConsumer<JsonObject>(ADDRESS_BROADCAST_CHANNEL) { message, traceId ->
-            log.info("BROADCAST: JsonObject ${message}")
-
             val channelId = message.body().getString("channelId")
             val message = message.body().getJsonObject("message")
 
-            log.info("BROADCAST: channelId ${channelId}")
-            log.info("BROADCAST: message ${message}")
-
             for (connectionId in downSocketVerticleCache.getConnectionsForChannel(channelId)) {
-                log.info("BROADCAST: connection ${connectionId}")
                 if (connectionId in localSockets.keys) {
                     val socket = connectionTracker.getSocket(connectionId)
-                    log.info("BROADCAST: ${socket}")
                     socket?.writeTextMessage(message.encode())
                 }
             }

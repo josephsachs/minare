@@ -19,19 +19,19 @@ class DebugLogger @Inject constructor() {
         Type.COORDINATOR_WORKER_FRAME_COMPLETE_EVENT to false,
         Type.COORDINATOR_ON_FRAME_COMPLETE_CALLED to false,
         Type.COORDINATOR_ON_FRAME_COMPLETE_BLOCKED to false,
-        Type.COORDINATOR_NEXT_FRAME_EVENT to false,
+        Type.COORDINATOR_NEXT_FRAME_EVENT to true,
         Type.COORDINATOR_PREPARE_PENDING_MANIFESTS to false,
         Type.COORDINATOR_MANIFEST_BUILDER_WROTE_WORKER to false,
         Type.COORDINATOR_MANIFEST_BUILDER_WROTE_ALL to false,
-        Type.COORDINATOR_MANIFEST_BUILDER_ASSIGNED_OPERATIONS to false,
+        Type.COORDINATOR_MANIFEST_BUILDER_ASSIGNED_OPERATIONS to true,
         Type.COORDINATOR_MANIFEST_BUILDER_CLEAR_FRAMES to false,
-        Type.COORDINATOR_OPERATION_HANDLER_HANDLE to false,
+        Type.COORDINATOR_OPERATION_HANDLER_HANDLE to true,
         Type.COORDINATOR_OPERATION_HANDLER_EXTRACT_BUFFERED to false,
         Type.COORDINATOR_OPERATION_HANDLER_EXTRACTED_OPS to false,
-        Type.COORDINATOR_OPERATION_HANDLER_ASSIGN_OPERATION to false,
+        Type.COORDINATOR_OPERATION_HANDLER_ASSIGN_OPERATION to true,
         Type.COORDINATOR_OPERATION_HANDLER_ASSIGN_LATE_OPERATION to false,
         Type.COORDINATOR_WORK_DISPATCH_DISTRIBUTE_NO_ITEMS to false,
-        Type.COORDINATOR_WORK_DISPATCH_DISTRIBUTE_NO_WORKERS to false,
+        Type.COORDINATOR_WORK_DISPATCH_DISTRIBUTE_NO_WORKERS to true,
         Type.CHANNEL_CONTROLLER_ADD_CLIENT_CHANNEL to false,
         Type.CHANNEL_CONTROLLER_ADD_ENTITY_CHANNEL to false,
         Type.CHANNEL_CONTROLLER_ADD_ENTITIES_CHANNEL to false,
@@ -47,7 +47,10 @@ class DebugLogger @Inject constructor() {
         Type.CONNECTION_CONTROLLER_REMOVE_DOWNSOCKET to false,
         Type.CONNECTION_CONTROLLER_UPSOCKET_CLOSED to false,
         Type.CONNECTION_CONTROLLER_CLEANUP_CONNECTION to false,
-        Type.CONNECTION_CONTROLLER_ALREADY_DELETED_WARNING to false
+        Type.CONNECTION_CONTROLLER_ALREADY_DELETED_WARNING to false,
+        Type.OPERATION_CONTROLLER_PROCESS_MESSAGE to true,
+        Type.OPERATION_CONTROLLER_QUEUE to true,
+        Type.OPERATION_CONTROLLER_SEND_MESSAGE to true
     )
 
     fun log(type: Type, args: List<Any?> = listOf()) {
@@ -111,6 +114,9 @@ class DebugLogger @Inject constructor() {
             Type.CONNECTION_CONTROLLER_UPSOCKET_CLOSED -> { "Up socket closed for connection ${args[0]}, marking for potential reconnection" }
             Type.CONNECTION_CONTROLLER_CLEANUP_CONNECTION -> { "Cleaned up connection ${args[0]} from ${args[1]} channels" }
             Type.CONNECTION_CONTROLLER_ALREADY_DELETED_WARNING -> { "Could not delete connection ${args[0]} from database - it may already be deleted\nException message: {e}" }
+            Type.OPERATION_CONTROLLER_PROCESS_MESSAGE -> { "Operation controller processing message ${args[0] }" }
+            Type.OPERATION_CONTROLLER_QUEUE -> { "Operation controller queueing ${args[0]} containing ${args[1]}" }
+            Type.OPERATION_CONTROLLER_SEND_MESSAGE -> { "Operation controller sending message ${args[0]} containing ${args[1]}" }
         }
 
         log.info(message)
@@ -156,7 +162,10 @@ class DebugLogger @Inject constructor() {
             CONNECTION_CONTROLLER_REMOVE_DOWNSOCKET,
             CONNECTION_CONTROLLER_UPSOCKET_CLOSED,
             CONNECTION_CONTROLLER_CLEANUP_CONNECTION,
-            CONNECTION_CONTROLLER_ALREADY_DELETED_WARNING
+            CONNECTION_CONTROLLER_ALREADY_DELETED_WARNING,
+            OPERATION_CONTROLLER_PROCESS_MESSAGE,
+            OPERATION_CONTROLLER_QUEUE,
+            OPERATION_CONTROLLER_SEND_MESSAGE,
         }
     }
 }

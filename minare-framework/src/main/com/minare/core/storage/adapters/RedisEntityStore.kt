@@ -244,7 +244,6 @@ class RedisEntityStore @Inject constructor(
 
             for (field in stateFields) {
                 field.isAccessible = true
-                log.info("BEHAVIOR: setEntityState field is ${state.getValue(field.name)} : ${field}")
                 try {
                     val value = entityStateDeserializer.deserialize(
                         state.getValue(field.name),

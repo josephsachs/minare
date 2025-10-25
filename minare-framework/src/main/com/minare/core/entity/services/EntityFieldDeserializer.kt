@@ -30,7 +30,6 @@ class EntityFieldDeserializer {
          * Helper types
          */
         field.type == Vector2::class.java -> {
-            log.info("BEHAVIOR: $value is ${field.type}")
             when (value) {
                 is Vector2 -> Vector2(value.x, value.y) // Already a Vector2, just create a copy
                 is JsonObject -> Vector2(value.getInteger("x"), value.getInteger("y")) // JSON representation
@@ -38,7 +37,10 @@ class EntityFieldDeserializer {
                     val json = JsonObject(value)
                     Vector2(json.getInteger("x"), json.getInteger("y")) // String JSON representation
                 }
-                else -> null // Handle unexpected case
+                else -> {
+                    log.error("Value of ${field.name} cannot be deserialized to Vector2")
+                    null
+                }
             }
         }
         /**
