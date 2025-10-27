@@ -33,36 +33,6 @@ class DistributedGridMap<T : Serializable> @Inject constructor(
         map.put(key, data)
     }
 
-    fun toDiagnosticString(): String {
-        val stringBuilder = StringBuilder()
-        stringBuilder.append("--- Distributed Grid Map Contents (${mapName}) ---\n")
-
-        val allEntries = map.entrySet(Predicates.alwaysTrue())
-
-        if (allEntries.isEmpty()) {
-            stringBuilder.append("Map is currently empty (sparse).\n")
-        } else {
-            val sortedEntries = allEntries.sortedWith(
-                compareBy(
-                    { it.key.y },
-                    { it.key.x }
-                )
-            )
-
-            for (entry in sortedEntries) {
-                val coord = entry.key
-                val data = entry.value
-
-                stringBuilder.append(sortedEntries.joinToString("\n") {
-                    "(${it.key.x}, ${it.key.y}) -> ${it.value}"
-                })
-            }
-        }
-        stringBuilder.append("---------------------------------------------------\n")
-
-        return stringBuilder.toString()
-    }
-
     class Factory(val baseMapName: String = "GridMap") {
         /**
          * Creates a new instance of DistributedGridMap specialized for type T.
