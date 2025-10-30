@@ -1,7 +1,7 @@
 package com.minare.core.entity.annotations
 
 @Target(AnnotationTarget.CLASS)
-annotation class VersionPolicy(val rule: Rule) {
+annotation class VersionPolicy(val rule: VersionPolicyType) {
     companion object {
         enum class VersionPolicyType {
             NONE,
