@@ -9,11 +9,8 @@ import com.minare.core.entity.annotations.State
 import com.minare.core.entity.annotations.VersionPolicy
 import com.minare.core.entity.annotations.VersionPolicy.Companion.VersionPolicyType
 import com.minare.core.storage.interfaces.StateStore
-import io.vertx.core.Vertx
 import io.vertx.core.json.JsonObject
-import jdk.jshell.spi.ExecutionControl.NotImplementedException
 import org.slf4j.LoggerFactory
-import java.lang.Runtime.Version
 import java.lang.reflect.Field
 
 /**
@@ -171,7 +168,7 @@ class MutationService @Inject constructor(
                     }
                     Mutable.Companion.ValidationPolicy.OPERATION -> {
                         if (invalidations.keys.contains(fieldName)) {
-                            throw NotImplementedException("Operation-level atomicity coming soon")
+                            throw NotImplementedError("Operation-level atomicity coming soon")
                         } else {
                             changes.put(fieldName, delta.getValue(fieldName))
                         }
@@ -198,7 +195,7 @@ class MutationService @Inject constructor(
         invalidations: MutableMap<String, String>
     ): Boolean {
         val entityName = entityClass.simpleName
-        val versionAnnotation = entityClass.getAnnotation(VersionPolicy::class.java)
+        val versionAnnotation = entityClass.getAnnotation(VersionPolicy::class.java) ?: return true
 
         return if (versionAnnotation.rule == VersionPolicyType.MUST_MATCH &&
                 incoming != current
