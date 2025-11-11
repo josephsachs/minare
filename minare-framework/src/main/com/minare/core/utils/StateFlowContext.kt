@@ -1,6 +1,6 @@
 package com.minare.core.utils
 
-interface EventStateMachineContext {
+interface StateFlowContext {
     /** * Triggers the transition to the next state unconditionally.
      * This is intended for use inside a StateAction when the action is complete.
      */

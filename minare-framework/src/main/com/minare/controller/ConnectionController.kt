@@ -9,7 +9,6 @@ import com.minare.core.storage.interfaces.*
 import com.minare.core.config.InternalInjectorHolder
 import com.minare.core.transport.CleanupVerticle
 import com.minare.core.utils.debug.DebugLogger
-import lombok.Cleanup
 import com.minare.core.utils.debug.DebugLogger.Companion.Type as DebugType
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -302,7 +301,6 @@ open class ConnectionController @Inject constructor() {
                 } catch (e: Exception) {
                     // This might fail if connection was already deleted or is being deleted concurrently
                     log.warn("Failed to update database for down socket removal: {}", e.message)
-                    // Update cache anyway to maintain consistency with what we tried to do
                     connectionCache.storeConnection(updatedConnection)
                 }
             }

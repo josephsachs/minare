@@ -244,7 +244,7 @@ class ConnectionLifecycle @Inject constructor(
             var success = true
             for (channelId in channels) {
                 try {
-                    val result = channelStore.removeClientFromChannel(channelId, connectionId)
+                    val result = channelStore.removeChannelClient(channelId, connectionId)
                     if (!result) {
                         vlog.getEventLogger().trace("CHANNEL_REMOVAL_FAILED", mapOf(
                             "connectionId" to connectionId,

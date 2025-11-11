@@ -7,16 +7,21 @@ import io.vertx.core.eventbus.MessageConsumer
 import io.vertx.core.json.JsonObject
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
-import java.util.LinkedList
 
-typealias StateAction = suspend (EventStateMachineContext) -> Unit
+typealias StateAction = suspend (StateFlowContext) -> Unit
 
-class EventStateMachine(
+/**
+ * A simple state machine coordinated over the event bus.
+ *
+ * The supplied step functions run in invoking class's scope,
+ * in the verticle context where the instance was created.
+ */
+class EventStateFlow(
     private val eventKey: String,
     private val coroutineScope: CoroutineScope,
     private val vertx: Vertx,
     private val looping: Boolean = false
-) : EventStateMachineContext {
+) : StateFlowContext {
     private var _baseKey: String = "event.state.machine.$eventKey"
 
     @Volatile
@@ -52,7 +57,6 @@ class EventStateMachine(
         if (!::tracker.isInitialized) return
 
         if (tracker.hasNext()) {
-            // All index management logic is hidden within the tracker
             val nextStateName = tracker.next()
 
             vertx.eventBus().send(
@@ -61,7 +65,6 @@ class EventStateMachine(
                 DeliveryOptions().setLocalOnly(true)
             )
         } else {
-            // Tracker returned false in non-looping mode
             println("State Machine $eventKey finished.")
             cleanup()
         }
@@ -74,27 +77,23 @@ class EventStateMachine(
     fun start() {
         if (eventsMap.isEmpty()) return
 
-        // Initialize the LoopingList with the ordered list of keys
         val stateNames = eventsMap.keys.toList()
         tracker = LoopingList(stateNames, looping)
 
-        // 1. Register ALL consumers
         eventsMap.forEach { (stateName, action) ->
             val address = "$_baseKey.$stateName"
 
             val vertxHandler: (Message<JsonObject>) -> Unit = { _ ->
-
-                // Set flag right before launch
                 isProcessing = true
 
                 coroutineScope.launch {
                     try {
-                        action(this@EventStateMachine) // Execute state logic
+                        action(this@EventStateFlow) // Execute state logic
                     } catch (e: Exception) {
                         // Log errors from the state action
                         System.err.println("Error executing state '$stateName' for $eventKey: ${e.message}")
                     } finally {
-                        // CRUCIAL: Ensure flag is reset whether successful or failed
+                        // Ensure flag is reset whether successful or failed
                         isProcessing = false
                     }
                 }
@@ -102,8 +101,7 @@ class EventStateMachine(
             consumers[address] = vertx.eventBus().localConsumer(address, vertxHandler)
         }
 
-        // 2. Trigger the first state execution via next() (which calls triggerNextTransition)
-        // We use next() here since isProcessing is initially false.
+        // Use next() here since isProcessing is initially false
         coroutineScope.launch { next() }
     }
 

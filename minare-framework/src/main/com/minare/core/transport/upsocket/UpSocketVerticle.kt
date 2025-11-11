@@ -44,7 +44,7 @@ class UpSocketVerticle @Inject constructor(
 
     private val log = LoggerFactory.getLogger(UpSocketVerticle::class.java)
     // Silence is golden
-    private val debugTraceLogs: Boolean = true
+    private val debugTraceLogs: Boolean = false
 
     private var deployedAt: Long = 0
     private var httpServer: HttpServer? = null

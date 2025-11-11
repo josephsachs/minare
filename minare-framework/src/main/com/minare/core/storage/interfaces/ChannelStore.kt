@@ -15,7 +15,7 @@ interface ChannelStore {
      * @param clientId The client ID to add
      * @return A Future indicating success or failure
      */
-    suspend fun addClientToChannel(channelId: String, clientId: String): Boolean
+    suspend fun addChannelClient(channelId: String, clientId: String): Boolean
 
     /**
      * Removes a client from a channel
@@ -23,7 +23,7 @@ interface ChannelStore {
      * @param clientId The client ID to remove
      * @return A Future indicating success or failure
      */
-    suspend fun removeClientFromChannel(channelId: String, clientId: String): Boolean
+    suspend fun removeChannelClient(channelId: String, clientId: String): Boolean
 
     /**
      * Gets a channel by ID

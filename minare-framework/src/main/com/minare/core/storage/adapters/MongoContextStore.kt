@@ -22,7 +22,7 @@ class MongoContextStore @Inject constructor(
      * @param channelId The channel ID
      * @return The generated context ID
      */
-    override suspend fun createContext(entityId: String, channelId: String): String {
+    override suspend fun create(entityId: String, channelId: String): String {
         if (entityId.isBlank()) {
             throw IllegalArgumentException("Entity ID cannot be blank")
         }
@@ -87,7 +87,7 @@ class MongoContextStore @Inject constructor(
      * @param channelId The channel ID
      * @return Boolean indicating success or failure
      */
-    override suspend fun removeContext(entityId: String, channelId: String): Boolean {
+    override suspend fun remove(entityId: String, channelId: String): Boolean {
         val query = JsonObject()
             .put("entity", entityId)
             .put("channel", channelId)

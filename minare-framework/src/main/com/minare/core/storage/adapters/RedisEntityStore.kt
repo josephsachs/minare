@@ -14,12 +14,12 @@ import io.vertx.redis.client.RedisAPI
 import org.slf4j.LoggerFactory
 import javax.inject.Inject
 import com.minare.core.storage.interfaces.StateStore
+import com.minare.core.utils.JsonSerializable
 import io.vertx.core.json.JsonArray
 import io.vertx.redis.client.Command
 import org.jgrapht.Graph
 import org.jgrapht.graph.DefaultEdge
 import javax.naming.ServiceUnavailableException
-import kotlin.reflect.typeOf
 
 @Singleton
 class RedisEntityStore @Inject constructor(
@@ -43,7 +43,8 @@ class RedisEntityStore @Inject constructor(
                 field.isAccessible = true
                 val value = field.get(entity)
                 if (value != null) {
-                    stateJson.put(field.name, value)
+                    val jsonValue = if (value is JsonSerializable) value.toJson() else value
+                    stateJson.put(field.name, jsonValue)
                 }
             }
         }
@@ -54,7 +55,8 @@ class RedisEntityStore @Inject constructor(
                 field.isAccessible = true
                 val value = field.get(entity)
                 if (value != null) {
-                    propJson.put(field.name, value)
+                    val jsonValue = if (value is JsonSerializable) value.toJson() else value
+                    propJson.put(field.name, jsonValue)
                 }
             }
         }
@@ -229,7 +231,11 @@ class RedisEntityStore @Inject constructor(
                     result[entityId] = entity
                 }
             } catch (e: Exception) {
-                log.warn("Error fetching entity from $entityIds: ${e.message}")
+                // TEMPORARY DEBUG
+                val document = JsonArray(item.toString()).getJsonObject(0)
+
+                val entityId = document.getString("_id")
+                log.warn("StateStore found Entity document with invalid state field for ${entityId}: ${e.message}", e)
             }
         }
 
@@ -256,7 +262,7 @@ class RedisEntityStore @Inject constructor(
 
                 } catch (e: Exception) {
                     // TODO: Fix serialization so this bug stops happening
-                    //log.warn("StateStore found Entity document with invalid state field for ${entity._id}")
+                    log.warn("StateStore found Entity document with invalid property field for ${entity._id}: ${e.message}", e)
 
                 }
             }
@@ -285,7 +291,7 @@ class RedisEntityStore @Inject constructor(
 
                 } catch (e: Exception) {
                     // TODO: Fix serialization so this bug stops happening
-                    //log.warn("StateStore found Entity document with invalid property field for ${entity._id}")
+                    log.warn("StateStore found Entity document with invalid property field for ${entity._id}")
 
                 }
             }
