@@ -189,19 +189,19 @@ abstract class MinareApplication : CoroutineVerticle() {
      * triggers application hooks at appropriate steps.
      */
     private suspend fun initializeCoordinator() {
-        startupService.checkInitialWorkerStatus()
-        startupService.awaitAllWorkersReady(workerReadinessEvent)
-
         createVerticle(
-            FrameWorkerHealthMonitorVerticle::class.java,
+            CoordinatorAdminVerticle::class.java,
             DeploymentOptions()
                 .setInstances(1)
                 .setConfig(JsonObject().put("role", "coordinator-admin")
                 )
         )
 
+        startupService.checkInitialWorkerStatus()
+        startupService.awaitAllWorkersReady(workerReadinessEvent)
+
         createVerticle(
-            CoordinatorAdminVerticle::class.java,
+            FrameWorkerHealthMonitorVerticle::class.java,
             DeploymentOptions()
                 .setInstances(1)
                 .setConfig(JsonObject().put("role", "coordinator-admin")
