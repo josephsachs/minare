@@ -43,7 +43,7 @@ class RedisEntityStore @Inject constructor(
                 field.isAccessible = true
                 val value = field.get(entity)
                 if (value != null) {
-                    val jsonValue = if (value is JsonSerializable) value.toJson() else value
+                    val jsonValue = serializeFieldValue(value)
                     stateJson.put(field.name, jsonValue)
                 }
             }
@@ -55,7 +55,7 @@ class RedisEntityStore @Inject constructor(
                 field.isAccessible = true
                 val value = field.get(entity)
                 if (value != null) {
-                    val jsonValue = if (value is JsonSerializable) value.toJson() else value
+                    val jsonValue = serializeFieldValue(value)
                     propJson.put(field.name, jsonValue)
                 }
             }
@@ -72,6 +72,45 @@ class RedisEntityStore @Inject constructor(
         redisAPI.sadd(listOf("entity:types:$entityType", entity._id!!)).await()
 
         return entity
+    }
+
+    /**
+     * Serialize a field value for storage in Redis.
+     * Handles entity references, collections, value objects, and primitives.
+     */
+    private fun serializeFieldValue(value: Any): Any {
+        return when {
+            // Entity reference - store just the ID
+            value is Entity -> value._id
+
+            // Collection - check if it contains entities
+            value is Collection<*> -> {
+                if (value.isEmpty()) {
+                    JsonArray()
+                } else if (value.all { it is Entity }) {
+                    // Collection of entities - store IDs
+                    JsonArray(value.filterIsInstance<Entity>().map { it._id })
+                } else {
+                    // Collection of primitives or data classes - store as-is
+                    value
+                }
+            }
+
+            // JsonObject - pass through
+            value is JsonObject -> value
+            value is JsonArray -> value
+
+            // Primitives - pass through
+            value is String || value is Number || value is Boolean -> value
+
+            // JsonSerializable (legacy support during transition)
+            value is JsonSerializable -> value.toJson()
+
+            // Data classes and other serializable objects - use Jackson
+            else -> {
+                JsonObject(io.vertx.core.json.Json.encode(value))
+            }
+        }
     }
 
     /**

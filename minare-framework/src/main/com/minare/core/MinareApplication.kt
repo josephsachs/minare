@@ -582,6 +582,19 @@ abstract class MinareApplication : CoroutineVerticle() {
         }
 
         /**
+         * Configure Vert.x's Jackson ObjectMapper to properly handle Kotlin types.
+         * Must be called before any JSON serialization/deserialization occurs.
+         */
+        private fun configureJackson() {
+            val mapper = io.vertx.core.json.jackson.DatabindCodec.mapper()
+
+            // Register Kotlin module for automatic data class handling
+            mapper.registerModule(com.fasterxml.jackson.module.kotlin.KotlinModule.Builder().build())
+
+            log.info("Configured Jackson with KotlinModule for automatic Kotlin data class support")
+        }
+
+        /**
          * Start the application with the given implementation class.
          * This is the main entry point that applications should use.
          */
@@ -614,6 +627,8 @@ abstract class MinareApplication : CoroutineVerticle() {
             applicationClass: Class<out MinareApplication>,
             args: Array<String>
         ) {
+            configureJackson()
+
             try {
                 val appModule = getApplicationModule(applicationClass)
                 log.info("Loaded application module: ${appModule.javaClass.name}")

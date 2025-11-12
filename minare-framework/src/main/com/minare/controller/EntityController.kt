@@ -40,15 +40,9 @@ open class EntityController @Inject constructor() {
      * @return The created entity with ID assigned
      */
     open suspend fun create(entity: Entity): Entity {
-        if (!entity._id.isNullOrEmpty()) {
-            throw IllegalArgumentException("Entity already has an ID - use save()")
-        }
-
         try {
-            //  Save to MongoDB to get ID assigned
+            //  Save to graph store to get ID assigned
             val entityWithId = entityGraphStore.save(entity)
-
-            // Redis is source of truth for Entity state
             val finalEntity = stateStore.save(entityWithId)
 
             return finalEntity
@@ -66,10 +60,6 @@ open class EntityController @Inject constructor() {
      * @return The saved entity with any updates
      */
     open suspend fun saveState(entityId: String, deltas: JsonObject, incrementVersion: Boolean = true): Entity? {
-        if (entityId.isBlank()) {
-            throw IllegalArgumentException("Entity must have an ID - use create() for new entities")
-        }
-
         debug.log(DebugLogger.Companion.Type.ENTITY_CONTROLLER_SAVE_ENTITY, listOf(entityId))
 
         stateStore.saveState(entityId, deltas, incrementVersion)
@@ -87,10 +77,6 @@ open class EntityController @Inject constructor() {
      * @return The saved entity with any updates
      */
     open suspend fun saveProperties(entityId: String, deltas: JsonObject): Entity? {
-        if (entityId.isBlank()) {
-            throw IllegalArgumentException("Entity must have an ID - use create() for new entities")
-        }
-
         stateStore.saveProperties(entityId, deltas)
 
         return stateStore.findEntity(entityId)
