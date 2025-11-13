@@ -87,7 +87,7 @@ class DownSocketVerticle @Inject constructor(
             eventBusUtils = vlog.createEventBusUtils()
             registerEventBusConsumers()
 
-            connectionTracker = ConnectionTracker("DownSocket", vlog)
+            connectionTracker = ConnectionTracker("DownSocket")
             heartbeatManager.setHeartbeatInterval(UpSocketVerticle.HEARTBEAT_INTERVAL_MS)
 
             vlog.logStartupStep("STARTING")

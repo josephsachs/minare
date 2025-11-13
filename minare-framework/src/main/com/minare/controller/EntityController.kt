@@ -60,7 +60,7 @@ open class EntityController @Inject constructor() {
      * @return The saved entity with any updates
      */
     open suspend fun saveState(entityId: String, deltas: JsonObject, incrementVersion: Boolean = true): Entity? {
-        debug.log(DebugLogger.Companion.Type.ENTITY_CONTROLLER_SAVE_ENTITY, listOf(entityId))
+        debug.log(DebugLogger.Companion.DebugType.ENTITY_CONTROLLER_SAVE_ENTITY, listOf(entityId))
 
         stateStore.saveState(entityId, deltas, incrementVersion)
 

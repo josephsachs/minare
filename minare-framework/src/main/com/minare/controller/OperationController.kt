@@ -4,7 +4,7 @@ import com.minare.core.operation.interfaces.MessageQueue
 import com.minare.core.operation.models.Operation
 import com.minare.core.operation.models.OperationSet
 import com.minare.core.utils.debug.DebugLogger
-import com.minare.core.utils.debug.DebugLogger.Companion.Type as DebugType
+import com.minare.core.utils.debug.DebugLogger.Companion.DebugType as DebugType
 import io.vertx.core.json.JsonArray
 import io.vertx.core.json.JsonObject
 import org.slf4j.LoggerFactory

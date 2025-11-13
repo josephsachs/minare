@@ -9,7 +9,7 @@ import com.minare.core.storage.interfaces.*
 import com.minare.core.config.InternalInjectorHolder
 import com.minare.core.transport.CleanupVerticle
 import com.minare.core.utils.debug.DebugLogger
-import com.minare.core.utils.debug.DebugLogger.Companion.Type as DebugType
+import com.minare.core.utils.debug.DebugLogger.Companion.DebugType as DebugType
 import javax.inject.Inject
 import javax.inject.Singleton
 

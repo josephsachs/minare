@@ -6,13 +6,12 @@ import com.hazelcast.cp.IAtomicLong
 import com.minare.core.frames.coordinator.services.FrameCalculatorService
 import com.minare.core.frames.services.WorkerRegistry
 import com.minare.core.utils.debug.DebugLogger
-import com.minare.core.utils.debug.DebugLogger.Companion.Type
+import com.minare.core.utils.debug.DebugLogger.Companion.DebugType
 import io.vertx.core.json.JsonObject
 import org.slf4j.LoggerFactory
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.atomic.AtomicLong
-import java.util.concurrent.atomic.AtomicReference
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -133,7 +132,7 @@ class FrameCoordinatorState @Inject constructor(
         frameProgress.set(-1L)
         currentFrameCompletions.clear()
 
-        debug.log(Type.COORDINATOR_STATE_RESET_SESSION, listOf(sessionStartTimestamp, sessionStartNanos))
+        debug.log(DebugType.COORDINATOR_STATE_RESET_SESSION, listOf(sessionStartTimestamp, sessionStartNanos))
     }
 
     /**
@@ -187,7 +186,7 @@ class FrameCoordinatorState @Inject constructor(
         if (frameNumber == frameProgress.get()) {
             currentFrameCompletions[workerId] = System.currentTimeMillis()
 
-            debug.log(Type.COORDINATOR_STATE_WORKER_FRAME_COMPLETE, listOf(workerId, frameNumber))
+            debug.log(DebugType.COORDINATOR_STATE_WORKER_FRAME_COMPLETE, listOf(workerId, frameNumber))
         } else {
             log.debug("Ignoring completion from worker {} for old frame {} (current: {})",
                 workerId, frameNumber, frameProgress.get())

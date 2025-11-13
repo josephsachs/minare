@@ -2,8 +2,9 @@ package com.minare.core.transport.downsocket.services
 
 import com.google.inject.Inject
 import com.google.inject.Singleton
+import com.minare.core.utils.debug.DebugLogger
+import com.minare.core.utils.debug.DebugLogger.Companion.DebugType
 import com.minare.core.utils.vertx.VerticleLogger
-import io.vertx.core.Vertx
 import io.vertx.core.http.ServerWebSocket
 import io.vertx.core.json.JsonObject
 import org.slf4j.LoggerFactory
@@ -14,11 +15,12 @@ import java.util.concurrent.ConcurrentHashMap
  * Provides centralized connection tracking and state management for verticles.
  */
 @Singleton
-class ConnectionTracker @Inject constructor(
-    private val componentName: String,
-    private val logger: VerticleLogger
+class ConnectionTracker(
+    private val componentName: String
 ) {
-    private val log = LoggerFactory.getLogger("$componentName.ConnectionTracker")
+    @Inject private lateinit var logger: VerticleLogger
+
+    private val debug = DebugLogger()
 
     private val connectionTraces = ConcurrentHashMap<String, String>()
     private val socketToConnectionId = ConcurrentHashMap<ServerWebSocket, String>()
@@ -36,7 +38,7 @@ class ConnectionTracker @Inject constructor(
         socketToConnectionId[socket] = connectionId
         connectionToSocket[connectionId] = socket
 
-        log.debug("Registered connection $connectionId with socket ${socket.textHandlerID()}")
+        debug.log(DebugType.CONNECTION_TRACKER_REGISTER_CONNECTION, listOf(connectionId, socket.textHandlerID()))
     }
 
     /**
@@ -80,7 +82,7 @@ class ConnectionTracker @Inject constructor(
         socketToConnectionId.remove(socket)
         connectionTraces.remove(connectionId)
 
-        log.debug("Removed connection $connectionId")
+        debug.log(DebugType.CONNECTION_TRACKER_REMOVE_CONNECTION, listOf(connectionId))
         return true
     }
 
@@ -99,7 +101,7 @@ class ConnectionTracker @Inject constructor(
             "connectionId" to connectionId
         ))
 
-        log.debug("Handled close of socket for connection $connectionId")
+        debug.log(DebugType.CONNECTION_TRACKER_HANDLE_SOCKET_CLOSED, listOf(connectionId))
         return connectionId
     }
 
