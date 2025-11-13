@@ -83,6 +83,9 @@ class RedisEntityStore @Inject constructor(
             // Entity reference - store just the ID
             value is Entity -> value._id
 
+            // Enum - store the name as a string
+            value is Enum<*> -> value.name
+
             // Collection - check if it contains entities
             value is Collection<*> -> {
                 if (value.isEmpty()) {
