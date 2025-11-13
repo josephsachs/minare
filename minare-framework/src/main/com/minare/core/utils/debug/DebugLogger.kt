@@ -1,11 +1,7 @@
 package com.minare.core.utils.debug
 
-import com.google.inject.Inject
 import com.google.inject.Singleton
 import com.minare.core.utils.vertx.VerticleLogger
-import com.minare.worker.upsocket.UpSocketVerticle.Companion.BASE_PATH
-import com.minare.worker.upsocket.UpSocketVerticle.Companion.HANDSHAKE_TIMEOUT_MS
-import com.minare.worker.upsocket.UpSocketVerticle.Companion.HTTP_SERVER_HOST
 import io.vertx.core.impl.logging.LoggerFactory
 import io.vertx.core.json.JsonObject
 

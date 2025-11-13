@@ -16,10 +16,9 @@ import java.util.concurrent.ConcurrentHashMap
  */
 @Singleton
 class ConnectionTracker(
-    private val componentName: String
+    private val componentName: String,
+    private val logger: VerticleLogger
 ) {
-    @Inject private lateinit var logger: VerticleLogger
-
     private val debug = DebugLogger()
 
     private val connectionTraces = ConcurrentHashMap<String, String>()

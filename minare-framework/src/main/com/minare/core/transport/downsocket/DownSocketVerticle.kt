@@ -87,7 +87,7 @@ class DownSocketVerticle @Inject constructor(
             eventBusUtils = vlog.createEventBusUtils()
             registerEventBusConsumers()
 
-            connectionTracker = ConnectionTracker("DownSocket")
+            connectionTracker = ConnectionTracker("DownSocket", vlog)
             heartbeatManager.setHeartbeatInterval(UpSocketVerticle.HEARTBEAT_INTERVAL_MS)
 
             vlog.logStartupStep("STARTING")
@@ -260,7 +260,7 @@ class DownSocketVerticle @Inject constructor(
     }
 
     /**
-     * Associate an down socket with a connection ID
+     * Associate a down socket with a connection ID
      */
     private suspend fun associateUpdateSocket(connectionId: String, websocket: ServerWebSocket, traceId: String) {
         if (debugTraceLogs) {

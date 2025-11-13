@@ -83,7 +83,7 @@ class UpSocketVerticleModule : PrivateModule() {
     @Provides
     @Singleton
     fun provideConnectionTracker(verticleLogger: VerticleLogger): ConnectionTracker {
-        return ConnectionTracker("UpSocket")
+        return ConnectionTracker("UpSocket", verticleLogger)
     }
 
     /**
