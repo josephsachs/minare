@@ -31,7 +31,6 @@ class RedisEntityStore @Inject constructor(
     private val deserializer: EntityFieldDeserializer,
     private val serializer: EntityFieldSerializer,
 ) : StateStore {
-
     private val log = LoggerFactory.getLogger(RedisEntityStore::class.java)
 
     override suspend fun save(entity: Entity): Entity {
@@ -82,7 +81,7 @@ class RedisEntityStore @Inject constructor(
         val version = if (incrementVersion) {
             val response = redisAPI.send(
                 Command.create("EVAL"),
-                atomicIncrement(),
+                versionIncrementScript(),
                 "1",
                 entityId,
                 delta.encode()
@@ -104,7 +103,8 @@ class RedisEntityStore @Inject constructor(
             currentDocument.getLong("version", 1L)
         }
 
-        val updatedDocument = findEntityJson(entityId)!!
+        val updatedDocument = findEntityJson(entityId)
+            ?: throw EntityStorageException("Updated document not found for $entityId after set command")
 
         publishService.publishStateChange(
             entityId,
@@ -114,34 +114,6 @@ class RedisEntityStore @Inject constructor(
         )
 
         return updatedDocument
-    }
-
-    /**
-     * Lua script for atomically incrementing version
-     */
-    private fun atomicIncrement(): String {
-        return """
-            local doc_json = redis.call('JSON.GET', KEYS[1])
-            if not doc_json then
-                error('Entity not found: ' .. KEYS[1])
-            end
-            
-            local doc = cjson.decode(doc_json)
-            local delta = cjson.decode(ARGV[1])
-            
-            -- Apply delta to state
-            local state = doc.state or {}
-            for key, value in pairs(delta) do
-                state[key] = value
-            end
-            doc.state = state
-            
-            -- Increment version
-            doc.version = (doc.version or 1) + 1
-            
-            redis.call('JSON.SET', KEYS[1], '${'$'}', cjson.encode(doc))
-            return doc.version
-        """
     }
 
     /**
@@ -171,7 +143,7 @@ class RedisEntityStore @Inject constructor(
     /**
      * Take JsonObject from Redis Entity store and return Entity (not including state)
      */
-    suspend fun getEntity(document: JsonObject): Entity? {
+    private suspend fun getEntity(document: JsonObject): Entity? {
         val entityId = document.getString("_id")
         val entityType = document.getString("type")
         val version = document.getLong("version", 1L)
@@ -236,7 +208,9 @@ class RedisEntityStore @Inject constructor(
     }
 
     /**
-     * Populate state fields using reflection
+     * Populate all @State fields using reflection
+     * Used in hydration
+     * @param state incoming
      */
     override suspend fun setEntityState(entity: Entity, entityType: String, state: JsonObject): Entity {
         entityFactory.useClass(entityType)?.let { entityClass ->
@@ -265,7 +239,8 @@ class RedisEntityStore @Inject constructor(
     }
 
     /**
-     * Populate state fields using reflection
+     * Hydrates @Property fields with data from
+     * @param properties
      */
     override suspend fun setEntityProperties(entity: Entity, entityType: String, properties: JsonObject): Entity {
         entityFactory.useClass(entityType)?.let { entityClass ->
@@ -283,9 +258,7 @@ class RedisEntityStore @Inject constructor(
                     }
 
                 } catch (e: Exception) {
-                    // TODO: Fix serialization so this bug stops happening
                     log.warn("StateStore found Entity document with invalid property field for ${entity._id}")
-
                 }
             }
         }
@@ -309,7 +282,6 @@ class RedisEntityStore @Inject constructor(
         // Batch fetch all entities from Redis
         val fullEntities = findEntitiesJsonByIds(entityIds)
 
-        // Merge full state into each graph node
         for (vertex in graph.vertexSet()) {
             val entityId = vertex.getString("_id") ?: continue
             fullEntities[entityId]?.let { fullEntity ->
@@ -389,7 +361,7 @@ class RedisEntityStore @Inject constructor(
      * @param type String
      * @return List<String>
      */
-    override suspend fun findKeysByType(type: String): List<String> {
+    override suspend fun findAllKeysForType(type: String): List<String> {
         val response = redisAPI.smembers("entity:types:$type").await()
         val uuids = response?.map { it.toString() } ?: emptyList()
         return uuids
@@ -467,13 +439,46 @@ class RedisEntityStore @Inject constructor(
                 }
             } while (cursor != "0")
 
-            // Sort for consistent ordering across calls
-            entityKeys.sort()
+            entityKeys.sort() // Note this, very important
 
             return entityKeys
         } catch (e: Exception) {
             log.error("Error getting entity keys", e)
             return emptyList()
         }
+    }
+
+    /**
+     *
+     *  Lua
+     *
+     */
+
+    /**
+     * Atomic version increment
+     */
+    private fun versionIncrementScript(): String {
+        return """
+            local doc_json = redis.call('JSON.GET', KEYS[1])
+            if not doc_json then
+                error('Entity not found: ' .. KEYS[1])
+            end
+            
+            local doc = cjson.decode(doc_json)
+            local delta = cjson.decode(ARGV[1])
+            
+            -- Apply delta to state
+            local state = doc.state or {}
+            for key, value in pairs(delta) do
+                state[key] = value
+            end
+            doc.state = state
+            
+            -- Increment version
+            doc.version = (doc.version or 1) + 1
+            
+            redis.call('JSON.SET', KEYS[1], '${'$'}', cjson.encode(doc))
+            return doc.version
+        """
     }
 }

@@ -69,8 +69,13 @@ class DebugLogger {
         DebugType.CONNECTION_CONTROLLER_CLEANUP_CONNECTION to false,
         DebugType.CONNECTION_CONTROLLER_ALREADY_DELETED_WARNING to false,
 
+        DebugType.ENTITY_CONTROLLER_SAVE_ENTITY to true,
+        DebugType.ENTITY_HYDRATOR_WRITE_FAILED to true,
+
         DebugType.CONNECTION_TRACKER_REGISTER_CONNECTION to true,
         DebugType.CONNECTION_TRACKER_REMOVE_CONNECTION to true,
+
+        DebugType.DOWNSOCKET_ENTITY_PUBLISHER_FAILED to false,
 
         DebugType.OPERATION_CONTROLLER_PROCESS_MESSAGE to false,
         DebugType.OPERATION_CONTROLLER_QUEUE to false,
@@ -195,6 +200,8 @@ class DebugLogger {
                 DebugType.CHANNEL_CONTROLLER_ADD_ENTITIES_CHANNEL -> { "Added ${args[0]} out of ${args[1]} entities to channel ${args[2]}" }
                 DebugType.CHANNEL_CONTROLLER_CREATE_CHANNEL -> { "ChannelController creating new channel with ID: ${args[0]}" }
                 DebugType.ENTITY_CONTROLLER_SAVE_ENTITY -> { "Saving existing entity to Redis with key ${args[0]}" }
+                DebugType.ENTITY_CONTROLLER_CREATE_EXCEPTION -> { "EntityController had an exception when attempting to create an entity: ${args[0]}" }
+                DebugType.ENTITY_HYDRATOR_WRITE_FAILED -> { "EntityHydrator had an exception while writing to the state store: ${args[0]}" }
                 DebugType.CONNECTION_CONTROLLER_CREATE_CONNECTION -> { "Connection created and stored with id ${args[0]} — upSocketId ${args[1]} — downSocketId ${args[2]}" }
                 DebugType.CONNECTION_CONTROLLER_STORED_CONNECTION -> { "Stored un-cached connection in database: id ${args[0]} — upSocketId ${args[1]} — downSocketId ${args[2]}"}
                 DebugType.CONNECTION_CONTROLLER_FOUND_CONNECTION -> { "Connection found in cache: id ${args[0]} — upSocketId ${args[1]} — downSocketId ${args[2]}" }
@@ -210,6 +217,7 @@ class DebugLogger {
                 DebugType.CONNECTION_TRACKER_REGISTER_CONNECTION -> { "Registered connection ${args[0]} with socket ${args[1]}" }
                 DebugType.CONNECTION_TRACKER_REMOVE_CONNECTION -> { "Removed connection ${args[0]}" }
                 DebugType.CONNECTION_TRACKER_HANDLE_SOCKET_CLOSED -> { "Handled close of socket for connection ${args[0]}" }
+                DebugType.DOWNSOCKET_ENTITY_PUBLISHER_FAILED -> { "An entity publish was attempted and failed for entity ${args[0]}" }
                 DebugType.OPERATION_CONTROLLER_PROCESS_MESSAGE -> { "Operation controller processing message ${args[0] }" }
                 DebugType.OPERATION_CONTROLLER_QUEUE -> { "Operation controller queueing ${args[0]} containing ${args[1]}" }
                 DebugType.OPERATION_CONTROLLER_SEND_MESSAGE -> { "Operation controller sending message ${args[0]} containing ${args[1]}" }
@@ -264,7 +272,9 @@ class DebugLogger {
             CHANNEL_CONTROLLER_ADD_ENTITY_CHANNEL,
             CHANNEL_CONTROLLER_ADD_ENTITIES_CHANNEL,
             CHANNEL_CONTROLLER_CREATE_CHANNEL,
+            ENTITY_CONTROLLER_CREATE_EXCEPTION,
             ENTITY_CONTROLLER_SAVE_ENTITY,
+            ENTITY_HYDRATOR_WRITE_FAILED,
             CONNECTION_CONTROLLER_CREATE_CONNECTION,
             CONNECTION_CONTROLLER_FOUND_CONNECTION,
             CONNECTION_CONTROLLER_STORED_CONNECTION,
@@ -280,6 +290,7 @@ class DebugLogger {
             CONNECTION_TRACKER_REGISTER_CONNECTION,
             CONNECTION_TRACKER_REMOVE_CONNECTION,
             CONNECTION_TRACKER_HANDLE_SOCKET_CLOSED,
+            DOWNSOCKET_ENTITY_PUBLISHER_FAILED,
             OPERATION_CONTROLLER_PROCESS_MESSAGE,
             OPERATION_CONTROLLER_QUEUE,
             OPERATION_CONTROLLER_SEND_MESSAGE,

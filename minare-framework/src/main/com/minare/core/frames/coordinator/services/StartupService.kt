@@ -5,7 +5,6 @@ import com.minare.core.utils.debug.DebugLogger
 import com.minare.core.utils.debug.DebugLogger.Companion.DebugType
 import com.minare.worker.coordinator.events.WorkerReadinessEvent
 import kotlinx.coroutines.CompletableDeferred
-import org.slf4j.LoggerFactory
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -18,7 +17,6 @@ class StartupService @Inject constructor(
     private val workerRegistry: WorkerRegistry
 ) {
     private val debug = DebugLogger()
-
     private val workersReady = CompletableDeferred<Unit>()
 
     /**

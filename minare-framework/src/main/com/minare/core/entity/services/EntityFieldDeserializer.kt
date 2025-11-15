@@ -12,7 +12,6 @@ import java.lang.reflect.ParameterizedType
 
 @Singleton
 class EntityFieldDeserializer {
-    private val log = LoggerFactory.getLogger(EntityFieldDeserializer::class.java)
     /**
      * Deserialize Entity field from Redis
      */

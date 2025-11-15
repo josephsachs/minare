@@ -88,7 +88,7 @@ interface StateStore {
      * @param type String
      * @return List<String>
      */
-    suspend fun findKeysByType(type: String): List<String>
+    suspend fun findAllKeysForType(type: String): List<String>
 
     /**
      * Finds multiple entities by their IDs and returns as JsonObjects
