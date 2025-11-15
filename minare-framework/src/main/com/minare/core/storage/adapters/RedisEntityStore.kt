@@ -7,6 +7,7 @@ import com.minare.core.entity.annotations.Property
 import com.minare.core.entity.annotations.State
 import com.minare.core.entity.models.Entity
 import com.minare.core.entity.services.EntityFieldDeserializer
+import com.minare.core.entity.services.EntityFieldSerializer
 import com.minare.core.entity.services.EntityPublishService
 import io.vertx.core.json.JsonObject
 import io.vertx.kotlin.coroutines.await
@@ -27,7 +28,8 @@ class RedisEntityStore @Inject constructor(
     private val reflectionCache: ReflectionCache,
     private val entityFactory: EntityFactory,
     private val publishService: EntityPublishService,
-    private val entityStateDeserializer: EntityFieldDeserializer
+    private val deserializer: EntityFieldDeserializer,
+    private val serializer: EntityFieldSerializer,
 ) : StateStore {
 
     private val log = LoggerFactory.getLogger(RedisEntityStore::class.java)
@@ -43,7 +45,7 @@ class RedisEntityStore @Inject constructor(
                 field.isAccessible = true
                 val value = field.get(entity)
                 if (value != null) {
-                    val jsonValue = serializeFieldValue(value)
+                    val jsonValue = serializer.serialize(value)
                     stateJson.put(field.name, jsonValue)
                 }
             }
@@ -55,7 +57,7 @@ class RedisEntityStore @Inject constructor(
                 field.isAccessible = true
                 val value = field.get(entity)
                 if (value != null) {
-                    val jsonValue = serializeFieldValue(value)
+                    val jsonValue = serializer.serialize(value)
                     propJson.put(field.name, jsonValue)
                 }
             }
@@ -72,48 +74,6 @@ class RedisEntityStore @Inject constructor(
         redisAPI.sadd(listOf("entity:types:$entityType", entity._id!!)).await()
 
         return entity
-    }
-
-    /**
-     * Serialize a field value for storage in Redis.
-     * Handles entity references, collections, value objects, and primitives.
-     */
-    private fun serializeFieldValue(value: Any): Any {
-        return when {
-            // Entity reference - store just the ID
-            value is Entity -> value._id
-
-            // Enum - store the name as a string
-            value is Enum<*> -> value.name
-
-            // Collection - check if it contains entities
-            value is Collection<*> -> {
-                if (value.isEmpty()) {
-                    JsonArray()
-                } else if (value.all { it is Entity }) {
-                    // Collection of entities - store IDs
-                    JsonArray(value.filterIsInstance<Entity>().map { it._id })
-                } else {
-                    // Collection of primitives or data classes - store as-is
-                    value
-                }
-            }
-
-            // JsonObject - pass through
-            value is JsonObject -> value
-            value is JsonArray -> value
-
-            // Primitives - pass through
-            value is String || value is Number || value is Boolean -> value
-
-            // JsonSerializable (legacy support during transition)
-            value is JsonSerializable -> value.toJson()
-
-            // Data classes and other serializable objects - use Jackson
-            else -> {
-                JsonObject(io.vertx.core.json.Json.encode(value))
-            }
-        }
     }
 
     /**
@@ -294,7 +254,7 @@ class RedisEntityStore @Inject constructor(
             for (field in stateFields) {
                 field.isAccessible = true
                 try {
-                    val value = entityStateDeserializer.deserialize(
+                    val value = deserializer.deserialize(
                         state.getValue(field.name),
                         field
                     )
@@ -323,7 +283,7 @@ class RedisEntityStore @Inject constructor(
             for (field in propertyFields) {
                 field.isAccessible = true
                 try {
-                    val value = entityStateDeserializer.deserialize(
+                    val value = deserializer.deserialize(
                         properties.getValue(field.name),
                         field
                     )
