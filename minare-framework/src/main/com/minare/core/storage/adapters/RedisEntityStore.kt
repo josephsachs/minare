@@ -15,7 +15,7 @@ import io.vertx.redis.client.RedisAPI
 import org.slf4j.LoggerFactory
 import javax.inject.Inject
 import com.minare.core.storage.interfaces.StateStore
-import com.minare.core.utils.JsonSerializable
+import com.minare.exceptions.EntityStorageException
 import io.vertx.core.json.JsonArray
 import io.vertx.redis.client.Command
 import org.jgrapht.Graph
@@ -35,12 +35,14 @@ class RedisEntityStore @Inject constructor(
     private val log = LoggerFactory.getLogger(RedisEntityStore::class.java)
 
     override suspend fun save(entity: Entity): Entity {
-        val entityType = entity.type!!
+        val entityType = entity.type
         val stateJson = JsonObject()
         val propJson = JsonObject()
 
         entityFactory.useClass(entityType)?.let { entityClass ->
             val stateFields = reflectionCache.getFieldsWithAnnotation<State>(entityClass)
+            val propFields = reflectionCache.getFieldsWithAnnotation<Property>(entityClass)
+
             for (field in stateFields) {
                 field.isAccessible = true
                 val value = field.get(entity)
@@ -49,10 +51,7 @@ class RedisEntityStore @Inject constructor(
                     stateJson.put(field.name, jsonValue)
                 }
             }
-        }
 
-        entityFactory.useClass(entityType)?.let { entityClass ->
-            val propFields = reflectionCache.getFieldsWithAnnotation<Property>(entityClass)
             for (field in propFields) {
                 field.isAccessible = true
                 val value = field.get(entity)
@@ -70,8 +69,8 @@ class RedisEntityStore @Inject constructor(
             .put("state", stateJson)
             .put("properties", propJson)
 
-        redisAPI.jsonSet(listOf(entity._id!!, "$", document.encode())).await()
-        redisAPI.sadd(listOf("entity:types:$entityType", entity._id!!)).await()
+        redisAPI.jsonSet(listOf(entity._id, "$", document.encode())).await()
+        redisAPI.sadd(listOf("entity:types:$entityType", entity._id)).await()
 
         return entity
     }
@@ -163,18 +162,10 @@ class RedisEntityStore @Inject constructor(
         currentDocument.put("properties", currentProperties)
         redisAPI.jsonSet(listOf(entityId, "$", currentDocument.encode())).await()
 
-        val updatedDocument = findEntityJson(entityId)!!
-
-        if (publish) {
-            publishService.publishStateChange(
-                entityId,
-                updatedDocument.getString("type"),
-                currentDocument.getLong("version", 1L),
-                delta
-            )
-        }
+        val updatedDocument = findEntityJson(entityId)
 
         return updatedDocument
+            ?: throw EntityStorageException("Failed to save properties for nonexistent entity $entityId")
     }
 
     /**
@@ -322,11 +313,8 @@ class RedisEntityStore @Inject constructor(
         for (vertex in graph.vertexSet()) {
             val entityId = vertex.getString("_id") ?: continue
             fullEntities[entityId]?.let { fullEntity ->
-                // Merge the Redis state into the MongoDB node
-                // Keep the graph structure but add the full state
                 vertex.put("state", fullEntity.getJsonObject("state", JsonObject()))
                 vertex.put("properties", fullEntity.getJsonObject("properties", JsonObject()))
-                // Add any other fields you need from Redis
             }
         }
     }
@@ -449,7 +437,9 @@ class RedisEntityStore @Inject constructor(
      * @return The entity as a JsonObject, or null if not found
      */
     override suspend fun findEntityJson(entityId: String): JsonObject? {
-        return findEntitiesJsonByIds(listOf(entityId))[entityId]
+        val json = findEntitiesJsonByIds(listOf(entityId))[entityId]
+
+        return json ?: throw EntityStorageException("StateStore.findEntityJson returned null for entityId $entityId")
     }
 
     /**
@@ -463,16 +453,16 @@ class RedisEntityStore @Inject constructor(
         try {
             do {
                 val scanResult = redisAPI.scan(listOf(cursor, "COUNT", "100")).await()
+
                 cursor = scanResult.get(0).toString()
                 val keys = scanResult.get(1)
 
-                if (keys != null) {
-                    keys.forEach { key ->
-                        val keyStr = key.toString()
-                        // Exclude frame delta keys
-                        if (!keyStr.startsWith("frame:")) {
-                            entityKeys.add(keyStr)
-                        }
+                keys?.forEach { key ->
+                    val keyStr = key.toString()
+                    // Exclude frame delta keys
+                    // TODO: Create a set of all entities so we don't need to scan and then remove this
+                    if (!keyStr.startsWith("frame:")) {
+                        entityKeys.add(keyStr)
                     }
                 }
             } while (cursor != "0")

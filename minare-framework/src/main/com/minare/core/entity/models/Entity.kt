@@ -6,7 +6,7 @@ open class Entity(
     var _id: String = "unsaved-${java.util.UUID.randomUUID()}"
 ) {
     var version: Long = 1
-    var type: String? = null
+    var type: String = "Entity"
 
     override fun equals(other: Any?): Boolean {
         if (this === other) return true

@@ -1,6 +1,8 @@
 package com.minare.core.frames.coordinator.services
 
 import com.minare.core.frames.services.WorkerRegistry
+import com.minare.core.utils.debug.DebugLogger
+import com.minare.core.utils.debug.DebugLogger.Companion.DebugType
 import com.minare.worker.coordinator.events.WorkerReadinessEvent
 import kotlinx.coroutines.CompletableDeferred
 import org.slf4j.LoggerFactory
@@ -15,8 +17,7 @@ import javax.inject.Singleton
 class StartupService @Inject constructor(
     private val workerRegistry: WorkerRegistry
 ) {
-    private val log = LoggerFactory.getLogger(StartupService::class.java)
-    private val debugTraceLogs: Boolean = false
+    private val debug = DebugLogger()
 
     private val workersReady = CompletableDeferred<Unit>()
 
@@ -27,10 +28,11 @@ class StartupService @Inject constructor(
         val activeCount = workerRegistry.getActiveWorkers().size
         val expectedCount = workerRegistry.getExpectedWorkerCount()
 
-        log.info("Initial worker check: {}/{} active", activeCount, expectedCount)
+        debug.log(DebugType.COORDINATOR_STARTUP_INITIAL_WORKER_STATUS, listOf(activeCount, expectedCount))
 
         if (activeCount == expectedCount && expectedCount > 0) {
-            log.info("All workers already ready")
+            debug.log(DebugType.COORDINATOR_STARTUP_ALL_WORKERS_ALREADY_HERE)
+
             workersReady.complete(Unit)
         }
     }
@@ -42,10 +44,11 @@ class StartupService @Inject constructor(
         val activeCount = workerRegistry.getActiveWorkers().size
         val expectedCount = workerRegistry.getExpectedWorkerCount()
 
-        if (debugTraceLogs) log.info("Worker {} ready: {}/{}", workerId, activeCount, expectedCount)
+        debug.log(DebugType.COORDINATOR_STARTUP_HANDLE_WORKER_READY, listOf(workerId, activeCount, expectedCount))
 
         if (activeCount == expectedCount && !workersReady.isCompleted) {
-            if (debugTraceLogs) log.info("All workers ready")
+            debug.log(DebugType.COORDINATOR_STARTUP_ALL_WORKERS_READY)
+
             workersReady.complete(Unit)
         }
     }

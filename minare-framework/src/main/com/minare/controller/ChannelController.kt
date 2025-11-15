@@ -36,7 +36,7 @@ open class ChannelController @Inject constructor() {
         return entity._id?.let { entityId ->
             try {
                 val contextId = contextStore.create(entityId, channelId)
-                debug.log(DebugType.CHANNEL_CONTROLLER_ADD_ENTITY_CHANNEL, listOf(entity._id!!, channelId, contextId))
+                debug.log(DebugType.CHANNEL_CONTROLLER_ADD_ENTITY_CHANNEL, listOf(entity._id, channelId, contextId))
                 true
             } catch (e: Exception) {
                 log.error("Failed to add entity ${entity._id} to channel $channelId", e)
