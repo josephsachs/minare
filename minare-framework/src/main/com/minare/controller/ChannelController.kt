@@ -5,7 +5,7 @@ import com.minare.core.storage.interfaces.ChannelStore
 import com.minare.core.storage.interfaces.ContextStore
 import com.minare.core.transport.downsocket.DownSocketVerticle.Companion.ADDRESS_BROADCAST_CHANNEL
 import com.minare.core.utils.debug.DebugLogger
-import com.minare.core.utils.debug.DebugLogger.Companion.Type
+import com.minare.core.utils.debug.DebugLogger.Companion.DebugType
 import com.minare.core.utils.vertx.EventBusUtils
 import io.vertx.core.json.JsonObject
 import org.slf4j.LoggerFactory
@@ -36,7 +36,7 @@ open class ChannelController @Inject constructor() {
         return entity._id?.let { entityId ->
             try {
                 val contextId = contextStore.create(entityId, channelId)
-                debug.log(Type.CHANNEL_CONTROLLER_ADD_ENTITY_CHANNEL, listOf(entity._id!!, channelId, contextId))
+                debug.log(DebugType.CHANNEL_CONTROLLER_ADD_ENTITY_CHANNEL, listOf(entity._id, channelId, contextId))
                 true
             } catch (e: Exception) {
                 log.error("Failed to add entity ${entity._id} to channel $channelId", e)
@@ -77,7 +77,7 @@ open class ChannelController @Inject constructor() {
             }
         }
 
-        debug.log(Type.CHANNEL_CONTROLLER_ADD_ENTITIES_CHANNEL, listOf(count, entities.size, channelId))
+        debug.log(DebugType.CHANNEL_CONTROLLER_ADD_ENTITIES_CHANNEL, listOf(count, entities.size, channelId))
     }
 
     /**
@@ -88,7 +88,7 @@ open class ChannelController @Inject constructor() {
     open suspend fun createChannel(): String {
         val result = channelStore.createChannel()
 
-        debug.log(Type.CHANNEL_CONTROLLER_CREATE_CHANNEL, listOf(result))
+        debug.log(DebugType.CHANNEL_CONTROLLER_CREATE_CHANNEL, listOf(result))
 
         return result
     }
@@ -103,7 +103,7 @@ open class ChannelController @Inject constructor() {
     open suspend fun addClient(connectionId: String, channelId: String): Boolean {
         return try {
             channelStore.addChannelClient(channelId, connectionId)
-            debug.log(Type.CHANNEL_CONTROLLER_ADD_CLIENT_CHANNEL, listOf(connectionId, channelId))
+            debug.log(DebugType.CHANNEL_CONTROLLER_ADD_CLIENT_CHANNEL, listOf(connectionId, channelId))
             true
         } catch (e: Exception) {
             log.error("Failed to subscribe client {} to channel {}", connectionId, channelId, e)

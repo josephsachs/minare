@@ -14,10 +14,6 @@ data class OperationCompletion(
     val entityId: String? = null,
     val resultSummary: String? = null
 ) : Serializable {
-
-    /**
-     * Convert to JsonObject for storage/transmission
-     */
     fun toJson(): JsonObject {
         val json = JsonObject()
             .put("operationId", operationId)

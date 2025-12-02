@@ -2,6 +2,7 @@ package com.minare.controller
 
 import com.minare.core.entity.factories.EntityFactory
 import com.minare.core.entity.models.*
+import com.minare.core.entity.services.EntityObjectHydrator
 import com.minare.core.storage.interfaces.EntityGraphStore
 import com.minare.core.storage.interfaces.StateStore
 import com.minare.core.utils.debug.DebugLogger
@@ -23,11 +24,10 @@ import javax.inject.Singleton
 open class EntityController @Inject constructor() {
     @Inject private lateinit var stateStore: StateStore
     @Inject private lateinit var entityGraphStore: EntityGraphStore
-    @Inject private lateinit var entityFactory: EntityFactory
+    @Inject private lateinit var objectHydrator: EntityObjectHydrator
     @Inject private lateinit var debug: DebugLogger
 
     private val log = LoggerFactory.getLogger(EntityController::class.java)
-
 
     /**
      * Create a new entity with proper two-phase lifecycle.
@@ -40,15 +40,9 @@ open class EntityController @Inject constructor() {
      * @return The created entity with ID assigned
      */
     open suspend fun create(entity: Entity): Entity {
-        if (!entity._id.isNullOrEmpty()) {
-            throw IllegalArgumentException("Entity already has an ID - use save()")
-        }
-
         try {
-            //  Save to MongoDB to get ID assigned
+            //  Save to graph store to get ID assigned
             val entityWithId = entityGraphStore.save(entity)
-
-            // Redis is source of truth for Entity state
             val finalEntity = stateStore.save(entityWithId)
 
             return finalEntity
@@ -66,11 +60,7 @@ open class EntityController @Inject constructor() {
      * @return The saved entity with any updates
      */
     open suspend fun saveState(entityId: String, deltas: JsonObject, incrementVersion: Boolean = true): Entity? {
-        if (entityId.isBlank()) {
-            throw IllegalArgumentException("Entity must have an ID - use create() for new entities")
-        }
-
-        debug.log(DebugLogger.Companion.Type.ENTITY_CONTROLLER_SAVE_ENTITY, listOf(entityId))
+        debug.log(DebugLogger.Companion.DebugType.ENTITY_CONTROLLER_SAVE_ENTITY, listOf(entityId))
 
         stateStore.saveState(entityId, deltas, incrementVersion)
 
@@ -87,10 +77,6 @@ open class EntityController @Inject constructor() {
      * @return The saved entity with any updates
      */
     open suspend fun saveProperties(entityId: String, deltas: JsonObject): Entity? {
-        if (entityId.isBlank()) {
-            throw IllegalArgumentException("Entity must have an ID - use create() for new entities")
-        }
-
         stateStore.saveProperties(entityId, deltas)
 
         return stateStore.findEntity(entityId)
@@ -103,26 +89,11 @@ open class EntityController @Inject constructor() {
      * @return Map of ID to Entity for found entities
      */
     open suspend fun findByIds(ids: List<String>): Map<String, Entity> {
-        var results = mutableMapOf<String, Entity>()
+        val results = mutableMapOf<String, Entity>()
         val entityJsons = stateStore.findEntitiesJson(ids)
 
         entityJsons.forEach { (entityKey, entityJson) ->
-            val entityType = entityJson.getString("type")
-            val entityClass = entityFactory.useClass(entityType) ?: return@forEach
-
-            val entity = entityFactory.createEntity(entityClass).apply {
-                _id = entityJson.getString("_id")
-                version = entityJson.getLong("version")
-                type = entityType
-            }
-
-            val stateJson = entityJson.getJsonObject("state", JsonObject())
-            stateStore.setEntityState(entity, entityType, stateJson)
-
-            val propertiesJson = entityJson.getJsonObject("properties", JsonObject())
-            stateStore.setEntityProperties(entity, entityType, propertiesJson)
-
-            results[entityKey] = entity
+            results[entityKey] = objectHydrator.hydrate(entityJson)
         }
 
         return results

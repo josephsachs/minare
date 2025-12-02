@@ -9,7 +9,7 @@ import com.minare.core.frames.services.SnapshotService
 import com.minare.core.frames.services.SnapshotService.Companion.ADDRESS_SNAPSHOT_COMPLETE
 import com.minare.core.frames.services.WorkerRegistry
 import com.minare.core.utils.debug.DebugLogger
-import com.minare.core.utils.debug.DebugLogger.Companion.Type
+import com.minare.core.utils.debug.DebugLogger.Companion.DebugType
 import com.minare.core.utils.vertx.EventBusUtils
 import com.minare.core.utils.vertx.EventWaiter
 import com.minare.core.utils.vertx.VerticleLogger
@@ -140,7 +140,7 @@ class FrameCoordinatorVerticle @Inject constructor(
                 val pauseState = coordinatorState.pauseState
 
                 if (pauseState in setOf(PauseState.REST, PauseState.SOFT)) {
-                    debug.log(Type.COORDINATOR_MANIFEST_TIMER_BLOCKED_TICK, listOf(pauseState))
+                    debug.log(DebugType.COORDINATOR_MANIFEST_TIMER_BLOCKED_TICK, listOf(pauseState))
                     return@launch
                 }
 
@@ -184,7 +184,7 @@ class FrameCoordinatorVerticle @Inject constructor(
         val lastPreparedManifest = coordinatorState.lastPreparedManifest
 
         if (coordinatorState.pauseState in setOf(PauseState.REST, PauseState.SOFT)) {
-            debug.log(Type.COORDINATOR_PREPARE_PENDING_MANIFESTS, listOf(lastPreparedManifest, pauseState))
+            debug.log(DebugType.COORDINATOR_PREPARE_PENDING_MANIFESTS, listOf(lastPreparedManifest, pauseState))
             return
         }
 
@@ -241,12 +241,12 @@ class FrameCoordinatorVerticle @Inject constructor(
      * This is what permits workers to complete the next frame
      */
     private suspend fun onFrameComplete(logicalFrame: Long) {
-        debug.log(Type.COORDINATOR_ON_FRAME_COMPLETE_CALLED, listOf(logicalFrame))
+        debug.log(DebugType.COORDINATOR_ON_FRAME_COMPLETE_CALLED, listOf(logicalFrame))
 
         val pauseState = coordinatorState.pauseState
 
         if (pauseState in setOf(PauseState.SOFT, PauseState.HARD)) {
-            debug.log(Type.COORDINATOR_ON_FRAME_COMPLETE_BLOCKED, listOf(logicalFrame, pauseState))
+            debug.log(DebugType.COORDINATOR_ON_FRAME_COMPLETE_BLOCKED, listOf(logicalFrame, pauseState))
             return
         }
 
@@ -268,7 +268,7 @@ class FrameCoordinatorVerticle @Inject constructor(
             ADDRESS_NEXT_FRAME,
             JsonObject().put("logicalFrame", logicalFrame)
         )
-        debug.log(Type.COORDINATOR_NEXT_FRAME_EVENT, listOf(logicalFrame))
+        debug.log(DebugType.COORDINATOR_NEXT_FRAME_EVENT, listOf(logicalFrame))
 
         cleanupCompletedFrame(logicalFrame)
     }
@@ -298,7 +298,7 @@ class FrameCoordinatorVerticle @Inject constructor(
 
         val newSessionId = eventMessage.getString("sessionId")
 
-        debug.log(DebugLogger.Companion.Type.COORDINATOR_SESSION_ANNOUNCEMENT, listOf(newSessionId))
+        debug.log(DebugLogger.Companion.DebugType.COORDINATOR_SESSION_ANNOUNCEMENT, listOf(newSessionId))
 
         coordinatorState.sessionId = newSessionId
 

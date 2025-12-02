@@ -22,7 +22,7 @@ class EntitySyncEvent @Inject constructor(
     private val entityGraphStore: EntityGraphStore,
     private val connectionStore: ConnectionStore
 ) {
-    private val connectionTracker = ConnectionTracker("CommandSocket", vlog)
+    private val connectionTracker = ConnectionTracker("UpSocket", vlog)
     private var debugTraceLogs: Boolean = false
 
     suspend fun register(debugTraceLogs: Boolean) {

@@ -7,6 +7,7 @@ import com.minare.core.entity.annotations.Property
 import com.minare.core.entity.annotations.State
 import com.minare.core.entity.models.Entity
 import com.minare.core.entity.services.EntityFieldDeserializer
+import com.minare.core.entity.services.EntityFieldSerializer
 import com.minare.core.entity.services.EntityPublishService
 import io.vertx.core.json.JsonObject
 import io.vertx.kotlin.coroutines.await
@@ -14,7 +15,7 @@ import io.vertx.redis.client.RedisAPI
 import org.slf4j.LoggerFactory
 import javax.inject.Inject
 import com.minare.core.storage.interfaces.StateStore
-import com.minare.core.utils.JsonSerializable
+import com.minare.exceptions.EntityStorageException
 import io.vertx.core.json.JsonArray
 import io.vertx.redis.client.Command
 import org.jgrapht.Graph
@@ -27,35 +28,34 @@ class RedisEntityStore @Inject constructor(
     private val reflectionCache: ReflectionCache,
     private val entityFactory: EntityFactory,
     private val publishService: EntityPublishService,
-    private val entityStateDeserializer: EntityFieldDeserializer
+    private val deserializer: EntityFieldDeserializer,
+    private val serializer: EntityFieldSerializer,
 ) : StateStore {
-
     private val log = LoggerFactory.getLogger(RedisEntityStore::class.java)
 
     override suspend fun save(entity: Entity): Entity {
-        val entityType = entity.type!!
+        val entityType = entity.type
         val stateJson = JsonObject()
         val propJson = JsonObject()
 
         entityFactory.useClass(entityType)?.let { entityClass ->
             val stateFields = reflectionCache.getFieldsWithAnnotation<State>(entityClass)
+            val propFields = reflectionCache.getFieldsWithAnnotation<Property>(entityClass)
+
             for (field in stateFields) {
                 field.isAccessible = true
                 val value = field.get(entity)
                 if (value != null) {
-                    val jsonValue = if (value is JsonSerializable) value.toJson() else value
+                    val jsonValue = serializer.serialize(value)
                     stateJson.put(field.name, jsonValue)
                 }
             }
-        }
 
-        entityFactory.useClass(entityType)?.let { entityClass ->
-            val propFields = reflectionCache.getFieldsWithAnnotation<Property>(entityClass)
             for (field in propFields) {
                 field.isAccessible = true
                 val value = field.get(entity)
                 if (value != null) {
-                    val jsonValue = if (value is JsonSerializable) value.toJson() else value
+                    val jsonValue = serializer.serialize(value)
                     propJson.put(field.name, jsonValue)
                 }
             }
@@ -68,8 +68,8 @@ class RedisEntityStore @Inject constructor(
             .put("state", stateJson)
             .put("properties", propJson)
 
-        redisAPI.jsonSet(listOf(entity._id!!, "$", document.encode())).await()
-        redisAPI.sadd(listOf("entity:types:$entityType", entity._id!!)).await()
+        redisAPI.jsonSet(listOf(entity._id, "$", document.encode())).await()
+        redisAPI.sadd(listOf("entity:types:$entityType", entity._id)).await()
 
         return entity
     }
@@ -81,7 +81,7 @@ class RedisEntityStore @Inject constructor(
         val version = if (incrementVersion) {
             val response = redisAPI.send(
                 Command.create("EVAL"),
-                atomicIncrement(),
+                versionIncrementScript(),
                 "1",
                 entityId,
                 delta.encode()
@@ -90,7 +90,7 @@ class RedisEntityStore @Inject constructor(
             response.toLong()
         } else {
             val currentDocument = findEntityJson(entityId)
-                ?: throw IllegalStateException("Entity not found: $entityId")
+                ?: throw EntityStorageException("Entity not found: $entityId")
 
             val currentState = currentDocument.getJsonObject("state", JsonObject())
 
@@ -103,7 +103,8 @@ class RedisEntityStore @Inject constructor(
             currentDocument.getLong("version", 1L)
         }
 
-        val updatedDocument = findEntityJson(entityId)!!
+        val updatedDocument = findEntityJson(entityId)
+            ?: throw EntityStorageException("Updated document not found for $entityId after set command")
 
         publishService.publishStateChange(
             entityId,
@@ -113,34 +114,6 @@ class RedisEntityStore @Inject constructor(
         )
 
         return updatedDocument
-    }
-
-    /**
-     * Lua script for atomically incrementing version
-     */
-    private fun atomicIncrement(): String {
-        return """
-            local doc_json = redis.call('JSON.GET', KEYS[1])
-            if not doc_json then
-                error('Entity not found: ' .. KEYS[1])
-            end
-            
-            local doc = cjson.decode(doc_json)
-            local delta = cjson.decode(ARGV[1])
-            
-            -- Apply delta to state
-            local state = doc.state or {}
-            for key, value in pairs(delta) do
-                state[key] = value
-            end
-            doc.state = state
-            
-            -- Increment version
-            doc.version = (doc.version or 1) + 1
-            
-            redis.call('JSON.SET', KEYS[1], '${'$'}', cjson.encode(doc))
-            return doc.version
-        """
     }
 
     /**
@@ -161,24 +134,16 @@ class RedisEntityStore @Inject constructor(
         currentDocument.put("properties", currentProperties)
         redisAPI.jsonSet(listOf(entityId, "$", currentDocument.encode())).await()
 
-        val updatedDocument = findEntityJson(entityId)!!
-
-        if (publish) {
-            publishService.publishStateChange(
-                entityId,
-                updatedDocument.getString("type"),
-                currentDocument.getLong("version", 1L),
-                delta
-            )
-        }
+        val updatedDocument = findEntityJson(entityId)
 
         return updatedDocument
+            ?: throw EntityStorageException("Failed to save properties for nonexistent entity $entityId")
     }
 
     /**
      * Take JsonObject from Redis Entity store and return Entity (not including state)
      */
-    suspend fun getEntity(document: JsonObject): Entity? {
+    private suspend fun getEntity(document: JsonObject): Entity? {
         val entityId = document.getString("_id")
         val entityType = document.getString("type")
         val version = document.getLong("version", 1L)
@@ -243,7 +208,9 @@ class RedisEntityStore @Inject constructor(
     }
 
     /**
-     * Populate state fields using reflection
+     * Populate all @State fields using reflection
+     * Used in hydration
+     * @param state incoming
      */
     override suspend fun setEntityState(entity: Entity, entityType: String, state: JsonObject): Entity {
         entityFactory.useClass(entityType)?.let { entityClass ->
@@ -252,7 +219,7 @@ class RedisEntityStore @Inject constructor(
             for (field in stateFields) {
                 field.isAccessible = true
                 try {
-                    val value = entityStateDeserializer.deserialize(
+                    val value = deserializer.deserialize(
                         state.getValue(field.name),
                         field
                     )
@@ -272,7 +239,8 @@ class RedisEntityStore @Inject constructor(
     }
 
     /**
-     * Populate state fields using reflection
+     * Hydrates @Property fields with data from
+     * @param properties
      */
     override suspend fun setEntityProperties(entity: Entity, entityType: String, properties: JsonObject): Entity {
         entityFactory.useClass(entityType)?.let { entityClass ->
@@ -281,7 +249,7 @@ class RedisEntityStore @Inject constructor(
             for (field in propertyFields) {
                 field.isAccessible = true
                 try {
-                    val value = entityStateDeserializer.deserialize(
+                    val value = deserializer.deserialize(
                         properties.getValue(field.name),
                         field
                     )
@@ -290,9 +258,7 @@ class RedisEntityStore @Inject constructor(
                     }
 
                 } catch (e: Exception) {
-                    // TODO: Fix serialization so this bug stops happening
                     log.warn("StateStore found Entity document with invalid property field for ${entity._id}")
-
                 }
             }
         }
@@ -316,15 +282,11 @@ class RedisEntityStore @Inject constructor(
         // Batch fetch all entities from Redis
         val fullEntities = findEntitiesJsonByIds(entityIds)
 
-        // Merge full state into each graph node
         for (vertex in graph.vertexSet()) {
             val entityId = vertex.getString("_id") ?: continue
             fullEntities[entityId]?.let { fullEntity ->
-                // Merge the Redis state into the MongoDB node
-                // Keep the graph structure but add the full state
                 vertex.put("state", fullEntity.getJsonObject("state", JsonObject()))
                 vertex.put("properties", fullEntity.getJsonObject("properties", JsonObject()))
-                // Add any other fields you need from Redis
             }
         }
     }
@@ -399,7 +361,7 @@ class RedisEntityStore @Inject constructor(
      * @param type String
      * @return List<String>
      */
-    override suspend fun findKeysByType(type: String): List<String> {
+    override suspend fun findAllKeysForType(type: String): List<String> {
         val response = redisAPI.smembers("entity:types:$type").await()
         val uuids = response?.map { it.toString() } ?: emptyList()
         return uuids
@@ -447,7 +409,9 @@ class RedisEntityStore @Inject constructor(
      * @return The entity as a JsonObject, or null if not found
      */
     override suspend fun findEntityJson(entityId: String): JsonObject? {
-        return findEntitiesJsonByIds(listOf(entityId))[entityId]
+        val json = findEntitiesJsonByIds(listOf(entityId))[entityId]
+
+        return json ?: throw EntityStorageException("StateStore.findEntityJson returned null for entityId $entityId")
     }
 
     /**
@@ -461,27 +425,60 @@ class RedisEntityStore @Inject constructor(
         try {
             do {
                 val scanResult = redisAPI.scan(listOf(cursor, "COUNT", "100")).await()
+
                 cursor = scanResult.get(0).toString()
                 val keys = scanResult.get(1)
 
-                if (keys != null) {
-                    keys.forEach { key ->
-                        val keyStr = key.toString()
-                        // Exclude frame delta keys
-                        if (!keyStr.startsWith("frame:")) {
-                            entityKeys.add(keyStr)
-                        }
+                keys?.forEach { key ->
+                    val keyStr = key.toString()
+                    // Exclude frame delta keys
+                    // TODO: Create a set of all entities so we don't need to scan and then remove this
+                    if (!keyStr.startsWith("frame:")) {
+                        entityKeys.add(keyStr)
                     }
                 }
             } while (cursor != "0")
 
-            // Sort for consistent ordering across calls
-            entityKeys.sort()
+            entityKeys.sort() // Note this, very important
 
             return entityKeys
         } catch (e: Exception) {
             log.error("Error getting entity keys", e)
             return emptyList()
         }
+    }
+
+    /**
+     *
+     *  Lua
+     *
+     */
+
+    /**
+     * Atomic version increment
+     */
+    private fun versionIncrementScript(): String {
+        return """
+            local doc_json = redis.call('JSON.GET', KEYS[1])
+            if not doc_json then
+                error('Entity not found: ' .. KEYS[1])
+            end
+            
+            local doc = cjson.decode(doc_json)
+            local delta = cjson.decode(ARGV[1])
+            
+            -- Apply delta to state
+            local state = doc.state or {}
+            for key, value in pairs(delta) do
+                state[key] = value
+            end
+            doc.state = state
+            
+            -- Increment version
+            doc.version = (doc.version or 1) + 1
+            
+            redis.call('JSON.SET', KEYS[1], '${'$'}', cjson.encode(doc))
+            return doc.version
+        """
     }
 }

@@ -1,130 +1,248 @@
 package com.minare.core.utils.debug
 
-import com.google.inject.Inject
 import com.google.inject.Singleton
 import com.minare.core.utils.vertx.VerticleLogger
 import io.vertx.core.impl.logging.LoggerFactory
+import io.vertx.core.json.JsonObject
 
 @Singleton
-class DebugLogger @Inject constructor() {
+class DebugLogger {
     private val log = LoggerFactory.getLogger(DebugLogger::class.java)
 
-    /**  Mind over matter won't stop all your chatter */
-    private val isEnabled: Map<Type, Boolean> = mapOf(
-        Type.NONE to false,
-        Type.COORDINATOR_STATE_WORKER_FRAME_COMPLETE to false,
-        Type.COORDINATOR_STATE_RESET_SESSION to false,
-        Type.COORDINATOR_SESSION_ANNOUNCEMENT to true,
-        Type.COORDINATOR_MANIFEST_TIMER_BLOCKED_TICK to false,
-        Type.COORDINATOR_WORKER_FRAME_COMPLETE_EVENT to false,
-        Type.COORDINATOR_ON_FRAME_COMPLETE_CALLED to false,
-        Type.COORDINATOR_ON_FRAME_COMPLETE_BLOCKED to false,
-        Type.COORDINATOR_NEXT_FRAME_EVENT to false,
-        Type.COORDINATOR_PREPARE_PENDING_MANIFESTS to false,
-        Type.COORDINATOR_MANIFEST_BUILDER_WROTE_WORKER to false,
-        Type.COORDINATOR_MANIFEST_BUILDER_WROTE_ALL to false,
-        Type.COORDINATOR_MANIFEST_BUILDER_ASSIGNED_OPERATIONS to true,
-        Type.COORDINATOR_MANIFEST_BUILDER_CLEAR_FRAMES to false,
-        Type.COORDINATOR_OPERATION_HANDLER_HANDLE to false,
-        Type.COORDINATOR_OPERATION_HANDLER_EXTRACT_BUFFERED to false,
-        Type.COORDINATOR_OPERATION_HANDLER_EXTRACTED_OPS to false,
-        Type.COORDINATOR_OPERATION_HANDLER_ASSIGN_OPERATION to false,
-        Type.COORDINATOR_OPERATION_HANDLER_ASSIGN_LATE_OPERATION to false,
-        Type.COORDINATOR_WORK_DISPATCH_DISTRIBUTE_NO_ITEMS to false,
-        Type.COORDINATOR_WORK_DISPATCH_DISTRIBUTE_NO_WORKERS to false,
-        Type.CHANNEL_CONTROLLER_ADD_CLIENT_CHANNEL to false,
-        Type.CHANNEL_CONTROLLER_ADD_ENTITY_CHANNEL to false,
-        Type.CHANNEL_CONTROLLER_ADD_ENTITIES_CHANNEL to false,
-        Type.CHANNEL_CONTROLLER_CREATE_CHANNEL to false,
-        Type.CONNECTION_CONTROLLER_CREATE_CONNECTION to false,
-        Type.CONNECTION_CONTROLLER_FOUND_CONNECTION to false,
-        Type.CONNECTION_CONTROLLER_STORED_CONNECTION to false,
-        Type.CONNECTION_CONTROLLER_UPDATE_CONNECTION to false,
-        Type.CONNECTION_CONTROLLER_UPDATE_SOCKETS to false,
-        Type.CONNECTION_CONTROLLER_UPSOCKET_DISCONNECT to false,
-        Type.CONNECTION_CONTROLLER_CONNECTION_DELETED to false,
-        Type.CONNECTION_CONTROLLER_REMOVE_UPSOCKET to false,
-        Type.CONNECTION_CONTROLLER_REMOVE_DOWNSOCKET to false,
-        Type.CONNECTION_CONTROLLER_UPSOCKET_CLOSED to false,
-        Type.CONNECTION_CONTROLLER_CLEANUP_CONNECTION to false,
-        Type.CONNECTION_CONTROLLER_ALREADY_DELETED_WARNING to false,
-        Type.OPERATION_CONTROLLER_PROCESS_MESSAGE to false,
-        Type.OPERATION_CONTROLLER_QUEUE to false,
-        Type.OPERATION_CONTROLLER_SEND_MESSAGE to false
+    private val isEnabled: Map<DebugType, Boolean> = mapOf(
+        DebugType.NONE to false,
+
+        DebugType.UPSOCKET_STARTUP to true,
+        DebugType.UPSOCKET_ROUTER_INITIALIZED to true,
+        DebugType.UPSOCKET_INITIALIZING_ROUTER to true,
+        DebugType.UPSOCKET_SETTING_UP_ROUTE_HANDLER to true,
+        DebugType.UPSOCKET_ROUTER_CREATED to true,
+        DebugType.UPSOCKET_NEW_WEBSOCKET_CONNECTION to true,
+        DebugType.UPSOCKET_WEBSOCKET_CLOSED to true,
+        DebugType.UPSOCKET_CONNECTION_TIMEOUT to true,
+        DebugType.UPSOCKET_DEPLOYING_HTTP_SERVER to true,
+        DebugType.UPSOCKET_HTTP_SERVER_DEPLOYED to true,
+        DebugType.UPSOCKET_HTTP_SERVER_STOPPING to true,
+
+        DebugType.COORDINATOR_STATE_WORKER_FRAME_COMPLETE to false,
+        DebugType.COORDINATOR_STATE_RESET_SESSION to false,
+        DebugType.COORDINATOR_SESSION_ANNOUNCEMENT to true,
+        DebugType.COORDINATOR_MANIFEST_TIMER_BLOCKED_TICK to false,
+        DebugType.COORDINATOR_WORKER_FRAME_COMPLETE_EVENT to false,
+        DebugType.COORDINATOR_ON_FRAME_COMPLETE_CALLED to false,
+        DebugType.COORDINATOR_ON_FRAME_COMPLETE_BLOCKED to false,
+        DebugType.COORDINATOR_NEXT_FRAME_EVENT to false,
+        DebugType.COORDINATOR_PREPARE_PENDING_MANIFESTS to false,
+        DebugType.COORDINATOR_MANIFEST_BUILDER_WROTE_WORKER to false,
+        DebugType.COORDINATOR_MANIFEST_BUILDER_WROTE_ALL to false,
+        DebugType.COORDINATOR_MANIFEST_BUILDER_ASSIGNED_OPERATIONS to true,
+        DebugType.COORDINATOR_MANIFEST_BUILDER_CLEAR_FRAMES to false,
+        DebugType.COORDINATOR_OPERATION_HANDLER_HANDLE to false,
+        DebugType.COORDINATOR_OPERATION_HANDLER_EXTRACT_BUFFERED to false,
+        DebugType.COORDINATOR_OPERATION_HANDLER_EXTRACTED_OPS to false,
+        DebugType.COORDINATOR_OPERATION_HANDLER_ASSIGN_OPERATION to false,
+        DebugType.COORDINATOR_OPERATION_HANDLER_ASSIGN_LATE_OPERATION to false,
+        DebugType.COORDINATOR_WORK_DISPATCH_DISTRIBUTE_NO_ITEMS to false,
+        DebugType.COORDINATOR_WORK_DISPATCH_DISTRIBUTE_NO_WORKERS to false,
+
+        DebugType.COORDINATOR_STARTUP_INITIAL_WORKER_STATUS to true,
+        DebugType.COORDINATOR_STARTUP_HANDLE_WORKER_READY to true,
+        DebugType.COORDINATOR_STARTUP_ALL_WORKERS_ALREADY_HERE to true,
+        DebugType.COORDINATOR_STARTUP_HANDLE_WORKER_READY to true,
+        DebugType.COORDINATOR_STARTUP_ALL_WORKERS_READY to true,
+
+        DebugType.CHANNEL_CONTROLLER_ADD_CLIENT_CHANNEL to false,
+        DebugType.CHANNEL_CONTROLLER_ADD_ENTITY_CHANNEL to false,
+        DebugType.CHANNEL_CONTROLLER_ADD_ENTITIES_CHANNEL to false,
+        DebugType.CHANNEL_CONTROLLER_CREATE_CHANNEL to false,
+
+        DebugType.CONNECTION_CONTROLLER_CREATE_CONNECTION to true,
+        DebugType.CONNECTION_CONTROLLER_FOUND_CONNECTION to true,
+        DebugType.CONNECTION_CONTROLLER_STORED_CONNECTION to true,
+        DebugType.CONNECTION_CONTROLLER_UPDATE_CONNECTION to true,
+        DebugType.CONNECTION_CONTROLLER_UPDATE_SOCKETS to true,
+        DebugType.CONNECTION_CONTROLLER_UPSOCKET_DISCONNECT to true,
+        DebugType.CONNECTION_CONTROLLER_CONNECTION_DELETED to false,
+        DebugType.CONNECTION_CONTROLLER_REMOVE_UPSOCKET to true,
+        DebugType.CONNECTION_CONTROLLER_REMOVE_DOWNSOCKET to true,
+        DebugType.CONNECTION_CONTROLLER_UPSOCKET_CLOSED to true,
+        DebugType.CONNECTION_CONTROLLER_CLEANUP_CONNECTION to false,
+        DebugType.CONNECTION_CONTROLLER_ALREADY_DELETED_WARNING to false,
+
+        DebugType.ENTITY_CONTROLLER_SAVE_ENTITY to true,
+        DebugType.ENTITY_HYDRATOR_WRITE_FAILED to true,
+
+        DebugType.CONNECTION_TRACKER_REGISTER_CONNECTION to true,
+        DebugType.CONNECTION_TRACKER_REMOVE_CONNECTION to true,
+
+        DebugType.DOWNSOCKET_ENTITY_PUBLISHER_FAILED to false,
+
+        DebugType.OPERATION_CONTROLLER_PROCESS_MESSAGE to false,
+        DebugType.OPERATION_CONTROLLER_QUEUE to false,
+        DebugType.OPERATION_CONTROLLER_SEND_MESSAGE to false
     )
 
-    fun log(type: Type, args: List<Any?> = listOf()) {
+    fun log(type: DebugType, args: List<Any?> = listOf()) {
         if (isEnabled[type] == false) return
 
-        val message: String = when (type) {
-            Type.NONE -> { return }
-            Type.COORDINATOR_STATE_WORKER_FRAME_COMPLETE -> { "Worker ${args[0]} completed logical frame ${args[1]}" }
-            Type.COORDINATOR_STATE_RESET_SESSION -> { "Started new session at timestamp ${args[0]} (nanos: ${args[1]})" }
-            Type.COORDINATOR_SESSION_ANNOUNCEMENT -> { "Frame coordinator announced new session ${args[0]}" }
-            Type.COORDINATOR_MANIFEST_TIMER_BLOCKED_TICK -> { "Blocked manifest prep timer due to pause state ${args[0]}" }
-            Type.COORDINATOR_WORKER_FRAME_COMPLETE_EVENT -> {
-                val vlog = args[0] as VerticleLogger
+        try {
+            val message: String = when (type) {
+                DebugType.NONE -> { return }
+                DebugType.UPSOCKET_STARTUP -> {
+                    val vlog = args[1] as VerticleLogger
+                    log.info("Starting UpSocketVerticle at ${args[0]}")
+                    vlog.logStartupStep("STARTING")
+                    vlog.logConfig(args[2] as JsonObject)
+                    return
+                }
+                DebugType.UPSOCKET_ROUTER_INITIALIZED -> {
+                    val vlog = args[1] as VerticleLogger
+                    vlog.logStartupStep("ROUTER_INITIALIZED")
+                    "Up socket router initialized with routes: ${args[0]}, ${args[0]}/health, /ws-debug"
+                }
+                DebugType.UPSOCKET_INITIALIZING_ROUTER -> {
+                    val vlog = args[0] as VerticleLogger
+                    vlog.logStartupStep("INITIALIZING_ROUTER")
+                    return
+                }
+                DebugType.UPSOCKET_SETTING_UP_ROUTE_HANDLER -> { "Setting up websocket route handler at path: ${args[0]}" }
+                DebugType.UPSOCKET_ROUTER_CREATED -> {
+                    val vlog = args[0] as VerticleLogger
+                    vlog.logStartupStep("ROUTER_CREATED")
+                    return
+                }
+                DebugType.UPSOCKET_NEW_WEBSOCKET_CONNECTION -> { "New up WebSocket connection from ${args[0]}" }
+                DebugType.UPSOCKET_WEBSOCKET_CLOSED -> {
+                    val vlog = args[0] as VerticleLogger
+                    vlog.getEventLogger().trace(
+                        "WEBSOCKET_CLOSED", mapOf(
+                            "socketId" to args[1],
+                            "connectionId" to args[2]
+                        ), args[3] as String
+                    )
+                    return
+                }
+                DebugType.UPSOCKET_CONNECTION_TIMEOUT -> {
+                    val vlog = args[0] as VerticleLogger
+                    vlog.getEventLogger().trace(
+                        "HANDSHAKE_TIMEOUT", mapOf(
+                            "socketId" to args[1],
+                            "timeoutMs" to args[2]
+                        ), args[3] as String
+                    )
+                    return
+                }
+                DebugType.UPSOCKET_DEPLOYING_HTTP_SERVER -> {
+                    val vlog = args[0] as VerticleLogger
+                    vlog.logStartupStep("DEPLOYING_OWN_HTTP_SERVER")
+                    return
+                }
+                DebugType.UPSOCKET_HTTP_SERVER_DEPLOYED -> {
+                    val vlog = args[0] as VerticleLogger
+                    vlog.logStartupStep(
+                        "HTTP_SERVER_DEPLOYED", mapOf(
+                            "port" to args[1],
+                            "host" to args[2]
+                        )
+                    )
+                    return
+                }
+                DebugType.UPSOCKET_HTTP_SERVER_STOPPING -> {
+                    val vlog = args[0] as VerticleLogger
+                    vlog.logStartupStep("STOPPING")
+                    return
+                }
+                DebugType.COORDINATOR_STATE_WORKER_FRAME_COMPLETE -> { "Worker ${args[0]} completed logical frame ${args[1]}" }
+                DebugType.COORDINATOR_STATE_RESET_SESSION -> { "Started new session at timestamp ${args[0]} (nanos: ${args[1]})" }
+                DebugType.COORDINATOR_SESSION_ANNOUNCEMENT -> { "Frame coordinator announced new session ${args[0]}" }
+                DebugType.COORDINATOR_MANIFEST_TIMER_BLOCKED_TICK -> { "Blocked manifest prep timer due to pause state ${args[0]}" }
+                DebugType.COORDINATOR_WORKER_FRAME_COMPLETE_EVENT -> {
+                    val vlog = args[0] as VerticleLogger
                     vlog.logInfo("Frame ${args[3]} progress: ${args[1]}/${args[2]} workers complete")
-                vlog.getEventLogger().trace(
-                    "ALL_WORKERS_COMPLETE",
-                    mapOf(
-                        "logicalFrame" to args[3],
-                        "workerCount" to args[2]
-                    ),
-                    args[4].toString()
-                )
-                return
+                    vlog.getEventLogger().trace(
+                        "ALL_WORKERS_COMPLETE",
+                        mapOf(
+                            "logicalFrame" to args[3],
+                            "workerCount" to args[2]
+                        ),
+                        args[4].toString()
+                    )
+                    return
+                }
+                DebugType.COORDINATOR_ON_FRAME_COMPLETE_CALLED -> { "Logical frame ${args[0]} completed successfully" }
+                DebugType.COORDINATOR_ON_FRAME_COMPLETE_BLOCKED -> { "Completed frame ${args[0]}, stopping due to pause ${args[1]}" }
+                DebugType.COORDINATOR_NEXT_FRAME_EVENT -> { "Broadcasting next frame event after completing frame ${args[0]}" }
+                DebugType.COORDINATOR_PREPARE_PENDING_MANIFESTS -> { "Delayed preparing frames from ${args[0]} due to pause ${args[1]}" }
+                DebugType.COORDINATOR_MANIFEST_BUILDER_WROTE_WORKER -> { "Wrote manifest for worker ${args[0]} with ${args[1]} operations for logical frame ${args[2]}" }
+                DebugType.COORDINATOR_MANIFEST_BUILDER_WROTE_ALL -> { "Created manifests for logical frame ${args[0]} with ${args[1]} total operations distributed to ${args[2]} workers" }
+                DebugType.COORDINATOR_MANIFEST_BUILDER_ASSIGNED_OPERATIONS -> { "Assigned operation ${args[0]} to existing manifest for ${args[1]}" }
+                DebugType.COORDINATOR_MANIFEST_BUILDER_CLEAR_FRAMES -> { "Cleared ${args[0]} manifests for frame ${args[1]}" }
+                DebugType.COORDINATOR_MANIFEST_BUILDER_CLEAR_ALL -> { "Cleared ${args[0]} manifests from distributed map for new session" }
+                DebugType.COORDINATOR_OPERATION_HANDLER_HANDLE -> {
+                    "OperationHandler.handle(operation): ${args[0]} frameInProgress = ${args[1]} - timestamp = ${args[2]}"
+                }
+                DebugType.COORDINATOR_OPERATION_HANDLER_EXTRACT_BUFFERED -> { "OperationHandler.extractBuffered(): oldFrame = ${args[0]}" }
+                DebugType.COORDINATOR_OPERATION_HANDLER_EXTRACTED_OPS -> { "Extracted operations from old frames: ${args[0]}" }
+                DebugType.COORDINATOR_OPERATION_HANDLER_ASSIGN_OPERATION -> {
+                    "OperationHandler.assignBuffered() handle ${args[0]} - calculatedFrame = ${args[1]} - timestamp = ${args[2]}"
+                }
+                DebugType.COORDINATOR_OPERATION_HANDLER_ASSIGN_LATE_OPERATION -> {
+                    "OperationHandler.assignBuffered() bufferOperation ${args[0]} - calculatedFrame = ${args[1]} - timestamp = ${args[2]}"
+                }
+                DebugType.COORDINATOR_WORK_DISPATCH_DISTRIBUTE_NO_ITEMS -> { "WorkDispatcher with strategy RANGE received no items, returning empty map" }
+                DebugType.COORDINATOR_WORK_DISPATCH_DISTRIBUTE_NO_WORKERS -> { "WorkUnit did not distribute because no workers were available, returning empty map" }
+                DebugType.COORDINATOR_STARTUP_INITIAL_WORKER_STATUS -> { "Initial worker check: ${args[0]}/${args[1]} active" }
+                DebugType.COORDINATOR_STARTUP_ALL_WORKERS_ALREADY_HERE -> { "Coordinator acknowledges all workers already here, proceeding" }
+                DebugType.COORDINATOR_STARTUP_HANDLE_WORKER_READY -> { "Worker ${args[0]} ready: ${args[1]}/${args[2]}" }
+                DebugType.COORDINATOR_STARTUP_ALL_WORKERS_READY -> { "Coordinator acknowledges all workers ready, proceeding"}
+                DebugType.CHANNEL_CONTROLLER_ADD_CLIENT_CHANNEL -> { "Client ${args[0]} subscribed to channel ${args[1]}" }
+                DebugType.CHANNEL_CONTROLLER_ADD_ENTITY_CHANNEL -> { "Added entity ${args[0]} to channel ${args[1]} with context ${args[2]}" }
+                DebugType.CHANNEL_CONTROLLER_ADD_ENTITIES_CHANNEL -> { "Added ${args[0]} out of ${args[1]} entities to channel ${args[2]}" }
+                DebugType.CHANNEL_CONTROLLER_CREATE_CHANNEL -> { "ChannelController creating new channel with ID: ${args[0]}" }
+                DebugType.ENTITY_CONTROLLER_SAVE_ENTITY -> { "Saving existing entity to Redis with key ${args[0]}" }
+                DebugType.ENTITY_CONTROLLER_CREATE_EXCEPTION -> { "EntityController had an exception when attempting to create an entity: ${args[0]}" }
+                DebugType.ENTITY_HYDRATOR_WRITE_FAILED -> { "EntityHydrator had an exception while writing to the state store: ${args[0]}" }
+                DebugType.CONNECTION_CONTROLLER_CREATE_CONNECTION -> { "Connection created and stored with id ${args[0]} — upSocketId ${args[1]} — downSocketId ${args[2]}" }
+                DebugType.CONNECTION_CONTROLLER_STORED_CONNECTION -> { "Stored un-cached connection in database: id ${args[0]} — upSocketId ${args[1]} — downSocketId ${args[2]}"}
+                DebugType.CONNECTION_CONTROLLER_FOUND_CONNECTION -> { "Connection found in cache: id ${args[0]} — upSocketId ${args[1]} — downSocketId ${args[2]}" }
+                DebugType.CONNECTION_CONTROLLER_UPDATE_CONNECTION -> { "Connection loaded from database to cache: id ${args[0]} — upSocketId ${args[1]} — downSocketId ${args[2]}" }
+                DebugType.CONNECTION_CONTROLLER_UPDATE_SOCKETS -> { "Connection updated transport sockets id ${args[0]} — upSocketId ${args[1]} — downSocketId ${args[2]}"}
+                DebugType.CONNECTION_CONTROLLER_REMOVE_UPSOCKET -> { "Connection ${args[0]} deleted from database" }
+                DebugType.CONNECTION_CONTROLLER_UPSOCKET_DISCONNECT -> { "Up socket for connection ${args[0]} marked as disconnected, available for reconnection" }
+                DebugType.CONNECTION_CONTROLLER_CONNECTION_DELETED -> { "Connection ${args[0]} deleted from database" }
+                DebugType.CONNECTION_CONTROLLER_REMOVE_DOWNSOCKET -> { "Down socket removed for connection ${args[0]}" }
+                DebugType.CONNECTION_CONTROLLER_UPSOCKET_CLOSED -> { "Up socket closed for connection ${args[0]}, marking for potential reconnection" }
+                DebugType.CONNECTION_CONTROLLER_CLEANUP_CONNECTION -> { "Cleaned up connection ${args[0]} from ${args[1]} channels" }
+                DebugType.CONNECTION_CONTROLLER_ALREADY_DELETED_WARNING -> { "Could not delete connection ${args[0]} from database - it may already be deleted\nException message: {e}" }
+                DebugType.CONNECTION_TRACKER_REGISTER_CONNECTION -> { "Registered connection ${args[0]} with socket ${args[1]}" }
+                DebugType.CONNECTION_TRACKER_REMOVE_CONNECTION -> { "Removed connection ${args[0]}" }
+                DebugType.CONNECTION_TRACKER_HANDLE_SOCKET_CLOSED -> { "Handled close of socket for connection ${args[0]}" }
+                DebugType.DOWNSOCKET_ENTITY_PUBLISHER_FAILED -> { "An entity publish was attempted and failed for entity ${args[0]}" }
+                DebugType.OPERATION_CONTROLLER_PROCESS_MESSAGE -> { "Operation controller processing message ${args[0] }" }
+                DebugType.OPERATION_CONTROLLER_QUEUE -> { "Operation controller queueing ${args[0]} containing ${args[1]}" }
+                DebugType.OPERATION_CONTROLLER_SEND_MESSAGE -> { "Operation controller sending message ${args[0]} containing ${args[1]}" }
             }
-            Type.COORDINATOR_ON_FRAME_COMPLETE_CALLED -> { "Logical frame ${args[0]} completed successfully" }
-            Type.COORDINATOR_ON_FRAME_COMPLETE_BLOCKED -> { "Completed frame ${args[0]}, stopping due to pause ${args[1]}" }
-            Type.COORDINATOR_NEXT_FRAME_EVENT -> { "Broadcasting next frame event after completing frame ${args[0]}" }
-            Type.COORDINATOR_PREPARE_PENDING_MANIFESTS -> { "Delayed preparing frames from ${args[0]} due to pause ${args[1]}" }
-            Type.COORDINATOR_MANIFEST_BUILDER_WROTE_WORKER -> { "Wrote manifest for worker ${args[0]} with ${args[1]} operations for logical frame ${args[2]}" }
-            Type.COORDINATOR_MANIFEST_BUILDER_WROTE_ALL -> { "Created manifests for logical frame ${args[0]} with ${args[1]} total operations distributed to ${args[2]} workers" }
-            Type.COORDINATOR_MANIFEST_BUILDER_ASSIGNED_OPERATIONS -> { "Assigned operation ${args[0]} to existing manifest for ${args[1]}" }
-            Type.COORDINATOR_MANIFEST_BUILDER_CLEAR_FRAMES -> { "Cleared ${args[0]} manifests for frame ${args[1]}" }
-            Type.COORDINATOR_MANIFEST_BUILDER_CLEAR_ALL -> { "Cleared ${args[0]} manifests from distributed map for new session" }
-            Type.COORDINATOR_OPERATION_HANDLER_HANDLE -> {
-                "OperationHandler.handle(operation): ${args[0]} frameInProgress = ${args[1]} - timestamp = ${args[2]}"
-            }
-            Type.COORDINATOR_OPERATION_HANDLER_EXTRACT_BUFFERED -> { "OperationHandler.extractBuffered(): oldFrame = ${args[0]}" }
-            Type.COORDINATOR_OPERATION_HANDLER_EXTRACTED_OPS -> { "Extracted operations from old frames: ${args[0]}" }
-            Type.COORDINATOR_OPERATION_HANDLER_ASSIGN_OPERATION -> {
-                "OperationHandler.assignBuffered() handle ${args[0]} - calculatedFrame = ${args[1]} - timestamp = ${args[2]}"
-            }
-            Type.COORDINATOR_OPERATION_HANDLER_ASSIGN_LATE_OPERATION -> {
-                "OperationHandler.assignBuffered() bufferOperation ${args[0]} - calculatedFrame = ${args[1]} - timestamp = ${args[2]}"
-            }
-            Type.COORDINATOR_WORK_DISPATCH_DISTRIBUTE_NO_ITEMS -> { "WorkDispatcher with strategy RANGE received no items, returning empty map" }
-            Type.COORDINATOR_WORK_DISPATCH_DISTRIBUTE_NO_WORKERS -> { "WorkUnit did not distribute because no workers were available, returning empty map" }
-            Type.CHANNEL_CONTROLLER_ADD_CLIENT_CHANNEL -> { "Client ${args[0]} subscribed to channel ${args[1]}" }
-            Type.CHANNEL_CONTROLLER_ADD_ENTITY_CHANNEL -> { "Added entity ${args[0]} to channel ${args[1]} with context ${args[2]}" }
-            Type.CHANNEL_CONTROLLER_ADD_ENTITIES_CHANNEL -> { "Added ${args[0]} out of ${args[1]} entities to channel ${args[2]}" }
-            Type.CHANNEL_CONTROLLER_CREATE_CHANNEL -> { "ChannelController creating new channel with ID: ${args[0]}" }
-            Type.ENTITY_CONTROLLER_SAVE_ENTITY -> { "Saving existing entity to Redis with key ${args[0]}" }
-            Type.CONNECTION_CONTROLLER_CREATE_CONNECTION -> { "Connection created and stored with id ${args[0]} — upSocketId ${args[1]} — downSocketId ${args[2]}" }
-            Type.CONNECTION_CONTROLLER_STORED_CONNECTION -> { "Stored un-cached connection in database: id ${args[0]} — upSocketId ${args[1]} — downSocketId ${args[2]}"}
-            Type.CONNECTION_CONTROLLER_FOUND_CONNECTION -> { "Connection found in cache: id ${args[0]} — upSocketId ${args[1]} — downSocketId ${args[2]}" }
-            Type.CONNECTION_CONTROLLER_UPDATE_CONNECTION -> { "Connection loaded from database to cache: id ${args[0]} — upSocketId ${args[1]} — downSocketId ${args[2]}" }
-            Type.CONNECTION_CONTROLLER_UPDATE_SOCKETS -> { "Connection updated transport sockets id ${args[0]} — upSocketId ${args[1]} — downSocketId ${args[2]}"}
-            Type.CONNECTION_CONTROLLER_REMOVE_UPSOCKET -> { "Connection ${args[0]} deleted from database" }
-            Type.CONNECTION_CONTROLLER_UPSOCKET_DISCONNECT -> { "Up socket for connection ${args[0]} marked as disconnected, available for reconnection" }
-            Type.CONNECTION_CONTROLLER_CONNECTION_DELETED -> { "Connection ${args[0]} deleted from database" }
-            Type.CONNECTION_CONTROLLER_REMOVE_DOWNSOCKET -> { "Down socket removed for connection ${args[0]}" }
-            Type.CONNECTION_CONTROLLER_UPSOCKET_CLOSED -> { "Up socket closed for connection ${args[0]}, marking for potential reconnection" }
-            Type.CONNECTION_CONTROLLER_CLEANUP_CONNECTION -> { "Cleaned up connection ${args[0]} from ${args[1]} channels" }
-            Type.CONNECTION_CONTROLLER_ALREADY_DELETED_WARNING -> { "Could not delete connection ${args[0]} from database - it may already be deleted\nException message: {e}" }
-            Type.OPERATION_CONTROLLER_PROCESS_MESSAGE -> { "Operation controller processing message ${args[0] }" }
-            Type.OPERATION_CONTROLLER_QUEUE -> { "Operation controller queueing ${args[0]} containing ${args[1]}" }
-            Type.OPERATION_CONTROLLER_SEND_MESSAGE -> { "Operation controller sending message ${args[0]} containing ${args[1]}" }
-        }
 
-        log.info(message)
+            log.info(message)
+        } catch (e: Exception) {
+            log.error("DebugLogger: Invalid arguments supplied for message type $type : ${args}}")
+        }
     }
 
     companion object {
-        enum class Type {
+        enum class DebugType {
             NONE,
+            UPSOCKET_STARTUP,
+            UPSOCKET_ROUTER_INITIALIZED,
+            UPSOCKET_INITIALIZING_ROUTER,
+            UPSOCKET_SETTING_UP_ROUTE_HANDLER,
+            UPSOCKET_ROUTER_CREATED,
+            UPSOCKET_NEW_WEBSOCKET_CONNECTION,
+            UPSOCKET_WEBSOCKET_CLOSED,
+            UPSOCKET_CONNECTION_TIMEOUT,
+            UPSOCKET_DEPLOYING_HTTP_SERVER,
+            UPSOCKET_HTTP_SERVER_DEPLOYED,
+            UPSOCKET_HTTP_SERVER_STOPPING,
             COORDINATOR_STATE_WORKER_FRAME_COMPLETE,
             COORDINATOR_STATE_RESET_SESSION,
             COORDINATOR_SESSION_ANNOUNCEMENT,
@@ -146,11 +264,17 @@ class DebugLogger @Inject constructor() {
             COORDINATOR_OPERATION_HANDLER_ASSIGN_LATE_OPERATION,
             COORDINATOR_WORK_DISPATCH_DISTRIBUTE_NO_ITEMS,
             COORDINATOR_WORK_DISPATCH_DISTRIBUTE_NO_WORKERS,
+            COORDINATOR_STARTUP_INITIAL_WORKER_STATUS,
+            COORDINATOR_STARTUP_ALL_WORKERS_ALREADY_HERE,
+            COORDINATOR_STARTUP_HANDLE_WORKER_READY,
+            COORDINATOR_STARTUP_ALL_WORKERS_READY,
             CHANNEL_CONTROLLER_ADD_CLIENT_CHANNEL,
             CHANNEL_CONTROLLER_ADD_ENTITY_CHANNEL,
             CHANNEL_CONTROLLER_ADD_ENTITIES_CHANNEL,
             CHANNEL_CONTROLLER_CREATE_CHANNEL,
+            ENTITY_CONTROLLER_CREATE_EXCEPTION,
             ENTITY_CONTROLLER_SAVE_ENTITY,
+            ENTITY_HYDRATOR_WRITE_FAILED,
             CONNECTION_CONTROLLER_CREATE_CONNECTION,
             CONNECTION_CONTROLLER_FOUND_CONNECTION,
             CONNECTION_CONTROLLER_STORED_CONNECTION,
@@ -163,6 +287,10 @@ class DebugLogger @Inject constructor() {
             CONNECTION_CONTROLLER_UPSOCKET_CLOSED,
             CONNECTION_CONTROLLER_CLEANUP_CONNECTION,
             CONNECTION_CONTROLLER_ALREADY_DELETED_WARNING,
+            CONNECTION_TRACKER_REGISTER_CONNECTION,
+            CONNECTION_TRACKER_REMOVE_CONNECTION,
+            CONNECTION_TRACKER_HANDLE_SOCKET_CLOSED,
+            DOWNSOCKET_ENTITY_PUBLISHER_FAILED,
             OPERATION_CONTROLLER_PROCESS_MESSAGE,
             OPERATION_CONTROLLER_QUEUE,
             OPERATION_CONTROLLER_SEND_MESSAGE,

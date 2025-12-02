@@ -14,35 +14,12 @@ data class FrameManifest(
     val createdAt: Long,
     val operations: List<JsonObject>
 ) : Serializable {
-
-    /**
-     * Convert to JsonObject for storage/transmission
-     */
     fun toJson(): JsonObject {
         return JsonObject()
             .put("workerId", workerId)
             .put("logicalFrame", logicalFrame)
             .put("createdAt", createdAt)
             .put("operations", JsonArray(operations))
-    }
-
-    /**
-     * Get the count of operations in this manifest
-     */
-    fun operationCount(): Int = operations.size
-
-    /**
-     * Get all operation IDs in this manifest
-     */
-    fun getOperationIds(): List<String> {
-        return operations.mapNotNull { it.getString("id") }
-    }
-
-    /**
-     * Check if this manifest contains a specific operation
-     */
-    fun containsOperation(operationId: String): Boolean {
-        return operations.any { it.getString("id") == operationId }
     }
 
     companion object {
@@ -69,30 +46,6 @@ data class FrameManifest(
          */
         fun makeKey(logicalFrame: Long, workerId: String): String {
             return "manifest:$logicalFrame:$workerId"
-        }
-
-        /**
-         * Parse frame start time from a manifest key
-         */
-        fun parseFrameFromKey(key: String): Long? {
-            val parts = key.split(":")
-            return if (parts.size == 3 && parts[0] == "manifest") {
-                parts[1].toLongOrNull()
-            } else {
-                null
-            }
-        }
-
-        /**
-         * Parse worker ID from a manifest key
-         */
-        fun parseWorkerFromKey(key: String): String? {
-            val parts = key.split(":")
-            return if (parts.size == 3 && parts[0] == "manifest") {
-                parts[2]
-            } else {
-                null
-            }
         }
     }
 }

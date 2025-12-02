@@ -6,11 +6,9 @@ import com.hazelcast.core.HazelcastInstance
 import com.hazelcast.map.IMap
 import com.minare.core.config.InternalInjectorHolder
 import com.minare.core.frames.services.WorkerRegistry
-import com.minare.core.utils.PushVar
 import com.minare.core.utils.debug.DebugLogger
 import com.minare.core.utils.vertx.EventBusUtils
 import com.minare.core.utils.vertx.EventWaiter
-import io.vertx.core.Vertx
 import io.vertx.core.eventbus.MessageConsumer
 import io.vertx.core.json.JsonObject
 import org.slf4j.LoggerFactory
@@ -80,14 +78,14 @@ class WorkDispatchService @Inject constructor(
         val workers = workerRegistry.getActiveWorkers()
 
         if (workers.isEmpty()) {
-            debug.log(DebugLogger.Companion.Type.COORDINATOR_WORK_DISPATCH_DISTRIBUTE_NO_WORKERS)
+            debug.log(DebugLogger.Companion.DebugType.COORDINATOR_WORK_DISPATCH_DISTRIBUTE_NO_WORKERS)
             return emptyMap()
         }
 
         return when (strategy) {
             WorkDispatchStrategy.RANGE -> {
                 if (items.isEmpty()) {
-                    debug.log(DebugLogger.Companion.Type.COORDINATOR_WORK_DISPATCH_DISTRIBUTE_NO_ITEMS)
+                    debug.log(DebugLogger.Companion.DebugType.COORDINATOR_WORK_DISPATCH_DISTRIBUTE_NO_ITEMS)
                     return emptyMap()
                 }
 

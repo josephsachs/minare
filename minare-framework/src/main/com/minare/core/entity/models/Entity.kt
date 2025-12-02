@@ -2,17 +2,11 @@ package com.minare.core.entity.models
 
 import com.fasterxml.jackson.annotation.*
 
-@JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type")
-@JsonIgnoreProperties(ignoreUnknown = true)
-open class Entity {
-    @JsonProperty("version")
+open class Entity(
+    var _id: String = "unsaved-${java.util.UUID.randomUUID()}"
+) {
     var version: Long = 1
-
-    @JsonProperty("_id")
-    var _id: String? = null
-
-    @JsonProperty("type")
-    var type: String? = null
+    var type: String = "Entity"
 
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
@@ -21,6 +15,6 @@ open class Entity {
     }
 
     override fun hashCode(): Int {
-        return _id?.hashCode() ?: 0
+        return _id.hashCode()
     }
 }

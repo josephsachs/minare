@@ -260,7 +260,7 @@ class DownSocketVerticle @Inject constructor(
     }
 
     /**
-     * Associate an down socket with a connection ID
+     * Associate a down socket with a connection ID
      */
     private suspend fun associateUpdateSocket(connectionId: String, websocket: ServerWebSocket, traceId: String) {
         if (debugTraceLogs) {

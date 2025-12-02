@@ -108,6 +108,8 @@ services:
     depends_on:
       app-coordinator:
         condition: service_healthy
+      #worker:
+      #  condition: service_healthy
     volumes:
       - ./scripts/infra:/scripts:ro
     environment:
@@ -120,9 +122,9 @@ services:
       - WORKER_COUNT=${WORKER_COUNT:-1}
 
       # Timing configuration
-      - STARTUP_DELAY=5
+      - STARTUP_DELAY=0
       - RETRY_INTERVAL=2
-      - MAX_RETRIES=10
+      - MAX_RETRIES=100
     entrypoint: ["/scripts/infra-entrypoint-dynamic.sh"]
 
   # Minare Application - Worker Service (scalable)
