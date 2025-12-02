@@ -3,20 +3,14 @@ package com.minare.core.frames.coordinator.models
 import com.google.inject.Inject
 import com.minare.core.entity.ReflectionCache
 import com.minare.core.entity.annotations.Task
-import com.minare.core.entity.factories.EntityFactory
 import com.minare.core.entity.services.EntityObjectHydrator
 import com.minare.core.storage.interfaces.StateStore
 import com.minare.core.work.WorkUnit
-import io.vertx.core.json.JsonObject
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.launch
 import kotlin.reflect.full.callSuspend
 import kotlin.reflect.jvm.kotlinFunction
 
 class TaskWorkUnit @Inject constructor(
 ): WorkUnit {
-    @Inject private lateinit var coroutineScope: CoroutineScope
     @Inject private lateinit var reflectionCache: ReflectionCache
     @Inject private lateinit var objectHydrator: EntityObjectHydrator
     @Inject private lateinit var stateStore: StateStore

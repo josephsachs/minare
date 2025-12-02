@@ -124,6 +124,15 @@ abstract class MinareApplication : CoroutineVerticle() {
 
     /**
      * @open
+     * Called just before the coordinator frame and task verticles
+     * have started. Runs in coordinator context.
+     */
+    protected open suspend fun afterCoordinatorStart() {
+
+    }
+
+    /**
+     * @open
      * Called just before worker frame and task verticles
      * have started. Runs in all workers' contexts.
      */
@@ -239,6 +248,8 @@ abstract class MinareApplication : CoroutineVerticle() {
         )
 
         vertx.eventBus().publish(ADDRESS_TASK_COORDINATOR_STARTED, JsonObject())
+
+        afterCoordinatorStart()
 
         log.info("Application startup completed.")
     }

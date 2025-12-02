@@ -24,7 +24,7 @@ class EntityObjectHydrator @Inject constructor(
      * Sets all the properties of Entity subtype instances from hot state store
      */
     suspend fun hydrate(entityJson: JsonObject): Entity {
-        val entityType = entityJson.getString("type")
+        val entityType = entityJson.getString("type") ?: throw EntitySerializationException("Entity must have type")
 
         val entityClass = entityFactory.useClass(entityType)
             ?: throw EntitySerializationException("EntityFactory did not return requested type $entityType")
@@ -38,6 +38,7 @@ class EntityObjectHydrator @Inject constructor(
         try {
             val stateJson = entityJson.getJsonObject("state", JsonObject())
             val propertiesJson = entityJson.getJsonObject("properties", JsonObject())
+
             coroutineScope.launch() {
                 stateStore.setEntityState(entity, entityType, stateJson)
                 stateStore.setEntityProperties(entity, entityType, propertiesJson)

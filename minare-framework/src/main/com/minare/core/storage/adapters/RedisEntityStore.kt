@@ -90,7 +90,7 @@ class RedisEntityStore @Inject constructor(
             response.toLong()
         } else {
             val currentDocument = findEntityJson(entityId)
-                ?: throw IllegalStateException("Entity not found: $entityId")
+                ?: throw EntityStorageException("Entity not found: $entityId")
 
             val currentState = currentDocument.getJsonObject("state", JsonObject())
 
