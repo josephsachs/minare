@@ -98,7 +98,12 @@ object WebSocketUtils {
         try {
             val errorMessage = JsonObject()
                 .put("type", "error")
-                .put("message", error.message)
+                .put("code", when (error) {
+                    is IllegalArgumentException -> "INVALID_MESSAGE"
+                    is IllegalStateException -> "INVALID_STATE"
+                    else -> "INTERNAL_ERROR"
+                })
+                .put("message", error.message ?: "Unknown error")
                 .put("timestamp", System.currentTimeMillis())
 
             websocket.writeTextMessage(errorMessage.encode())
@@ -106,10 +111,6 @@ object WebSocketUtils {
             logger.logVerticleError("ERROR_NOTIFICATION", e, mapOf(
                 "connectionId" to (connectionId ?: "unknown")
             ))
-        } finally {
-            if (connectionId == null && !websocket.isClosed()) {
-                websocket.close()
-            }
         }
     }
 
