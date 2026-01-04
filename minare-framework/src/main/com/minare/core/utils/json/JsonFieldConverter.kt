@@ -13,6 +13,17 @@ import javax.inject.Singleton
 @Singleton
 class JsonFieldConverter {
 
+    private val primitiveToBoxed = mapOf(
+        Int::class.javaPrimitiveType to Int::class.javaObjectType,
+        Long::class.javaPrimitiveType to Long::class.javaObjectType,
+        Double::class.javaPrimitiveType to Double::class.javaObjectType,
+        Float::class.javaPrimitiveType to Float::class.javaObjectType,
+        Boolean::class.javaPrimitiveType to Boolean::class.javaObjectType,
+        Byte::class.javaPrimitiveType to Byte::class.javaObjectType,
+        Short::class.javaPrimitiveType to Short::class.javaObjectType,
+        Char::class.javaPrimitiveType to Char::class.javaObjectType
+    )
+
     /**
      * Converts a JSON value to the appropriate type for the given field.
      *
@@ -24,10 +35,8 @@ class JsonFieldConverter {
     fun convert(field: Field, value: Any?): Any? {
         if (value == null) return null
 
-        // If types already match, no conversion needed
-        if (field.type.isInstance(value)) return value
+        if (isTypeMatch(field.type, value)) return value
 
-        // Handle JsonArray to Collection conversions
         if (value is JsonArray) {
             return when {
                 field.type == MutableList::class.java || field.type == ArrayList::class.java -> {
@@ -51,14 +60,20 @@ class JsonFieldConverter {
             }
         }
 
-        // Handle JsonObject conversions if needed in the future
         if (value is JsonObject) {
-            // For now, just pass through - could add custom object mapping later
             return value
         }
 
-        // If we get here, we don't know how to convert
         throw IllegalArgumentException("Cannot convert ${value::class.java} to ${field.type}")
+    }
+
+    private fun isTypeMatch(fieldType: Class<*>, value: Any): Boolean {
+        if (fieldType.isInstance(value)) return true
+
+        val boxedType = primitiveToBoxed[fieldType]
+        if (boxedType != null && boxedType.isInstance(value)) return true
+
+        return false
     }
 
     private fun convertJsonArrayToMutableList(field: Field, jsonArray: JsonArray): MutableList<Any?> {
@@ -98,10 +113,12 @@ class JsonFieldConverter {
         if (genericType is ParameterizedType) {
             val typeArguments = genericType.actualTypeArguments
             if (typeArguments.isNotEmpty()) {
-                return typeArguments[0] as Class<*>
+                val typeArg = typeArguments[0]
+                if (typeArg is Class<*>) {
+                    return typeArg
+                }
             }
         }
-        // Default to Object if we can't determine the element type
         return Any::class.java
     }
 
@@ -109,41 +126,46 @@ class JsonFieldConverter {
         if (element == null) return null
         if (targetType.isInstance(element)) return element
 
-        // Handle basic type conversions
-        return when (targetType) {
-            String::class.java -> element.toString()
-            Int::class.java, Integer::class.java -> {
+        val boxedTarget = primitiveToBoxed[targetType] ?: targetType
+
+        return when (boxedTarget) {
+            java.lang.String::class.java -> element.toString()
+            java.lang.Integer::class.java -> {
                 when (element) {
                     is Number -> element.toInt()
                     is String -> element.toIntOrNull()
                     else -> null
                 }
             }
-            Long::class.java -> {
+            java.lang.Long::class.java -> {
                 when (element) {
                     is Number -> element.toLong()
                     is String -> element.toLongOrNull()
                     else -> null
                 }
             }
-            Double::class.java -> {
+            java.lang.Double::class.java -> {
                 when (element) {
                     is Number -> element.toDouble()
                     is String -> element.toDoubleOrNull()
                     else -> null
                 }
             }
-            Boolean::class.java -> {
+            java.lang.Float::class.java -> {
+                when (element) {
+                    is Number -> element.toFloat()
+                    is String -> element.toFloatOrNull()
+                    else -> null
+                }
+            }
+            java.lang.Boolean::class.java -> {
                 when (element) {
                     is Boolean -> element
                     is String -> element.toBooleanStrictOrNull()
                     else -> null
                 }
             }
-            else -> {
-                // For complex types, just pass through for now
-                element
-            }
+            else -> element
         }
     }
 }
