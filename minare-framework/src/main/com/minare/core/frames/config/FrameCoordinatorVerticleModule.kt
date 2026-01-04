@@ -12,6 +12,7 @@ import com.minare.core.frames.events.WorkerStateSnapshotCompleteEvent
 import com.minare.worker.coordinator.events.*
 import io.vertx.core.Vertx
 import io.vertx.core.impl.logging.LoggerFactory
+import io.vertx.kotlin.coroutines.dispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlin.coroutines.CoroutineContext
 
@@ -38,22 +39,8 @@ class FrameCoordinatorVerticleModule : PrivateModule() {
         bind(WorkerRegisterEvent::class.java).`in`(Singleton::class.java)
         bind(WorkerStateSnapshotCompleteEvent::class.java).`in`(Singleton::class.java)
 
-        // Request external dependencies that should be provided by parent injector
-        requireBinding(Vertx::class.java)
-        requireBinding(EventBusUtils::class.java)
-
         expose(FrameCoordinatorVerticle::class.java)
         expose(CoordinatorAdminVerticle::class.java)
         expose(StartupService::class.java)
-
-    }
-
-    /**
-     * Provides a CoroutineScope using the Vertx dispatcher
-     */
-    @Provides
-    @Singleton
-    fun provideCoroutineScope(coroutineContext: CoroutineContext): CoroutineScope {
-        return CoroutineScope(coroutineContext)
     }
 }

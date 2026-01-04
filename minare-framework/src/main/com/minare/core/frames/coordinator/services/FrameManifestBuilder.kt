@@ -5,7 +5,7 @@ import com.hazelcast.map.IMap
 import com.minare.core.frames.services.WorkerRegistry
 import com.minare.core.utils.debug.DebugLogger
 import com.minare.exceptions.FrameLoopException
-import com.minare.core.utils.debug.DebugLogger.Companion.Type
+import com.minare.core.utils.debug.DebugLogger.Companion.DebugType
 import com.minare.worker.coordinator.models.FrameManifest
 import io.vertx.core.json.JsonArray
 import io.vertx.core.json.JsonObject
@@ -88,13 +88,13 @@ class FrameManifestBuilder @Inject constructor(
             manifestMap[key] = manifest
 
             debug.log(
-                Type.COORDINATOR_MANIFEST_BUILDER_WROTE_WORKER,
+                DebugType.COORDINATOR_MANIFEST_BUILDER_WROTE_WORKER,
                 listOf(workerId, sortedOperations.size, logicalFrame)
             )
         }
 
         debug.log(
-            Type.COORDINATOR_MANIFEST_BUILDER_WROTE_ALL, listOf(
+            DebugType.COORDINATOR_MANIFEST_BUILDER_WROTE_ALL, listOf(
                 logicalFrame,
                 assignments.values.sumOf { it.size },
                 activeWorkers.size
@@ -134,7 +134,7 @@ class FrameManifestBuilder @Inject constructor(
 
                 manifestMap[manifestKey] = updatedManifest.toJson()
 
-                debug.log(Type.COORDINATOR_MANIFEST_BUILDER_ASSIGNED_OPERATIONS, listOf(operationId, frame))
+                debug.log(DebugType.COORDINATOR_MANIFEST_BUILDER_ASSIGNED_OPERATIONS, listOf(operationId, frame))
             }
         } catch (e: Exception) {
             throw FrameLoopException("Buffered operation assignment: Error updating manifest ${e}")
@@ -151,7 +151,7 @@ class FrameManifestBuilder @Inject constructor(
 
         manifestKeys.forEach { manifestMap.remove(it) }
 
-        debug.log(Type.COORDINATOR_MANIFEST_BUILDER_CLEAR_FRAMES, listOf(manifestKeys.size, logicalFrame))
+        debug.log(DebugType.COORDINATOR_MANIFEST_BUILDER_CLEAR_FRAMES, listOf(manifestKeys.size, logicalFrame))
     }
 
     /**
@@ -172,7 +172,7 @@ class FrameManifestBuilder @Inject constructor(
 
         if (keysToRemove.isNotEmpty()) {
             keysToRemove.forEach { manifestMap.remove(it) }
-            debug.log(Type.COORDINATOR_MANIFEST_BUILDER_CLEAR_ALL, listOf(keysToRemove.size))
+            debug.log(DebugType.COORDINATOR_MANIFEST_BUILDER_CLEAR_ALL, listOf(keysToRemove.size))
         }
     }
 

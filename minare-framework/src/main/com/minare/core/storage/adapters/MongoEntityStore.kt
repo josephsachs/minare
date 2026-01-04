@@ -46,9 +46,8 @@ class MongoEntityStore @Inject constructor(
         val document = buildEntityDocument(entity)
 
         try {
-            if (entity._id.isNullOrEmpty()) {
-                // New entity - let MongoDB generate an ID
-                // Add version for new documents
+            if (entity._id.startsWith("unsaved-")) {
+                // New entity - insert and let MongoDB generate an ID
                 document.put("version", 1)
                 val generatedId = mongoClient.insertWithOptions(
                     COLLECTION_NAME,

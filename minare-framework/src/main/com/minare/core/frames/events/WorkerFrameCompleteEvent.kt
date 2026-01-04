@@ -56,7 +56,7 @@ class WorkerFrameCompleteEvent @Inject constructor(
                 val completed = completedWorkers.size
                 val active = activeWorkers.size
 
-                debug.log(DebugLogger.Companion.Type.COORDINATOR_WORKER_FRAME_COMPLETE_EVENT, listOf(vlog, completed, active, logicalFrame, traceId))
+                debug.log(DebugLogger.Companion.DebugType.COORDINATOR_WORKER_FRAME_COMPLETE_EVENT, listOf(vlog, completed, active, logicalFrame, traceId))
 
                 if (frameInProgress == lastPreparedManifest)  {
                     eventBusUtils.publishWithTracing(

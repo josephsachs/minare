@@ -1,7 +1,9 @@
 package com.minare.core.transport.downsocket
 
+import com.google.inject.name.Named
 import com.minare.core.MinareApplication
 import com.minare.cache.ConnectionCache
+import com.minare.controller.ConnectionController
 import com.minare.core.Timer
 import com.minare.core.storage.interfaces.ConnectionStore
 import com.minare.core.transport.downsocket.pubsub.UpdateBatchCoordinator
@@ -36,9 +38,11 @@ import com.minare.worker.downsocket.events.UpdateConnectionEstablishedEvent.Comp
 class DownSocketVerticle @Inject constructor(
     private val connectionStore: ConnectionStore,
     private val connectionCache: ConnectionCache,
+    private val connectionController: ConnectionController,
     private val downSocketVerticleCache: DownSocketVerticleCache,
     private val updateConnectionClosedEvent: UpdateConnectionClosedEvent,
-    private val updateConnectionEstablishedEvent: UpdateConnectionEstablishedEvent
+    private val updateConnectionEstablishedEvent: UpdateConnectionEstablishedEvent,
+    private val heartbeatManager: HeartbeatManager
 ) : CoroutineVerticle() {
 
     private val log = LoggerFactory.getLogger(DownSocketVerticle::class.java)
@@ -50,7 +54,7 @@ class DownSocketVerticle @Inject constructor(
 
     private lateinit var router: Router
 
-    private lateinit var heartbeatManager: HeartbeatManager
+    //private lateinit var heartbeatManager: HeartbeatManager
     private lateinit var connectionTracker: ConnectionTracker
 
     private var httpServer: HttpServer? = null
@@ -61,9 +65,7 @@ class DownSocketVerticle @Inject constructor(
     private var deployedAt: Long = 0
 
     companion object {
-        const val ADDRESS_DOWN_SOCKET_INITIALIZED = "minare.down.socketinitialized"
-        const val ADDRESS_DOWN_SOCKET_CLOSE = "minare.down.socketclose"
-        const val ADDRESS_INITIALIZE = "minare.update.initialize"
+        const val ADDRESS_BROADCAST_CHANNEL = "address.downsocket.broadcast.channel"
 
         const val CACHE_TTL_MS = 1000L // 10 seconds
         const val HEARTBEAT_INTERVAL_MS = 15000L
@@ -86,7 +88,6 @@ class DownSocketVerticle @Inject constructor(
             registerEventBusConsumers()
 
             connectionTracker = ConnectionTracker("DownSocket", vlog)
-            heartbeatManager = HeartbeatManager(vertx, vlog, connectionStore, CoroutineScope(vertx.dispatcher()))
             heartbeatManager.setHeartbeatInterval(UpSocketVerticle.HEARTBEAT_INTERVAL_MS)
 
             vlog.logStartupStep("STARTING")
@@ -94,6 +95,7 @@ class DownSocketVerticle @Inject constructor(
 
             initializeRouter()
             registerBatchedUpdateConsumer()
+            registerBroadcastChannelEvent()
 
             vlog.logStartupStep("EVENT_BUS_HANDLERS_REGISTERED")
 
@@ -127,6 +129,23 @@ class DownSocketVerticle @Inject constructor(
             }
         }
         log.info("Registered consumer for batched updates")
+    }
+
+    /**
+     * Sends a message to all listeners of a particular channel
+     */
+    private fun registerBroadcastChannelEvent() {
+        eventBusUtils.registerTracedConsumer<JsonObject>(ADDRESS_BROADCAST_CHANNEL) { message, traceId ->
+            val channelId = message.body().getString("channelId")
+            val message = message.body().getJsonObject("message")
+
+            for (connectionId in downSocketVerticleCache.getConnectionsForChannel(channelId)) {
+                if (connectionId in localSockets.keys) {
+                    val socket = connectionTracker.getSocket(connectionId)
+                    socket?.writeTextMessage(message.encode())
+                }
+            }
+        }
     }
 
     /**
@@ -199,7 +218,6 @@ class DownSocketVerticle @Inject constructor(
      */
     private suspend fun registerEventBusConsumers() {
         // Guessing we disabled this when we removed individual entity updates in favor of batching
-        //entityUpdatedEvent.register()
         updateConnectionEstablishedEvent.register(debugTraceLogs)
         updateConnectionClosedEvent.register(debugTraceLogs)
     }
@@ -242,7 +260,7 @@ class DownSocketVerticle @Inject constructor(
     }
 
     /**
-     * Associate an down socket with a connection ID
+     * Associate a down socket with a connection ID
      */
     private suspend fun associateUpdateSocket(connectionId: String, websocket: ServerWebSocket, traceId: String) {
         if (debugTraceLogs) {
@@ -305,6 +323,8 @@ class DownSocketVerticle @Inject constructor(
                     .put("deploymentId", deploymentID)
                     .put("traceId", traceId)
             )
+
+            connectionController.onClientFullyConnected(connection)
         } catch (e: Exception) {
             vlog.logVerticleError("ASSOCIATE_DOWN_SOCKET", e, mapOf(
                 "connectionId" to connectionId

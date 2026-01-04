@@ -7,6 +7,9 @@ import io.vertx.core.http.ServerWebSocket
 import org.slf4j.LoggerFactory
 import com.minare.core.storage.interfaces.*
 import com.minare.core.config.InternalInjectorHolder
+import com.minare.core.transport.CleanupVerticle
+import com.minare.core.utils.debug.DebugLogger
+import com.minare.core.utils.debug.DebugLogger.Companion.DebugType as DebugType
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -19,6 +22,7 @@ open class ConnectionController @Inject constructor() {
     @Inject private lateinit var connectionStore: ConnectionStore
     @Inject private lateinit var connectionCache: ConnectionCache
     @Inject private lateinit var channelStore: ChannelStore
+    @Inject private lateinit var debug: DebugLogger
 
     private val log = LoggerFactory.getLogger(ConnectionController::class.java)
 
@@ -29,8 +33,9 @@ open class ConnectionController @Inject constructor() {
         val connection = connectionStore.create()
 
         connectionCache.storeConnection(connection)
-        log.info("Connection created and stored: id={}, upSocketId={}, downSocketId={}",
-            connection._id, connection.upSocketId, connection.downSocketId)
+
+        debug.log(DebugType.CONNECTION_CONTROLLER_CREATE_CONNECTION, listOf(connection._id, connection.upSocketId, connection.downSocketId))
+
         return connection
     }
 
@@ -41,16 +46,31 @@ open class ConnectionController @Inject constructor() {
         val cachedConnection = connectionCache.getConnection(connectionId)
 
         if (cachedConnection != null) {
-            log.debug("Connection found in cache: id={}, upSocketId={}, downSocketId={}",
-                connectionId, cachedConnection.upSocketId, cachedConnection.downSocketId)
+            debug.log(DebugType.CONNECTION_CONTROLLER_FOUND_CONNECTION, listOf(
+                connectionId,
+                cachedConnection.upSocketId.orEmpty(),
+                cachedConnection.downSocketId.orEmpty()
+            ))
+
             return cachedConnection
         }
 
         val connection = connectionStore.find(connectionId)
 
+        if (true in listOf(connection.upSocketId?.isBlank(), connection.downSocketId?.isBlank())) {
+            log.warn("Connection controller found incomplete connection for $connectionId,\nConsider tagging for deletion")
+
+            // TODO: Send a connection re-establish message to the transport verticles
+            return connection
+        }
+
         connectionCache.storeConnection(connection)
-        log.debug("Connection loaded from database to cache: id={}, upSocketId={}, downSocketId={}",
-            connection._id, connection.upSocketId, connection.downSocketId)
+
+        debug.log(DebugType.CONNECTION_CONTROLLER_STORED_CONNECTION, listOf(
+            connectionId,
+            connection.upSocketId.orEmpty(),
+            connection.downSocketId.orEmpty()
+        ))
 
         return connection
     }
@@ -69,13 +89,14 @@ open class ConnectionController @Inject constructor() {
         try {
             val connection = connectionStore.find(connectionId)
 
-            // Check if active within the reconnection window
             val now = System.currentTimeMillis()
-            val reconnectWindow = 30000L // 30 seconds, should match CleanupVerticle.CONNECTION_RECONNECT_WINDOW_MS
+            val reconnectWindow = CleanupVerticle.CONNECTION_RECONNECT_WINDOW_MS
 
-            return connection.reconnectable && (now - connection.lastActivity < reconnectWindow)
+            return connection.reconnectable &&
+                    (now - connection.lastActivity < reconnectWindow)
         } catch (e: Exception) {
             log.error("Error checking if connection is reconnectable: {}", connectionId, e)
+
             return false
         }
     }
@@ -83,7 +104,13 @@ open class ConnectionController @Inject constructor() {
     /**
      * Update a connection in database first, then in memory
      */
-    suspend fun updateConnection(connection: Connection): Connection {
+    suspend fun storeTransportSockets(connection: Connection): Connection {
+        if (true in listOf(connection.upSocketId?.isBlank(), connection.downSocketId?.isBlank())) {
+            log.error("Connection controller tried storing incomplete transport sockets profiles on connection ${connection._id}")
+
+            return connection
+        }
+
         connectionCache.storeConnection(
             connectionStore.putUpSocket(
                 connection._id,
@@ -99,7 +126,8 @@ open class ConnectionController @Inject constructor() {
                 connection.downSocketDeploymentId
             )
         )
-        log.debug("Connection updated: id={}, upSocketId={}, downSocketId={}", connection._id, connection.downSocketId, connection.downSocketDeploymentId)
+
+        debug.log(DebugType.CONNECTION_CONTROLLER_UPDATE_SOCKETS, listOf(connection._id, connection.downSocketId, connection.downSocketDeploymentId))
 
         return connection
     }
@@ -123,6 +151,7 @@ open class ConnectionController @Inject constructor() {
             InternalInjectorHolder.getInstance<UpSocketVerticle>()
         } catch (e: Exception) {
             log.warn("Failed to get UpSocketVerticle instance: {}", e.message)
+
             null
         }
     }
@@ -193,7 +222,7 @@ open class ConnectionController @Inject constructor() {
 
             connectionCache.storeConnection(updatedConnection)
 
-            log.info("Up socket for connection {} marked as disconnected, available for reconnection", connectionId)
+            debug.log(DebugType.CONNECTION_CONTROLLER_UPSOCKET_DISCONNECT, listOf(connectionId))
         } catch (e: Exception) {
             log.error("Failed to mark up WebSocket disconnected for {}", connectionId, e)
             throw e
@@ -220,12 +249,13 @@ open class ConnectionController @Inject constructor() {
 
             try {
                 connectionStore.delete(connectionId)
-                log.info("Connection {} deleted from database", connectionId)
+
+                debug.log(DebugType.CONNECTION_CONTROLLER_CONNECTION_DELETED, listOf(connectionId))
             } catch (e: Exception) {
                 log.error("Failed to delete connection {} from database: {}", connectionId, e.message)
             }
+
             connectionCache.removeConnection(connectionId)
-            log.info("Connection {} removed from cache", connectionId)
 
         } catch (e: Exception) {
             log.error("Failed to remove up WebSocket for {}", connectionId, e)
@@ -266,12 +296,11 @@ open class ConnectionController @Inject constructor() {
                     )
 
                     connectionCache.storeConnection(persistedConnection)
-                    log.info("Down socket removed for connection {}", connectionId)
+                    debug.log(DebugType.CONNECTION_CONTROLLER_REMOVE_DOWNSOCKET, listOf(connectionId))
 
                 } catch (e: Exception) {
                     // This might fail if connection was already deleted or is being deleted concurrently
                     log.warn("Failed to update database for down socket removal: {}", e.message)
-                    // Update cache anyway to maintain consistency with what we tried to do
                     connectionCache.storeConnection(updatedConnection)
                 }
             }
@@ -286,7 +315,7 @@ open class ConnectionController @Inject constructor() {
      */
     suspend fun handleUpSocketClosed(connectionId: String) {
         try {
-            log.info("Up socket closed for connection {}, marking for potential reconnection", connectionId)
+            debug.log(DebugType.CONNECTION_CONTROLLER_UPSOCKET_CLOSED, listOf(connectionId))
 
             val updatedConnection = connectionStore.updateReconnectable(connectionId, true)
 
@@ -339,16 +368,14 @@ open class ConnectionController @Inject constructor() {
      * Channel cleanup is decoupled from connection existence.
      */
     suspend fun cleanupConnection(connectionId: String) {
-        log.info("Cleaning up connection {}", connectionId)
-
         try {
             val removedCount = channelStore.removeClientFromAllChannels(connectionId)
-            log.info("Removed connection {} from {} channels", connectionId, removedCount)
+
+            debug.log(DebugType.CONNECTION_CONTROLLER_CLEANUP_CONNECTION, listOf(connectionId, removedCount))
         } catch (e: Exception) {
             log.error("Error removing connection {} from channels: {}", connectionId, e.message)
         }
 
-        // Clean up sockets and cache
         try {
             connectionCache.getUpSocket(connectionId)?.let { socket ->
                 try {
@@ -369,26 +396,14 @@ open class ConnectionController @Inject constructor() {
             connectionCache.removeUpSocket(connectionId)
             connectionCache.removeDownSocket(connectionId)
             connectionCache.removeConnection(connectionId)
-
-            log.info("Connection {} removed from cache", connectionId)
         } catch (e: Exception) {
             log.error("Error cleaning up connection {} cache entries: {}", connectionId, e.message)
         }
 
-        // Step 3: Finally try to delete the connection from the database
-        // This is last because it's the least important - if the connection
-        // is already gone, that's actually fine
         try {
             connectionStore.delete(connectionId)
-            log.info("Connection {} deleted from database", connectionId)
         } catch (e: Exception) {
-            log.debug(
-                "Could not delete connection {} from database - it may already be deleted: {}",
-                connectionId, e.message
-            )
-            // This is expected in some cases and not an error
+            debug.log(DebugType.CONNECTION_CONTROLLER_ALREADY_DELETED_WARNING, listOf(connectionId, e.message.toString()))
         }
-
-        log.info("Connection {} cleanup completed", connectionId)
     }
 }

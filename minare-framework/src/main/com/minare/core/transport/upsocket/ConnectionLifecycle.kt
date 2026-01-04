@@ -2,6 +2,7 @@ package com.minare.worker.upsocket
 
 import com.google.inject.Inject
 import com.google.inject.Singleton
+import com.google.inject.name.Named
 import com.minare.core.MinareApplication
 import com.minare.cache.ConnectionCache
 import com.minare.core.storage.interfaces.ChannelStore
@@ -243,7 +244,7 @@ class ConnectionLifecycle @Inject constructor(
             var success = true
             for (channelId in channels) {
                 try {
-                    val result = channelStore.removeClientFromChannel(channelId, connectionId)
+                    val result = channelStore.removeChannelClient(channelId, connectionId)
                     if (!result) {
                         vlog.getEventLogger().trace("CHANNEL_REMOVAL_FAILED", mapOf(
                             "connectionId" to connectionId,

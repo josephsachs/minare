@@ -1,6 +1,7 @@
 package com.minare.worker.downsocket.events
 
 import com.google.inject.Inject
+import com.minare.controller.ConnectionController
 import com.minare.core.utils.vertx.EventBusUtils
 import com.minare.core.utils.vertx.VerticleLogger
 import io.vertx.core.json.JsonObject

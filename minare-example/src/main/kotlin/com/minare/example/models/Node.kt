@@ -4,9 +4,15 @@ import com.minare.core.entity.annotations.*
 import com.minare.core.entity.models.Entity
 import org.slf4j.LoggerFactory
 
+data class NodeDiag(
+    val timestamp: Long,
+    val message: String,
+    val level: String  // e.g., "INFO", "WARN", "ERROR"
+)
+
 @EntityType("Node")
 class Node(): Entity() {
-    private val log = LoggerFactory.getLogger(Node::class.java) // Bad, tick testing only
+    private val log = LoggerFactory.getLogger(Node::class.java)
 
     init {
         type = "Node"
@@ -27,17 +33,15 @@ class Node(): Entity() {
     @Mutable
     var color: String = "#CCCCCC"
 
-    /**
-     * Add a child node to this node
-     * Updates the in-memory relationship only - caller must persist both entities
-     */
+    @Property
+    var diagnostics: MutableList<NodeDiag> = mutableListOf()
+
     fun addChild(child: Node) {
         child._id?.let { childId ->
             if (!childIds.contains(childId)) {
                 childIds.add(childId)
             }
         }
-
         child.parentId = this._id
     }
 

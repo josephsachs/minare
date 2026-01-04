@@ -138,7 +138,6 @@ class WorkerRegistry @Inject constructor(
     fun updateWorkerHealth(heartbeatTimeout: Long) {
         val now = System.currentTimeMillis()
 
-        // Note: This iterates over distributed map entries
         workerRegistryMap.entries().forEach { entry ->
             val workerId = entry.key
             val state = WorkerState.fromJson(entry.value)

@@ -49,11 +49,5 @@ class ExampleModule : PrivateModule(), DatabaseNameProvider {
         log.info("ExampleModule configured with custom EntityFactory and controllers")
     }
 
-    @Provides
-    @Singleton
-    fun provideCoroutineScope(coroutineContext: CoroutineContext): CoroutineScope {
-        return CoroutineScope(coroutineContext)
-    }
-
     override fun getDatabaseName(): String = "node_graph"
 }

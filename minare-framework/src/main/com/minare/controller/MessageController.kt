@@ -9,7 +9,6 @@ import com.minare.core.transport.models.Connection
 import com.minare.core.transport.models.message.*
 import com.minare.core.utils.vertx.VerticleLogger
 import com.minare.exceptions.BackpressureException
-import com.minare.utils.HeartbeatManager
 import com.minare.utils.WebSocketUtils
 import com.minare.core.transport.upsocket.handlers.SyncCommandHandler
 import io.vertx.core.http.ServerWebSocket
@@ -35,7 +34,6 @@ abstract class MessageController @Inject constructor() {
     @Inject protected lateinit var operationController: OperationController
     @Inject protected lateinit var coordinatorState: FrameCoordinatorState
     @Inject protected lateinit var vlog: VerticleLogger
-    @Inject protected lateinit var heartbeatManager: HeartbeatManager
 
     /**
      * Process an incoming message from the WebSocket.
@@ -46,11 +44,24 @@ abstract class MessageController @Inject constructor() {
     suspend fun dispatch(message: CommandMessageObject) {
         when (message) {
             is HeartbeatResponse -> {
-                val payload = JsonObject()
-                    .put("timestamp", message.timestamp)
-                    .put("clientTimestamp", message.clientTimestamp)
+                try {
+                    val serverTimestamp = message.timestamp
+                    val clientTimestamp = message.clientTimestamp
+                    val now = System.currentTimeMillis()
+                    val roundTripTime = now - serverTimestamp
 
-                heartbeatManager.handleHeartbeatResponse(message.connection._id, payload)
+                    if (Math.random() < 0.1) { // % of heartbeat responses
+                        vlog.getEventLogger().trace("HEARTBEAT_RESPONSE", mapOf(
+                            "connectionId" to message.connection._id,
+                            "roundTripMs" to roundTripTime,
+                            "clientTimestamp" to clientTimestamp
+                        ))
+                    }
+                } catch (e: Exception) {
+                    vlog.logVerticleError("HEARTBEAT_PROCESSING", e, mapOf(
+                        "connectionId" to message.connection._id
+                    ))
+                }
             }
 
             is SyncCommand -> {

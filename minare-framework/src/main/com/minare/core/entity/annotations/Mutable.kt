@@ -6,16 +6,17 @@ package com.minare.core.entity.annotations
 @Retention(AnnotationRetention.RUNTIME)
 @Target(AnnotationTarget.FIELD)
 annotation class Mutable(
-    val consistency: ConsistencyLevel = ConsistencyLevel.OPTIMISTIC
+    val validationPolicy: ValidationPolicy = ValidationPolicy.NONE
 ) {
     companion object {
         /**
          * Defines consistency levels for mutable fields
          */
-        enum class ConsistencyLevel {
-            OPTIMISTIC,  // Allow changes, resolve conflicts later if needed
-            PESSIMISTIC, // Verify version before allowing changes
-            STRICT       // Most restrictive, require exact version match
+        enum class ValidationPolicy {
+            NONE,       // Allow all well-formed changes
+            FIELD,      // Omit invalid fields
+            ENTITY,     // Reject entire entity delta if rule fails
+            OPERATION   // Reject entire operation if rule fails
         }
     }
 }

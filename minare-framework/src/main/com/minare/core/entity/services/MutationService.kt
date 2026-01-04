@@ -6,6 +6,8 @@ import com.minare.core.entity.factories.EntityFactory
 import com.minare.core.entity.ReflectionCache
 import com.minare.core.entity.annotations.Mutable
 import com.minare.core.entity.annotations.State
+import com.minare.core.entity.annotations.VersionPolicy
+import com.minare.core.entity.annotations.VersionPolicy.Companion.VersionPolicyType
 import com.minare.core.storage.interfaces.StateStore
 import io.vertx.core.json.JsonObject
 import org.slf4j.LoggerFactory
@@ -21,8 +23,7 @@ import java.lang.reflect.Field
 class MutationService @Inject constructor(
     private val reflectionCache: ReflectionCache,
     private val entityFactory: EntityFactory,
-    private val stateStore: StateStore,
-    private val versioningService: EntityVersioningService
+    private val stateStore: StateStore
 ) {
     private val log = LoggerFactory.getLogger(MutationService::class.java)
 
@@ -38,36 +39,33 @@ class MutationService @Inject constructor(
         log.debug("Processing mutation for entity $entityId of type $entityType")
 
         val delta = requestObject.getJsonObject("state") ?: JsonObject()
-        val requestedVersion = requestObject.getLong("version", 0L)
+        val deltaEntityVersion = requestObject.getLong("version", 0L)
 
-        // Get the current entity state from Redis
         val currentJson = stateStore.findEntityJson(entityId)
             ?: return JsonObject()
                 .put("success", false)
                 .put("message", "Entity not found: $entityId")
 
-        val currentVersion = currentJson.getLong("version", 1L)
+        val storedEntityVersion = currentJson.getLong("version", 1L)
 
-        // Get the entity class for reflection (no Entity instance needed)
         val entityClass = entityFactory.useClass(entityType)
             ?: return JsonObject()
                 .put("success", false)
                 .put("message", "Unknown entity type: $entityType")
 
-        // Process the mutation delta using direct ReflectionCache calls
         val prunedDelta = getMutateDelta(delta, entityClass)
 
         if (prunedDelta.isEmpty) {
             return JsonObject()
                 .put("success", false)
-                .put("message", "No valid mutable fields found")
+                .put("message", "Entity $entityId valid mutable fields found")
         }
 
-        // TODO: Old feature will probably be changed all to hell in V0.4.0
-        val allowedChanges = filterDeltaByConsistencyLevel(
+        val allowedChanges = validateDelta(
+            entityId,
             prunedDelta,
-            requestedVersion,
-            currentVersion,
+            deltaEntityVersion,
+            storedEntityVersion,
             entityClass
         )
 
@@ -77,23 +75,17 @@ class MutationService @Inject constructor(
                 .put("message", "No allowed changes based on consistency rules")
         }
 
-        // Apply the mutation to the entity state
         try {
-            stateStore.mutateState(entityId, allowedChanges)
-
-            // Temporarily disabled
-            // We need to fix delta updates to merge rather than replace
-            // Revisit in V3
-            // versioningService.bubbleVersions(entityId)
+            stateStore.saveState(entityId, allowedChanges)
 
             return JsonObject()
                 .put("success", true)
-                .put("message", "Mutation successful")
+                .put("message", "Entity $entityId mutation successful")
         } catch (e: Exception) {
             log.error("Failed to mutate entity state: $entityId", e)
             return JsonObject()
                 .put("success", false)
-                .put("message", "Mutation failed: ${e.message}")
+                .put("message", "Entity $entityId mutation failed: ${e.message}")
         }
     }
 
@@ -123,54 +115,106 @@ class MutationService @Inject constructor(
      * Filter changes based on consistency level rules
      * Updated to use direct ReflectionCache calls instead of Entity wrapper methods
      */
-    private fun filterDeltaByConsistencyLevel(
+    private fun validateDelta(
+        entityId: String,
         delta: JsonObject,
-        requestedVersion: Long,
-        currentVersion: Long,
+        deltaVersion: Long,
+        stateVersion: Long,
         entityClass: Class<*>
     ): JsonObject {
         if (delta.isEmpty) {
             return JsonObject()
         }
 
-        // Use direct ReflectionCache call instead of Entity wrapper method
         val mutableFields = reflectionCache.getFieldsWithAnnotation<Mutable>(entityClass.kotlin)
+        val invalidations: MutableMap<String, String> = mutableMapOf()
+        val changes = JsonObject()
 
-        // First check for any STRICT fields with version mismatch
-        val strictViolation = delta.fieldNames().any { fieldName ->
-            val field = findFieldByStateName(mutableFields, fieldName) ?: return@any false
-            val mutableAnnotation = field.getAnnotation(Mutable::class.java)
+        // First check for version mismatch
+        if (checkVersion(deltaVersion, stateVersion, entityClass, invalidations)) {
 
-            mutableAnnotation.consistency == Mutable.Companion.ConsistencyLevel.STRICT &&
-                    currentVersion != requestedVersion
-        }
+            // Filter the delta for what we permit through
+            for (fieldName in delta.fieldNames()) {
+                // Make extra sure this matches a genuine state field
+                val field = findFieldByStateName(mutableFields, fieldName)
 
-        if (strictViolation) {
-            log.warn("Strict consistency violation detected. Entity type: $entityClass.simpleName, Current: $currentVersion, Requested: $requestedVersion")
-            return JsonObject()
-        }
+                if (field == null) {
+                    log.warn("Entity $entityId mutation tried to mutate non-state field ${fieldName}")
+                    continue
+                }
 
-        // Filter remaining fields based on consistency levels
-        val result = JsonObject()
+                val mutableAnnotation = field.getAnnotation(Mutable::class.java)
 
-        delta.fieldNames().forEach { fieldName ->
-            val field = findFieldByStateName(mutableFields, fieldName) ?: return@forEach
-            val mutableAnnotation = field.getAnnotation(Mutable::class.java)
-
-            when (mutableAnnotation.consistency) {
-                Mutable.Companion.ConsistencyLevel.OPTIMISTIC ->
-                    result.put(fieldName, delta.getValue(fieldName))
-                Mutable.Companion.ConsistencyLevel.PESSIMISTIC -> {
-                    if (requestedVersion >= currentVersion) {
-                        result.put(fieldName, delta.getValue(fieldName))
+                when (mutableAnnotation.validationPolicy) {
+                    Mutable.Companion.ValidationPolicy.NONE -> {
+                        // We're allowing it, come what may
+                        changes.put(fieldName, delta.getValue(fieldName))
+                    }
+                    Mutable.Companion.ValidationPolicy.FIELD -> {
+                        if (invalidations.keys.contains(fieldName)) {
+                            // Skip it
+                            log.warn("Entity $entityId mutation field omitted: ${fieldName} because ${invalidations[fieldName]}")
+                        } else {
+                            changes.put(fieldName, delta.getValue(fieldName))
+                        }
+                    }
+                    Mutable.Companion.ValidationPolicy.ENTITY -> {
+                        if (invalidations.keys.contains(fieldName)) {
+                            changes.clear() // Reject everything and bail
+                            break
+                        } else {
+                            changes.put(fieldName, delta.getValue(fieldName))
+                        }
+                    }
+                    Mutable.Companion.ValidationPolicy.OPERATION -> {
+                        if (invalidations.keys.contains(fieldName)) {
+                            throw NotImplementedError("Operation-level atomicity coming soon")
+                        } else {
+                            changes.put(fieldName, delta.getValue(fieldName))
+                        }
                     }
                 }
-                Mutable.Companion.ConsistencyLevel.STRICT ->
-                    result.put(fieldName, delta.getValue(fieldName)) // Already checked above
             }
         }
 
-        return result
+        if (invalidations.isNotEmpty()) {
+            log.warn("Entity $entityId mutation delta failed validations: ${invalidations.entries}")
+        }
+
+        if (changes.isEmpty) {
+            log.warn("Entity $entityId mutation contained no possible changes")
+        }
+
+        return changes
+    }
+
+    private fun checkVersion(
+        incoming: Long,
+        current: Long,
+        entityClass: Class<*>,
+        invalidations: MutableMap<String, String>
+    ): Boolean {
+        val entityName = entityClass.simpleName
+        val versionAnnotation = entityClass.getAnnotation(VersionPolicy::class.java) ?: return true
+
+        return if (versionAnnotation.rule == VersionPolicyType.MUST_MATCH &&
+                incoming != current
+            ) {
+                invalidations[entityName] = "Attempted to apply non-matching Entity version"
+                false
+            } else if (versionAnnotation.rule == VersionPolicyType.ONLY_NEXT &&
+                incoming != current + 1
+            ) {
+                invalidations[entityName] = "Attempted to apply invalid entity version"
+                false
+            } else if (versionAnnotation.rule == VersionPolicyType.ALLOW_NEWER &&
+                incoming <= current
+            ) {
+                invalidations[entityName] = "Attempted to apply old entity version"
+                false
+            } else {
+                true
+            }
     }
 
     /**

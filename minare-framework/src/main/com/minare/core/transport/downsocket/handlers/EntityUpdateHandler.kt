@@ -78,23 +78,6 @@ class EntityUpdateHandler @Inject constructor(
                         continue
                     }
 
-                    /**if (connection.updateDeploymentId != currentDeploymentId) {
-                        vlog.getEventLogger().trace("CONNECTION_DEPLOYMENT_CHECK", mapOf(
-                            "connectionId" to connection._id,
-                            "connectionUpdateDeploymentId" to connection.updateDeploymentId,
-                            "currentDeploymentId" to currentDeploymentId,
-                            "matches" to "false"
-                        ), traceId)
-                        continue
-                    } else {
-                        vlog.getEventLogger().trace("CONNECTION_DEPLOYMENT_CHECK", mapOf(
-                            "connectionId" to connection._id,
-                            "connectionUpdateDeploymentId" to connection.updateDeploymentId,
-                            "currentDeploymentId" to currentDeploymentId,
-                            "matches" to "true"
-                        ), traceId)
-                    }**/
-
                     hasOwnedConnections = true
                     processedConnections.add(connection._id)
 

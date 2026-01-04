@@ -1,8 +1,10 @@
 package com.minare.worker.upsocket.handlers
 
 import com.google.inject.Inject
+import com.google.inject.name.Named
 import com.minare.core.MinareApplication
 import com.minare.cache.ConnectionCache
+import com.minare.controller.ConnectionController
 import com.minare.core.storage.interfaces.ConnectionStore
 import com.minare.core.transport.downsocket.services.ConnectionTracker
 import com.minare.utils.HeartbeatManager
@@ -18,6 +20,7 @@ class ReconnectionHandler @Inject constructor(
     private val vlog: VerticleLogger,
     private val connectionStore: ConnectionStore,
     private val connectionCache: ConnectionCache,
+    private val connectionController: ConnectionController,
     private val connectionTracker: ConnectionTracker,
     private val connectionLifecycle: ConnectionLifecycle,
     private val heartbeatManager: HeartbeatManager
@@ -157,8 +160,7 @@ class ReconnectionHandler @Inject constructor(
                     )
                 }
 
-                // We want to know how to now call this on the ExampleApplication's connection controller
-                //connectionController.onClientFullyConnected(updatedConnection)
+                connectionController.onClientFullyConnected(updatedConnection)
             }
 
             if (debugTraceLogs) {

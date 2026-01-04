@@ -4,6 +4,8 @@ import com.minare.controller.MessageController
 import com.minare.core.utils.vertx.VerticleLogger
 import com.minare.utils.HeartbeatManager
 import com.minare.core.transport.downsocket.services.ConnectionTracker
+import com.minare.core.utils.debug.DebugLogger
+import com.minare.core.utils.debug.DebugLogger.Companion.DebugType
 import com.minare.utils.HttpServerUtils
 import com.minare.utils.WebSocketUtils
 import com.minare.worker.upsocket.events.*
@@ -38,7 +40,8 @@ class UpSocketVerticle @Inject constructor(
     private val upSocketCleanupEvent: UpSocketCleanupEvent,
     private val upSocketInitEvent: UpSocketInitEvent,
     private val connectionCleanupEvent: ConnectionCleanupEvent,
-    private val entitySyncEvent: EntitySyncEvent
+    private val entitySyncEvent: EntitySyncEvent,
+    private val debug: DebugLogger
 ) : CoroutineVerticle() {
 
     private val log = LoggerFactory.getLogger(UpSocketVerticle::class.java)
@@ -68,18 +71,13 @@ class UpSocketVerticle @Inject constructor(
         vlog.setVerticle(this)
 
         deployedAt = System.currentTimeMillis()
-        log.info("Starting UpSocketVerticle at {$deployedAt}")
-
-        vlog.logStartupStep("STARTING")
-        vlog.logConfig(config)
+        debug.log(DebugType.UPSOCKET_STARTUP, listOf(deployedAt, vlog, config))
 
         router = Router.router(vertx)
-        vlog.logStartupStep("ROUTER_CREATED")
+        debug.log(DebugType.UPSOCKET_ROUTER_CREATED, listOf(vlog))
         initializeRouter()
 
         registerEventBusConsumers()
-        vlog.logStartupStep("EVENT_BUS_HANDLERS_REGISTERED")
-
         deployHttpServer()
 
         // Save deployment ID
@@ -95,12 +93,13 @@ class UpSocketVerticle @Inject constructor(
      * Initialize the router with up socket routes
      */
     private fun initializeRouter() {
-        vlog.logStartupStep("INITIALIZING_ROUTER")
+        debug.log(DebugType.UPSOCKET_INITIALIZING_ROUTER, listOf(vlog))
 
         HttpServerUtils.addDebugEndpoint(router, "/ws-debug", "UpSocketVerticle")
-        log.info("Setting up websocket route handler at path: {}", BASE_PATH)
 
-        router.route("$BASE_PATH").handler { context ->
+        debug.log(DebugType.UPSOCKET_SETTING_UP_ROUTE_HANDLER, listOf(BASE_PATH))
+
+        router.route(BASE_PATH).handler { context ->
             WebSocketUtils.handleWebSocketUpgrade(
                 context,
                 vertx.dispatcher(),
@@ -123,8 +122,7 @@ class UpSocketVerticle @Inject constructor(
                 .put("heartbeats", heartbeatManager.getMetrics())
         }
 
-        vlog.logStartupStep("ROUTER_INITIALIZED")
-        log.info("Up socket router initialized with routes: $BASE_PATH, $BASE_PATH/health, /ws-debug")
+        debug.log(DebugType.UPSOCKET_ROUTER_INITIALIZED, listOf(BASE_PATH, vlog))
     }
 
     /**
@@ -145,8 +143,7 @@ class UpSocketVerticle @Inject constructor(
     private suspend fun handleMessage(websocket: ServerWebSocket, traceId: String) {
         var handshakeCompleted = false
 
-        if (debugTraceLogs) log.info("New up WebSocket connection from {}", websocket.remoteAddress())
-
+        debug.log(DebugType.UPSOCKET_NEW_WEBSOCKET_CONNECTION, listOf(websocket.remoteAddress()))
 
         websocket.textMessageHandler { message ->
             CoroutineScope(vertx.dispatcher()).launch {
@@ -189,14 +186,7 @@ class UpSocketVerticle @Inject constructor(
                 log.warn("Tried to close websocket ${websocket.textHandlerID()} with no connection")
             }
 
-            if (debugTraceLogs) {
-                vlog.getEventLogger().trace(
-                    "WEBSOCKET_CLOSED", mapOf(
-                        "socketId" to websocket.textHandlerID(),
-                        "connectionId" to connectionId
-                    ), traceId
-                )
-            }
+            debug.log(DebugType.UPSOCKET_WEBSOCKET_CLOSED, listOf(vlog, websocket.textHandlerID(), connectionId, traceId))
         }
 
         websocket.accept()
@@ -211,13 +201,8 @@ class UpSocketVerticle @Inject constructor(
 
         // If no reconnection message is received, create a new connection
         vertx.setTimer(HANDSHAKE_TIMEOUT_MS) {
-            if (!handshakeCompleted && debugTraceLogs) {
-                vlog.getEventLogger().trace(
-                    "HANDSHAKE_TIMEOUT", mapOf(
-                        "socketId" to websocket.textHandlerID(),
-                        "timeoutMs" to HANDSHAKE_TIMEOUT_MS
-                    ), traceId
-                )
+            if (!handshakeCompleted) {
+                debug.log(DebugType.UPSOCKET_CONNECTION_TIMEOUT, listOf(vlog, websocket.textHandlerID(), HANDSHAKE_TIMEOUT_MS, traceId))
 
                 handshakeCompleted = true
                 CoroutineScope(vertx.dispatcher()).launch {
@@ -239,8 +224,8 @@ class UpSocketVerticle @Inject constructor(
     /**
      * Deploy a dedicated HTTP server for up sockets
      */
-    suspend fun deployHttpServer() {
-        vlog.logStartupStep("DEPLOYING_OWN_HTTP_SERVER")
+    private suspend fun deployHttpServer() {
+        debug.log(DebugType.UPSOCKET_DEPLOYING_HTTP_SERVER, listOf(vlog))
 
         try {
             httpServer = HttpServerUtils.createAndStartHttpServer(
@@ -251,12 +236,9 @@ class UpSocketVerticle @Inject constructor(
             ).await()
 
             val actualPort = httpServer?.actualPort() ?: HTTP_SERVER_PORT
-            vlog.logStartupStep(
-                "HTTP_SERVER_DEPLOYED", mapOf(
-                    "port" to actualPort,
-                    "host" to HTTP_SERVER_HOST
-                )
-            )
+
+            debug.log(DebugType.UPSOCKET_HTTP_SERVER_DEPLOYED, listOf(vlog, actualPort, HTTP_SERVER_HOST))
+
         } catch (e: Exception) {
             vlog.logVerticleError("DEPLOY_HTTP_SERVER", e)
             log.error("Failed to deploy HTTP server", e)
@@ -264,15 +246,13 @@ class UpSocketVerticle @Inject constructor(
     }
 
     override suspend fun stop() {
-        vlog.logStartupStep("STOPPING")
+        debug.log(DebugType.UPSOCKET_HTTP_SERVER_STOPPING, listOf(vlog))
 
         heartbeatManager.stopAll()
 
         if (httpServer != null) {
             try {
-                log.info("Closing HTTP server")
                 httpServer!!.close().await()
-                log.info("HTTP server closed successfully")
             } catch (e: Exception) {
                 log.error("Error closing HTTP server", e)
             }

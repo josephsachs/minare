@@ -1,9 +1,11 @@
 package com.minare.controller
 
 import com.minare.core.entity.factories.EntityFactory
-import com.minare.core.entity.models.Entity
+import com.minare.core.entity.models.*
+import com.minare.core.entity.services.EntityObjectHydrator
 import com.minare.core.storage.interfaces.EntityGraphStore
 import com.minare.core.storage.interfaces.StateStore
+import com.minare.core.utils.debug.DebugLogger
 import io.vertx.core.json.JsonObject
 import org.slf4j.LoggerFactory
 import javax.inject.Inject
@@ -19,11 +21,12 @@ import javax.inject.Singleton
  * - Applications can extend this class to customize behavior
  */
 @Singleton
-open class EntityController @Inject constructor(
-    private val stateStore: StateStore,
-    private val entityGraphStore: EntityGraphStore,
-    private val entityFactory: EntityFactory
-) {
+open class EntityController @Inject constructor() {
+    @Inject private lateinit var stateStore: StateStore
+    @Inject private lateinit var entityGraphStore: EntityGraphStore
+    @Inject private lateinit var objectHydrator: EntityObjectHydrator
+    @Inject private lateinit var debug: DebugLogger
+
     private val log = LoggerFactory.getLogger(EntityController::class.java)
 
     /**
@@ -37,15 +40,9 @@ open class EntityController @Inject constructor(
      * @return The created entity with ID assigned
      */
     open suspend fun create(entity: Entity): Entity {
-        if (!entity._id.isNullOrEmpty()) {
-            throw IllegalArgumentException("Entity already has an ID - use save() for downSockets")
-        }
-
         try {
-            //  Save to MongoDB to get ID assigned
+            //  Save to graph store to get ID assigned
             val entityWithId = entityGraphStore.save(entity)
-
-            // Redis is source of truth for Entity state
             val finalEntity = stateStore.save(entityWithId)
 
             return finalEntity
@@ -56,23 +53,31 @@ open class EntityController @Inject constructor(
     }
 
     /**
-     * Save an existing entity to Redis (source of truth) with write-behind to MongoDB.
-     * Updated to use JsonObject-based WriteBehindStore for consistency.
+     * Save an existing entity's state to Redis, tandem persisting relationship updates.
+     * Use for @State fields.
      *
      * @param entity The entity to save (must already have an ID)
      * @return The saved entity with any updates
      */
-    open suspend fun save(entityId: String?, deltas: JsonObject, incrementVersion: Boolean = true): Entity? {
-        // TODO: Only save Entity relationships to MongoDB, ignore other state, but ensure tandem write
-        if (entityId.isNullOrBlank()) {
-            throw IllegalArgumentException("Entity must have an ID - use create() for new entities")
-        }
+    open suspend fun saveState(entityId: String, deltas: JsonObject, incrementVersion: Boolean = true): Entity? {
+        debug.log(DebugLogger.Companion.DebugType.ENTITY_CONTROLLER_SAVE_ENTITY, listOf(entityId))
 
-        log.debug("Saving existing entity {} to Redis", entityId)
-
-        stateStore.mutateState(entityId, deltas, incrementVersion)
+        stateStore.saveState(entityId, deltas, incrementVersion)
 
         entityGraphStore.updateRelationships(entityId, deltas)
+
+        return stateStore.findEntity(entityId)
+    }
+
+    /**
+     * Save an existing entity's property to Redis.
+     * Use for @Property fields.
+     *
+     * @param entity The entity to save (must already have an ID)
+     * @return The saved entity with any updates
+     */
+    open suspend fun saveProperties(entityId: String, deltas: JsonObject): Entity? {
+        stateStore.saveProperties(entityId, deltas)
 
         return stateStore.findEntity(entityId)
     }
@@ -84,39 +89,13 @@ open class EntityController @Inject constructor(
      * @return Map of ID to Entity for found entities
      */
     open suspend fun findByIds(ids: List<String>): Map<String, Entity> {
-        log.debug("Finding entities by IDs: {}", ids)
-
-        var results = mutableMapOf<String, Entity>()
+        val results = mutableMapOf<String, Entity>()
         val entityJsons = stateStore.findEntitiesJson(ids)
 
         entityJsons.forEach { (entityKey, entityJson) ->
-            val entityType = entityJson.getString("type")
-            val entityClass = entityFactory.useClass(entityType) ?: return@forEach
-
-            val entity = entityFactory.createEntity(entityClass).apply {
-                _id = entityJson.getString("_id")
-                version = entityJson.getLong("version")
-                type = entityType
-            }
-
-            val stateJson = entityJson.getJsonObject("state", JsonObject())
-            stateStore.setEntityState(entity, entityType, stateJson)
-
-            results[entityKey] = entity
+            results[entityKey] = objectHydrator.hydrate(entityJson)
         }
 
         return results
-    }
-
-    /**
-     * Mutate an entity's state fields based on the provided delta.
-     *
-     * @param entityId The ID of the entity to update
-     * @param delta The delta containing fields to update
-     * @return The updated entity document
-     */
-    open suspend fun mutateState(entityId: String, delta: JsonObject): JsonObject {
-        log.debug("Mutating state for entity {}", entityId)
-        return stateStore.mutateState(entityId, delta)
     }
 }

@@ -4,6 +4,10 @@ import com.google.inject.Inject
 import com.google.inject.Singleton
 import io.vertx.core.Vertx
 
+/**
+ * A variable holder that maintains current state using vertx event bus.
+ * Preferred for cases with rare writes and very frequent reads.
+ */
 class PushVar<T>(
     private val vertx: Vertx,
     private val address: String,
