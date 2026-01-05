@@ -225,6 +225,9 @@ class DownSocketVerticle @Inject constructor(
     /**
      * Handle a new down socket connection
      */
+    /**
+     * Handle a new down socket connection
+     */
     private suspend fun handleDownSocket(websocket: ServerWebSocket, traceId: String) {
         if (debugTraceLogs) log.info("New down socket connection from {}", websocket.remoteAddress())
 
@@ -232,6 +235,17 @@ class DownSocketVerticle @Inject constructor(
             CoroutineScope(vertx.dispatcher()).launch {
                 try {
                     val msg = JsonObject(message)
+                    val messageType = msg.getString("type")
+
+                    // Heartbeat responses don't need connectionId validation
+                    // The socket is already associated, this is just a keep-alive response
+                    if (messageType == "heartbeat_response") {
+                        val clientTimestamp = msg.getLong("clientTimestamp")
+                        val serverTimestamp = msg.getLong("timestamp")
+                        // Heartbeat response processed, no further action needed
+                        return@launch
+                    }
+
                     val connectionId = msg.getString("connectionId")
 
                     if (connectionId != null) {
