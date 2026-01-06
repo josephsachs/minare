@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <timestamp key="startTimestamp" datePattern="yyyyMMdd_HHmmss"/>
+
+    <!-- Separate log files per instance -->
+    <property name="INSTANCE_LOG" value="${LOG_PATH:-logs}/${INSTANCE_ROLE:-app}-${HOSTNAME:-default}-${startTimestamp}.log" />
+    <property name="TEST_LOG" value="${LOG_PATH:-logs}/test_results_${startTimestamp}.txt" />
+
+    <!-- Console Appender -->
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder class="ch.qos.logback.classic.encoder.PatternLayoutEncoder">
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [${HOSTNAME:-unknown}] [%thread] %-5level %logger{36} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <!-- Instance log file appender -->
+    <appender name="INSTANCE_FILE" class="ch.qos.logback.core.FileAppender">
+        <file>${INSTANCE_LOG}</file>
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [${HOSTNAME:-unknown}] [%thread] %-5level %logger{36} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <!-- Test results file appender -->
+    <appender name="TEST_FILE" class="ch.qos.logback.core.FileAppender">
+        <file>${TEST_LOG}</file>
+        <encoder>
+            <pattern>%msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <!-- Async wrapper for instance logs -->
+    <appender name="ASYNC_INSTANCE" class="ch.qos.logback.classic.AsyncAppender">
+        <appender-ref ref="INSTANCE_FILE" />
+        <queueSize>512</queueSize>
+        <discardingThreshold>0</discardingThreshold>
+    </appender>
+
+    <!-- Test output logger -->
+    <logger name="TEST_OUTPUT" level="INFO" additivity="false">
+        <appender-ref ref="TEST_FILE"/>
+        <appender-ref ref="CONSOLE"/>
+    </logger>
+
+    <!-- Minare framework logging -->
+    <logger name="com.minare" level="DEBUG" additivity="false">
+        <appender-ref ref="CONSOLE" />
+        <appender-ref ref="ASYNC_INSTANCE" />
+    </logger>
+
+    <!-- Vert.x logging -->
+    <logger name="io.vertx" level="INFO" additivity="false">
+        <appender-ref ref="CONSOLE" />
+        <appender-ref ref="ASYNC_INSTANCE" />
+    </logger>
+
+    <!-- Hazelcast logging -->
+    <logger name="com.hazelcast" level="WARN" additivity="false">
+        <appender-ref ref="CONSOLE" />
+        <appender-ref ref="ASYNC_INSTANCE" />
+    </logger>
+
+    <root level="INFO">
+        <appender-ref ref="CONSOLE" />
+        <appender-ref ref="ASYNC_INSTANCE" />
+    </root>
+</configuration>

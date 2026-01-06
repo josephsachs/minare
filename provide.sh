@@ -1,3 +1,5 @@
 #!/bin/bash
 
-mvn install -pl minare-framework -am
+cd minare-framework
+# mvn clean install -DskipTests
+mvn clean install

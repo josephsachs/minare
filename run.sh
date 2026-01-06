@@ -1,28 +1,79 @@
 #!/bin/bash
 
-# Parse command line arguments
 WORKER_COUNT=${1:-1}
+shift 2>/dev/null || true
 
-cd docker
-docker compose down -v
+BUILD_ONLY=false
+START_NODEGRAPH=false
+START_INTEGRATION=false
 
-cd ..
-mvn package
+while getopts "bni" flag; do
+  case "${flag}" in
+    b) BUILD_ONLY=true ;;
+    n) START_NODEGRAPH=true ;;
+    i) START_INTEGRATION=true ;;
+    \?)
+      echo "Invalid option: -$OPTARG" >&2
+      exit 1
+      ;;
+  esac
+done
 
-cd docker
+build_framework() {
+    echo "Building minare-framework..."
+    cd minare-framework
+    mvn clean install -DskipTests
+    cd ..
+}
 
-# Clean up all log files
-rm -rf logs/*.log
-rm -rf data/{db,redis,kafka}/*
-chmod 755 data/{db,redis,kafka}
+build_nodegraph() {
+    echo "Building nodegraph..."
+    cd minare-example/nodegraph
+    mvn clean package -DskipTests
+    cd ../..
+}
 
-# Create log directory if it doesn't exist
-mkdir -p logs
+build_integration() {
+    echo "Building integration tests..."
+    cd minare-example/integration
+    mvn clean package -DskipTests
+    cd ../..
+}
 
-docker compose build --no-cache
+start_docker() {
+    cd docker
+    docker compose down -v
 
-# Start services with specified worker count
-WORKER_COUNT=${WORKER_COUNT} docker compose up -d --scale worker=${WORKER_COUNT}
+    rm -rf logs/*.log
+    rm -rf data/{db,redis,kafka}/*
+    chmod 755 data/{db,redis,kafka}
+    mkdir -p logs
 
-# Follow logs for all services
-docker compose logs -f
+    docker compose build --no-cache
+    WORKER_COUNT=${WORKER_COUNT} docker compose up -d --scale worker=${WORKER_COUNT}
+    docker compose logs -f
+}
+
+if $BUILD_ONLY; then
+    build_framework
+    echo "Framework build complete."
+    exit 0
+fi
+
+if $START_NODEGRAPH; then
+    echo "Building and starting NodeGraph..."
+    build_framework
+    build_nodegraph
+    start_docker
+elif $START_INTEGRATION; then
+    echo "Building and starting Integration Tests..."
+    build_framework
+    build_integration
+    start_docker
+else
+    echo "Usage: ./run.sh [WORKER_COUNT] -n|-i|-b"
+    echo "  -n: Build and run NodeGraph application"
+    echo "  -i: Build and run Integration test application"
+    echo "  -b: Build framework only (no docker)"
+    exit 1
+fi
