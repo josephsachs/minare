@@ -5,23 +5,28 @@ import kotlin.system.exitProcess
 
 class IntegrationTestRunner {
     private val log = LoggerFactory.getLogger(IntegrationTestRunner::class.java)
+    private val testLog = LoggerFactory.getLogger("TEST_OUTPUT")
     private val suiteResults = mutableListOf<Pair<String, Boolean>>()
 
+    private fun out(message: String) {
+        testLog.info(message)
+    }
+
     suspend fun runAll(vararg suites: TestSuite): Boolean {
-        println("\n")
-        println("╔════════════════════════════════════════════════════════════╗")
-        println("║           MINARE INTEGRATION TEST SUITE                    ║")
-        println("╚════════════════════════════════════════════════════════════╝")
+        out("")
+        out("╔════════════════════════════════════════════════════════════╗")
+        out("║           MINARE INTEGRATION TEST SUITE                    ║")
+        out("╚════════════════════════════════════════════════════════════╝")
 
         var allPassed = true
 
         for (suite in suites) {
-            val runner = TestRunner(suite.name)
+            val runner = TestRunner(suite.name, testLog)
             try {
                 suite.run(runner)
             } catch (e: Throwable) {
                 log.error("Suite ${suite.name} threw unexpected error", e)
-                println("  ✗ Suite crashed: ${e.javaClass.simpleName}: ${e.message}")
+                out("  ✗ Suite crashed: ${e.javaClass.simpleName}: ${e.message}")
             }
             val suitePassed = runner.report()
             suiteResults.add(suite.name to suitePassed)
@@ -33,26 +38,26 @@ class IntegrationTestRunner {
     }
 
     private fun printSummary() {
-        println("\n")
-        println("╔════════════════════════════════════════════════════════════╗")
-        println("║                    SUMMARY                                 ║")
-        println("╚════════════════════════════════════════════════════════════╝")
+        out("")
+        out("╔════════════════════════════════════════════════════════════╗")
+        out("║                    SUMMARY                                 ║")
+        out("╚════════════════════════════════════════════════════════════╝")
 
         suiteResults.forEach { (name, passed) ->
             val status = if (passed) "✓ PASS" else "✗ FAIL"
-            println("  $status  $name")
+            out("  $status  $name")
         }
 
         val passedCount = suiteResults.count { it.second }
         val failedCount = suiteResults.count { !it.second }
 
-        println("")
+        out("")
         if (failedCount == 0) {
-            println("  All $passedCount test suites passed!")
+            out("  All $passedCount test suites passed!")
         } else {
-            println("  $passedCount passed, $failedCount failed")
+            out("  $passedCount passed, $failedCount failed")
         }
-        println("")
+        out("")
     }
 
     suspend fun runAllAndExit(vararg suites: TestSuite) {

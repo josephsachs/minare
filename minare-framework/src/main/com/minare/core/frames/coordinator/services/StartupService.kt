@@ -5,6 +5,7 @@ import com.minare.core.utils.debug.DebugLogger
 import com.minare.core.utils.debug.DebugLogger.Companion.DebugType
 import com.minare.worker.coordinator.events.WorkerReadinessEvent
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.delay
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -22,7 +23,14 @@ class StartupService @Inject constructor(
     /**
      * Check if all workers are ready at coordinator startup.
      */
-    fun checkInitialWorkerStatus() {
+    suspend fun checkInitialWorkerStatus() {
+        // This is an ugly hack to fix a race condition where the coordinator starts before the infrastructure
+        // stack has set the expected workers. We should find the "correct" way to order this.
+        while (workerRegistry.getExpectedWorkerCount() == 0) {
+            debug.log(DebugType.COORDINATOR_STARTUP_WAITING_FOR_INFRA_POST)
+            delay(500)
+        }
+
         val activeCount = workerRegistry.getActiveWorkers().size
         val expectedCount = workerRegistry.getExpectedWorkerCount()
 

@@ -1,10 +1,14 @@
 package com.minare.integration.harness
 
+import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 
-class TestRunner(private val suiteName: String) {
-    private val log = LoggerFactory.getLogger(TestRunner::class.java)
+class TestRunner(private val suiteName: String, private val testLog: Logger) {
     private val results = mutableListOf<TestResult>()
+
+    private fun out(message: String) {
+        testLog.info(message)
+    }
 
     suspend fun test(name: String, block: suspend () -> Unit) {
         val startTime = System.currentTimeMillis()
@@ -22,19 +26,20 @@ class TestRunner(private val suiteName: String) {
     }
 
     fun report(): Boolean {
-        println("\n${"=".repeat(60)}")
-        println("TEST SUITE: $suiteName")
-        println("=".repeat(60))
+        out("")
+        out("=".repeat(60))
+        out("TEST SUITE: $suiteName")
+        out("=".repeat(60))
 
         results.forEach { result ->
             if (result.passed) {
-                println("  ✓ ${result.name} (${result.durationMs}ms)")
+                out("  ✓ ${result.name} (${result.durationMs}ms)")
             } else {
-                println("  ✗ ${result.name} (${result.durationMs}ms)")
+                out("  ✗ ${result.name} (${result.durationMs}ms)")
                 result.error?.let { error ->
-                    println("    ${error.javaClass.simpleName}: ${error.message}")
+                    out("    ${error.javaClass.simpleName}: ${error.message}")
                     error.stackTrace.take(3).forEach { frame ->
-                        println("      at $frame")
+                        out("      at $frame")
                     }
                 }
             }
@@ -44,9 +49,9 @@ class TestRunner(private val suiteName: String) {
         val failed = results.count { !it.passed }
         val totalTime = results.sumOf { it.durationMs }
 
-        println("-".repeat(60))
-        println("Results: $passed passed, $failed failed (${totalTime}ms)")
-        println("=".repeat(60))
+        out("-".repeat(60))
+        out("Results: $passed passed, $failed failed (${totalTime}ms)")
+        out("=".repeat(60))
 
         return failed == 0
     }

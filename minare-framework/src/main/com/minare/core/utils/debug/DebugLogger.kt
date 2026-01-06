@@ -45,6 +45,7 @@ class DebugLogger {
         DebugType.COORDINATOR_WORK_DISPATCH_DISTRIBUTE_NO_ITEMS to false,
         DebugType.COORDINATOR_WORK_DISPATCH_DISTRIBUTE_NO_WORKERS to false,
 
+        DebugType.COORDINATOR_STARTUP_WAITING_FOR_INFRA_POST to true,
         DebugType.COORDINATOR_STARTUP_INITIAL_WORKER_STATUS to true,
         DebugType.COORDINATOR_STARTUP_HANDLE_WORKER_READY to true,
         DebugType.COORDINATOR_STARTUP_ALL_WORKERS_ALREADY_HERE to true,
@@ -191,6 +192,7 @@ class DebugLogger {
                 }
                 DebugType.COORDINATOR_WORK_DISPATCH_DISTRIBUTE_NO_ITEMS -> { "WorkDispatcher with strategy RANGE received no items, returning empty map" }
                 DebugType.COORDINATOR_WORK_DISPATCH_DISTRIBUTE_NO_WORKERS -> { "WorkUnit did not distribute because no workers were available, returning empty map" }
+                DebugType.COORDINATOR_STARTUP_WAITING_FOR_INFRA_POST -> { "Waiting for infrastructure stack to post" }
                 DebugType.COORDINATOR_STARTUP_INITIAL_WORKER_STATUS -> { "Initial worker check: ${args[0]}/${args[1]} active" }
                 DebugType.COORDINATOR_STARTUP_ALL_WORKERS_ALREADY_HERE -> { "Coordinator acknowledges all workers already here, proceeding" }
                 DebugType.COORDINATOR_STARTUP_HANDLE_WORKER_READY -> { "Worker ${args[0]} ready: ${args[1]}/${args[2]}" }
@@ -264,6 +266,7 @@ class DebugLogger {
             COORDINATOR_OPERATION_HANDLER_ASSIGN_LATE_OPERATION,
             COORDINATOR_WORK_DISPATCH_DISTRIBUTE_NO_ITEMS,
             COORDINATOR_WORK_DISPATCH_DISTRIBUTE_NO_WORKERS,
+            COORDINATOR_STARTUP_WAITING_FOR_INFRA_POST,
             COORDINATOR_STARTUP_INITIAL_WORKER_STATUS,
             COORDINATOR_STARTUP_ALL_WORKERS_ALREADY_HERE,
             COORDINATOR_STARTUP_HANDLE_WORKER_READY,
