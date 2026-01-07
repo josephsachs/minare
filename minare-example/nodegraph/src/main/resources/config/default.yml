@@ -1,0 +1,3 @@
+# config/development.yaml
+minare:
+  port: 8080

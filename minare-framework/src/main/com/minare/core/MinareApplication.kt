@@ -33,7 +33,6 @@ import com.minare.core.frames.coordinator.CoordinatorTaskVerticle
 import com.minare.core.frames.coordinator.FrameCoordinatorVerticle
 import com.minare.core.frames.coordinator.services.StartupService
 import com.minare.core.frames.services.ActiveWorkerSet
-import com.minare.core.frames.services.WorkerRegistry
 import com.minare.core.frames.services.WorkerRegistryMap
 import com.minare.core.frames.worker.FrameWorkerHealthMonitorVerticle
 import com.minare.core.frames.worker.FrameWorkerVerticle
@@ -43,8 +42,10 @@ import com.minare.core.operation.MutationVerticle
 import com.minare.core.transport.downsocket.RedisPubSubWorkerVerticle
 import com.minare.core.storage.services.StateInitializer
 import com.minare.core.transport.CleanupVerticle
-import com.minare.core.utils.vertx.EventWaiter
 import com.minare.worker.coordinator.events.WorkerReadinessEvent
+import io.vertx.config.ConfigRetriever
+import io.vertx.config.ConfigRetrieverOptions
+import io.vertx.config.ConfigStoreOptions
 import kotlinx.coroutines.*
 import kotlin.system.exitProcess
 
@@ -622,7 +623,10 @@ abstract class MinareApplication : CoroutineVerticle() {
                 if (ar.succeeded()) {
                     val vertx = ar.result()
                     log.info("Successfully created clustered Vertx instance")
-                    completeStartup(vertx, applicationClass, args)
+
+                    CoroutineScope(vertx.dispatcher()).launch {
+                        completeStartup(vertx, applicationClass, args)
+                    }
                 } else {
                     log.error("Failed to create clustered Vertx instance", ar.cause())
                     exitProcess(1)
@@ -631,14 +635,34 @@ abstract class MinareApplication : CoroutineVerticle() {
         }
 
         /**
+         *
+         */
+        private fun getConfiguration(): JsonObject {
+            val env = System.getenv("ENVIRONMENT") ?: "default"
+            val configPath = "config/${env}.yml"
+
+            val stream = Thread.currentThread().contextClassLoader.getResourceAsStream(configPath)
+                ?: throw IllegalStateException("Config file not found: $configPath")
+
+            val yaml = org.yaml.snakeyaml.Yaml()
+            val map: Map<String, Any> = yaml.load(stream)
+
+            return JsonObject(map)
+        }
+
+        /**
          * Complete the startup process once Vertx is initialized
          */
-        private fun completeStartup(
+        private suspend fun completeStartup(
             vertx: Vertx,
             applicationClass: Class<out MinareApplication>,
             args: Array<String>
         ) {
             configureJackson()
+
+            val config = getConfiguration()
+            // TEMPORARY DEBUG
+            log.info("MINARE_CONFIG: ${config}")
 
             try {
                 val appModule = getApplicationModule(applicationClass)
