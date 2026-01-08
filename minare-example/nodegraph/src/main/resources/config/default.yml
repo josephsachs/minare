@@ -1,3 +1,12 @@
-# config/development.yaml
-minare:
-  port: 8080
+# config/default.yaml
+sockets:
+  up:
+    host: "0.0.0.0"
+    port: 4225
+    base_path: "/command"
+    handshake_timeout: 3000
+    heartbeat_interval: 15000
+  down:
+    host: "0.0.0.0"
+    port: 4226
+    base_path: "/update"

@@ -1,6 +1,7 @@
 package com.minare.core.transport.downsocket
 
 import com.google.inject.name.Named
+import com.minare.application.config.FrameworkConfig
 import com.minare.core.MinareApplication
 import com.minare.cache.ConnectionCache
 import com.minare.controller.ConnectionController
@@ -36,6 +37,7 @@ import com.minare.worker.downsocket.events.UpdateConnectionEstablishedEvent.Comp
  * This verticle hosts its own HTTP server for direct WebSocket connections.
  */
 class DownSocketVerticle @Inject constructor(
+    private val frameworkConfig: FrameworkConfig,
     private val connectionStore: ConnectionStore,
     private val connectionCache: ConnectionCache,
     private val connectionController: ConnectionController,
@@ -88,7 +90,10 @@ class DownSocketVerticle @Inject constructor(
             registerEventBusConsumers()
 
             connectionTracker = ConnectionTracker("DownSocket", vlog)
-            heartbeatManager.setHeartbeatInterval(UpSocketVerticle.HEARTBEAT_INTERVAL_MS)
+
+            heartbeatManager.setHeartbeatInterval(
+                frameworkConfig.sockets.up.heartbeatInterval
+            )
 
             vlog.logStartupStep("STARTING")
             vlog.logConfig(config)

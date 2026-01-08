@@ -6,6 +6,8 @@ import com.minare.core.MinareApplication.ConnectionEvents.ADDRESS_COORDINATOR_ST
 import com.minare.core.MinareApplication.ConnectionEvents.ADDRESS_WORKER_STARTED
 import com.minare.application.interfaces.AppState
 import com.minare.application.adapters.ClusteredAppState
+import com.minare.application.config.FrameworkConfig
+import com.minare.application.config.FrameworkConfigBuilder
 import com.minare.core.config.HazelcastInstanceHolder
 import com.minare.core.config.*
 import com.minare.controller.ConnectionController
@@ -637,9 +639,10 @@ abstract class MinareApplication : CoroutineVerticle() {
         /**
          *
          */
-        private fun getConfiguration(): JsonObject {
+        private fun getConfiguration(): FrameworkConfig {
             val env = System.getenv("ENVIRONMENT") ?: "default"
             val configPath = "config/${env}.yml"
+            val frameworkConfigBuilder = FrameworkConfigBuilder()
 
             val stream = Thread.currentThread().contextClassLoader.getResourceAsStream(configPath)
                 ?: throw IllegalStateException("Config file not found: $configPath")
@@ -647,7 +650,7 @@ abstract class MinareApplication : CoroutineVerticle() {
             val yaml = org.yaml.snakeyaml.Yaml()
             val map: Map<String, Any> = yaml.load(stream)
 
-            return JsonObject(map)
+            return frameworkConfigBuilder.build(JsonObject(map))
         }
 
         /**
@@ -660,21 +663,25 @@ abstract class MinareApplication : CoroutineVerticle() {
         ) {
             configureJackson()
 
-            val config = getConfiguration()
-            // TEMPORARY DEBUG
-            log.info("MINARE_CONFIG: ${config}")
-
             try {
-                val appModule = getApplicationModule(applicationClass)
-                log.info("Loaded application module: ${appModule.javaClass.name}")
+                val config = getConfiguration()
 
-                val dbName = getDatabaseNameFromModule(appModule)
-                log.info("Using database name: $dbName")
+                val configModule = object : AbstractModule() {
+                    override fun configure() {
+                        bind(FrameworkConfig::class.java).toInstance(config)
+                    }
+                }
 
                 val frameworkModule = MinareModule()
                 val upSocketVerticleModule = UpSocketVerticleModule()
                 val downSocketVerticleModule = DownSocketVerticleModule()
                 val frameCoordinatorVerticleModule = FrameCoordinatorVerticleModule()
+
+                val appModule = getApplicationModule(applicationClass)
+                log.info("Loaded application module: ${appModule.javaClass.name}")
+
+                val dbName = getDatabaseNameFromModule(appModule)
+                log.info("Using database name: $dbName")
 
                 val dbNameModule = object : AbstractModule() {
                     override fun configure() {
@@ -698,6 +705,7 @@ abstract class MinareApplication : CoroutineVerticle() {
                         // Correct order is required:
                         // framework (provides defaults)
                         install(vertxModule)
+                        install(configModule)
                         install(dbNameModule)
 
                         install(frameworkModule)

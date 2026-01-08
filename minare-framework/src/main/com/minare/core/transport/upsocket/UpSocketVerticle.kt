@@ -1,5 +1,6 @@
 package com.minare.worker.upsocket
 
+import com.minare.application.config.FrameworkConfig
 import com.minare.controller.MessageController
 import com.minare.core.utils.vertx.VerticleLogger
 import com.minare.utils.HeartbeatManager
@@ -30,6 +31,7 @@ import com.minare.worker.upsocket.handlers.ReconnectionHandler
 class UpSocketVerticle @Inject constructor(
     private val vlog: VerticleLogger,
     private val heartbeatManager: HeartbeatManager,
+    private val frameworkConfig: FrameworkConfig,
     private val connectionTracker: ConnectionTracker,
     private val reconnectionHandler: ReconnectionHandler,
     private val messageController: MessageController,
@@ -45,7 +47,7 @@ class UpSocketVerticle @Inject constructor(
 ) : CoroutineVerticle() {
 
     private val log = LoggerFactory.getLogger(UpSocketVerticle::class.java)
-    // Silence is golden
+    // Looks like we still have some debug logs that need to go into the configurator
     private val debugTraceLogs: Boolean = true
 
     private var deployedAt: Long = 0
@@ -58,17 +60,22 @@ class UpSocketVerticle @Inject constructor(
         const val ADDRESS_CONNECTION_CLEANUP = "minare.connection.cleanup"
         const val ADDRESS_ENTITY_SYNC = "minare.entity.sync"
         const val ADDRESS_GET_ROUTER = "minare.up.socket.get.router"
-
-        const val HANDSHAKE_TIMEOUT_MS = 3000L
-        const val HEARTBEAT_INTERVAL_MS = 15000L
-
-        const val BASE_PATH = "/command"
-        const val HTTP_SERVER_PORT = 4225
-        const val HTTP_SERVER_HOST = "0.0.0.0"
     }
+
+    private val basePath = frameworkConfig.sockets.up.basePath
+    private val httpPort = frameworkConfig.sockets.up.port
+    private val httpHost = frameworkConfig.sockets.up.host
+    private val handshakeTimeoutMs = frameworkConfig.sockets.up.handshakeTimeout
 
     override suspend fun start() {
         vlog.setVerticle(this)
+
+        log.info("MINARE_CONFIG: *************************")
+        log.info("${basePath}")
+        log.info("${httpPort}")
+        log.info("${httpHost}")
+        log.info("${handshakeTimeoutMs}")
+        log.info("MINARE_CONFIG: *************************")
 
         deployedAt = System.currentTimeMillis()
         debug.log(DebugType.UPSOCKET_STARTUP, listOf(deployedAt, vlog, config))
@@ -97,13 +104,13 @@ class UpSocketVerticle @Inject constructor(
 
         HttpServerUtils.addDebugEndpoint(router, "/ws-debug", "UpSocketVerticle")
 
-        debug.log(DebugType.UPSOCKET_SETTING_UP_ROUTE_HANDLER, listOf(BASE_PATH))
+        debug.log(DebugType.UPSOCKET_SETTING_UP_ROUTE_HANDLER, listOf(basePath))
 
-        router.route(BASE_PATH).handler { context ->
+        router.route(basePath).handler { context ->
             WebSocketUtils.handleWebSocketUpgrade(
                 context,
                 vertx.dispatcher(),
-                BASE_PATH,
+                basePath,
                 vlog
             ) { socket, traceId ->
                 handleMessage(socket, traceId)
@@ -112,7 +119,7 @@ class UpSocketVerticle @Inject constructor(
 
         HttpServerUtils.addHealthEndpoint(
             router = router,
-            path = "$BASE_PATH/health",
+            path = "$basePath/health",
             verticleName = "UpVerticle",
             deploymentId = deploymentID,
             deployedAt = deployedAt
@@ -122,7 +129,7 @@ class UpSocketVerticle @Inject constructor(
                 .put("heartbeats", heartbeatManager.getMetrics())
         }
 
-        debug.log(DebugType.UPSOCKET_ROUTER_INITIALIZED, listOf(BASE_PATH, vlog))
+        debug.log(DebugType.UPSOCKET_ROUTER_INITIALIZED, listOf(basePath, vlog))
     }
 
     /**
@@ -200,9 +207,9 @@ class UpSocketVerticle @Inject constructor(
         }
 
         // If no reconnection message is received, create a new connection
-        vertx.setTimer(HANDSHAKE_TIMEOUT_MS) {
+        vertx.setTimer(handshakeTimeoutMs) {
             if (!handshakeCompleted) {
-                debug.log(DebugType.UPSOCKET_CONNECTION_TIMEOUT, listOf(vlog, websocket.textHandlerID(), HANDSHAKE_TIMEOUT_MS, traceId))
+                debug.log(DebugType.UPSOCKET_CONNECTION_TIMEOUT, listOf(vlog, websocket.textHandlerID(), handshakeTimeoutMs, traceId))
 
                 handshakeCompleted = true
                 CoroutineScope(vertx.dispatcher()).launch {
@@ -231,13 +238,13 @@ class UpSocketVerticle @Inject constructor(
             httpServer = HttpServerUtils.createAndStartHttpServer(
                 vertx = vertx,
                 router = router,
-                host = HTTP_SERVER_HOST,
-                port = HTTP_SERVER_PORT
+                host = httpHost,
+                port = httpPort
             ).await()
 
-            val actualPort = httpServer?.actualPort() ?: HTTP_SERVER_PORT
+            val actualPort = httpServer?.actualPort() ?: httpPort
 
-            debug.log(DebugType.UPSOCKET_HTTP_SERVER_DEPLOYED, listOf(vlog, actualPort, HTTP_SERVER_HOST))
+            debug.log(DebugType.UPSOCKET_HTTP_SERVER_DEPLOYED, listOf(vlog, actualPort, httpHost))
 
         } catch (e: Exception) {
             vlog.logVerticleError("DEPLOY_HTTP_SERVER", e)
