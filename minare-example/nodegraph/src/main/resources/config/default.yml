@@ -9,4 +9,8 @@ sockets:
   down:
     host: "0.0.0.0"
     port: 4226
-    base_path: "/update"
+    cache_ttl: 1000
+
+entity:
+  update:
+    batch_interval: 100

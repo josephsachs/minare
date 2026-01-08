@@ -1,5 +1,6 @@
 package com.minare.core.transport.downsocket.pubsub
 
+import com.minare.application.config.FrameworkConfig
 import io.vertx.core.Vertx
 import io.vertx.core.json.JsonObject
 import org.slf4j.LoggerFactory
@@ -16,14 +17,15 @@ import javax.inject.Singleton
  */
 @Singleton
 class UpdateBatchCoordinator @Inject constructor(
-    private val vertx: Vertx
+    private val vertx: Vertx,
+    private val frameworkConfig: FrameworkConfig
 ) {
     private val log = LoggerFactory.getLogger(UpdateBatchCoordinator::class.java)
 
     private val pendingUpdates = ConcurrentHashMap<String, JsonObject>()
     private val isRunning = AtomicBoolean(false)
 
-    private var batchIntervalMs = 100L // 10 updates per second
+    private var batchIntervalMs = frameworkConfig.entity.update.batchInterval
 
     private var timerId: Long? = null
 
@@ -183,21 +185,5 @@ class UpdateBatchCoordinator @Inject constructor(
             log.info("Distributed batch with {} entity updates in {}ms",
                 updatesBatch.size, lastTickTimeMs)
         }
-    }
-
-    /**
-     * Get performance metrics for the batch coordinator
-     */
-    fun getMetrics(): Map<String, Any> {
-        val avgTickTime = if (tickCount > 0) totalProcessingTimeMs / tickCount else 0
-
-        return mapOf(
-            "counter" to tickCount,
-            "averageTickTimeMs" to avgTickTime,
-            "lastTickTimeMs" to lastTickTimeMs,
-            "batchIntervalMs" to batchIntervalMs,
-            "utilization" to if (tickCount > 0) lastTickTimeMs.toFloat() / batchIntervalMs else 0f,
-            "pendingUpdatesCount" to pendingUpdates.size
-        )
     }
 }

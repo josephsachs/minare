@@ -4,6 +4,8 @@ import com.google.inject.PrivateModule
 import com.google.inject.Provides
 import com.google.inject.Singleton
 import com.google.inject.name.Named
+import com.minare.application.config.FrameworkConfig
+import com.minare.application.config.FrameworkConfigBuilder
 import com.minare.cache.ConnectionCache
 import com.minare.core.storage.interfaces.ChannelStore
 import com.minare.core.storage.interfaces.ConnectionStore
@@ -81,12 +83,13 @@ class DownSocketVerticleModule : PrivateModule() {
     @Singleton
     fun provideHeartbeatManager(
         vertx: Vertx,
+        frameworkConfig: FrameworkConfig,
         verticleLogger: VerticleLogger,
         connectionStore: ConnectionStore,
         @Named("verticle-scoped") coroutineScope: CoroutineScope
     ): HeartbeatManager {
         val heartbeatManager = HeartbeatManager(vertx, verticleLogger, connectionStore, coroutineScope)
-        heartbeatManager.setHeartbeatInterval(DownSocketVerticle.HEARTBEAT_INTERVAL_MS)
+        heartbeatManager.setHeartbeatInterval(frameworkConfig.sockets.down.heartbeatInterval)
         return heartbeatManager
     }
 }

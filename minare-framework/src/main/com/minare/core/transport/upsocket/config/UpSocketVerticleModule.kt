@@ -35,7 +35,6 @@ class UpSocketVerticleModule : PrivateModule() {
     override fun configure() {
         bind(UpSocketVerticle::class.java)
 
-        // Event handlers
         bind(EntitySyncEvent::class.java).`in`(Singleton::class.java)
         bind(ConnectionCleanupEvent::class.java).`in`(Singleton::class.java)
         bind(ChannelCleanupEvent::class.java).`in`(Singleton::class.java)
@@ -43,11 +42,9 @@ class UpSocketVerticleModule : PrivateModule() {
         bind(UpSocketInitEvent::class.java).`in`(Singleton::class.java)
         bind(UpSocketGetRouterEvent::class.java).`in`(Singleton::class.java)
 
-        // Message handlers
         bind(CloseHandler::class.java).`in`(Singleton::class.java)
         bind(ReconnectionHandler::class.java).`in`(Singleton::class.java)
 
-        // Request external dependencies that should be provided by parent injector
         requireBinding(Vertx::class.java)
         requireBinding(CoroutineContext::class.java)
         requireBinding(CoroutineScope::class.java)
@@ -58,7 +55,6 @@ class UpSocketVerticleModule : PrivateModule() {
         requireBinding(MessageController::class.java)
         requireBinding(EventBusUtils::class.java)
 
-        // Expose UpSocketVerticle to the parent injector
         expose(UpSocketVerticle::class.java)
     }
 

@@ -1,14 +1,15 @@
 package com.minare.core.transport.downsocket
 
 import com.google.inject.Inject
+import com.minare.application.config.FrameworkConfig
 import com.minare.core.storage.interfaces.ChannelStore
 import com.minare.core.storage.interfaces.ContextStore
 import com.minare.core.utils.vertx.VerticleLogger
-import com.minare.core.transport.downsocket.DownSocketVerticle.Companion.CACHE_TTL_MS
 import io.vertx.core.json.JsonObject
 import java.util.concurrent.ConcurrentHashMap
 
 class DownSocketVerticleCache @Inject constructor(
+    private val frameworkConfig: FrameworkConfig,
     private val channelStore: ChannelStore,
     private val contextStore: ContextStore,
     private val vlog: VerticleLogger
@@ -59,7 +60,7 @@ class DownSocketVerticleCache @Inject constructor(
 
         // Cache the result with expiry
         // TODO: Find a better way than caching with TTL, still too vulnerable to stale data
-        entityChannelCache[entityId] = Pair(channels, now + CACHE_TTL_MS)
+        entityChannelCache[entityId] = Pair(channels, now + frameworkConfig.sockets.down.cacheTtl)
 
         return channels
     }
@@ -92,7 +93,7 @@ class DownSocketVerticleCache @Inject constructor(
         }
 
         // Cache the result with expiry
-        channelConnectionCache[channelId] = Pair(connections, now + CACHE_TTL_MS)
+        channelConnectionCache[channelId] = Pair(connections, now + frameworkConfig.sockets.down.cacheTtl)
 
         return connections
     }

@@ -23,7 +23,11 @@ class FrameworkConfigBuilder {
         val downsocket = sockets.getJsonObject("down")
         config.sockets.down.host = require(downsocket.getString("host"), "sockets.down.host must be specified")
         config.sockets.down.port = require(downsocket.getInteger("port"), "sockets.down.port must be specified")
-        config.sockets.down.basePath = require(downsocket.getString("base_path"), "sockets.down.base_path must be specified")
+        config.sockets.down.cacheTtl = require(downsocket.getInteger("cache_ttl"), "sockets.down.cache_ttl must be specified").toLong()
+
+        val entity = file.getJsonObject("entity")
+        val entityUpdate = entity.getJsonObject("update")
+        config.entity.update.batchInterval = require(entityUpdate.getInteger("batch_interval"), "entity.update.batch_interval must be specified").toLong()
 
         validate()
 

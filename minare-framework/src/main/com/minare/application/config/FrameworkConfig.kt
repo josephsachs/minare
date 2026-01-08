@@ -12,7 +12,19 @@ class FrameworkConfig {
         var basePath: String = ""
         var handshakeTimeout: Long = 0L
         var heartbeatInterval: Long = 0L
+
+        var tickInterval: Long = 0L
+        var cacheTtl: Long = 0L
+    }
+
+    class EntityConfig {
+        var update = EntityUpdateConfig()
+    }
+
+    class EntityUpdateConfig {
+        var batchInterval: Long = 0L
     }
 
     var sockets = SocketsSection()
+    var entity = EntityConfig()
 }
