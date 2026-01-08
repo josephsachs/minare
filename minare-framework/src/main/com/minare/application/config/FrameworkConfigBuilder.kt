@@ -25,6 +25,11 @@ class FrameworkConfigBuilder {
         config.sockets.down.port = require(downsocket.getInteger("port"), "sockets.down.port must be specified")
         config.sockets.down.cacheTtl = require(downsocket.getInteger("cache_ttl"), "sockets.down.cache_ttl must be specified").toLong()
 
+        val connection = sockets.getJsonObject("connection")
+        config.sockets.connection.connectionExpiry = require(connection.getString("connection_expiry"), "sockets.connection.connection_expiry must be specified").toLong()
+        config.sockets.connection.cleanupInterval = require(connection.getString("cleanup_interval"), "sockets.connection.cleanup_interval must be specified").toLong()
+        config.sockets.connection.reconnectTimeout = require(connection.getString("reconnect_timeout"), "sockets.connection.reconnect_timeout must be specified").toLong()
+
         val entity = file.getJsonObject("entity")
         val entityUpdate = entity.getJsonObject("update")
         config.entity.update.batchInterval = require(entityUpdate.getInteger("batch_interval"), "entity.update.batch_interval must be specified").toLong()

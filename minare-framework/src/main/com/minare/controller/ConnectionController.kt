@@ -1,5 +1,6 @@
 package com.minare.controller
 
+import com.minare.application.config.FrameworkConfig
 import com.minare.cache.ConnectionCache
 import com.minare.core.transport.models.Connection
 import com.minare.worker.upsocket.UpSocketVerticle
@@ -19,6 +20,7 @@ import javax.inject.Singleton
  */
 @Singleton
 open class ConnectionController @Inject constructor() {
+    @Inject private lateinit var frameworkConfig: FrameworkConfig
     @Inject private lateinit var connectionStore: ConnectionStore
     @Inject private lateinit var connectionCache: ConnectionCache
     @Inject private lateinit var channelStore: ChannelStore
@@ -90,7 +92,7 @@ open class ConnectionController @Inject constructor() {
             val connection = connectionStore.find(connectionId)
 
             val now = System.currentTimeMillis()
-            val reconnectWindow = CleanupVerticle.CONNECTION_RECONNECT_WINDOW_MS
+            val reconnectWindow = frameworkConfig.sockets.connection.reconnectTimeout
 
             return connection.reconnectable &&
                     (now - connection.lastActivity < reconnectWindow)

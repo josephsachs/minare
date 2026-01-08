@@ -4,6 +4,7 @@ class FrameworkConfig {
     class SocketsSection {
         var up: SocketConfig = SocketConfig()
         var down: SocketConfig = SocketConfig()
+        var connection: SocketConnectionConfig = SocketConnectionConfig()
     }
 
     class SocketConfig {
@@ -15,6 +16,12 @@ class FrameworkConfig {
 
         var tickInterval: Long = 0L
         var cacheTtl: Long = 0L
+    }
+
+    class SocketConnectionConfig {
+        var cleanupInterval: Long = 0L
+        var reconnectTimeout: Long = 0L
+        var connectionExpiry: Long = 0L
     }
 
     class EntityConfig {

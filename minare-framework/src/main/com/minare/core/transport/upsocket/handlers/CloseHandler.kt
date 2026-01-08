@@ -2,6 +2,7 @@ package com.minare.worker.upsocket.handlers
 
 import com.google.inject.Inject
 import com.google.inject.name.Named
+import com.minare.application.config.FrameworkConfig
 import com.minare.cache.ConnectionCache
 import com.minare.core.storage.interfaces.ConnectionStore
 import com.minare.core.transport.downsocket.services.ConnectionTracker
@@ -12,6 +13,7 @@ import io.vertx.core.http.ServerWebSocket
 
 class CloseHandler @Inject constructor(
     private val vlog: VerticleLogger,
+    private val frameworkConfig: FrameworkConfig,
     private val connectionStore: ConnectionStore,
     private val connectionCache: ConnectionCache,
     private val connectionTracker: ConnectionTracker,
@@ -44,7 +46,7 @@ class CloseHandler @Inject constructor(
                 vlog.getEventLogger().trace(
                     "RECONNECTION_WINDOW_STARTED", mapOf(
                         "connectionId" to connectionId,
-                        "windowMs" to CleanupVerticle.CONNECTION_RECONNECT_WINDOW_MS
+                        "windowMs" to frameworkConfig.sockets.connection.reconnectTimeout
                     ), traceId
                 )
             }

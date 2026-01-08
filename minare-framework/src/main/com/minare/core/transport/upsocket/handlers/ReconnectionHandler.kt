@@ -2,6 +2,7 @@ package com.minare.worker.upsocket.handlers
 
 import com.google.inject.Inject
 import com.google.inject.name.Named
+import com.minare.application.config.FrameworkConfig
 import com.minare.core.MinareApplication
 import com.minare.cache.ConnectionCache
 import com.minare.controller.ConnectionController
@@ -18,6 +19,7 @@ import io.vertx.core.Vertx
 class ReconnectionHandler @Inject constructor(
     private val vertx: Vertx,
     private val vlog: VerticleLogger,
+    private val frameworkConfig: FrameworkConfig,
     private val connectionStore: ConnectionStore,
     private val connectionCache: ConnectionCache,
     private val connectionController: ConnectionController,
@@ -87,7 +89,7 @@ class ReconnectionHandler @Inject constructor(
 
             val now = System.currentTimeMillis()
             val inactiveMs = now - connection.lastActivity
-            val reconnectWindowMs = CleanupVerticle.CONNECTION_RECONNECT_WINDOW_MS
+            val reconnectWindowMs = frameworkConfig.sockets.connection.reconnectTimeout
 
             if (inactiveMs > reconnectWindowMs) {
                 vlog.getEventLogger().trace(
