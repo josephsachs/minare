@@ -1,5 +1,6 @@
 package com.minare.core
 
+import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.google.inject.*
 import com.google.inject.name.Names
 import com.minare.core.MinareApplication.ConnectionEvents.ADDRESS_COORDINATOR_STARTED
@@ -665,6 +666,9 @@ abstract class MinareApplication : CoroutineVerticle() {
 
             try {
                 val config = getConfiguration()
+
+                val mapper = jacksonObjectMapper()
+                log.info("MINARE_CONFIG: ${mapper.writerWithDefaultPrettyPrinter().writeValueAsString(config)}")
 
                 val configModule = object : AbstractModule() {
                     override fun configure() {

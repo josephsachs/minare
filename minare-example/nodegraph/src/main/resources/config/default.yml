@@ -19,3 +19,21 @@ sockets:
 entity:
   update:
     batch_interval: 100
+
+
+frames:
+  frame_duration: 500
+  lookahead: 250
+  session:
+    auto_session: frames_per_session
+    frames_per_session: 150
+  timeline:
+    detach:
+      flush: true
+      buffer: true
+    replay:
+      buffer: true
+      assign_on_resume: true
+
+tasks:
+  tick_interval: 50

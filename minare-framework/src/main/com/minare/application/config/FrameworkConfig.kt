@@ -1,5 +1,7 @@
 package com.minare.application.config
 
+import com.minare.application.config.FrameConfiguration.Companion.AutoSession
+
 class FrameworkConfig {
     class SocketsSection {
         var up: SocketConfig = SocketConfig()
@@ -32,6 +34,39 @@ class FrameworkConfig {
         var batchInterval: Long = 0L
     }
 
+    class FramesConfig {
+        var frameDuration: Long = 0L
+        var lookahead: Int = 0
+        var session: FrameSessionConfig = FrameSessionConfig()
+        var timeline: FrameTimelineConfig = FrameTimelineConfig()
+    }
+
+    class FrameSessionConfig {
+        var autoSession: AutoSession = AutoSession.NEVER
+        var framesPerSession: Int = 0
+    }
+
+    class FrameTimelineConfig {
+        var detach: FrameTimelineDetachConfig = FrameTimelineDetachConfig()
+        var replay: FrameTimelineReplayConfig = FrameTimelineReplayConfig()
+    }
+
+    class FrameTimelineDetachConfig {
+        var flush: Boolean = true
+        var buffer: Boolean = true
+    }
+
+    class FrameTimelineReplayConfig {
+        var buffer: Boolean = true
+        var assignOnResume: Boolean = false
+    }
+
+    class TaskConfig {
+        var tickInterval: Long = 0L
+    }
+
     var sockets = SocketsSection()
     var entity = EntityConfig()
+    var frames = FramesConfig()
+    var tasks = TaskConfig()
 }
