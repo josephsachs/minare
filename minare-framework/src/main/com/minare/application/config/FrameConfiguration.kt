@@ -41,12 +41,6 @@ open class FrameConfiguration {
      */
 
     /**
-     * When to trigger an automatic new session. Options:
-     * NEVER
-     * FRAMES_PER_SESSION
-     */
-    open val autoSession: AutoSession = AutoSession.FRAMES_PER_SESSION
-    /**
      * Number of frames between automatic sessions.
      * Sessions save snapshots, clear coordination memory
      * and reset frame number
@@ -88,10 +82,5 @@ open class FrameConfiguration {
      */
     open val replayOnResume: Boolean = false
 
-    companion object {
-        enum class AutoSession {
-            NEVER,
-            FRAMES_PER_SESSION
-        }
-    }
+
 }

@@ -2,7 +2,7 @@ package com.minare.core.frames.coordinator.services
 
 import com.google.inject.Inject
 import com.google.inject.Singleton
-import com.minare.application.config.FrameConfiguration
+import com.minare.application.config.FrameworkConfig
 import com.minare.controller.EntityController
 import com.minare.core.frames.coordinator.FrameCoordinatorState
 import com.minare.core.frames.coordinator.FrameCoordinatorState.Companion.PauseState
@@ -10,7 +10,6 @@ import com.minare.core.frames.coordinator.FrameCoordinatorState.Companion.Timeli
 import com.minare.core.frames.coordinator.FrameCoordinatorVerticle.Companion.ADDRESS_FRAME_MANIFESTS_ALL_COMPLETE
 import com.minare.core.frames.coordinator.FrameCoordinatorVerticle.Companion.ADDRESS_NEXT_FRAME
 import com.minare.core.storage.adapters.RedisDeltaStore
-import com.minare.core.storage.interfaces.SnapshotStore
 import com.minare.core.utils.vertx.EventBusUtils
 import com.minare.core.utils.vertx.EventWaiter
 import com.minare.core.utils.vertx.VerticleLogger
@@ -23,9 +22,8 @@ import kotlin.math.abs
 class TimelineService @Inject constructor(
     private val entityController: EntityController,
     private val coordinatorState: FrameCoordinatorState,
-    private val frameConfiguration: FrameConfiguration,
+    private val frameworkConfig: FrameworkConfig,
     private val redisDeltaStore: RedisDeltaStore,
-    private val snapshotStore: SnapshotStore,
     private val eventBusUtils: EventBusUtils,
     private val eventWaiter: EventWaiter,
     private val vlog: VerticleLogger,
@@ -47,13 +45,14 @@ class TimelineService @Inject constructor(
     suspend fun detach(traceId: String = "") {
         if (debugTraceLogs) vlog.logInfo("Initiating timeline detach, trace ID $traceId")
 
-        if (frameConfiguration.flushOperationsOnDetach) {
+        if (frameworkConfig.frames.timeline.detach.flushOnDetach) {
             coordinatorState.pauseState = PauseState.REST
 
             eventWaiter.waitFor(ADDRESS_FRAME_MANIFESTS_ALL_COMPLETE)
         }
 
-        coordinatorState.pauseState = if (frameConfiguration.bufferInputDuringDetach) PauseState.SOFT else PauseState.HARD
+        coordinatorState.pauseState =
+            if (frameworkConfig.frames.timeline.detach.bufferWhenDetached) PauseState.SOFT else PauseState.HARD
 
         coordinatorState.timelineState = TimelineState.DETACH
 
@@ -118,7 +117,7 @@ class TimelineService @Inject constructor(
 
         branch()
 
-        if (frameConfiguration.replayOnResume) {
+        if (frameworkConfig.frames.timeline.detach.replayOnResume) { // replay on resume
             replay()
         }
 
@@ -147,12 +146,12 @@ class TimelineService @Inject constructor(
     private suspend fun replay(traceId: String = "") {
         coordinatorState.timelineState = TimelineState.REPLAY
 
-        if (frameConfiguration.bufferInputDuringReplay) {
+        if (frameworkConfig.frames.timeline.replay.bufferWhileReplay) {
             // Todo: Create another coordinator state setting to decouple allow buffering
             coordinatorState.pauseState = PauseState.SOFT
         }
 
-        if (frameConfiguration.assignOperationsOnResume) {
+        if (frameworkConfig.frames.timeline.detach.assignOnResume) {
             // Create our manifests using stale deltas as a source
         }
 

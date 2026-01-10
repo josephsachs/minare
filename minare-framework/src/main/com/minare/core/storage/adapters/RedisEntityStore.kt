@@ -128,7 +128,13 @@ class RedisEntityStore @Inject constructor(
         val currentProperties = currentDocument.getJsonObject("properties", JsonObject())
 
         delta.fieldNames().forEach { fieldName ->
-            currentProperties.put(fieldName, delta.getValue(fieldName))
+            val rawValue = delta.getValue(fieldName)
+            if (rawValue != null) {
+                val serializedValue = serializer.serialize(rawValue)
+                currentProperties.put(fieldName, serializedValue)
+            } else {
+                currentProperties.putNull(fieldName)
+            }
         }
 
         currentDocument.put("properties", currentProperties)

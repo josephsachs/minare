@@ -29,11 +29,13 @@ frames:
     frames_per_session: 150
   timeline:
     detach:
-      flush: true
-      buffer: true
+      flush_on_detach: true
+      buffer_when_detached: true
+      buffer_on_resume: false
+      assign_on_resume: false
     replay:
-      buffer: true
-      assign_on_resume: true
+      buffer_while_replay: true
+
 
 tasks:
   tick_interval: 50

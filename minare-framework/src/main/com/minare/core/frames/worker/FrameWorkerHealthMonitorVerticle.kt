@@ -1,7 +1,6 @@
 package com.minare.core.frames.worker
 
 import com.hazelcast.core.HazelcastInstance
-import com.minare.application.config.FrameConfiguration
 import com.minare.core.frames.services.WorkerRegistry
 import com.minare.core.utils.vertx.VerticleLogger
 import io.vertx.core.json.JsonObject
@@ -22,7 +21,6 @@ import javax.inject.Inject
  */
 class FrameWorkerHealthMonitorVerticle @Inject constructor(
     private val vlog: VerticleLogger,
-    private val frameConfig: FrameConfiguration,
     private val workerRegistry: WorkerRegistry,
     private val hazelcastInstance: HazelcastInstance,
     private val redisAPI: RedisAPI

@@ -2,14 +2,16 @@ package com.minare.application.config
 
 import com.minare.exceptions.ConfigurationException
 import io.vertx.core.json.JsonObject
-import com.minare.application.config.FrameConfiguration.Companion.AutoSession
-import java.awt.Frame
+import com.minare.core.frames.coordinator.services.SessionService.Companion.AutoSession
+import io.vertx.core.impl.logging.LoggerFactory
 
 class FrameworkConfigBuilder {
+    private val log = LoggerFactory.getLogger(FrameworkConfigBuilder::class.java)
+
     private var errors: MutableList<String> = mutableListOf()
+    private var infos: MutableList<String> = mutableListOf()
 
     fun build(file: JsonObject): FrameworkConfig {
-
         val config = FrameworkConfig()
             .let { setSocketsConfig(file, it) }
             .let { setEntityConfig(file, it) }
@@ -78,20 +80,28 @@ class FrameworkConfigBuilder {
             config.frames.session.framesPerSession = require(session.getInteger("frames_per_session"), "frames.session.frames_per_session is must be specified, due to frames.session.auto_session setting")
         }
 
-        val timeline = frames.getJsonObject("timeline")
+        val timeline = withInfo(frames.getJsonObject("timeline"), "frames.timeline section not specified, using defaults")
 
         if (!timeline.isEmpty) {
             val detach = require(timeline.getJsonObject("detach"), "frames.timeline.detach section must be specified, since frames.timeline exists")
-            val flushOnDetach = require(detach.getString("flush"), "frames.timeline.detach.flush must be specified")
-            val bufferOnDetach = require(detach.getString("buffer"), "frames.timeline.detach.buffer must be specified")
-            config.frames.timeline.detach.buffer = toBoolean(flushOnDetach)
-            config.frames.timeline.detach.buffer = toBoolean(bufferOnDetach)
+            val flushOnDetach = require(detach.getString("flush_on_detach"), "frames.timeline.detach.flush_on_detach must be specified")
+            val bufferWhenDetached = require(detach.getString("buffer_when_detached"), "frames.timeline.detach.buffer_when_detached must be specified")
+            val assignOnResume = withInfo(detach.getString("assign_on_resume"), "frames.timeline.detach.assign_on_resume defaults to false unless specified")
+            val replayOnResume = withInfo(detach.getString("replay_on_resume"), "frames.timeline.detach.replay_on_resume defaults to false unless specified")
+            config.frames.timeline.detach.flushOnDetach = toBoolean(flushOnDetach)
+            config.frames.timeline.detach.bufferWhenDetached = toBoolean(bufferWhenDetached)
+            config.frames.timeline.detach.assignOnResume = toBoolean(assignOnResume)
+            config.frames.timeline.detach.replayOnResume = toBoolean(replayOnResume)
 
             val replay = require(timeline.getJsonObject("replay"), "frames.timeline.replay section must be specified, since frames.timeline exists")
-            val bufferOnReplay = require(replay.getString("buffer"), "frames.timeline.replay.buffer must be specified")
-            val assignOnResume = require(replay.getString("assign_on_resume"), "frames.timeline.replay.assign_on_resume must be specified")
-            config.frames.timeline.replay.buffer = toBoolean(bufferOnReplay)
-            config.frames.timeline.replay.assignOnResume = toBoolean(assignOnResume)
+            val bufferWhileReplay = require(replay.getString("buffer_while_replay"), "frames.timeline.replay.buffer_while_replay must be specified")
+            config.frames.timeline.replay.bufferWhileReplay = toBoolean(bufferWhileReplay)
+        } else {
+            config.frames.timeline.detach.flushOnDetach = true
+            config.frames.timeline.detach.bufferWhenDetached = true
+            config.frames.timeline.detach.assignOnResume = false
+            config.frames.timeline.detach.replayOnResume = false
+            config.frames.timeline.replay.bufferWhileReplay = true
         }
 
         return config
@@ -101,7 +111,7 @@ class FrameworkConfigBuilder {
      * Set configuration for tasks
      */
     private fun setTasksConfig(file: JsonObject, config: FrameworkConfig): FrameworkConfig {
-        val tasks = file.getJsonObject("tasks")
+        val tasks = require(file.getJsonObject("tasks"), "tasks section must be specified")
         config.tasks.tickInterval = require(tasks.getInteger("tick_interval"), "tasks.tick_interval must be specified").toLong()
 
         return config
@@ -119,6 +129,18 @@ class FrameworkConfigBuilder {
         return value ?: run { errors.add(message); JsonObject() }
     }
 
+    private fun withInfo(value: String?, message: String): String {
+        return value ?: run { infos.add(message); "" }
+    }
+
+    private fun withInfo(value: Int?, message: String): Int {
+        return value ?: run { infos.add(message); 0 }
+    }
+
+    private fun withInfo(value: JsonObject?, message: String): JsonObject {
+        return value ?: run { infos.add(message); JsonObject() }
+    }
+
     private fun toBoolean(value: String): Boolean {
         return when (value) {
             "true" -> true
@@ -130,6 +152,12 @@ class FrameworkConfigBuilder {
     private fun validate() {
         if (errors.isNotEmpty()) {
             throw ConfigurationException("Config errors:\n${errors.joinToString("\n")}")
+        }
+    }
+
+    private fun logInfo() {
+        if (errors.isNotEmpty()) {
+            log.info("Info:\n${errors.joinToString("\n")}")
         }
     }
 }

@@ -1,11 +1,8 @@
 package com.minare.core.config
 
 import com.google.inject.*
-import com.google.inject.multibindings.OptionalBinder
 import com.google.inject.name.Names
 import com.hazelcast.core.HazelcastInstance
-import com.minare.application.config.FrameConfiguration
-import com.minare.application.config.TaskConfiguration
 import com.minare.application.interfaces.AppState
 import com.minare.cache.ConnectionCache
 import com.minare.cache.InMemoryConnectionCache
@@ -48,7 +45,6 @@ import com.minare.core.frames.services.ActiveWorkerSet
 import com.minare.core.frames.services.HazelcastActiveWorkerSet
 import com.minare.core.transport.upsocket.handlers.SyncCommandHandler
 import com.minare.core.utils.vertx.EventBusUtils
-import com.minare.worker.coordinator.events.WorkerReadinessEvent
 import com.minare.worker.upsocket.CommandMessageHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlin.coroutines.CoroutineContext

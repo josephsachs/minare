@@ -1,6 +1,6 @@
 package com.minare.application.config
 
-import com.minare.application.config.FrameConfiguration.Companion.AutoSession
+import com.minare.core.frames.coordinator.services.SessionService.Companion.AutoSession
 
 class FrameworkConfig {
     class SocketsSection {
@@ -52,13 +52,14 @@ class FrameworkConfig {
     }
 
     class FrameTimelineDetachConfig {
-        var flush: Boolean = true
-        var buffer: Boolean = true
+        var flushOnDetach: Boolean = true
+        var bufferWhenDetached: Boolean = true
+        var assignOnResume: Boolean = false
+        var replayOnResume: Boolean = false
     }
 
     class FrameTimelineReplayConfig {
-        var buffer: Boolean = true
-        var assignOnResume: Boolean = false
+        var bufferWhileReplay: Boolean = true
     }
 
     class TaskConfig {
