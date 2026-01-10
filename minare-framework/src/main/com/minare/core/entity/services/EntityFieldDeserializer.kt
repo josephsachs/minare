@@ -2,122 +2,162 @@ package com.minare.core.entity.services
 
 import com.google.inject.Singleton
 import com.minare.core.entity.models.Entity
-import com.minare.core.utils.JsonSerializable
-import com.minare.exceptions.EntitySerializationException
 import io.vertx.core.json.JsonArray
 import io.vertx.core.json.JsonObject
-import org.slf4j.LoggerFactory
 import java.lang.reflect.Field
 import java.lang.reflect.ParameterizedType
+import java.util.*
+import java.util.concurrent.ConcurrentLinkedDeque
+import java.util.concurrent.ConcurrentLinkedQueue
+import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.CopyOnWriteArraySet
 
 @Singleton
 class EntityFieldDeserializer {
-    /**
-     * Deserialize Entity field from Redis
-     */
-    fun deserialize(value: Any?, field: Field): Any? = when {
-        value == null -> null
 
-        field.type == String::class.java -> value
-        field.type == Int::class.java -> (value as Number).toInt()
-        field.type == Long::class.java -> (value as Number).toLong()
-        field.type == Boolean::class.java -> value
-        field.type.isEnum -> {
-            field.type.enumConstants.first { (it as Enum<*>).name == value }
-        }
+    fun deserialize(value: Any?, field: Field): Any? {
+        if (value == null) return null
 
-        // Entity types - for now, just store the ID string
-        // (Hydration will happen in a later ticket)
-        Entity::class.java.isAssignableFrom(field.type) -> {
-            // Value is a string ID, just return it for now
-            // Future: hydrate from Redis
-            value
-        }
-
-        value is JsonArray -> {
-            deserializeCollection(value, field)
-        }
-
-        field.type == JsonObject::class.java -> {
-            when (value) {
-                is JsonObject -> value
-                is String -> JsonObject(value)
-                else -> value
-            }
-        }
-
-        // JsonSerializable (legacy)
-        JsonSerializable::class.java.isAssignableFrom(field.type) -> {
-            when (value) {
-                is JsonObject -> value.mapTo(field.type)
-                is String -> JsonObject(value).mapTo(field.type)
-                else -> throw EntitySerializationException(
-                    "Cannot deserialize field '${field.name}' of type ${field.type.simpleName}: " +
-                            "expected JsonObject or JSON String, got ${value?.javaClass?.simpleName}"
-                )
-            }
-        }
-
-        value is JsonObject -> {
-            value.mapTo(field.type)
-        }
-
-        else -> {
-            value
+        return when {
+            value is JsonArray -> deserializeCollection(value, field)
+            value is JsonObject -> deserializeObject(value, field)
+            else -> deserializePrimitive(value, field)
         }
     }
 
-    private fun deserializeCollection(jsonArray: JsonArray, field: Field): Any? {
+    private fun deserializeCollection(jsonArray: JsonArray, field: Field): Any {
         val fieldType = field.type
-        val genericType = field.genericType
+        val elementType = getElementType(field)
+        val elements = jsonArray.map { deserializeElement(it, elementType) }
 
-        // Get the element type from generics
-        val elementType = when (genericType) {
-            is ParameterizedType -> genericType.actualTypeArguments[0] as? Class<*>
-            else -> null
-        } ?: Any::class.java
+        return createCollection(fieldType, elements)
+            ?: throw IllegalArgumentException("Cannot deserialize JsonArray to ${fieldType.name}")
+    }
 
-        // Convert JsonArray elements to the appropriate type
-        val elements = jsonArray.map { element ->
-            when {
-                element == null -> null
+    private fun deserializeObject(jsonObject: JsonObject, field: Field): Any {
+        val fieldType = field.type
 
-                // Entity type - just return the ID string for now
-                // (Hydration will happen in a later ticket)
-                Entity::class.java.isAssignableFrom(elementType) -> element
-
-                elementType.isEnum -> {
-                    elementType.enumConstants.first { (it as Enum<*>).name == element }
-                }
-                element is JsonObject -> element.mapTo(elementType)
-                element is JsonArray -> element.list
-                else -> {
-                    when (elementType) {
-                        Int::class.java -> (element as Number).toInt()
-                        Long::class.java -> (element as Number).toLong()
-                        Double::class.java -> (element as Number).toDouble()
-                        Float::class.java -> (element as Number).toFloat()
-                        Boolean::class.java -> element as Boolean
-                        String::class.java -> element.toString()
-                        else -> element
-                    }
-                }
-            }
-        }
-
-        // Return the appropriate collection type
         return when {
-            List::class.java.isAssignableFrom(fieldType) -> elements.toMutableList()
-            Set::class.java.isAssignableFrom(fieldType) -> elements.toMutableSet()
-            fieldType.isArray -> {
-                val array = java.lang.reflect.Array.newInstance(elementType, elements.size)
-                elements.forEachIndexed { i, elem ->
-                    java.lang.reflect.Array.set(array, i, elem)
-                }
-                array
-            }
-            Collection::class.java.isAssignableFrom(fieldType) -> elements
-            else -> elements
+            fieldType == JsonObject::class.java -> jsonObject
+            else -> jsonObject.mapTo(fieldType)
         }
+    }
+
+    private fun deserializePrimitive(value: Any, field: Field): Any {
+        val fieldType = field.type
+
+        return when {
+            fieldType == String::class.java -> value.toString()
+            fieldType == Int::class.java || fieldType == Int::class.javaObjectType -> (value as Number).toInt()
+            fieldType == Long::class.java || fieldType == Long::class.javaObjectType -> (value as Number).toLong()
+            fieldType == Double::class.java || fieldType == Double::class.javaObjectType -> (value as Number).toDouble()
+            fieldType == Float::class.java || fieldType == Float::class.javaObjectType -> (value as Number).toFloat()
+            fieldType == Boolean::class.java || fieldType == Boolean::class.javaObjectType -> value
+            fieldType == Short::class.java || fieldType == Short::class.javaObjectType -> (value as Number).toShort()
+            fieldType == Byte::class.java || fieldType == Byte::class.javaObjectType -> (value as Number).toByte()
+            fieldType.isEnum -> fieldType.enumConstants.first { (it as Enum<*>).name == value }
+            Entity::class.java.isAssignableFrom(fieldType) -> value
+            else -> value
+        }
+    }
+
+    private fun deserializeElement(element: Any?, elementType: Class<*>): Any? {
+        if (element == null) return null
+
+        return when {
+            elementType == String::class.java -> element.toString()
+            elementType == Int::class.java || elementType == Int::class.javaObjectType -> (element as Number).toInt()
+            elementType == Long::class.java || elementType == Long::class.javaObjectType -> (element as Number).toLong()
+            elementType == Double::class.java || elementType == Double::class.javaObjectType -> (element as Number).toDouble()
+            elementType == Float::class.java || elementType == Float::class.javaObjectType -> (element as Number).toFloat()
+            elementType == Boolean::class.java || elementType == Boolean::class.javaObjectType -> element
+            elementType == Short::class.java || elementType == Short::class.javaObjectType -> (element as Number).toShort()
+            elementType == Byte::class.java || elementType == Byte::class.javaObjectType -> (element as Number).toByte()
+            elementType.isEnum -> elementType.enumConstants.first { (it as Enum<*>).name == element }
+            Entity::class.java.isAssignableFrom(elementType) -> element
+            element is JsonObject -> element.mapTo(elementType)
+            element is JsonArray -> element.list
+            else -> element
+        }
+    }
+
+    private fun createCollection(fieldType: Class<*>, elements: List<Any?>): Any? {
+        return createConcreteCollection(fieldType, elements)
+            ?: createCollectionForInterface(fieldType, elements)
+            ?: createArray(fieldType, elements)
+    }
+
+    private fun createConcreteCollection(fieldType: Class<*>, elements: List<Any?>): Any? {
+        return when (fieldType) {
+            // Lists
+            ArrayList::class.java -> ArrayList(elements)
+            LinkedList::class.java -> LinkedList(elements)
+            Vector::class.java -> Vector(elements)
+            Stack::class.java -> Stack<Any?>().apply { addAll(elements) }
+            CopyOnWriteArrayList::class.java -> CopyOnWriteArrayList(elements)
+
+            // Sets
+            HashSet::class.java -> HashSet(elements)
+            LinkedHashSet::class.java -> LinkedHashSet(elements)
+            TreeSet::class.java -> TreeSet(elements.filterNotNull())
+            CopyOnWriteArraySet::class.java -> CopyOnWriteArraySet(elements)
+
+            // Queues/Deques
+            ArrayDeque::class.java -> ArrayDeque(elements)
+            PriorityQueue::class.java -> PriorityQueue(elements.filterNotNull())
+            ConcurrentLinkedQueue::class.java -> ConcurrentLinkedQueue(elements)
+            ConcurrentLinkedDeque::class.java -> ConcurrentLinkedDeque(elements)
+
+            else -> null
+        }
+    }
+
+    private fun createCollectionForInterface(fieldType: Class<*>, elements: List<Any?>): Any? {
+        return when {
+            // Sets - check before List since some sets implement other interfaces
+            NavigableSet::class.java.isAssignableFrom(fieldType) -> TreeSet(elements.filterNotNull())
+            SortedSet::class.java.isAssignableFrom(fieldType) -> TreeSet(elements.filterNotNull())
+            MutableSet::class.java.isAssignableFrom(fieldType) -> HashSet(elements)
+            Set::class.java.isAssignableFrom(fieldType) -> HashSet(elements)
+
+            // Queues/Deques
+            Deque::class.java.isAssignableFrom(fieldType) -> ArrayDeque(elements)
+            Queue::class.java.isAssignableFrom(fieldType) -> LinkedList(elements)
+
+            // Lists
+            MutableList::class.java.isAssignableFrom(fieldType) -> ArrayList(elements)
+            List::class.java.isAssignableFrom(fieldType) -> ArrayList(elements)
+
+            // General
+            MutableCollection::class.java.isAssignableFrom(fieldType) -> ArrayList(elements)
+            Collection::class.java.isAssignableFrom(fieldType) -> ArrayList(elements)
+
+            else -> null
+        }
+    }
+
+    private fun createArray(fieldType: Class<*>, elements: List<Any?>): Any? {
+        if (!fieldType.isArray) return null
+
+        val componentType = fieldType.componentType
+        val array = java.lang.reflect.Array.newInstance(componentType, elements.size)
+        elements.forEachIndexed { i, elem ->
+            java.lang.reflect.Array.set(array, i, elem)
+        }
+        return array
+    }
+
+    private fun getElementType(field: Field): Class<*> {
+        val genericType = field.genericType
+        if (genericType is ParameterizedType) {
+            val typeArg = genericType.actualTypeArguments.firstOrNull()
+            if (typeArg is Class<*>) {
+                return typeArg
+            }
+        }
+        if (field.type.isArray) {
+            return field.type.componentType
+        }
+        return Any::class.java
     }
 }
