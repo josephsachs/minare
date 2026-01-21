@@ -1,5 +1,5 @@
 # Minare Framework
-Current version: 0.2.0
+Current version: 0.5.0
 
 ## Concept
 Multiplayer games and collaborative simulations need consistency, determinism, and the ability to recover quickly
@@ -66,34 +66,60 @@ between my goals and the developer's experience. I chose
 - and **MongoDB** because it is schemaless and Json-native, has good graph lookups and, with replica sets, is quite durable. A graphing database was perhaps due a consideration here; it would not, in any case, be difficult to implement in-place. 
 
 ### History and Roadmap
-0.1.0 - Transport layer, Entity, datastores, publish change events, NodeGraph application
+0.1.0 - Transport layer, Entity, datastores, publish events, NodeGraph application
 
 0.2.0 - Clustering, logical frames
 
-0.3.0 - Pause, snapshot, replay, recover
+0.3.0 - Pause, snapshot, timeline head
 
-0.4.0 - View, application hooks, common interfaces
+0.4.0 - Task/FixedTask, WorkUnit
 
-0.5.0 - Entity and Operation improvements, graph visitor builder
+0.5.0 - Serialization, application hooks, common interfaces
 
-## NodeGraph Application
-The framework includes an example application demonstrating a simple graph of nodes which initialize at start-up. 
-Clients can then submit operations which change the colors of nodes. Several integration tests exists which demonstrate
-this. To see it in action:
-1. Clone the Github repository to a path called `minare`.
-2. Ensure you have installed the prerequisites:
+0.6.0 - Developer experience improvements, more test coverage
+
+0.7.0 - Improved entity factory behavior
+
+0.8.0 - Improved session boundary behavior, update strategies
+
+0.9.0 - Modular infrastructure
+
+1.0.0 - Quick start
+
+1.1.0 and Beyond
+* Timeline replay/branch
+* Views (custom update sets)
+* Complex Operation behaviors
+* Scope affinity
+* Graph visitor builder
+
+# Utilities
+The framework repository contains several testing and debugging utilities. To use these, 
+ensure you have installed the prerequisites:
    1. A Docker version that includes `docker compose`
    2. Java 24.0.1
    2. Maven 3.9.10
    3. Node.js 24.3.0
    4. artillery 2.0.21
-3. In your terminal, find the `/minare` path and run `mvn install`.
-4. Next, in the `/minare` path, run `bash run.sh 2`. (You can replace `2` with the number of workers you want to spin up.)
-5. In a browser, navigate to `http://localhost:8080/index.html` and click the `Connect` button at the top of the screen.
-6. After a connection is established, on the upper-right, click `Show Grid View`.
-7. In your terminal, find the `/minare-example/integration-test` path and run `artillery run color-wave-test.yml`.
-8. Watch the nodes change color in waves. After the final wave, each node should be colored black and have its version incremented to 40.
-9. In the `/minare/docker` path, run `docker compose stop`.
+
+## Integration Tests
+The framework integration test suite creates a simulated docker environment against which to run assertion-based test cases. 
+To test it,
+
+1. Run `bash run.sh 1 -i`. 
+2. Docker will build a container and run the tests. Results will be written to `docker/logs`. 
+3. When they are complete, run `bash stop.sh`
+
+## NodeGraph Application
+The framework includes an example application demonstrating a simple graph of nodes which initialize at start-up. 
+Clients can then submit operations which change the colors of nodes. Several smoke tests exist which demonstrate
+this. 
+1. Run `bash run.sh 2 -n`. (You can replace `2` with the number of workers you want to spin up.)
+2. In a browser, navigate to `http://localhost:8080/index.html` and click the `Connect` button at the top of the screen. 
+3. After a connection is established, on the upper-right, click `Show Grid View`. 
+4. In your terminal, find the `/minare-example/artillery` path and run `artillery run color-wave-test.yml`. 
+5. Watch the nodes change color in waves. After the final wave, each node should be colored black and have its version incremented to 40.
+6. Run `bash stop.sh`
 
 ## License
 © 2025 Joseph Sachs. All rights reserved. License TBD.
