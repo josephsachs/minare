@@ -2,7 +2,7 @@ package com.minare.core.frames.coordinator.services
 
 import com.google.inject.Inject
 import com.google.inject.Singleton
-import com.minare.application.config.FrameConfiguration
+import com.minare.application.config.FrameworkConfig
 import com.minare.core.frames.coordinator.FrameCoordinatorState
 import com.minare.core.frames.coordinator.FrameCoordinatorState.Companion.PauseState
 import com.minare.core.frames.coordinator.FrameCoordinatorVerticle.Companion.ADDRESS_FRAME_MANIFESTS_ALL_COMPLETE
@@ -17,13 +17,12 @@ import com.minare.core.utils.vertx.EventBusUtils
 import com.minare.core.utils.vertx.EventWaiter
 import io.vertx.core.json.JsonArray
 import io.vertx.core.json.JsonObject
-import org.apache.kafka.common.protocol.types.Field.Bool
 import org.slf4j.LoggerFactory
 import java.util.*
 
 @Singleton
 class SessionService @Inject constructor(
-    private val frameConfig: FrameConfiguration,
+    private val frameworkConfig: FrameworkConfig,
     private val coordinatorState: FrameCoordinatorState,
     private val snapshotStore: SnapshotStore,
     private val workerRegistry: WorkerRegistry,
@@ -38,18 +37,23 @@ class SessionService @Inject constructor(
 
     companion object {
         const val ADDRESS_SESSION_INITIALIZED = "minare.coordinator.session.initialized"
+
+        enum class AutoSession {
+            NEVER,
+            FRAMES_PER_SESSION
+        }
     }
 
     /**
      * Checks if we meet the condition for an automatic session change.
      */
     suspend fun needAutoSession(): Boolean {
-        when (frameConfig.autoSession) {
-            FrameConfiguration.Companion.AutoSession.NEVER -> {
+        when (frameworkConfig.frames.session.autoSession) {
+            AutoSession.NEVER -> {
                 return false
             }
-            FrameConfiguration.Companion.AutoSession.FRAMES_PER_SESSION -> {
-                if (coordinatorState.frameInProgress == frameConfig.framesPerSession) return true
+            AutoSession.FRAMES_PER_SESSION -> {
+                if (coordinatorState.frameInProgress == frameworkConfig.frames.frameDuration) return true
             }
         }
 
@@ -142,7 +146,7 @@ class SessionService @Inject constructor(
             .put("sessionId", sessionId)
             .put("sessionStartTimestamp", sessionStartTime)
             .put("announcementTimestamp", announcementTime)
-            .put("frameDuration", frameConfig.frameDurationMs)
+            .put("frameDuration", frameworkConfig.frames.frameDuration)
             .put("workerCount", activeWorkers.size)
             .put("workerIds", JsonArray(activeWorkers.toList()))
             .put("coordinatorInstance", "coordinator-${System.currentTimeMillis()}") // TODO: Use a more stable ID

@@ -1,5 +1,6 @@
 package com.minare.core.transport
 
+import com.minare.application.config.FrameworkConfig
 import com.minare.cache.ConnectionCache
 import com.minare.core.storage.interfaces.ConnectionStore
 import io.vertx.core.json.JsonObject
@@ -11,12 +12,14 @@ import kotlinx.coroutines.launch
 import org.slf4j.LoggerFactory
 import javax.inject.Inject
 import com.minare.worker.upsocket.UpSocketVerticle
+import io.vertx.kotlin.ext.stomp.frameOf
 
 /**
  * Verticle that handles periodic cleaning of stale connections and data.
  * This helps ensure system health by removing orphaned resources.
  */
 class CleanupVerticle @Inject constructor(
+    private val frameworkConfig: FrameworkConfig,
     private val connectionStore: ConnectionStore,
     private val connectionCache: ConnectionCache
 ) : CoroutineVerticle() {
@@ -25,16 +28,16 @@ class CleanupVerticle @Inject constructor(
 
     companion object {
         const val ADDRESS_TRIGGER_CLEANUP = "minare.trigger.cleanup"
-        const val CONNECTION_RECONNECT_WINDOW_MS = 60000L
-
-        private const val CLEANUP_INTERVAL_MS = 60000L
-        private const val CONNECTION_EXPIRY_MS = 180000L
     }
+
+    private val reconnectTimeout = frameworkConfig.sockets.connection.reconnectTimeout
+    private val cleanupInterval = frameworkConfig.sockets.connection.cleanupInterval
+    private val connectionExpiry = frameworkConfig.sockets.connection.connectionExpiry
 
     override suspend fun start() {
         log.info("Starting CleanupVerticle")
 
-        vertx.setPeriodic(CLEANUP_INTERVAL_MS) { _ ->
+        vertx.setPeriodic(cleanupInterval) { _ ->
             CoroutineScope(vertx.dispatcher()).launch {
                 try {
                     performCleanup()
@@ -81,13 +84,13 @@ class CleanupVerticle @Inject constructor(
             val connectionsToClear = mutableListOf<String>()
 
             // Find expired inactive connections
-            val expiredConnections = connectionStore.findInactiveConnections(CONNECTION_EXPIRY_MS)
-            log.info("Found ${expiredConnections.size} expired connections (inactive > ${CONNECTION_EXPIRY_MS /1000/60} minutes)")
+            val expiredConnections = connectionStore.findInactiveConnections(connectionExpiry)
+            log.info("Found ${expiredConnections.size} expired connections (inactive > ${connectionExpiry /1000/60} minutes)")
             connectionsToClear.addAll(expiredConnections.map { it._id })
 
             // If aggressive cleanup is enabled, find disconnected non-reconnectable connections
             if (aggressive) {
-                val recentlyDisconnected = connectionStore.findInactiveConnections(CONNECTION_RECONNECT_WINDOW_MS)
+                val recentlyDisconnected = connectionStore.findInactiveConnections(reconnectTimeout)
                     .filter { !it.reconnectable || it.upSocketId == null }
 
                 log.info("Found ${recentlyDisconnected.size} recently disconnected non-reconnectable connections")

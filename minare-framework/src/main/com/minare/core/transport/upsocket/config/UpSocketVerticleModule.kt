@@ -4,6 +4,7 @@ import com.google.inject.PrivateModule
 import com.google.inject.Provides
 import com.google.inject.Singleton
 import com.google.inject.name.Named
+import com.minare.application.config.FrameworkConfig
 import com.minare.cache.ConnectionCache
 import com.minare.controller.MessageController
 import com.minare.controller.OperationController
@@ -34,7 +35,6 @@ class UpSocketVerticleModule : PrivateModule() {
     override fun configure() {
         bind(UpSocketVerticle::class.java)
 
-        // Event handlers
         bind(EntitySyncEvent::class.java).`in`(Singleton::class.java)
         bind(ConnectionCleanupEvent::class.java).`in`(Singleton::class.java)
         bind(ChannelCleanupEvent::class.java).`in`(Singleton::class.java)
@@ -42,11 +42,9 @@ class UpSocketVerticleModule : PrivateModule() {
         bind(UpSocketInitEvent::class.java).`in`(Singleton::class.java)
         bind(UpSocketGetRouterEvent::class.java).`in`(Singleton::class.java)
 
-        // Message handlers
         bind(CloseHandler::class.java).`in`(Singleton::class.java)
         bind(ReconnectionHandler::class.java).`in`(Singleton::class.java)
 
-        // Request external dependencies that should be provided by parent injector
         requireBinding(Vertx::class.java)
         requireBinding(CoroutineContext::class.java)
         requireBinding(CoroutineScope::class.java)
@@ -57,7 +55,6 @@ class UpSocketVerticleModule : PrivateModule() {
         requireBinding(MessageController::class.java)
         requireBinding(EventBusUtils::class.java)
 
-        // Expose UpSocketVerticle to the parent injector
         expose(UpSocketVerticle::class.java)
     }
 
@@ -94,11 +91,12 @@ class UpSocketVerticleModule : PrivateModule() {
     fun provideHeartbeatManager(
         vertx: Vertx,
         verticleLogger: VerticleLogger,
+        frameworkConfig: FrameworkConfig,
         connectionStore: ConnectionStore,
         @Named("verticle-scoped") coroutineScope: CoroutineScope
     ): HeartbeatManager {
         val heartbeatManager = HeartbeatManager(vertx, verticleLogger, connectionStore, coroutineScope)
-        heartbeatManager.setHeartbeatInterval(UpSocketVerticle.HEARTBEAT_INTERVAL_MS)
+        heartbeatManager.setHeartbeatInterval(frameworkConfig.sockets.up.heartbeatInterval)
         return heartbeatManager
     }
 

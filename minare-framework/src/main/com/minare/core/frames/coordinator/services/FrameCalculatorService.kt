@@ -1,6 +1,6 @@
 package com.minare.core.frames.coordinator.services
 
-import com.minare.application.config.FrameConfiguration
+import com.minare.application.config.FrameworkConfig
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.math.max
@@ -11,14 +11,14 @@ import kotlin.math.max
  */
 @Singleton
 class FrameCalculatorService @Inject constructor(
-    val frameConfig: FrameConfiguration
+    val frameworkConfig: FrameworkConfig
 ) {
     companion object {
         const val NANOS_PER_MS = 1_000_000L
         const val NANOS_PER_SECOND = 1_000_000_000L
     }
 
-    private val frameDurationNanos = frameConfig.frameDurationMs * NANOS_PER_MS
+    private val frameDurationNanos = frameworkConfig.frames.frameDuration * NANOS_PER_MS
 
     /**
      * Convert elapsed nanoseconds to logical frame number
@@ -37,7 +37,7 @@ class FrameCalculatorService @Inject constructor(
         }
 
         val relativeTimestamp = timestamp - sessionStartTimestamp
-        return relativeTimestamp / frameConfig.frameDurationMs
+        return relativeTimestamp / frameworkConfig.frames.frameDuration
     }
 
     /**
@@ -102,9 +102,11 @@ class FrameCalculatorService @Inject constructor(
      * Convert frame duration to readable string
      */
     fun frameDurationToString(): String {
+        val frameDuration = frameworkConfig.frames.frameDuration
+
         return when {
-            frameConfig.frameDurationMs < 1000 -> "${frameConfig.frameDurationMs}ms"
-            else -> "${frameConfig.frameDurationMs / 1000.0}s"
+            frameDuration < 1000 -> "${frameDuration}ms"
+            else -> "${frameDuration / 1000.0}s"
         }
     }
 
@@ -112,7 +114,7 @@ class FrameCalculatorService @Inject constructor(
      * Calculate operations per second based on frame rate
      */
     fun maxOperationsPerSecond(operationsPerFrame: Int): Int {
-        val framesPerSecond = 1000.0 / frameConfig.frameDurationMs
+        val framesPerSecond = 1000.0 / frameworkConfig.frames.frameDuration
         return (operationsPerFrame * framesPerSecond).toInt()
     }
 

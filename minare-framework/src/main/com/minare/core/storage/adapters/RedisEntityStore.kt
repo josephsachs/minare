@@ -79,12 +79,14 @@ class RedisEntityStore @Inject constructor(
      */
     override suspend fun saveState(entityId: String, delta: JsonObject, incrementVersion: Boolean): JsonObject {
         val version = if (incrementVersion) {
+            val serializedDelta = serializeDelta(delta)
+
             val response = redisAPI.send(
                 Command.create("EVAL"),
                 versionIncrementScript(),
                 "1",
                 entityId,
-                delta.encode()
+                serializedDelta.encode()
             ).await()
 
             response.toLong()
@@ -95,7 +97,13 @@ class RedisEntityStore @Inject constructor(
             val currentState = currentDocument.getJsonObject("state", JsonObject())
 
             delta.fieldNames().forEach { fieldName ->
-                currentState.put(fieldName, delta.getValue(fieldName))
+                val rawValue = delta.getValue(fieldName)
+                if (rawValue != null) {
+                    val serializedValue = serializer.serialize(rawValue)
+                    currentState.put(fieldName, serializedValue)
+                } else {
+                    currentState.putNull(fieldName)
+                }
             }
 
             currentDocument.put("state", currentState)
@@ -128,7 +136,13 @@ class RedisEntityStore @Inject constructor(
         val currentProperties = currentDocument.getJsonObject("properties", JsonObject())
 
         delta.fieldNames().forEach { fieldName ->
-            currentProperties.put(fieldName, delta.getValue(fieldName))
+            val rawValue = delta.getValue(fieldName)
+            if (rawValue != null) {
+                val serializedValue = serializer.serialize(rawValue)
+                currentProperties.put(fieldName, serializedValue)
+            } else {
+                currentProperties.putNull(fieldName)
+            }
         }
 
         currentDocument.put("properties", currentProperties)
@@ -138,6 +152,19 @@ class RedisEntityStore @Inject constructor(
 
         return updatedDocument
             ?: throw EntityStorageException("Failed to save properties for nonexistent entity $entityId")
+    }
+
+    private fun serializeDelta(delta: JsonObject): JsonObject {
+        val serialized = JsonObject()
+        delta.fieldNames().forEach { fieldName ->
+            val rawValue = delta.getValue(fieldName)
+            if (rawValue != null) {
+                serialized.put(fieldName, serializer.serialize(rawValue))
+            } else {
+                serialized.putNull(fieldName)
+            }
+        }
+        return serialized
     }
 
     /**
@@ -229,8 +256,7 @@ class RedisEntityStore @Inject constructor(
 
                 } catch (e: Exception) {
                     // TODO: Fix serialization so this bug stops happening
-                    log.warn("StateStore found Entity document with invalid property field for ${entity._id}: ${e.message}", e)
-
+                    log.warn("StateStore found Entity document with invalid state field for ${entity._id}: ${e.message}", e)
                 }
             }
         }
@@ -258,7 +284,7 @@ class RedisEntityStore @Inject constructor(
                     }
 
                 } catch (e: Exception) {
-                    log.warn("StateStore found Entity document with invalid property field for ${entity._id}")
+                    log.warn("StateStore found Entity document with invalid property field for ${entity._id}: ${e.message}", e)
                 }
             }
         }

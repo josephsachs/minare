@@ -1,6 +1,7 @@
 package com.minare.core.transport.downsocket
 
 import com.google.inject.name.Named
+import com.minare.application.config.FrameworkConfig
 import com.minare.core.MinareApplication
 import com.minare.cache.ConnectionCache
 import com.minare.controller.ConnectionController
@@ -36,6 +37,7 @@ import com.minare.worker.downsocket.events.UpdateConnectionEstablishedEvent.Comp
  * This verticle hosts its own HTTP server for direct WebSocket connections.
  */
 class DownSocketVerticle @Inject constructor(
+    private val frameworkConfig: FrameworkConfig,
     private val connectionStore: ConnectionStore,
     private val connectionCache: ConnectionCache,
     private val connectionController: ConnectionController,
@@ -66,15 +68,11 @@ class DownSocketVerticle @Inject constructor(
 
     companion object {
         const val ADDRESS_BROADCAST_CHANNEL = "address.downsocket.broadcast.channel"
-
-        const val CACHE_TTL_MS = 1000L // 10 seconds
-        const val HEARTBEAT_INTERVAL_MS = 15000L
-        const val DEFAULT_TICK_INTERVAL_MS = 20 // 10 ticks per second
-
-        const val BASE_PATH = "/update"
-        const val HTTP_SERVER_HOST = "0.0.0.0"
-        const val HTTP_SERVER_PORT = 4226
     }
+
+    private val httpHost = frameworkConfig.sockets.down.host
+    private val httpPort = frameworkConfig.sockets.down.port
+    private val defaultTickInterval = frameworkConfig.sockets.down.tickInterval
 
     override suspend fun start() {
         try {
@@ -88,7 +86,10 @@ class DownSocketVerticle @Inject constructor(
             registerEventBusConsumers()
 
             connectionTracker = ConnectionTracker("DownSocket", vlog)
-            heartbeatManager.setHeartbeatInterval(UpSocketVerticle.HEARTBEAT_INTERVAL_MS)
+
+            heartbeatManager.setHeartbeatInterval(
+                frameworkConfig.sockets.up.heartbeatInterval
+            )
 
             vlog.logStartupStep("STARTING")
             vlog.logConfig(config)
@@ -107,7 +108,7 @@ class DownSocketVerticle @Inject constructor(
 
             vlog.logStartupStep("STARTED")
             log.info("DownSocketVerticle started with tick interval: {}ms",
-                DEFAULT_TICK_INTERVAL_MS
+                defaultTickInterval
             )
         } catch (e: Exception) {
             vlog.logVerticleError("STARTUP_FAILED", e)
@@ -197,14 +198,14 @@ class DownSocketVerticle @Inject constructor(
             httpServer = HttpServerUtils.createAndStartHttpServer(
                 vertx = vertx,
                 router = router,
-                host = HTTP_SERVER_HOST,
-                port = HTTP_SERVER_PORT
+                host = httpHost,
+                port = httpPort
             ).await()
 
-            val actualPort = httpServer?.actualPort() ?: HTTP_SERVER_PORT
+            val actualPort = httpServer?.actualPort() ?: httpPort
             vlog.logStartupStep("HTTP_SERVER_DEPLOYED", mapOf(
                 "port" to actualPort,
-                "host" to HTTP_SERVER_HOST
+                "host" to httpHost
             ))
         } catch (e: Exception) {
             vlog.logVerticleError("DEPLOY_HTTP_SERVER", e)
@@ -222,9 +223,6 @@ class DownSocketVerticle @Inject constructor(
         updateConnectionClosedEvent.register(debugTraceLogs)
     }
 
-    /**
-     * Handle a new down socket connection
-     */
     /**
      * Handle a new down socket connection
      */

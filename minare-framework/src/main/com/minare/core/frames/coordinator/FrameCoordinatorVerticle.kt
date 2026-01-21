@@ -1,6 +1,6 @@
 package com.minare.core.frames.coordinator
 
-import com.minare.application.config.FrameConfiguration
+import com.minare.application.config.FrameworkConfig
 import com.minare.core.frames.coordinator.FrameCoordinatorState.Companion.PauseState
 import com.minare.core.frames.coordinator.services.*
 import com.minare.core.frames.coordinator.services.SessionService.Companion.ADDRESS_SESSION_INITIALIZED
@@ -32,7 +32,7 @@ import kotlin.math.max
  * - Starts in paused state until workers ready
  */
 class FrameCoordinatorVerticle @Inject constructor(
-    private val frameConfig: FrameConfiguration,
+    private val frameworkConfig: FrameworkConfig,
     private val frameCalculator: FrameCalculatorService,
     private val operationHandler: OperationHandler,
     private val vlog: VerticleLogger,
@@ -135,7 +135,7 @@ class FrameCoordinatorVerticle @Inject constructor(
      * Extract and assign buffered operations at the rhythm of the frame loop
      */
     private suspend fun startManifestTimer() {
-        manifestTimerId = vertx.setPeriodic(frameConfig.frameDurationMs) {
+        manifestTimerId = vertx.setPeriodic(frameworkConfig.frames.frameDuration) {
             launch {
                 val pauseState = coordinatorState.pauseState
 
@@ -145,7 +145,7 @@ class FrameCoordinatorVerticle @Inject constructor(
                 }
 
                 val currentFrame = frameCalculator.getCurrentLogicalFrame(coordinatorState.sessionStartNanos)
-                val targetFrame = currentFrame + frameConfig.normalOperationLookahead
+                val targetFrame = currentFrame + frameworkConfig.frames.lookahead
 
                 for (frame in (coordinatorState.lastPreparedManifest + 1)..targetFrame) {
                     prepareManifestForFrame(frame)
@@ -203,8 +203,8 @@ class FrameCoordinatorVerticle @Inject constructor(
         // Prepare the greater of frames elapsed since session start or
         // next frame, plus configurable lookahead window
         val targetFrame = max(
-            nanotimeFrame + frameConfig.normalOperationLookahead,
-            nextFrame + frameConfig.normalOperationLookahead
+            nanotimeFrame + frameworkConfig.frames.lookahead,
+            nextFrame + frameworkConfig.frames.lookahead
         )
 
         val lastPrepared = coordinatorState.lastPreparedManifest

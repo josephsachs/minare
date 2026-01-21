@@ -1,11 +1,14 @@
 package com.minare.core
 
+import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.google.inject.*
 import com.google.inject.name.Names
 import com.minare.core.MinareApplication.ConnectionEvents.ADDRESS_COORDINATOR_STARTED
 import com.minare.core.MinareApplication.ConnectionEvents.ADDRESS_WORKER_STARTED
 import com.minare.application.interfaces.AppState
 import com.minare.application.adapters.ClusteredAppState
+import com.minare.application.config.FrameworkConfig
+import com.minare.application.config.FrameworkConfigBuilder
 import com.minare.core.config.HazelcastInstanceHolder
 import com.minare.core.config.*
 import com.minare.controller.ConnectionController
@@ -33,7 +36,6 @@ import com.minare.core.frames.coordinator.CoordinatorTaskVerticle
 import com.minare.core.frames.coordinator.FrameCoordinatorVerticle
 import com.minare.core.frames.coordinator.services.StartupService
 import com.minare.core.frames.services.ActiveWorkerSet
-import com.minare.core.frames.services.WorkerRegistry
 import com.minare.core.frames.services.WorkerRegistryMap
 import com.minare.core.frames.worker.FrameWorkerHealthMonitorVerticle
 import com.minare.core.frames.worker.FrameWorkerVerticle
@@ -43,8 +45,10 @@ import com.minare.core.operation.MutationVerticle
 import com.minare.core.transport.downsocket.RedisPubSubWorkerVerticle
 import com.minare.core.storage.services.StateInitializer
 import com.minare.core.transport.CleanupVerticle
-import com.minare.core.utils.vertx.EventWaiter
 import com.minare.worker.coordinator.events.WorkerReadinessEvent
+import io.vertx.config.ConfigRetriever
+import io.vertx.config.ConfigRetrieverOptions
+import io.vertx.config.ConfigStoreOptions
 import kotlinx.coroutines.*
 import kotlin.system.exitProcess
 
@@ -622,7 +626,10 @@ abstract class MinareApplication : CoroutineVerticle() {
                 if (ar.succeeded()) {
                     val vertx = ar.result()
                     log.info("Successfully created clustered Vertx instance")
-                    completeStartup(vertx, applicationClass, args)
+
+                    CoroutineScope(vertx.dispatcher()).launch {
+                        completeStartup(vertx, applicationClass, args)
+                    }
                 } else {
                     log.error("Failed to create clustered Vertx instance", ar.cause())
                     exitProcess(1)
@@ -631,9 +638,26 @@ abstract class MinareApplication : CoroutineVerticle() {
         }
 
         /**
+         *
+         */
+        private fun getConfiguration(): FrameworkConfig {
+            val env = System.getenv("ENVIRONMENT") ?: "default"
+            val configPath = "config/${env}.yml"
+            val frameworkConfigBuilder = FrameworkConfigBuilder()
+
+            val stream = Thread.currentThread().contextClassLoader.getResourceAsStream(configPath)
+                ?: throw IllegalStateException("Config file not found: $configPath")
+
+            val yaml = org.yaml.snakeyaml.Yaml()
+            val map: Map<String, Any> = yaml.load(stream)
+
+            return frameworkConfigBuilder.build(JsonObject(map))
+        }
+
+        /**
          * Complete the startup process once Vertx is initialized
          */
-        private fun completeStartup(
+        private suspend fun completeStartup(
             vertx: Vertx,
             applicationClass: Class<out MinareApplication>,
             args: Array<String>
@@ -641,16 +665,27 @@ abstract class MinareApplication : CoroutineVerticle() {
             configureJackson()
 
             try {
-                val appModule = getApplicationModule(applicationClass)
-                log.info("Loaded application module: ${appModule.javaClass.name}")
+                val config = getConfiguration()
 
-                val dbName = getDatabaseNameFromModule(appModule)
-                log.info("Using database name: $dbName")
+                val mapper = jacksonObjectMapper()
+                log.info("MINARE_CONFIG: ${mapper.writerWithDefaultPrettyPrinter().writeValueAsString(config)}")
+
+                val configModule = object : AbstractModule() {
+                    override fun configure() {
+                        bind(FrameworkConfig::class.java).toInstance(config)
+                    }
+                }
 
                 val frameworkModule = MinareModule()
                 val upSocketVerticleModule = UpSocketVerticleModule()
                 val downSocketVerticleModule = DownSocketVerticleModule()
                 val frameCoordinatorVerticleModule = FrameCoordinatorVerticleModule()
+
+                val appModule = getApplicationModule(applicationClass)
+                log.info("Loaded application module: ${appModule.javaClass.name}")
+
+                val dbName = getDatabaseNameFromModule(appModule)
+                log.info("Using database name: $dbName")
 
                 val dbNameModule = object : AbstractModule() {
                     override fun configure() {
@@ -674,6 +709,7 @@ abstract class MinareApplication : CoroutineVerticle() {
                         // Correct order is required:
                         // framework (provides defaults)
                         install(vertxModule)
+                        install(configModule)
                         install(dbNameModule)
 
                         install(frameworkModule)
