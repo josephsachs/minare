@@ -226,9 +226,6 @@ class DownSocketVerticle @Inject constructor(
     /**
      * Handle a new down socket connection
      */
-    /**
-     * Handle a new down socket connection
-     */
     private suspend fun handleDownSocket(websocket: ServerWebSocket, traceId: String) {
         if (debugTraceLogs) log.info("New down socket connection from {}", websocket.remoteAddress())
 
