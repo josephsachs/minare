@@ -47,6 +47,7 @@ import com.minare.core.operation.MutationVerticle
 import com.minare.core.transport.downsocket.RedisPubSubWorkerVerticle
 import com.minare.core.storage.services.StateInitializer
 import com.minare.core.transport.CleanupVerticle
+import com.minare.exceptions.EntityFactoryException
 import com.minare.worker.coordinator.events.WorkerReadinessEvent
 import io.vertx.config.ConfigRetriever
 import io.vertx.config.ConfigRetrieverOptions

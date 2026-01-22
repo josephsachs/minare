@@ -10,9 +10,7 @@ import javax.inject.Singleton
  * Applications should override this with their own implementation.
  */
 @Singleton
-class DefaultEntityFactory @Inject constructor(
-    injector: Injector
-) : EntityFactory(injector) {
+class DefaultEntityFactory @Inject constructor() : EntityFactory() {
 
     override val entityTypes = mapOf(
         "Entity" to Entity::class.java

@@ -11,9 +11,7 @@ import javax.inject.Singleton
  * Updated to remove dependency injection since Entity is now a pure data class.
  */
 @Singleton
-class TestEntityFactory @Inject constructor(
-    injector: Injector
-) : EntityFactory(injector) {
+class TestEntityFactory @Inject constructor() : EntityFactory() {
 
     // Just define the map - framework does the rest!
     override val entityTypes = mapOf(
