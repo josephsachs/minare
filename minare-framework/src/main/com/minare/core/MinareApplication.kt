@@ -725,6 +725,7 @@ abstract class MinareApplication : CoroutineVerticle() {
 
                 val injector = Guice.createInjector(combinedModule)
                 val app = injector.getInstance(applicationClass)
+                injector.injectMembers(app)
                 InternalInjectorHolder.setInjector(injector)
 
                 vertx.deployVerticle(app)
