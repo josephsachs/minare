@@ -117,20 +117,17 @@ class MinareModule(
 
     @Provides
     @Singleton
-    fun provideEntityFactory(
-        injector: Injector
-    ): EntityFactory {
-        val clazz = Class.forName(entityFactoryName)
-
-        if (EntityFactory::class.java.isAssignableFrom(clazz)) {
-            @Suppress("UNCHECKED_CAST")
-            val entityFactory = clazz as Class<out EntityFactory>
-
-            return injector.getInstance(entityFactory)
-
-        } else {
+    fun provideEntityFactory(injector: Injector): EntityFactory {
+        val clazz = try {
+            Class.forName(entityFactoryName)
+                .asSubclass(EntityFactory::class.java)
+        } catch (e: ClassNotFoundException) {
+            throw EntityFactoryException("No class found at $entityFactoryName")
+        } catch (e: ClassCastException) {
             throw EntityFactoryException("The class found at $entityFactoryName is not a valid type of EntityFactory")
         }
+
+        return injector.getInstance(clazz)
     }
 
     /**
