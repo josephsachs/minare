@@ -27,6 +27,7 @@ class FrameworkConfig {
     }
 
     class EntityConfig {
+        var factoryName: String = ""
         var update = EntityUpdateConfig()
     }
 
