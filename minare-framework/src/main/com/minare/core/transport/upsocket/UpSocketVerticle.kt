@@ -70,13 +70,6 @@ class UpSocketVerticle @Inject constructor(
     override suspend fun start() {
         vlog.setVerticle(this)
 
-        log.info("MINARE_CONFIG: *************************")
-        log.info("${basePath}")
-        log.info("${httpPort}")
-        log.info("${httpHost}")
-        log.info("${handshakeTimeoutMs}")
-        log.info("MINARE_CONFIG: *************************")
-
         deployedAt = System.currentTimeMillis()
         debug.log(DebugType.UPSOCKET_STARTUP, listOf(deployedAt, vlog, config))
 

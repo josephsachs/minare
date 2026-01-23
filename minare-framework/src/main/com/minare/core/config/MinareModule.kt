@@ -45,6 +45,7 @@ import com.minare.core.frames.services.ActiveWorkerSet
 import com.minare.core.frames.services.HazelcastActiveWorkerSet
 import com.minare.core.transport.upsocket.handlers.SyncCommandHandler
 import com.minare.core.utils.vertx.EventBusUtils
+import com.minare.exceptions.EntityFactoryException
 import com.minare.worker.upsocket.CommandMessageHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlin.coroutines.CoroutineContext
@@ -53,7 +54,9 @@ import kotlin.coroutines.CoroutineContext
  * Core framework Guice module that provides default bindings.
  * Applications can override these bindings by using a child injector.
  */
-class MinareModule : AbstractModule(), DatabaseNameProvider {
+class MinareModule(
+    private val entityFactoryName: String
+) : AbstractModule(), DatabaseNameProvider {
     private val log = LoggerFactory.getLogger(MinareModule::class.java)
 
     val uri = System.getenv("MONGO_URI") ?:
@@ -114,15 +117,17 @@ class MinareModule : AbstractModule(), DatabaseNameProvider {
 
     @Provides
     @Singleton
-    fun provideEntityFactory(
-        injector: Injector,
-        defaultFactory: DefaultEntityFactory
-    ): EntityFactory {
-        return try {
-            injector.getInstance(Key.get(EntityFactory::class.java, Names.named("user")))
-        } catch (e: Exception) {
-            defaultFactory
+    fun provideEntityFactory(injector: Injector): EntityFactory {
+        val clazz = try {
+            Class.forName(entityFactoryName)
+                .asSubclass(EntityFactory::class.java)
+        } catch (e: ClassNotFoundException) {
+            throw EntityFactoryException("No class found at $entityFactoryName")
+        } catch (e: ClassCastException) {
+            throw EntityFactoryException("The class found at $entityFactoryName is not a valid type of EntityFactory")
         }
+
+        return injector.getInstance(clazz)
     }
 
     /**

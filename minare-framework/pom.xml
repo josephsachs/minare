@@ -29,7 +29,7 @@
         <!-- Utilities -->
         <rxjava.version>3.1.8</rxjava.version>
         <lombok.version>1.18.30</lombok.version>
-        <logback.version>1.2.6</logback.version>
+        <logback.version>1.4.14</logback.version>
         <commons.codec.version>1.15</commons.codec.version>
 
         <!-- Testing -->

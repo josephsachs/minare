@@ -17,6 +17,7 @@ sockets:
 
 
 entity:
+  factory: com.minare.example.ExampleEntityFactory
   update:
     batch_interval: 100
 

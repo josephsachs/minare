@@ -53,6 +53,12 @@ class FrameworkConfigBuilder {
      */
     private fun setEntityConfig(file: JsonObject, config: FrameworkConfig): FrameworkConfig {
         val entity = require(file.getJsonObject("entity"), "entity section must be specified")
+
+        config.entity.factoryName = require(
+            entity.getString("factory"),
+            "entity.factory must specify a fully-qualified name of a valid EntityFactory implementation (e.g. `com.myapp.foo.bar.baz.MyEntityFactory`)"
+        )
+
         val entityUpdate = require(entity.getJsonObject("update"), "entity.update section must be specified")
         config.entity.update.batchInterval = require(entityUpdate.getInteger("batch_interval"), "entity.update.batch_interval must be specified").toLong()
 

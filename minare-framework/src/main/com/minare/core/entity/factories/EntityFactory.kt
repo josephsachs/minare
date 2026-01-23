@@ -16,10 +16,11 @@ import kotlin.reflect.KClass
  * - Falls back to base Entity for unknown types
  * - Handles all the boilerplate
  */
-abstract class EntityFactory @Inject constructor(
-    private val injector: Injector
-) {
+abstract class EntityFactory @Inject constructor() {
     private val log = LoggerFactory.getLogger(EntityFactory::class.java)
+
+    @Inject
+    private lateinit var injector: Injector
 
     /**
      * Subclasses override this to register their entity types.

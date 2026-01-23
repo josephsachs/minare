@@ -7,6 +7,7 @@ import com.minare.core.MinareApplication.ConnectionEvents.ADDRESS_COORDINATOR_ST
 import com.minare.core.MinareApplication.ConnectionEvents.ADDRESS_WORKER_STARTED
 import com.minare.application.interfaces.AppState
 import com.minare.application.adapters.ClusteredAppState
+import com.minare.application.config.EntityValidator
 import com.minare.application.config.FrameworkConfig
 import com.minare.application.config.FrameworkConfigBuilder
 import com.minare.core.config.HazelcastInstanceHolder
@@ -30,6 +31,7 @@ import org.slf4j.LoggerFactory
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import com.minare.core.config.AppStateProvider
+import com.minare.core.entity.factories.EntityFactory
 import com.minare.core.factories.MinareVerticleFactory
 import com.minare.core.frames.coordinator.CoordinatorAdminVerticle
 import com.minare.core.frames.coordinator.CoordinatorTaskVerticle
@@ -45,6 +47,7 @@ import com.minare.core.operation.MutationVerticle
 import com.minare.core.transport.downsocket.RedisPubSubWorkerVerticle
 import com.minare.core.storage.services.StateInitializer
 import com.minare.core.transport.CleanupVerticle
+import com.minare.exceptions.EntityFactoryException
 import com.minare.worker.coordinator.events.WorkerReadinessEvent
 import io.vertx.config.ConfigRetriever
 import io.vertx.config.ConfigRetrieverOptions
@@ -666,17 +669,15 @@ abstract class MinareApplication : CoroutineVerticle() {
 
             try {
                 val config = getConfiguration()
-
-                val mapper = jacksonObjectMapper()
-                log.info("MINARE_CONFIG: ${mapper.writerWithDefaultPrettyPrinter().writeValueAsString(config)}")
-
                 val configModule = object : AbstractModule() {
                     override fun configure() {
                         bind(FrameworkConfig::class.java).toInstance(config)
                     }
                 }
 
-                val frameworkModule = MinareModule()
+                // Framework module requires the name of the configured entity factory for the provider
+                val frameworkModule = MinareModule(config.entity.factoryName)
+
                 val upSocketVerticleModule = UpSocketVerticleModule()
                 val downSocketVerticleModule = DownSocketVerticleModule()
                 val frameCoordinatorVerticleModule = FrameCoordinatorVerticleModule()
@@ -724,8 +725,17 @@ abstract class MinareApplication : CoroutineVerticle() {
                 }
 
                 val injector = Guice.createInjector(combinedModule)
+
+                // Validate the entities registered in application-level entity factory
+                EntityValidator().validate(
+                    injector.getInstance(EntityFactory::class.java)
+                )
+
+                // Inject the application's dependency modules before deploying
                 val app = injector.getInstance(applicationClass)
                 injector.injectMembers(app)
+
+                // Now we're ready
                 InternalInjectorHolder.setInjector(injector)
 
                 vertx.deployVerticle(app)
