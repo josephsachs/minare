@@ -20,22 +20,22 @@ while getopts "bni" flag; do
 done
 
 build_framework() {
-    echo "Building minare-framework..."
-    cd minare-framework
+    echo "Building Minare package..."
+    cd framework
     mvn clean install -DskipTests
     cd ..
 }
 
 build_nodegraph() {
     echo "Building nodegraph..."
-    cd minare-example/nodegraph
+    cd apps/nodegraph
     mvn clean package -DskipTests
     cd ../..
 }
 
 build_integration() {
     echo "Building integration tests..."
-    cd minare-example/integration
+    cd apps/integration
     mvn clean package -DskipTests
     cd ../..
 }
