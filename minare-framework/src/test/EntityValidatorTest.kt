@@ -222,37 +222,33 @@ class EntityValidatorTest {
     inner class MapFieldValidation {
 
         @Test
-        @DisplayName("should throw error for Map field")
-        fun entityWithMapFieldThrowsError() {
+        @DisplayName("should pass validation with warning for Map field")
+        fun entityWithMapFieldPassesWithWarning() {
             val factory = createFactory("EntityWithMap" to EntityWithMap::class.java)
 
-            assertThatThrownBy { validator.validate(factory) }
-                .isInstanceOf(EntityFactoryException::class.java)
-                .hasMessageContaining("Map types are not supported")
-                .hasMessageContaining("attributes")
+            val result = validator.validate(factory)
+
+            assertThat(result).isTrue()
         }
 
         @Test
-        @DisplayName("should throw error for HashMap field")
-        fun entityWithHashMapFieldThrowsError() {
+        @DisplayName("should pass validation with warning for HashMap field")
+        fun entityWithHashMapFieldPassesWithWarning() {
             val factory = createFactory("EntityWithHashMap" to EntityWithHashMap::class.java)
 
-            assertThatThrownBy { validator.validate(factory) }
-                .isInstanceOf(EntityFactoryException::class.java)
-                .hasMessageContaining("Map types are not supported")
-                .hasMessageContaining("config")
+            val result = validator.validate(factory)
+
+            assertThat(result).isTrue()
         }
 
         @Test
-        @DisplayName("should throw error for Map inside DTO at depth 1")
-        fun entityWithDtoContainingMapThrowsError() {
+        @DisplayName("should pass validation with warning for Map inside DTO at depth 1")
+        fun entityWithDtoContainingMapPassesWithWarning() {
             val factory = createFactory("EntityWithDtoContainingMap" to EntityWithDtoContainingMap::class.java)
 
-            assertThatThrownBy { validator.validate(factory) }
-                .isInstanceOf(EntityFactoryException::class.java)
-                .hasMessageContaining("Map types are not supported")
-                .hasMessageContaining("config.settings")
-                .hasMessageContaining("[depth: 1]")
+            val result = validator.validate(factory)
+
+            assertThat(result).isTrue()
         }
     }
 
@@ -372,17 +368,14 @@ class EntityValidatorTest {
     inner class ErrorReporting {
 
         @Test
-        @DisplayName("should report all issues for entity with mixed problems")
-        fun entityWithMixedIssuesReportsAllProblems() {
+        @DisplayName("should report errors (not warnings) for entity with mixed problems")
+        fun entityWithMixedIssuesReportsErrors() {
             val factory = createFactory("EntityWithMixedIssues" to EntityWithMixedIssues::class.java)
 
             assertThatThrownBy { validator.validate(factory) }
                 .isInstanceOf(EntityFactoryException::class.java)
-                .hasMessageContaining("Map types are not supported")
-                .hasMessageContaining("badMap")
                 .hasMessageContaining("Nested collections are not supported")
                 .hasMessageContaining("matrix")
-                .hasMessageContaining("allies")
         }
 
         @Test
@@ -396,7 +389,6 @@ class EntityValidatorTest {
 
             assertThatThrownBy { validator.validate(factory) }
                 .isInstanceOf(EntityFactoryException::class.java)
-                .hasMessageContaining("Entity: EntityWithMap")
                 .hasMessageContaining("Entity: EntityWithBlacklistedType")
                 .hasMessageNotContaining("Entity: ValidEntity")
         }

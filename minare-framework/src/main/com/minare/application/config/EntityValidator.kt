@@ -112,8 +112,8 @@ class EntityValidator {
                     fieldPath = fieldPath,
                     customTypeClass = null,
                     depth = depth,
-                    message = "Map types are not supported for deserialization (${fieldType.simpleName})",
-                    isError = true
+                    message = "Map types have known deserialization issues with Jackson: (1) Deserialization can fail based on JSON property order (Jackson #1183), (2) Enum keys with unknown values throw InvalidFormatException - READ_UNKNOWN_ENUM_VALUES_AS_NULL does not work for Map keys (Jackson #1859, #1674, #1882), (3) Custom enum serializers are ignored for Map keys (Jackson #2440), (4) WRITE_ENUM_KEYS_USING_INDEX cannot round-trip (Jackson #1877, #2536).",
+                    isError = false
                 )
             )
             return
