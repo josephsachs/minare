@@ -1,5 +1,5 @@
 #!/bin/bash
 
-cd minare-framework
+cd framework
 # mvn clean install -DskipTests
 mvn clean install

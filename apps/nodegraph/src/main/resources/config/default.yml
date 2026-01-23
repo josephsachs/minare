@@ -1,0 +1,42 @@
+# config/default.yaml
+sockets:
+  up:
+    host: "0.0.0.0"
+    port: 4225
+    base_path: "/command"
+    handshake_timeout: 3000
+    heartbeat_interval: 15000
+  down:
+    host: "0.0.0.0"
+    port: 4226
+    cache_ttl: 1000
+  connection:
+    connection_expiry: 180000
+    cleanup_interval: 60000
+    reconnect_timeout: 60000
+
+
+entity:
+  factory: com.minare.nodegraph.NodeGraphEntityFactory
+  update:
+    batch_interval: 100
+
+
+frames:
+  frame_duration: 500
+  lookahead: 250
+  session:
+    auto_session: frames_per_session
+    frames_per_session: 150
+  timeline:
+    detach:
+      flush_on_detach: true
+      buffer_when_detached: true
+      buffer_on_resume: false
+      assign_on_resume: false
+    replay:
+      buffer_while_replay: true
+
+
+tasks:
+  tick_interval: 50
