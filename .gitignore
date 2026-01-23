@@ -1,11 +1,10 @@
 .DS_Store
 .idea/
-.iml
+*.iml
 docker/config/mongodb.key
 docker/data
 docker/app.jar
 logs/
-logs2/
 target/
-minare-example/integration-test/node_modules
+apps/artillery/node_modules
 dbExec.sh
