@@ -70,6 +70,7 @@ class FrameworkConfig {
     class MongoConfig {
         var host: String = ""
         var port: Int = 0
+        var database: String = ""
         var hasMongo: Boolean = false
     }
 

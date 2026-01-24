@@ -45,6 +45,7 @@ tasks:
 mongo:
   host: mongodb-rs
   port: 27017
+  database: node_graph
 
 
 redis:

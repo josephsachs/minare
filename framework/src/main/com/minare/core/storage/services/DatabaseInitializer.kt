@@ -15,7 +15,6 @@ import io.vertx.core.json.JsonObject
 class DatabaseInitializer @Inject constructor(
     private val frameworkConfig: FrameworkConfig,
     private val mongoClient: MongoClient,
-    @Named("databaseName") private val dbName: String
 ) {
     private val log = LoggerFactory.getLogger(DatabaseInitializer::class.java)
 
@@ -32,13 +31,13 @@ class DatabaseInitializer @Inject constructor(
      */
     suspend fun initialize() {
         try {
-            log.info("Initializing database: $dbName")
+            log.info("Initializing database: ${frameworkConfig.mongo.database}")
 
             // Check if we should reset the database
             val shouldResetDb = checkResetDbFlag()
 
             if (shouldResetDb) {
-                log.warn("RESET_STATE flag is set to true - dropping existing collections!")
+                log.warn("development.reset_data flag is set to true - dropping existing collections!")
                 dropExistingCollections()
             }
 

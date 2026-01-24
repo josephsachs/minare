@@ -141,6 +141,8 @@ class FrameworkConfigBuilder {
             if (config.mongo.host.isNotBlank() && config.mongo.port != 0) {
                 config.mongo.hasMongo = true
             }
+
+            config.mongo.database = require(mongo.getString("database"), "mongo.database must be specified, since mongo section exists")
         }
 
         return config

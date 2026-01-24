@@ -23,7 +23,6 @@ import javax.inject.Named
  * to ensure all DownSocketVerticles receive identical update batches.
  */
 class RedisPubSubWorkerVerticle @Inject constructor(
-    @Named("databaseName") private val databaseName: String,
     private val frameworkConfig: FrameworkConfig,
     private val pubSubChannelStrategy: PubSubChannelStrategy,
     private val vlog: VerticleLogger,

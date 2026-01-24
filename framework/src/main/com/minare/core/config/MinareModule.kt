@@ -57,10 +57,8 @@ import kotlin.coroutines.CoroutineContext
  */
 class MinareModule(
     private val frameworkConfig: FrameworkConfig
-) : AbstractModule(), DatabaseNameProvider {
+) : AbstractModule() {
     private val log = LoggerFactory.getLogger(MinareModule::class.java)
-
-    private val mongoUri = "mongodb://${frameworkConfig.mongo.host}:${frameworkConfig.mongo.port}/${getDatabaseName()}?replicaSet=rs0"
 
     override fun configure() {
         // Internal services, do not permit override
@@ -92,11 +90,6 @@ class MinareModule(
 
         // Providers
         bind(AppState::class.java).toProvider(AppStateProvider::class.java).`in`(Singleton::class.java)
-
-        // String variables
-        bind(String::class.java)
-            .annotatedWith(Names.named("mongoConnectionString"))
-            .toInstance(mongoUri)
 
         bind(String::class.java).annotatedWith(Names.named("channels")).toInstance("channels")
         bind(String::class.java).annotatedWith(Names.named("contexts")).toInstance("contexts")
@@ -154,7 +147,10 @@ class MinareModule(
 
     @Provides
     @Singleton
-    fun provideMongoClient(vertx: Vertx, @Named("databaseName") dbName: String): MongoClient {
+    fun provideMongoClient(vertx: Vertx): MongoClient {
+        val mongoUri =  "mongodb://${frameworkConfig.mongo.host}:${frameworkConfig.mongo.port}/${frameworkConfig.mongo.database}?replicaSet=rs0"
+        val dbName = frameworkConfig.mongo.database
+
         log.info("Connecting to MongoDB at: $mongoUri with database: $dbName")
 
         val config = JsonObject()
@@ -223,6 +219,4 @@ class MinareModule(
     fun provideEventBusUtils(vertx: Vertx, coroutineContext: CoroutineContext): EventBusUtils {
         return EventBusUtils(vertx, coroutineContext, "FrameCoordinatorVerticle")
     }
-
-    override fun getDatabaseName(): String = "minare"
 }
