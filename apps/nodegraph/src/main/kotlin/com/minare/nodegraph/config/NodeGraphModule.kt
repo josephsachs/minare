@@ -20,8 +20,8 @@ import org.slf4j.LoggerFactory
  * When combined with the framework through a child injector,
  * bindings defined here will override the framework's default bindings.
  */
-class ExampleModule : PrivateModule(), DatabaseNameProvider {
-    private val log = LoggerFactory.getLogger(ExampleModule::class.java)
+class NoddeGraphModule : PrivateModule(), DatabaseNameProvider {
+    private val log = LoggerFactory.getLogger(NoddeGraphModule::class.java)
 
     override fun configure() {
         bind(ChannelController::class.java).to(NodeGraphChannelController::class.java).`in`(Singleton::class.java)

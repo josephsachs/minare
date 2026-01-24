@@ -1,7 +1,7 @@
 package com.minare.nodegraph
 
 import com.minare.core.MinareApplication
-import com.minare.nodegraph.config.ExampleModule
+import com.minare.nodegraph.config.NoddeGraphModule
 import com.minare.nodegraph.controller.NodeGraphChannelController
 import com.minare.nodegraph.core.models.NodeGraphBuilder
 import io.vertx.core.buffer.Buffer
@@ -130,6 +130,6 @@ class NodeGraphApplication : MinareApplication() {
          * Returns the Guice module for this application
          */
         @JvmStatic
-        fun getModule() = ExampleModule()
+        fun getModule() = NoddeGraphModule()
     }
 }
