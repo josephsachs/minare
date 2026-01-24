@@ -1,5 +1,6 @@
 package com.minare.core.frames.coordinator.services
 
+import com.minare.application.config.FrameworkConfig
 import io.vertx.core.Vertx
 import io.vertx.core.json.JsonArray
 import io.vertx.core.json.JsonObject
@@ -20,6 +21,7 @@ import javax.inject.Singleton
 @Singleton
 class MessageQueueOperationConsumer @Inject constructor(
     private val vertx: Vertx,
+    private val frameworkConfig: FrameworkConfig,
     private val operationHandler: OperationHandler
 ) {
     private val log = LoggerFactory.getLogger(MessageQueueOperationConsumer::class.java)
@@ -74,8 +76,8 @@ class MessageQueueOperationConsumer @Inject constructor(
     private fun createKafkaConfig(): Map<String, String> {
         val config = mutableMapOf<String, String>()
 
-        val bootstrapServers = System.getenv("KAFKA_BOOTSTRAP_SERVERS") ?: "localhost:9092"
-        val groupId = System.getenv("KAFKA_GROUP_ID") ?: "minare-coordinator"
+        val bootstrapServers = "${frameworkConfig.kafka.host}:${frameworkConfig.kafka.port}"
+        val groupId = frameworkConfig.kafka.groupId
 
         config["bootstrap.servers"] = bootstrapServers
         config["group.id"] = groupId

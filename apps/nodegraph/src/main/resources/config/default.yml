@@ -40,3 +40,24 @@ frames:
 
 tasks:
   tick_interval: 50
+
+
+mongo:
+  host: mongodb-rs
+  port: 27017
+
+
+redis:
+  host: redis
+  port: 6379
+
+
+kafka:
+  host: kafka
+  port: 29092
+  group_id: minare-coordinator
+
+
+development:
+  reset_data: true
+

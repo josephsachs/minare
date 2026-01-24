@@ -1,5 +1,6 @@
 package com.minare.core.transport.downsocket
 
+import com.minare.application.config.FrameworkConfig
 import com.minare.core.transport.downsocket.pubsub.PubSubChannelStrategy
 import com.minare.core.utils.vertx.VerticleLogger
 import com.minare.core.transport.downsocket.pubsub.UpdateBatchCoordinator
@@ -23,6 +24,7 @@ import javax.inject.Named
  */
 class RedisPubSubWorkerVerticle @Inject constructor(
     @Named("databaseName") private val databaseName: String,
+    private val frameworkConfig: FrameworkConfig,
     private val pubSubChannelStrategy: PubSubChannelStrategy,
     private val vlog: VerticleLogger,
     private val updateBatchCoordinator: UpdateBatchCoordinator
@@ -82,14 +84,11 @@ class RedisPubSubWorkerVerticle @Inject constructor(
      * Initialize Redis subscriber connection
      */
     private suspend fun initializeRedisSubscriber() {
-        val redisUri = System.getenv("REDIS_URI")
-            ?: throw IllegalStateException("REDIS_URI environment variable is required")
-
         val redisOptions = RedisOptions()
-            .setConnectionString(redisUri)
-
+            .setConnectionString(
+                "redis://${frameworkConfig.redis.host}:${frameworkConfig.redis.port}"
+            )
         redisSubscriber = Redis.createClient(vertx, redisOptions)
-
         log.info("Redis subscriber initialized")
     }
 

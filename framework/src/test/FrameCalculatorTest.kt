@@ -1,6 +1,5 @@
 package com.minare.core.frames.coordinator.services
 
-import com.minare.application.config.FrameConfiguration
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.DisplayName

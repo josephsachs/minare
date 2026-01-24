@@ -3,6 +3,7 @@ package com.minare.core.config
 import com.google.inject.*
 import com.google.inject.name.Names
 import com.hazelcast.core.HazelcastInstance
+import com.minare.application.config.FrameworkConfig
 import com.minare.application.interfaces.AppState
 import com.minare.cache.ConnectionCache
 import com.minare.cache.InMemoryConnectionCache
@@ -55,12 +56,11 @@ import kotlin.coroutines.CoroutineContext
  * Applications can override these bindings by using a child injector.
  */
 class MinareModule(
-    private val entityFactoryName: String
+    private val frameworkConfig: FrameworkConfig
 ) : AbstractModule(), DatabaseNameProvider {
     private val log = LoggerFactory.getLogger(MinareModule::class.java)
 
-    val uri = System.getenv("MONGO_URI") ?:
-    throw IllegalStateException("MONGO_URI environment variable is required")
+    private val mongoUri = "mongodb://${frameworkConfig.mongo.host}:${frameworkConfig.mongo.port}/${getDatabaseName()}?replicaSet=rs0"
 
     override fun configure() {
         // Internal services, do not permit override
@@ -96,7 +96,7 @@ class MinareModule(
         // String variables
         bind(String::class.java)
             .annotatedWith(Names.named("mongoConnectionString"))
-            .toInstance(uri)
+            .toInstance(mongoUri)
 
         bind(String::class.java).annotatedWith(Names.named("channels")).toInstance("channels")
         bind(String::class.java).annotatedWith(Names.named("contexts")).toInstance("contexts")
@@ -118,6 +118,7 @@ class MinareModule(
     @Provides
     @Singleton
     fun provideEntityFactory(injector: Injector): EntityFactory {
+        val entityFactoryName = frameworkConfig.entity.factoryName
         val clazz = try {
             Class.forName(entityFactoryName)
                 .asSubclass(EntityFactory::class.java)
@@ -154,10 +155,10 @@ class MinareModule(
     @Provides
     @Singleton
     fun provideMongoClient(vertx: Vertx, @Named("databaseName") dbName: String): MongoClient {
-        log.info("Connecting to MongoDB at: $uri with database: $dbName")
+        log.info("Connecting to MongoDB at: $mongoUri with database: $dbName")
 
         val config = JsonObject()
-            .put("connection_string", uri)
+            .put("connection_string", mongoUri)
             .put("db_name", dbName)
             .put("useObjectId", true)
             .put("writeConcern", "majority")
@@ -177,11 +178,10 @@ class MinareModule(
     @Provides
     @Singleton
     fun provideRedisAPI(vertx: Vertx): RedisAPI {
-        val redisUri = System.getenv("REDIS_URI")
-            ?: throw IllegalStateException("REDIS_URI environment variable is required")
-
         val redisOptions = RedisOptions()
-            .setConnectionString(redisUri)
+            .setConnectionString(
+                "redis://${frameworkConfig.redis.host}:${frameworkConfig.redis.port}"
+            )
 
         val redis = Redis.createClient(vertx, redisOptions)
         return RedisAPI.api(redis)

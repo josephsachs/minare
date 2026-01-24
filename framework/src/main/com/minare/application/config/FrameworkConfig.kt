@@ -67,8 +67,35 @@ class FrameworkConfig {
         var tickInterval: Long = 0L
     }
 
+    class MongoConfig {
+        var host: String = ""
+        var port: Int = 0
+        var hasMongo: Boolean = false
+    }
+
+    class RedisConfig {
+        var host: String = ""
+        var port: Int = 0
+    }
+
+    class KafkaConfig {
+        var host: String = ""
+        var port: Int = 0
+        var groupId: String = ""
+    }
+
+    class DevelopmentSettings {
+        var resetData: Boolean = false
+    }
+
     var sockets = SocketsSection()
     var entity = EntityConfig()
     var frames = FramesConfig()
     var tasks = TaskConfig()
+
+    var mongo = MongoConfig()
+    var redis = RedisConfig()
+    var kafka = KafkaConfig()
+
+    var development = DevelopmentSettings()
 }

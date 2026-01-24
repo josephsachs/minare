@@ -1,5 +1,6 @@
 package com.minare.core.storage.services
 
+import com.minare.application.config.FrameworkConfig
 import io.vertx.ext.mongo.MongoClient
 import io.vertx.kotlin.coroutines.await
 import kotlinx.coroutines.async
@@ -12,6 +13,7 @@ import io.vertx.core.json.JsonObject
 
 @Singleton
 class DatabaseInitializer @Inject constructor(
+    private val frameworkConfig: FrameworkConfig,
     private val mongoClient: MongoClient,
     @Named("databaseName") private val dbName: String
 ) {
@@ -66,8 +68,7 @@ class DatabaseInitializer @Inject constructor(
      * Check if the RESET_STATE environment variable is set to true
      */
     private fun checkResetDbFlag(): Boolean {
-        val resetDbValue = System.getenv("RESET_STATE")?.lowercase() ?: "false"
-        return resetDbValue == "true" || resetDbValue == "1" || resetDbValue == "yes"
+        return frameworkConfig.development.resetData
     }
 
     /**

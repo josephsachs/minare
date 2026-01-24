@@ -676,7 +676,7 @@ abstract class MinareApplication : CoroutineVerticle() {
                 }
 
                 // Framework module requires the name of the configured entity factory for the provider
-                val frameworkModule = MinareModule(config.entity.factoryName)
+                val frameworkModule = MinareModule(config)
 
                 val upSocketVerticleModule = UpSocketVerticleModule()
                 val downSocketVerticleModule = DownSocketVerticleModule()
