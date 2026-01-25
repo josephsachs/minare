@@ -23,8 +23,7 @@ import com.minare.core.operation.MutationVerticle
 import com.minare.core.factories.MinareVerticleFactory
 import com.minare.core.frames.coordinator.handlers.DelayLateOperation
 import com.minare.core.transport.downsocket.RedisPubSubWorkerVerticle
-import com.minare.core.frames.services.WorkerRegistryMap
-import com.minare.core.frames.services.HazelcastWorkerRegistryMap
+import com.minare.core.frames.services.SnapshotService.Companion.SnapshotStoreOption
 import com.minare.core.storage.adapters.*
 import com.minare.core.storage.interfaces.*
 import com.minare.core.utils.vertx.VerticleLogger
@@ -37,13 +36,11 @@ import io.vertx.redis.client.Redis
 import io.vertx.redis.client.RedisAPI
 import io.vertx.redis.client.RedisOptions
 import io.vertx.spi.cluster.hazelcast.HazelcastClusterManager
-import javax.inject.Named
 import com.minare.core.transport.downsocket.pubsub.UpdateBatchCoordinator
 import com.minare.time.DockerTimeService
 import com.minare.time.TimeService
 import com.minare.core.frames.coordinator.handlers.LateOperationHandler
-import com.minare.core.frames.services.ActiveWorkerSet
-import com.minare.core.frames.services.HazelcastActiveWorkerSet
+import com.minare.core.frames.services.*
 import com.minare.core.transport.upsocket.handlers.SyncCommandHandler
 import com.minare.core.utils.vertx.EventBusUtils
 import com.minare.exceptions.EntityFactoryException
@@ -72,7 +69,15 @@ class MinareModule(
         bind(ChannelStore::class.java).to(MongoChannelStore::class.java).`in`(Singleton::class.java)
         bind(ContextStore::class.java).to(MongoContextStore::class.java).`in`(Singleton::class.java)
         bind(DeltaStore::class.java).to(RedisDeltaStore::class.java).`in`(Singleton::class.java)
-        bind(SnapshotStore::class.java).to(MongoSnapshotStore::class.java).`in`(Singleton::class.java)
+
+        when (frameworkConfig.frames.snapshot.store) {
+            SnapshotStoreOption.MONGO -> bind(SnapshotStore::class.java).to(MongoSnapshotStore::class.java).`in`(Singleton::class.java)
+            SnapshotStoreOption.JSON -> bind(SnapshotStore::class.java).to(JsonSnapshotStore::class.java).`in`(Singleton::class.java)
+            else -> {
+                log.warn("No snapshot store configured, binding no-op adapter")
+                bind(SnapshotStore::class.java).to(NoopSnapshotStore::class.java).`in`(Singleton::class.java)
+            }
+        }
 
         bind(TimeService::class.java).to(DockerTimeService::class.java).`in`(Singleton::class.java)
         bind(MutationService::class.java).`in`(Singleton::class.java)

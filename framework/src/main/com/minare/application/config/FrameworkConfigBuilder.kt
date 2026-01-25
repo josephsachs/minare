@@ -3,8 +3,8 @@ package com.minare.application.config
 import com.minare.exceptions.ConfigurationException
 import io.vertx.core.json.JsonObject
 import com.minare.core.frames.coordinator.services.SessionService.Companion.AutoSession
+import com.minare.core.frames.services.SnapshotService.Companion.SnapshotStoreOption
 import io.vertx.core.impl.logging.LoggerFactory
-import java.awt.Frame
 
 class FrameworkConfigBuilder {
     private val log = LoggerFactory.getLogger(FrameworkConfigBuilder::class.java)
@@ -18,6 +18,7 @@ class FrameworkConfigBuilder {
             .let { setEntityConfig(file, it) }
             .let { setFramesConfig(file, it) }
             .let { setTasksConfig(file, it) }
+            .let { setFilesystemConfig(file, it) }
             .let { setMongoConfig(file, it) }
             .let { setRedisConfig(file, it) }
             .let { setKafkaConfig(file, it) }
@@ -115,6 +116,22 @@ class FrameworkConfigBuilder {
             config.frames.timeline.replay.bufferWhileReplay = true
         }
 
+        val snapshot = withInfo(frames.getJsonObject("snapshot"), "frames.snapshot section not specified, snapshots not enabled")
+
+        if (!snapshot.isEmpty) {
+            val snapshotStore = require(snapshot.getString("store"), "frames.snapshot.store must be specified, since frames.snapshot section exists")
+            config.frames.snapshot.enabled = true
+            config.frames.snapshot.store = when (snapshotStore) {
+                "mongo" -> SnapshotStoreOption.MONGO
+                "json" -> SnapshotStoreOption.JSON
+                else -> {
+                    infos.add("frames.snapshot.store option not recognized, snapshots will not be stored (options: mongo, json)")
+                    config.frames.snapshot.enabled = false
+                    SnapshotStoreOption.NONE
+                }
+            }
+        }
+
         return config
     }
 
@@ -124,6 +141,16 @@ class FrameworkConfigBuilder {
     private fun setTasksConfig(file: JsonObject, config: FrameworkConfig): FrameworkConfig {
         val tasks = require(file.getJsonObject("tasks"), "tasks section must be specified")
         config.tasks.tickInterval = require(tasks.getInteger("tick_interval"), "tasks.tick_interval must be specified").toLong()
+
+        return config
+    }
+
+    /**
+     * Set configuration for file system
+     */
+    private fun setFilesystemConfig(file: JsonObject, config: FrameworkConfig): FrameworkConfig {
+        val filesystem = require(file.getJsonObject("filesystem"), "filesystem section must be specified")
+        config.filesystem.storagePath = require(filesystem.getString("storage_path"), "filesystem.storage_path must be specified")
 
         return config
     }
