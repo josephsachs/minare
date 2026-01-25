@@ -36,5 +36,11 @@ class SnapshotService @Inject constructor(
 
     companion object {
         const val ADDRESS_SNAPSHOT_COMPLETE = "minare.coordinator.worker.snapshot.complete"
+
+        enum class SnapshotStoreOption {
+            MONGO,
+            JSON,
+            NONE
+        }
     }
 }

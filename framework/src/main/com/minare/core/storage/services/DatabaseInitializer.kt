@@ -1,5 +1,6 @@
 package com.minare.core.storage.services
 
+import com.minare.application.config.FrameworkConfig
 import io.vertx.ext.mongo.MongoClient
 import io.vertx.kotlin.coroutines.await
 import kotlinx.coroutines.async
@@ -12,8 +13,8 @@ import io.vertx.core.json.JsonObject
 
 @Singleton
 class DatabaseInitializer @Inject constructor(
+    private val frameworkConfig: FrameworkConfig,
     private val mongoClient: MongoClient,
-    @Named("databaseName") private val dbName: String
 ) {
     private val log = LoggerFactory.getLogger(DatabaseInitializer::class.java)
 
@@ -30,13 +31,13 @@ class DatabaseInitializer @Inject constructor(
      */
     suspend fun initialize() {
         try {
-            log.info("Initializing database: $dbName")
+            log.info("Initializing database: ${frameworkConfig.mongo.database}")
 
             // Check if we should reset the database
             val shouldResetDb = checkResetDbFlag()
 
             if (shouldResetDb) {
-                log.warn("RESET_STATE flag is set to true - dropping existing collections!")
+                log.warn("development.reset_data flag is set to true - dropping existing collections!")
                 dropExistingCollections()
             }
 
@@ -66,8 +67,7 @@ class DatabaseInitializer @Inject constructor(
      * Check if the RESET_STATE environment variable is set to true
      */
     private fun checkResetDbFlag(): Boolean {
-        val resetDbValue = System.getenv("RESET_STATE")?.lowercase() ?: "false"
-        return resetDbValue == "true" || resetDbValue == "1" || resetDbValue == "yes"
+        return frameworkConfig.development.resetData
     }
 
     /**

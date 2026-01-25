@@ -36,7 +36,35 @@ frames:
       assign_on_resume: false
     replay:
       buffer_while_replay: true
+  snapshot:
+    store: mongo
 
 
 tasks:
   tick_interval: 50
+
+
+filesystem:
+  storage_path: /var/log
+
+
+mongo:
+  host: mongodb-rs
+  port: 27017
+  database: minare
+
+
+redis:
+  host: redis
+  port: 6379
+
+
+kafka:
+  host: kafka
+  port: 29092
+  group_id: minare-coordinator
+
+
+development:
+  reset_data: true
+

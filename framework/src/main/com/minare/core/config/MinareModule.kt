@@ -3,6 +3,7 @@ package com.minare.core.config
 import com.google.inject.*
 import com.google.inject.name.Names
 import com.hazelcast.core.HazelcastInstance
+import com.minare.application.config.FrameworkConfig
 import com.minare.application.interfaces.AppState
 import com.minare.cache.ConnectionCache
 import com.minare.cache.InMemoryConnectionCache
@@ -22,8 +23,7 @@ import com.minare.core.operation.MutationVerticle
 import com.minare.core.factories.MinareVerticleFactory
 import com.minare.core.frames.coordinator.handlers.DelayLateOperation
 import com.minare.core.transport.downsocket.RedisPubSubWorkerVerticle
-import com.minare.core.frames.services.WorkerRegistryMap
-import com.minare.core.frames.services.HazelcastWorkerRegistryMap
+import com.minare.core.frames.services.SnapshotService.Companion.SnapshotStoreOption
 import com.minare.core.storage.adapters.*
 import com.minare.core.storage.interfaces.*
 import com.minare.core.utils.vertx.VerticleLogger
@@ -36,13 +36,11 @@ import io.vertx.redis.client.Redis
 import io.vertx.redis.client.RedisAPI
 import io.vertx.redis.client.RedisOptions
 import io.vertx.spi.cluster.hazelcast.HazelcastClusterManager
-import javax.inject.Named
 import com.minare.core.transport.downsocket.pubsub.UpdateBatchCoordinator
 import com.minare.time.DockerTimeService
 import com.minare.time.TimeService
 import com.minare.core.frames.coordinator.handlers.LateOperationHandler
-import com.minare.core.frames.services.ActiveWorkerSet
-import com.minare.core.frames.services.HazelcastActiveWorkerSet
+import com.minare.core.frames.services.*
 import com.minare.core.transport.upsocket.handlers.SyncCommandHandler
 import com.minare.core.utils.vertx.EventBusUtils
 import com.minare.exceptions.EntityFactoryException
@@ -55,12 +53,9 @@ import kotlin.coroutines.CoroutineContext
  * Applications can override these bindings by using a child injector.
  */
 class MinareModule(
-    private val entityFactoryName: String
-) : AbstractModule(), DatabaseNameProvider {
+    private val frameworkConfig: FrameworkConfig
+) : AbstractModule() {
     private val log = LoggerFactory.getLogger(MinareModule::class.java)
-
-    val uri = System.getenv("MONGO_URI") ?:
-    throw IllegalStateException("MONGO_URI environment variable is required")
 
     override fun configure() {
         // Internal services, do not permit override
@@ -74,7 +69,15 @@ class MinareModule(
         bind(ChannelStore::class.java).to(MongoChannelStore::class.java).`in`(Singleton::class.java)
         bind(ContextStore::class.java).to(MongoContextStore::class.java).`in`(Singleton::class.java)
         bind(DeltaStore::class.java).to(RedisDeltaStore::class.java).`in`(Singleton::class.java)
-        bind(SnapshotStore::class.java).to(MongoSnapshotStore::class.java).`in`(Singleton::class.java)
+
+        when (frameworkConfig.frames.snapshot.store) {
+            SnapshotStoreOption.MONGO -> bind(SnapshotStore::class.java).to(MongoSnapshotStore::class.java).`in`(Singleton::class.java)
+            SnapshotStoreOption.JSON -> bind(SnapshotStore::class.java).to(JsonSnapshotStore::class.java).`in`(Singleton::class.java)
+            else -> {
+                log.warn("No snapshot store configured, binding no-op adapter")
+                bind(SnapshotStore::class.java).to(NoopSnapshotStore::class.java).`in`(Singleton::class.java)
+            }
+        }
 
         bind(TimeService::class.java).to(DockerTimeService::class.java).`in`(Singleton::class.java)
         bind(MutationService::class.java).`in`(Singleton::class.java)
@@ -92,11 +95,6 @@ class MinareModule(
 
         // Providers
         bind(AppState::class.java).toProvider(AppStateProvider::class.java).`in`(Singleton::class.java)
-
-        // String variables
-        bind(String::class.java)
-            .annotatedWith(Names.named("mongoConnectionString"))
-            .toInstance(uri)
 
         bind(String::class.java).annotatedWith(Names.named("channels")).toInstance("channels")
         bind(String::class.java).annotatedWith(Names.named("contexts")).toInstance("contexts")
@@ -118,6 +116,7 @@ class MinareModule(
     @Provides
     @Singleton
     fun provideEntityFactory(injector: Injector): EntityFactory {
+        val entityFactoryName = frameworkConfig.entity.factoryName
         val clazz = try {
             Class.forName(entityFactoryName)
                 .asSubclass(EntityFactory::class.java)
@@ -153,11 +152,14 @@ class MinareModule(
 
     @Provides
     @Singleton
-    fun provideMongoClient(vertx: Vertx, @Named("databaseName") dbName: String): MongoClient {
-        log.info("Connecting to MongoDB at: $uri with database: $dbName")
+    fun provideMongoClient(vertx: Vertx): MongoClient {
+        val mongoUri =  "mongodb://${frameworkConfig.mongo.host}:${frameworkConfig.mongo.port}/${frameworkConfig.mongo.database}?replicaSet=rs0"
+        val dbName = frameworkConfig.mongo.database
+
+        log.info("Connecting to MongoDB at: $mongoUri with database: $dbName")
 
         val config = JsonObject()
-            .put("connection_string", uri)
+            .put("connection_string", mongoUri)
             .put("db_name", dbName)
             .put("useObjectId", true)
             .put("writeConcern", "majority")
@@ -177,11 +179,10 @@ class MinareModule(
     @Provides
     @Singleton
     fun provideRedisAPI(vertx: Vertx): RedisAPI {
-        val redisUri = System.getenv("REDIS_URI")
-            ?: throw IllegalStateException("REDIS_URI environment variable is required")
-
         val redisOptions = RedisOptions()
-            .setConnectionString(redisUri)
+            .setConnectionString(
+                "redis://${frameworkConfig.redis.host}:${frameworkConfig.redis.port}"
+            )
 
         val redis = Redis.createClient(vertx, redisOptions)
         return RedisAPI.api(redis)
@@ -223,6 +224,4 @@ class MinareModule(
     fun provideEventBusUtils(vertx: Vertx, coroutineContext: CoroutineContext): EventBusUtils {
         return EventBusUtils(vertx, coroutineContext, "FrameCoordinatorVerticle")
     }
-
-    override fun getDatabaseName(): String = "minare"
 }

@@ -6,7 +6,6 @@ import com.minare.controller.ChannelController
 import com.minare.controller.ConnectionController
 import com.minare.controller.MessageController
 import com.minare.controller.OperationController
-import com.minare.core.config.DatabaseNameProvider
 import com.minare.nodegraph.controller.NodeGraphChannelController
 import com.minare.nodegraph.controller.NodeGraphConnectionController
 import com.minare.nodegraph.controller.NodeGraphMessageController
@@ -20,8 +19,8 @@ import org.slf4j.LoggerFactory
  * When combined with the framework through a child injector,
  * bindings defined here will override the framework's default bindings.
  */
-class NoddeGraphModule : PrivateModule(), DatabaseNameProvider {
-    private val log = LoggerFactory.getLogger(NoddeGraphModule::class.java)
+class NodeGraphModule : PrivateModule() {
+    private val log = LoggerFactory.getLogger(NodeGraphModule::class.java)
 
     override fun configure() {
         bind(ChannelController::class.java).to(NodeGraphChannelController::class.java).`in`(Singleton::class.java)
@@ -33,9 +32,5 @@ class NoddeGraphModule : PrivateModule(), DatabaseNameProvider {
         expose(ConnectionController::class.java)
         expose(OperationController::class.java)
         expose(MessageController::class.java)
-
-        log.info("ExampleModule configured with custom EntityFactory and controllers")
     }
-
-    override fun getDatabaseName(): String = "node_graph"
 }

@@ -13,6 +13,8 @@ import com.minare.core.frames.coordinator.FrameCoordinatorVerticle.Companion.ADD
 import com.minare.core.frames.services.WorkerRegistry
 import com.minare.core.operation.interfaces.MessageQueue
 import com.minare.core.storage.interfaces.SnapshotStore
+import com.minare.core.utils.debug.DebugLogger
+import com.minare.core.utils.debug.DebugLogger.Companion.DebugType
 import com.minare.core.utils.vertx.EventBusUtils
 import com.minare.core.utils.vertx.EventWaiter
 import io.vertx.core.json.JsonArray
@@ -30,7 +32,8 @@ class SessionService @Inject constructor(
     private val frameCompletionTracker: FrameCompletionTracker,
     private val messageQueue: MessageQueue,
     private val eventBusUtils: EventBusUtils,
-    private val eventWaiter: EventWaiter
+    private val eventWaiter: EventWaiter,
+    private val debug: DebugLogger
 ) {
     private val log = LoggerFactory.getLogger(SessionService::class.java)
     private val debugTraceLogs: Boolean = false
@@ -168,6 +171,7 @@ class SessionService @Inject constructor(
     private suspend fun createSessionCollection(sessionId: String, metadata: JsonObject) {
         try {
             snapshotStore.create(sessionId, metadata)
+
         } catch (e: Exception) {
             log.error("Failed to create session collection for snapshot", e)
         }

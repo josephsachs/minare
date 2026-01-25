@@ -51,8 +51,10 @@ class DebugLogger {
         DebugType.COORDINATOR_STARTUP_ALL_WORKERS_ALREADY_HERE to true,
         DebugType.COORDINATOR_STARTUP_HANDLE_WORKER_READY to true,
         DebugType.COORDINATOR_STARTUP_ALL_WORKERS_READY to true,
-
+        DebugType.COORDINATOR_SNAPSHOT_COLLECTION_NOT_CREATED to true,
         DebugType.CHANNEL_CONTROLLER_ADD_CLIENT_CHANNEL to false,
+        DebugType.COORDINATOR_SNAPSHOT_DELTAS_NOT_STORED to true,
+        DebugType.COORDINATOR_SNAPSHOT_STATE_NOT_STORED to true,
         DebugType.CHANNEL_CONTROLLER_ADD_ENTITY_CHANNEL to false,
         DebugType.CHANNEL_CONTROLLER_ADD_ENTITIES_CHANNEL to false,
         DebugType.CHANNEL_CONTROLLER_CREATE_CHANNEL to false,
@@ -196,6 +198,9 @@ class DebugLogger {
                 DebugType.COORDINATOR_STARTUP_INITIAL_WORKER_STATUS -> { "Initial worker check: ${args[0]}/${args[1]} active" }
                 DebugType.COORDINATOR_STARTUP_ALL_WORKERS_ALREADY_HERE -> { "Coordinator acknowledges all workers already here, proceeding" }
                 DebugType.COORDINATOR_STARTUP_HANDLE_WORKER_READY -> { "Worker ${args[0]} ready: ${args[1]}/${args[2]}" }
+                DebugType.COORDINATOR_SNAPSHOT_COLLECTION_NOT_CREATED -> { "Snapshots disabled due to configuration, skipping create session record" }
+                DebugType.COORDINATOR_SNAPSHOT_DELTAS_NOT_STORED -> { "Snapshots disabled due to configuration, skipping delta storage" }
+                DebugType.COORDINATOR_SNAPSHOT_STATE_NOT_STORED -> { "Snapshots disabled due to configuration, skipping entity state storage" }
                 DebugType.COORDINATOR_STARTUP_ALL_WORKERS_READY -> { "Coordinator acknowledges all workers ready, proceeding"}
                 DebugType.CHANNEL_CONTROLLER_ADD_CLIENT_CHANNEL -> { "Client ${args[0]} subscribed to channel ${args[1]}" }
                 DebugType.CHANNEL_CONTROLLER_ADD_ENTITY_CHANNEL -> { "Added entity ${args[0]} to channel ${args[1]} with context ${args[2]}" }
@@ -271,6 +276,9 @@ class DebugLogger {
             COORDINATOR_STARTUP_ALL_WORKERS_ALREADY_HERE,
             COORDINATOR_STARTUP_HANDLE_WORKER_READY,
             COORDINATOR_STARTUP_ALL_WORKERS_READY,
+            COORDINATOR_SNAPSHOT_COLLECTION_NOT_CREATED,
+            COORDINATOR_SNAPSHOT_DELTAS_NOT_STORED,
+            COORDINATOR_SNAPSHOT_STATE_NOT_STORED,
             CHANNEL_CONTROLLER_ADD_CLIENT_CHANNEL,
             CHANNEL_CONTROLLER_ADD_ENTITY_CHANNEL,
             CHANNEL_CONTROLLER_ADD_ENTITIES_CHANNEL,

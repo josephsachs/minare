@@ -1,5 +1,6 @@
 package com.minare.core.storage.services
 
+import com.minare.application.config.FrameworkConfig
 import com.minare.core.operation.interfaces.MessageQueue
 import com.minare.core.operation.adapters.KafkaMessageQueue
 import io.vertx.kotlin.coroutines.await
@@ -14,6 +15,7 @@ import javax.inject.Singleton
  */
 @Singleton
 class StateInitializer @Inject constructor(
+    private val frameworkConfig: FrameworkConfig,
     private val databaseInitializer: DatabaseInitializer,
     private val redisAPI: RedisAPI,
     private val messageQueue: MessageQueue
@@ -43,8 +45,7 @@ class StateInitializer @Inject constructor(
      * Check if the RESET_STATE environment variable is set to true
      */
     private fun checkResetStateFlag(): Boolean {
-        val resetValue = System.getenv("RESET_STATE")?.lowercase() ?: "false"
-        return resetValue == "true" || resetValue == "1" || resetValue == "yes"
+        return frameworkConfig.development.resetData
     }
 
     /**

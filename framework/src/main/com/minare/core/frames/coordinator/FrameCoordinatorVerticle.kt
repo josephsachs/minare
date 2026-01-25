@@ -289,7 +289,6 @@ class FrameCoordinatorVerticle @Inject constructor(
         val oldSessionId = coordinatorState.sessionId
 
         snapshotService.doSnapshot(oldSessionId)
-
         eventWaiter.waitFor(ADDRESS_SNAPSHOT_COMPLETE)
 
         sessionService.initializeSession()
@@ -298,7 +297,7 @@ class FrameCoordinatorVerticle @Inject constructor(
 
         val newSessionId = eventMessage.getString("sessionId")
 
-        debug.log(DebugLogger.Companion.DebugType.COORDINATOR_SESSION_ANNOUNCEMENT, listOf(newSessionId))
+        debug.log(DebugType.COORDINATOR_SESSION_ANNOUNCEMENT, listOf(newSessionId))
 
         coordinatorState.sessionId = newSessionId
 

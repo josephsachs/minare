@@ -585,21 +585,6 @@ abstract class MinareApplication : CoroutineVerticle() {
         }
 
         /**
-         * Extract database name from the application module if available.
-         * Uses the DatabaseNameProvider interface if implemented, otherwise returns a default.
-         */
-        private fun getDatabaseNameFromModule(module: Module): String {
-            return if (module is DatabaseNameProvider) {
-                val dbName = module.getDatabaseName()
-                log.info("Using database name from DatabaseNameProvider: $dbName")
-                dbName
-            } else {
-                log.info("Module doesn't implement DatabaseNameProvider, using default database name")
-                "minare"
-            }
-        }
-
-        /**
          * Configure Vert.x's Jackson ObjectMapper to properly handle Kotlin types.
          * Must be called before any JSON serialization/deserialization occurs.
          */
@@ -676,7 +661,7 @@ abstract class MinareApplication : CoroutineVerticle() {
                 }
 
                 // Framework module requires the name of the configured entity factory for the provider
-                val frameworkModule = MinareModule(config.entity.factoryName)
+                val frameworkModule = MinareModule(config)
 
                 val upSocketVerticleModule = UpSocketVerticleModule()
                 val downSocketVerticleModule = DownSocketVerticleModule()
@@ -684,17 +669,6 @@ abstract class MinareApplication : CoroutineVerticle() {
 
                 val appModule = getApplicationModule(applicationClass)
                 log.info("Loaded application module: ${appModule.javaClass.name}")
-
-                val dbName = getDatabaseNameFromModule(appModule)
-                log.info("Using database name: $dbName")
-
-                val dbNameModule = object : AbstractModule() {
-                    override fun configure() {
-                        bind(String::class.java)
-                            .annotatedWith(Names.named("databaseName"))
-                            .toInstance(dbName)
-                    }
-                }
 
                 val vertxModule = object : AbstractModule() {
                     override fun configure() {
@@ -711,7 +685,6 @@ abstract class MinareApplication : CoroutineVerticle() {
                         // framework (provides defaults)
                         install(vertxModule)
                         install(configModule)
-                        install(dbNameModule)
 
                         install(frameworkModule)
                         install(upSocketVerticleModule)

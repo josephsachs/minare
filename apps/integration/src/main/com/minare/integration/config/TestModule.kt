@@ -9,9 +9,6 @@ import com.minare.controller.ChannelController
 import com.minare.controller.ConnectionController
 import com.minare.controller.MessageController
 import com.minare.controller.OperationController
-import com.minare.core.config.DatabaseNameProvider
-import com.minare.core.entity.factories.EntityFactory
-import com.minare.integration.TestEntityFactory
 import com.minare.integration.controller.TestChannelController
 import com.minare.integration.controller.TestConnectionController
 import com.minare.integration.controller.TestMessageController
@@ -25,7 +22,7 @@ import org.slf4j.LoggerFactory
  * When combined with the framework through a child injector,
  * bindings defined here will override the framework's default bindings.
  */
-class TestModule : PrivateModule(), DatabaseNameProvider {
+class TestModule : PrivateModule() {
     private val log = LoggerFactory.getLogger(TestModule::class.java)
 
     override fun configure() {
@@ -41,6 +38,4 @@ class TestModule : PrivateModule(), DatabaseNameProvider {
 
         log.info("TestModule configured with custom EntityFactory and controllers")
     }
-
-    override fun getDatabaseName(): String = "integration"
 }

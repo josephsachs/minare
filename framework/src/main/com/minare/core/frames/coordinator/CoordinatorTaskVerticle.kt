@@ -1,19 +1,10 @@
 package com.minare.core.frames.coordinator
 
 import com.google.inject.Inject
-import com.minare.application.config.TaskConfiguration
-import com.minare.core.entity.ReflectionCache
-import com.minare.core.entity.annotations.Task
-import com.minare.core.entity.factories.EntityFactory
-import com.minare.core.entity.models.Entity
+import com.minare.application.config.FrameworkConfig
 import com.minare.core.frames.coordinator.FrameCoordinatorVerticle.Companion.ADDRESS_NEXT_FRAME
 import com.minare.core.frames.coordinator.models.FixedTaskWorkUnit
 import com.minare.core.frames.coordinator.models.TaskWorkUnit
-import com.minare.core.frames.coordinator.services.StartupService
-import com.minare.core.frames.services.WorkerRegistry
-import com.minare.core.frames.worker.WorkerTaskVerticle
-import com.minare.core.storage.interfaces.StateStore
-import com.minare.core.utils.debug.DebugLogger
 import com.minare.core.utils.vertx.EventWaiter
 import com.minare.core.utils.vertx.VerticleLogger
 import com.minare.core.work.WorkDispatchService
@@ -24,7 +15,7 @@ import io.vertx.kotlin.coroutines.CoroutineVerticle
 import kotlinx.coroutines.launch
 
 class CoordinatorTaskVerticle @Inject constructor(
-    private val taskConfiguration: TaskConfiguration,
+    private val frameworkConfig: FrameworkConfig,
     private val workDispatchService: WorkDispatchService,
     private val taskWorkUnit: TaskWorkUnit,
     private val fixedTaskWorkUnit: FixedTaskWorkUnit,
@@ -48,7 +39,7 @@ class CoordinatorTaskVerticle @Inject constructor(
     private suspend fun startTaskLoop() {
         log.info("CoordinatorTaskVerticle starting task process")
 
-        taskTimerId = vertx.setPeriodic(taskConfiguration.msPerTick) {
+        taskTimerId = vertx.setPeriodic(frameworkConfig.tasks.tickInterval) {
             if (!isTaskProcessing) {
                 launch {
                     isTaskProcessing = true

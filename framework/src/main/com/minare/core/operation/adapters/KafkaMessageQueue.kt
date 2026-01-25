@@ -1,5 +1,6 @@
 package com.minare.core.operation.adapters
 
+import com.minare.application.config.FrameworkConfig
 import com.minare.core.operation.interfaces.MessageQueue
 import io.vertx.core.Vertx
 import io.vertx.core.json.JsonArray
@@ -20,20 +21,20 @@ import javax.inject.Singleton
  */
 @Singleton
 class KafkaMessageQueue @Inject constructor(
-    private val vertx: Vertx
+    private val vertx: Vertx,
+    private val frameworkConfig: FrameworkConfig
 ) : MessageQueue {
 
     private val log = LoggerFactory.getLogger(KafkaMessageQueue::class.java)
 
-    // TODO: Move all System.getenv() calls to MinareApplication
-    private val bootstrapServers = System.getenv("KAFKA_BOOTSTRAP_SERVERS") ?: "localhost:9092"
-    private val topicPartitions = System.getenv("KAFKA_TOPIC_PARTITIONS")?.toInt() ?: 3
-    private val topicReplicationFactor = System.getenv("KAFKA_TOPIC_REPLICATION_FACTOR")?.toShort() ?: 1
-    private val producerRetries = System.getenv("KAFKA_PRODUCER_RETRIES")?.toInt() ?: 3
-    private val producerAcks = System.getenv("KAFKA_PRODUCER_ACKS") ?: "1"
-    private val producerCompressionType = System.getenv("KAFKA_PRODUCER_COMPRESSION") ?: "snappy"
-    private val producerLingerMs = System.getenv("KAFKA_PRODUCER_LINGER_MS") ?: "10"
-    private val producerBatchSize = System.getenv("KAFKA_PRODUCER_BATCH_SIZE") ?: "16384"
+    private val bootstrapServers = "${frameworkConfig.kafka.host}:${frameworkConfig.kafka.port}"
+    private val topicPartitions = 3
+    private val topicReplicationFactor = 1
+    private val producerRetries = 3
+    private val producerAcks = "all"
+    private val producerCompressionType = "gzip"
+    private val producerLingerMs = "10"
+    private val producerBatchSize = "16384"
 
     // Track initialized topics to avoid repeated creation attempts
     private val initializedTopics = mutableSetOf<String>()
@@ -70,8 +71,6 @@ class KafkaMessageQueue @Inject constructor(
         config["buffer.memory"] = "33554432"  // 32MB
         config["request.timeout.ms"] = "30000"
         config["delivery.timeout.ms"] = "120000"
-
-        // Move System.getenv() call to MinareApplication
         config["client.id"] = "minare-producer-${System.getenv("HOSTNAME") ?: "unknown"}"
 
         log.info("Creating Kafka producer with config: {}", config)
@@ -105,9 +104,9 @@ class KafkaMessageQueue @Inject constructor(
             try {
                 log.debug("Ensuring topic {} exists", topic)
 
-                val newTopic = NewTopic(topic, topicPartitions, topicReplicationFactor).apply {
+                val newTopic = NewTopic(topic, topicPartitions, topicReplicationFactor.toShort()).apply {
                     setConfig(mapOf(
-                        // TODO: Make retention window configurable by developer, including DB snapshot and save-to-disk strategies
+                        // This will be configurable as part of storage configs in a future epic
                         "retention.ms" to "86400000", // 24 hours
                         "compression.type" to "producer", // Use producer's compression
                         "min.insync.replicas" to "1"

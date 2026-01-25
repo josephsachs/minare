@@ -1,6 +1,7 @@
 package com.minare.application.config
 
 import com.minare.core.frames.coordinator.services.SessionService.Companion.AutoSession
+import com.minare.core.frames.services.SnapshotService.Companion.SnapshotStoreOption
 
 class FrameworkConfig {
     class SocketsSection {
@@ -40,6 +41,7 @@ class FrameworkConfig {
         var lookahead: Int = 0
         var session: FrameSessionConfig = FrameSessionConfig()
         var timeline: FrameTimelineConfig = FrameTimelineConfig()
+        var snapshot: FrameSnapshotConfig = FrameSnapshotConfig()
     }
 
     class FrameSessionConfig {
@@ -63,12 +65,50 @@ class FrameworkConfig {
         var bufferWhileReplay: Boolean = true
     }
 
+    class FrameSnapshotConfig {
+        var enabled: Boolean = false
+        var store: SnapshotStoreOption = SnapshotStoreOption.NONE
+    }
+
     class TaskConfig {
         var tickInterval: Long = 0L
+    }
+
+    class FilesystemConfig {
+        var storagePath: String = ""
+    }
+
+    class MongoConfig {
+        var host: String = ""
+        var port: Int = 0
+        var database: String = ""
+        var hasMongo: Boolean = false
+    }
+
+    class RedisConfig {
+        var host: String = ""
+        var port: Int = 0
+    }
+
+    class KafkaConfig {
+        var host: String = ""
+        var port: Int = 0
+        var groupId: String = ""
+    }
+
+    class DevelopmentSettings {
+        var resetData: Boolean = false
     }
 
     var sockets = SocketsSection()
     var entity = EntityConfig()
     var frames = FramesConfig()
     var tasks = TaskConfig()
+    var filesystem = FilesystemConfig()
+
+    var mongo = MongoConfig()
+    var redis = RedisConfig()
+    var kafka = KafkaConfig()
+
+    var development = DevelopmentSettings()
 }

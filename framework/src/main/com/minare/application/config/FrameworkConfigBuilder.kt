@@ -3,6 +3,7 @@ package com.minare.application.config
 import com.minare.exceptions.ConfigurationException
 import io.vertx.core.json.JsonObject
 import com.minare.core.frames.coordinator.services.SessionService.Companion.AutoSession
+import com.minare.core.frames.services.SnapshotService.Companion.SnapshotStoreOption
 import io.vertx.core.impl.logging.LoggerFactory
 
 class FrameworkConfigBuilder {
@@ -17,6 +18,11 @@ class FrameworkConfigBuilder {
             .let { setEntityConfig(file, it) }
             .let { setFramesConfig(file, it) }
             .let { setTasksConfig(file, it) }
+            .let { setFilesystemConfig(file, it) }
+            .let { setMongoConfig(file, it) }
+            .let { setRedisConfig(file, it) }
+            .let { setKafkaConfig(file, it) }
+            .let { setDevelopmentConfig(file, it) }
 
         validate()
 
@@ -110,6 +116,22 @@ class FrameworkConfigBuilder {
             config.frames.timeline.replay.bufferWhileReplay = true
         }
 
+        val snapshot = withInfo(frames.getJsonObject("snapshot"), "frames.snapshot section not specified, snapshots not enabled")
+
+        if (!snapshot.isEmpty) {
+            val snapshotStore = require(snapshot.getString("store"), "frames.snapshot.store must be specified, since frames.snapshot section exists")
+            config.frames.snapshot.enabled = true
+            config.frames.snapshot.store = when (snapshotStore) {
+                "mongo" -> SnapshotStoreOption.MONGO
+                "json" -> SnapshotStoreOption.JSON
+                else -> {
+                    infos.add("frames.snapshot.store option not recognized, snapshots will not be stored (options: mongo, json)")
+                    config.frames.snapshot.enabled = false
+                    SnapshotStoreOption.NONE
+                }
+            }
+        }
+
         return config
     }
 
@@ -119,6 +141,71 @@ class FrameworkConfigBuilder {
     private fun setTasksConfig(file: JsonObject, config: FrameworkConfig): FrameworkConfig {
         val tasks = require(file.getJsonObject("tasks"), "tasks section must be specified")
         config.tasks.tickInterval = require(tasks.getInteger("tick_interval"), "tasks.tick_interval must be specified").toLong()
+
+        return config
+    }
+
+    /**
+     * Set configuration for file system
+     */
+    private fun setFilesystemConfig(file: JsonObject, config: FrameworkConfig): FrameworkConfig {
+        val filesystem = require(file.getJsonObject("filesystem"), "filesystem section must be specified")
+        config.filesystem.storagePath = require(filesystem.getString("storage_path"), "filesystem.storage_path must be specified")
+
+        return config
+    }
+
+    /**
+     * Set configuration for MongoDB
+     */
+    private fun setMongoConfig(file: JsonObject, config: FrameworkConfig): FrameworkConfig {
+        val mongo = withInfo(file.getJsonObject("mongo"), "mongo section not specified, any features configured to use mongo driver are implicitly disabled")
+
+        if (!mongo.isEmpty) {
+            config.mongo.host = require(mongo.getString("host"), "mongo.host must be specified, since mongo section exists")
+            config.mongo.port = require(mongo.getInteger("port"), "mongo.port must be specified, since mongo section exists")
+            config.mongo.database = require(mongo.getString("database"), "mongo.database must be specified, since mongo section exists")
+            config.mongo.hasMongo = true
+        }
+
+        return config
+    }
+
+    /**
+     * Set configuration for Redis
+     */
+    private fun setRedisConfig(file: JsonObject, config: FrameworkConfig): FrameworkConfig {
+        val redis = require(file.getJsonObject("redis"), "redis section must be specified")
+        config.redis.host = require(redis.getString("host"), "redis.host must be specified")
+        config.redis.port = require(redis.getInteger("port"), "redis.port must be specified")
+        return config
+    }
+
+    /**
+     * Set configuration for Kafka
+     */
+    private fun setKafkaConfig(file: JsonObject, config: FrameworkConfig): FrameworkConfig {
+        val kafka = require(file.getJsonObject("kafka"), "kafka section must be specified")
+        config.kafka.host = require(kafka.getString("host"), "kafka.host must be specified")
+        config.kafka.port = require(kafka.getInteger("port"), "kafka.port must be specified")
+        config.kafka.groupId = kafka.getString("group_id")  ?: "minare-coordinator"
+        return config
+    }
+
+    /**
+     * Set configuration for developer settings
+     */
+    private fun setDevelopmentConfig(file: JsonObject, config: FrameworkConfig): FrameworkConfig {
+        val development = withInfo(file.getJsonObject("development"), "development section not specified, development settings are implicitly disabled")
+
+        if (!development.isEmpty) {
+            config.development.resetData = toBoolean(
+                withInfo(
+                    development.getString("reset_data"),
+                    "WARNING: development.reset_data will delete ALL data in configured data stores, DO NOT USE IN PRODUCTION"
+                )
+            )
+        }
 
         return config
     }
