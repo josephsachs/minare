@@ -14,7 +14,6 @@ import com.minare.core.frames.services.WorkerRegistry
 import com.minare.core.operation.interfaces.MessageQueue
 import com.minare.core.storage.interfaces.SnapshotStore
 import com.minare.core.utils.debug.DebugLogger
-import com.minare.core.utils.debug.DebugLogger.Companion.DebugType
 import com.minare.core.utils.vertx.EventBusUtils
 import com.minare.core.utils.vertx.EventWaiter
 import io.vertx.core.json.JsonArray
