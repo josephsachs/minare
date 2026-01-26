@@ -101,10 +101,6 @@ class MinareModule(
         bind(String::class.java).annotatedWith(Names.named("entity_graph")).toInstance("entity_graph")
         bind(String::class.java).annotatedWith(Names.named("connections")).toInstance("connections")
 
-        bind(Int::class.java)
-            .annotatedWith(Names.named("intervalMs"))
-            .toInstance(100)
-
         bind(VerticleLogger::class.java).`in`(Singleton::class.java)
 
         // Workers
