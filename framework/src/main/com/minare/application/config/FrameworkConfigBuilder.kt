@@ -66,7 +66,9 @@ class FrameworkConfigBuilder {
         )
 
         val entityUpdate = require(entity.getJsonObject("update"), "entity.update section must be specified")
-        config.entity.update.batchInterval = require(entityUpdate.getInteger("batch_interval"), "entity.update.batch_interval must be specified").toLong()
+        val collectChanges = require(entityUpdate.getString("collect_changes"), "entity.update.collect_changes must be specified")
+        config.entity.update.collectChanges = toBoolean(collectChanges)
+        config.entity.update.interval = entityUpdate.getInteger("interval")?.toLong() ?: 0L
 
         return config
     }
