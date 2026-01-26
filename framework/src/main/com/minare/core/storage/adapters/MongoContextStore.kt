@@ -11,9 +11,9 @@ import com.minare.core.storage.interfaces.ContextStore
 
 @Singleton
 class MongoContextStore @Inject constructor(
-    private val mongoClient: MongoClient,
-    @Named("contexts") private val collection: String
+    private val mongoClient: MongoClient
 ) : ContextStore {
+    private val collection = "contexts"
     private val log = LoggerFactory.getLogger(MongoContextStore::class.java)
 
     /**

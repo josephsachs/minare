@@ -1,6 +1,7 @@
 package com.minare.core.storage.adapters
 
 import com.google.inject.Singleton
+import com.google.inject.name.Named
 import com.minare.core.entity.services.EntityInspector
 import com.minare.core.entity.models.Entity
 import com.minare.core.entity.factories.EntityFactory
@@ -27,10 +28,7 @@ class MongoEntityStore @Inject constructor(
     private val entityFactory: EntityFactory,
     private val entityInspector: EntityInspector
 ) : EntityGraphStore {
-
-    companion object {
-        const val COLLECTION_NAME = "entity_graph"
-    }
+    private val collection = "entity_graph"
 
     private val log = LoggerFactory.getLogger(MongoEntityStore::class.java)
 
@@ -50,7 +48,7 @@ class MongoEntityStore @Inject constructor(
                 // New entity - insert and let MongoDB generate an ID
                 document.put("version", 1)
                 val generatedId = mongoClient.insertWithOptions(
-                    COLLECTION_NAME,
+                    collection,
                     document,
                     WriteOption.ACKNOWLEDGED
                 ).await()
@@ -63,7 +61,7 @@ class MongoEntityStore @Inject constructor(
                 val update = JsonObject().put("\$set", document)
 
                 val result = mongoClient.findOneAndUpdateWithOptions(
-                    COLLECTION_NAME,
+                    collection,
                     query,
                     update,
                     io.vertx.ext.mongo.FindOptions(),
@@ -115,7 +113,7 @@ class MongoEntityStore @Inject constructor(
 
         try {
             val result = mongoClient.findOneAndUpdateWithOptions(
-                COLLECTION_NAME,
+                collection,
                 query,
                 update,
                 io.vertx.ext.mongo.FindOptions(),
@@ -152,7 +150,7 @@ class MongoEntityStore @Inject constructor(
         }
 
         val result = mongoClient.bulkWriteWithOptions(
-            COLLECTION_NAME,
+            collection,
             operations,
             io.vertx.ext.mongo.BulkWriteOptions().setWriteOption(WriteOption.ACKNOWLEDGED)
         ).await()
@@ -177,7 +175,7 @@ class MongoEntityStore @Inject constructor(
                 JsonArray(entityIds.map { JsonObject().put("_id", it) })
             )
 
-            val results = mongoClient.find(COLLECTION_NAME, query).await()
+            val results = mongoClient.find(collection, query).await()
 
             return results.mapNotNull { document ->
                 try {
@@ -232,14 +230,14 @@ class MongoEntityStore @Inject constructor(
             JsonArray(entityIds.map { JsonObject().put("_id", it) })
         )
 
-        return mongoClient.find(COLLECTION_NAME, query).await()
+        return mongoClient.find(collection, query).await()
     }
 
     suspend fun executeAggregation(pipeline: JsonArray): JsonArray {
         val results = JsonArray()
         val promise = io.vertx.core.Promise.promise<JsonArray>()
 
-        mongoClient.aggregate(COLLECTION_NAME, pipeline)
+        mongoClient.aggregate(collection, pipeline)
             .handler { results.add(it) }
             .endHandler { promise.complete(results) }
             .exceptionHandler { promise.fail(it) }

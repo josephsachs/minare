@@ -96,11 +96,6 @@ class MinareModule(
         // Providers
         bind(AppState::class.java).toProvider(AppStateProvider::class.java).`in`(Singleton::class.java)
 
-        bind(String::class.java).annotatedWith(Names.named("channels")).toInstance("channels")
-        bind(String::class.java).annotatedWith(Names.named("contexts")).toInstance("contexts")
-        bind(String::class.java).annotatedWith(Names.named("entity_graph")).toInstance("entity_graph")
-        bind(String::class.java).annotatedWith(Names.named("connections")).toInstance("connections")
-
         bind(VerticleLogger::class.java).`in`(Singleton::class.java)
 
         // Workers

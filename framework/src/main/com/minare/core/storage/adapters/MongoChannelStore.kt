@@ -11,7 +11,7 @@ import com.minare.core.storage.interfaces.ChannelStore
 import com.minare.core.utils.debug.DebugLogger
 
 class MongoChannelStore @Inject constructor(
-    private val mongoClient: MongoClient
+    private val mongoClient: MongoClient,
 ) : ChannelStore {
     private val collection = "channels"
     private val log = LoggerFactory.getLogger(MongoChannelStore::class.java)
