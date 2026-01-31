@@ -19,7 +19,8 @@ sockets:
 entity:
   factory: com.minare.nodegraph.NodeGraphEntityFactory
   update:
-    batch_interval: 100
+    collect_changes: true
+    interval: 25
 
 
 frames:

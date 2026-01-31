@@ -33,7 +33,8 @@ class FrameworkConfig {
     }
 
     class EntityUpdateConfig {
-        var batchInterval: Long = 0L
+        var collectChanges: Boolean = true
+        var interval: Long = 0L
     }
 
     class FramesConfig {

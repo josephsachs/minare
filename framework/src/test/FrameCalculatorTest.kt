@@ -1,20 +1,20 @@
 package com.minare.core.frames.coordinator.services
 
+import com.minare.application.config.FrameworkConfig
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 
-/**@DisplayName("FrameCalculatorService")
+@DisplayName("FrameCalculatorService")
 class FrameCalculatorServiceTest {
 
     private lateinit var calculator: FrameCalculatorService
 
     private fun createCalculator(frameDurationMs: Long = 100): FrameCalculatorService {
-        val config = object : FrameConfiguration() {
-            override val frameDurationMs: Long = frameDurationMs
-        }
+        val config = FrameworkConfig()
+        config.frames.frameDuration = frameDurationMs
         return FrameCalculatorService(config)
     }
 
@@ -164,8 +164,6 @@ class FrameCalculatorServiceTest {
 
             @Test
             fun `timestamp 50ms before sessionStart returns frame 0 due to truncation toward zero`() {
-                // Kotlin integer division truncates toward zero
-                // -50 / 100 = 0, not -1
                 val frame = calculator.timestampToLogicalFrame(
                     timestamp = 950,
                     sessionStartTimestamp = 1000
@@ -193,8 +191,6 @@ class FrameCalculatorServiceTest {
 
             @Test
             fun `negative frame calculation matches documented formula`() {
-                // (timestamp - sessionStart) / frameDuration
-                // (9900 - 10000) / 100 = -100 / 100 = -1
                 val frame = calculator.timestampToLogicalFrame(
                     timestamp = 9900,
                     sessionStartTimestamp = 10000
@@ -356,4 +352,4 @@ class FrameCalculatorServiceTest {
             }
         }
     }
-}**/
+}
