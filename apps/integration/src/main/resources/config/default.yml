@@ -66,6 +66,10 @@ kafka:
   group_id: minare-coordinator
 
 
+hazelcast:
+  cluster_name: minare-integration-tests
+
+
 development:
   reset_data: true
 

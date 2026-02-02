@@ -66,6 +66,10 @@ kafka:
   group_id: minare-coordinator
 
 
+hazelcast:
+  cluster_name: nodegraph-application
+
+
 development:
   reset_data: true
 

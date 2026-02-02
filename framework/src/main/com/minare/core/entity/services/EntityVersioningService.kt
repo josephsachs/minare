@@ -14,8 +14,6 @@ import com.minare.core.utils.graph.EntityGraphService
 /**
  * Updated to work with JsonObject documents instead of Entity instances,
  * using direct ReflectionCache calls instead of Entity wrapper methods.
- *
- * TODO: For V3, more complex field-level rules for bubbling
  */
 @Singleton
 class EntityVersioningService @Inject constructor(

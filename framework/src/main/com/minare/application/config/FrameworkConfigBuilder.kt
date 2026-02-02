@@ -22,6 +22,7 @@ class FrameworkConfigBuilder {
             .let { setMongoConfig(file, it) }
             .let { setRedisConfig(file, it) }
             .let { setKafkaConfig(file, it) }
+            .let { setHazelcastConfig(file, it) }
             .let { setDevelopmentConfig(file, it) }
 
         validate()
@@ -191,6 +192,21 @@ class FrameworkConfigBuilder {
         config.kafka.host = require(kafka.getString("host"), "kafka.host must be specified")
         config.kafka.port = require(kafka.getInteger("port"), "kafka.port must be specified")
         config.kafka.groupId = kafka.getString("group_id")  ?: "minare-coordinator"
+        return config
+    }
+
+    /**
+     * Set configuration for Hazelcast
+     */
+    private fun setHazelcastConfig(file: JsonObject, config: FrameworkConfig): FrameworkConfig {
+        val hazelcast = withInfo(file.getJsonObject("hazelcast"), "Hazelcast section not specified, using defaults")
+
+        if (!hazelcast.isEmpty) {
+            config.hazelcast.clusterName = hazelcast.getString("cluster_name") ?: "minare-application"
+        } else {
+            config.hazelcast.clusterName = "minare-application"
+        }
+
         return config
     }
 

@@ -598,25 +598,26 @@ abstract class MinareApplication : CoroutineVerticle() {
         }
 
         /**
-         * Start the application with the given implementation class.
-         * This is the main entry point that applications should use.
+         * Starts clustered Vert.x, reads the framework configuration and builds the dependency injection tree.
+         * This is the public interface used by the application to pass its own extension of MinareApplication.
+         * Typically we expect this to occur in the Main module of the application.
          */
         fun start(applicationClass: Class<out MinareApplication>, args: Array<String>) {
+            val frameworkConfig = getFrameworkConfiguration()
+
             val vertxOptions = VertxOptions()
+            val clusterManager = HazelcastConfigFactory.createConfiguredClusterManager(frameworkConfig.hazelcast.clusterName)
 
-            log.info("Clustering is enabled")
-
-            val clusterManager = HazelcastConfigFactory.createConfiguredClusterManager()
             vertxOptions.clusterManager = clusterManager
             HazelcastInstanceHolder.setClusterManager(clusterManager)
 
             Vertx.clusteredVertx(vertxOptions).onComplete { ar ->
                 if (ar.succeeded()) {
                     val vertx = ar.result()
-                    log.info("Successfully created clustered Vertx instance")
+                    log.info("Clustered Vertx instance created at ${System.currentTimeMillis()}")
 
                     CoroutineScope(vertx.dispatcher()).launch {
-                        completeStartup(vertx, applicationClass, args)
+                        completeStartup(vertx, applicationClass, args, frameworkConfig)
                     }
                 } else {
                     log.error("Failed to create clustered Vertx instance", ar.cause())
@@ -628,7 +629,7 @@ abstract class MinareApplication : CoroutineVerticle() {
         /**
          *
          */
-        private fun getConfiguration(): FrameworkConfig {
+        private fun getFrameworkConfiguration(): FrameworkConfig {
             val env = System.getenv("ENVIRONMENT") ?: "default"
             val configPath = "config/${env}.yml"
             val frameworkConfigBuilder = FrameworkConfigBuilder()
@@ -648,12 +649,13 @@ abstract class MinareApplication : CoroutineVerticle() {
         private suspend fun completeStartup(
             vertx: Vertx,
             applicationClass: Class<out MinareApplication>,
-            args: Array<String>
+            args: Array<String>,
+            config: FrameworkConfig
         ) {
             configureJackson()
 
             try {
-                val config = getConfiguration()
+
                 val configModule = object : AbstractModule() {
                     override fun configure() {
                         bind(FrameworkConfig::class.java).toInstance(config)

@@ -73,7 +73,7 @@ open class ChannelController @Inject constructor() {
                 addEntity(entity, channelId)
                 count++
             } catch (e: Exception) {
-                log.error("ChannelController could not add entity ${entity} to channel \n${e}")
+                log.error("ChannelController could not add entity $entity to channel \n${e}")
             }
         }
 
@@ -112,7 +112,7 @@ open class ChannelController @Inject constructor() {
     }
 
     /**
-     * Get all connections in a channel
+     * Send a message to all connections in the channel.
      */
     open suspend fun broadcast(channelId: String, message: JsonObject) {
         eventBusUtils.publishWithTracing(ADDRESS_BROADCAST_CHANNEL,

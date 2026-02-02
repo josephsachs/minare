@@ -101,6 +101,10 @@ class FrameworkConfig {
         var resetData: Boolean = false
     }
 
+    class HazelcastConfig {
+        var clusterName: String = ""
+    }
+
     var sockets = SocketsSection()
     var entity = EntityConfig()
     var frames = FramesConfig()
@@ -112,4 +116,5 @@ class FrameworkConfig {
     var kafka = KafkaConfig()
 
     var development = DevelopmentSettings()
+    var hazelcast = HazelcastConfig()
 }
