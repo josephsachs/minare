@@ -64,7 +64,7 @@ class MinareModule(
         if (frameworkConfig.mongo.enabled) {
             bind(EntityGraphStore::class.java).to(MongoEntityStore::class.java).`in`(Singleton::class.java)
         } else {
-            log.warn("Mongo connection not available, Entity Graph Store is disabled")
+            log.warn("Mongo connection not available, Entity graphing is disabled")
         }
 
         bind(EntityPublishService::class.java).to(RedisEntityPublishService::class.java).`in`(Singleton::class.java)
@@ -77,12 +77,7 @@ class MinareModule(
         bind(DeltaStore::class.java).to(RedisDeltaStore::class.java).`in`(Singleton::class.java)
 
         when (frameworkConfig.frames.snapshot.store) {
-            SnapshotStoreOption.MONGO -> {
-                require(frameworkConfig.mongo.enabled) {
-                    "Cannot use MONGO snapshot store: MongoDB not available"
-                }
-                bind(SnapshotStore::class.java).to(MongoSnapshotStore::class.java).`in`(Singleton::class.java)
-            }
+            SnapshotStoreOption.MONGO -> bind(SnapshotStore::class.java).to(MongoSnapshotStore::class.java).`in`(Singleton::class.java)
             SnapshotStoreOption.JSON -> bind(SnapshotStore::class.java).to(JsonSnapshotStore::class.java).`in`(Singleton::class.java)
             else -> {
                 log.warn("No snapshot store configured, binding no-op adapter")

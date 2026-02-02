@@ -7,6 +7,7 @@ import com.minare.core.MinareApplication.ConnectionEvents.ADDRESS_COORDINATOR_ST
 import com.minare.core.MinareApplication.ConnectionEvents.ADDRESS_WORKER_STARTED
 import com.minare.application.interfaces.AppState
 import com.minare.application.adapters.ClusteredAppState
+import com.minare.application.config.AdapterConfigValidator
 import com.minare.application.config.EntityValidator
 import com.minare.application.config.FrameworkConfig
 import com.minare.application.config.FrameworkConfigBuilder
@@ -599,34 +600,6 @@ abstract class MinareApplication : CoroutineVerticle() {
         }
 
         /**
-         * Test if a Mongo connection is possible to establish with the given configuration
-         */
-        private suspend fun validateMongo(vertx: Vertx, config: FrameworkConfig): Boolean {
-            val mongoUri =  "mongodb://${config.mongo.host}:${config.mongo.port}/${config.mongo.database}?replicaSet=rs0"
-            val dbName = config.mongo.database
-
-            val client = MongoClient.create(vertx, JsonObject()
-                .put("connection_string", mongoUri)
-                .put("db_name", dbName)
-                .put("useObjectId", true)
-                .put("writeConcern", "majority")
-                .put("serverSelectionTimeoutMS", 5000)
-                .put("connectTimeoutMS", 10000)
-                .put("socketTimeoutMS", 60000))
-
-            return try {
-                client.runCommand("ping", JsonObject().put("ping", 1)).await()
-                client.close()
-                log.info("MongoDB is configured and enabled at $mongoUri")
-                true
-            } catch (e: Exception) {
-                log.warn("MongoDB configured but unreachable: ${e.message}")
-                client.close()
-                false
-            }
-        }
-
-        /**
          * Starts clustered Vert.x, reads the framework configuration and builds the dependency injection tree.
          * This is the public interface used by the application to pass its own extension of MinareApplication.
          * Typically we expect this to occur in the Main module of the application.
@@ -646,10 +619,18 @@ abstract class MinareApplication : CoroutineVerticle() {
                     log.info("Clustered Vertx instance created at ${System.currentTimeMillis()}")
 
                     CoroutineScope(vertx.dispatcher()).launch {
-                        completeStartup(vertx, applicationClass, frameworkConfig, args)
+                        try {
+                            completeStartup(vertx, applicationClass, frameworkConfig, args)
+
+                        } catch (e: Exception) {
+                            log.error("Startup failed with exception", e)
+
+                            exitProcess(1)
+                        }
                     }
                 } else {
                     log.error("Failed to create clustered Vertx instance", ar.cause())
+
                     exitProcess(1)
                 }
             }
@@ -681,8 +662,8 @@ abstract class MinareApplication : CoroutineVerticle() {
             config: FrameworkConfig,
             args: Array<String>
         ) {
+            AdapterConfigValidator().validate(vertx, config)
             configureJackson()
-            config.mongo.enabled = validateMongo(vertx, config)
 
             try {
                 val configModule = object : AbstractModule() {
