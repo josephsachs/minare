@@ -39,9 +39,6 @@ services:
       - INSTANCE_ROLE=COORDINATOR
       - LOG_PATH=/app/logs
 
-      # Cluster configuration
-      - VERTX_CLUSTER_HOST=app-coordinator
-
       # JVM configuration
       - JAVA_OPTS=-Xmx512m -XX:+UseContainerSupport
       - NTP_URL=ntp.local
@@ -120,10 +117,6 @@ services:
       # Role configuration
       - INSTANCE_ROLE=WORKER
       - LOG_PATH=/app/logs
-
-      # Cluster configuration - use HOSTNAME for unique cluster identity
-      - VERTX_CLUSTER_HOST=${HOSTNAME}
-      - VERTX_CLUSTERED=true
 
       # JVM configuration
       - JAVA_OPTS=-Xmx512m -XX:+UseContainerSupport
