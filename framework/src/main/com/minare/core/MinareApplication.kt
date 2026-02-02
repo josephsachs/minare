@@ -617,7 +617,7 @@ abstract class MinareApplication : CoroutineVerticle() {
                     log.info("Clustered Vertx instance created at ${System.currentTimeMillis()}")
 
                     CoroutineScope(vertx.dispatcher()).launch {
-                        completeStartup(vertx, applicationClass, args, frameworkConfig)
+                        completeStartup(vertx, applicationClass, frameworkConfig, args)
                     }
                 } else {
                     log.error("Failed to create clustered Vertx instance", ar.cause())
@@ -649,13 +649,12 @@ abstract class MinareApplication : CoroutineVerticle() {
         private suspend fun completeStartup(
             vertx: Vertx,
             applicationClass: Class<out MinareApplication>,
-            args: Array<String>,
-            config: FrameworkConfig
+            config: FrameworkConfig,
+            args: Array<String>
         ) {
             configureJackson()
 
             try {
-
                 val configModule = object : AbstractModule() {
                     override fun configure() {
                         bind(FrameworkConfig::class.java).toInstance(config)
