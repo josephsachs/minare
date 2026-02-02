@@ -36,24 +36,25 @@ class MongoEntityStore @Inject constructor(
      * Creates a new entity with its relationships in the graph.
      * Only stores relationship fields, not full state.
      */
-    override suspend fun save(entity: Entity): Entity {
-        require(!entity.type.isNullOrBlank()) { "Entity type must be specified" }
+    override suspend fun save(entity: Entity, create: Boolean): Entity {
+        require(entity.type.isNotBlank()) { "Entity type must be specified" }
 
         log.debug("Saving entity relationships for type: ${entity.type}")
 
         val document = buildEntityDocument(entity)
 
         try {
-            if (entity._id.startsWith("unsaved-")) {
-                // New entity - insert and let MongoDB generate an ID
+            if (create) {
+                entity.version = 1
                 document.put("version", 1)
-                val generatedId = mongoClient.insertWithOptions(
+                document.put("_id", entity._id)
+
+                mongoClient.insertWithOptions(
                     collection,
                     document,
                     WriteOption.ACKNOWLEDGED
                 ).await()
-                entity._id = generatedId
-                entity.version = 1
+
                 log.debug("Created new entity with ID: ${entity._id}")
             } else {
                 // Existing entity - update relationships
@@ -75,6 +76,7 @@ class MongoEntityStore @Inject constructor(
                 entity.version = result.getLong("version", 1)
                 log.debug("Updated entity relationships: ${entity._id}")
             }
+
             return entity
         } catch (err: Exception) {
             log.error("Failed to save entity: ${entity._id}", err)

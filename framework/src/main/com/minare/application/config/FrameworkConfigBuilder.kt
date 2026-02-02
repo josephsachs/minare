@@ -168,7 +168,7 @@ class FrameworkConfigBuilder {
             config.mongo.host = require(mongo.getString("host"), "mongo.host must be specified, since mongo section exists")
             config.mongo.port = require(mongo.getInteger("port"), "mongo.port must be specified, since mongo section exists")
             config.mongo.database = require(mongo.getString("database"), "mongo.database must be specified, since mongo section exists")
-            config.mongo.hasMongo = true
+            config.mongo.configured = true
         }
 
         return config

@@ -83,7 +83,8 @@ class FrameworkConfig {
         var host: String = ""
         var port: Int = 0
         var database: String = ""
-        var hasMongo: Boolean = false
+        var configured: Boolean = false
+        var enabled: Boolean = false
     }
 
     class RedisConfig {

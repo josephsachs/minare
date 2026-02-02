@@ -1,11 +1,10 @@
 package com.minare.nodegraph.config
 
+import NodeGraphEntityController
 import com.google.inject.PrivateModule
 import com.google.inject.Singleton
-import com.minare.controller.ChannelController
-import com.minare.controller.ConnectionController
-import com.minare.controller.MessageController
-import com.minare.controller.OperationController
+import com.minare.controller.*
+import com.minare.core.entity.models.Entity
 import com.minare.nodegraph.controller.NodeGraphChannelController
 import com.minare.nodegraph.controller.NodeGraphConnectionController
 import com.minare.nodegraph.controller.NodeGraphMessageController
@@ -23,11 +22,13 @@ class NodeGraphModule : PrivateModule() {
     private val log = LoggerFactory.getLogger(NodeGraphModule::class.java)
 
     override fun configure() {
+        bind(EntityController::class.java).to(NodeGraphEntityController::class.java).`in`(Singleton::class.java)
         bind(ChannelController::class.java).to(NodeGraphChannelController::class.java).`in`(Singleton::class.java)
         bind(ConnectionController::class.java).to(NodeGraphConnectionController::class.java).`in`(Singleton::class.java)
         bind(OperationController::class.java).to(NodeGraphOperationController::class.java).`in`(Singleton::class.java)
         bind(MessageController::class.java).to(NodeGraphMessageController::class.java).`in`(Singleton::class.java)
 
+        expose(EntityController::class.java)
         expose(ChannelController::class.java)
         expose(ConnectionController::class.java)
         expose(OperationController::class.java)

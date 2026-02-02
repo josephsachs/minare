@@ -3,7 +3,7 @@ package com.minare.core.entity.models
 import com.fasterxml.jackson.annotation.*
 
 open class Entity(
-    var _id: String = "unsaved-${java.util.UUID.randomUUID()}"
+    var _id: String = "${java.util.UUID.randomUUID()}-unsaved"
 ) {
     var version: Long = 1
     var type: String = "Entity"

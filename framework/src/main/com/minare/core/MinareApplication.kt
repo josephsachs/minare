@@ -52,6 +52,7 @@ import com.minare.worker.coordinator.events.WorkerReadinessEvent
 import io.vertx.config.ConfigRetriever
 import io.vertx.config.ConfigRetrieverOptions
 import io.vertx.config.ConfigStoreOptions
+import io.vertx.ext.mongo.MongoClient
 import kotlinx.coroutines.*
 import kotlin.system.exitProcess
 
@@ -598,6 +599,34 @@ abstract class MinareApplication : CoroutineVerticle() {
         }
 
         /**
+         * Test if a Mongo connection is possible to establish with the given configuration
+         */
+        private suspend fun validateMongo(vertx: Vertx, config: FrameworkConfig): Boolean {
+            val mongoUri =  "mongodb://${config.mongo.host}:${config.mongo.port}/${config.mongo.database}?replicaSet=rs0"
+            val dbName = config.mongo.database
+
+            val client = MongoClient.create(vertx, JsonObject()
+                .put("connection_string", mongoUri)
+                .put("db_name", dbName)
+                .put("useObjectId", true)
+                .put("writeConcern", "majority")
+                .put("serverSelectionTimeoutMS", 5000)
+                .put("connectTimeoutMS", 10000)
+                .put("socketTimeoutMS", 60000))
+
+            return try {
+                client.runCommand("ping", JsonObject().put("ping", 1)).await()
+                client.close()
+                log.info("MongoDB is configured and enabled at $mongoUri")
+                true
+            } catch (e: Exception) {
+                log.warn("MongoDB configured but unreachable: ${e.message}")
+                client.close()
+                false
+            }
+        }
+
+        /**
          * Starts clustered Vert.x, reads the framework configuration and builds the dependency injection tree.
          * This is the public interface used by the application to pass its own extension of MinareApplication.
          * Typically we expect this to occur in the Main module of the application.
@@ -653,6 +682,7 @@ abstract class MinareApplication : CoroutineVerticle() {
             args: Array<String>
         ) {
             configureJackson()
+            config.mongo.enabled = validateMongo(vertx, config)
 
             try {
                 val configModule = object : AbstractModule() {
