@@ -6,7 +6,7 @@ import io.vertx.kotlin.coroutines.CoroutineVerticle
 import io.vertx.kotlin.coroutines.dispatcher
 import kotlinx.coroutines.launch
 import org.slf4j.LoggerFactory
-import javax.inject.Inject
+import com.google.inject.Inject
 import com.minare.core.storage.interfaces.StateStore
 
 /**

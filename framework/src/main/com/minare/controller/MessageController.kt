@@ -14,7 +14,7 @@ import com.minare.core.transport.upsocket.handlers.SyncCommandHandler
 import io.vertx.core.http.ServerWebSocket
 import io.vertx.core.json.JsonObject
 import org.slf4j.LoggerFactory
-import javax.inject.Inject
+import com.google.inject.Inject
 
 /**
  * Controller for the handling socket messages.

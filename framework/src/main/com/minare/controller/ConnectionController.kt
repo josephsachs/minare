@@ -11,8 +11,8 @@ import com.minare.core.config.InternalInjectorHolder
 import com.minare.core.transport.CleanupVerticle
 import com.minare.core.utils.debug.DebugLogger
 import com.minare.core.utils.debug.DebugLogger.Companion.DebugType as DebugType
-import javax.inject.Inject
-import javax.inject.Singleton
+import com.google.inject.Inject
+import com.google.inject.Singleton
 
 /**
  * Controls connection lifecycle and maintains in-memory connection worker.

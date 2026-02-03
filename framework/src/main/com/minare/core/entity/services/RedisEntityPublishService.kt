@@ -8,7 +8,7 @@ import com.minare.core.utils.debug.DebugLogger.Companion.DebugType
 import io.vertx.core.json.JsonObject
 import io.vertx.kotlin.coroutines.await
 import io.vertx.redis.client.RedisAPI
-import javax.inject.Inject
+import com.google.inject.Inject
 
 @Singleton
 class RedisEntityPublishService @Inject constructor(

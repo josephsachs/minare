@@ -3,8 +3,8 @@ package com.minare.core.entity.factories
 import com.google.inject.Injector
 import com.minare.core.entity.models.Entity
 import org.slf4j.LoggerFactory
-import javax.inject.Inject
-import javax.inject.Singleton
+import com.google.inject.Inject
+import com.google.inject.Singleton
 import kotlin.reflect.KClass
 
 /**

@@ -29,7 +29,7 @@ import io.vertx.kotlin.coroutines.await
 import io.vertx.kotlin.coroutines.dispatcher
 import org.slf4j.LoggerFactory
 import java.util.concurrent.ConcurrentHashMap
-import javax.inject.Inject
+import com.google.inject.Inject
 import com.minare.core.config.AppStateProvider
 import com.minare.core.entity.factories.EntityFactory
 import com.minare.core.factories.MinareVerticleFactory

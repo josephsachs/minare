@@ -5,7 +5,7 @@ import io.vertx.kotlin.coroutines.CoroutineVerticle
 import io.vertx.kotlin.coroutines.dispatcher
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
-import javax.inject.Inject
+import com.google.inject.Inject
 
 /**
  * Extension of EventLogger specifically for use with Verticles.

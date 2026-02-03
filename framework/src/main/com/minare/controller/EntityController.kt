@@ -9,8 +9,8 @@ import com.minare.core.storage.interfaces.StateStore
 import com.minare.core.utils.debug.DebugLogger
 import io.vertx.core.json.JsonObject
 import org.slf4j.LoggerFactory
-import javax.inject.Inject
-import javax.inject.Singleton
+import com.google.inject.Inject
+import com.google.inject.Singleton
 
 /**
  * Controller for entity persistence operations.

@@ -19,7 +19,7 @@ import io.vertx.redis.client.ResponseType
 import io.vertx.redis.client.Command
 import kotlinx.coroutines.*
 import org.slf4j.LoggerFactory
-import javax.inject.Inject
+import com.google.inject.Inject
 
 /**
  * Worker verticle that subscribes to Redis pub/sub channels for entity change notifications.

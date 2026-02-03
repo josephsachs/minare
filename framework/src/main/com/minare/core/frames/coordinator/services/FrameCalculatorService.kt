@@ -1,8 +1,8 @@
 package com.minare.core.frames.coordinator.services
 
 import com.minare.application.config.FrameworkConfig
-import javax.inject.Inject
-import javax.inject.Singleton
+import com.google.inject.Inject
+import com.google.inject.Singleton
 import kotlin.math.max
 
 /**

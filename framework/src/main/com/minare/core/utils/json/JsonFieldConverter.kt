@@ -4,7 +4,7 @@ import io.vertx.core.json.JsonArray
 import io.vertx.core.json.JsonObject
 import java.lang.reflect.Field
 import java.lang.reflect.ParameterizedType
-import javax.inject.Singleton
+import com.google.inject.Singleton
 
 /**
  * Utility for converting JSON values to appropriate field types during entity deserialization.

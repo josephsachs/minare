@@ -8,7 +8,7 @@ import io.vertx.core.json.JsonArray
 import io.vertx.core.json.JsonObject
 import io.vertx.ext.mongo.MongoClient
 import io.vertx.kotlin.coroutines.await
-import javax.inject.Singleton
+import com.google.inject.Singleton
 
 /**
  * MongoDB implementation of SnapshotStore

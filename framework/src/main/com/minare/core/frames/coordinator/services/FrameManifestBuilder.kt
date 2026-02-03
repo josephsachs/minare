@@ -9,8 +9,8 @@ import com.minare.core.utils.debug.DebugLogger.Companion.DebugType
 import com.minare.worker.coordinator.models.FrameManifest
 import io.vertx.core.json.JsonArray
 import io.vertx.core.json.JsonObject
-import javax.inject.Inject
-import javax.inject.Singleton
+import com.google.inject.Inject
+import com.google.inject.Singleton
 import kotlin.math.abs
 
 /**

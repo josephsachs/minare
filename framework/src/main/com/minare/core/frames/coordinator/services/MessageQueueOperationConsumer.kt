@@ -8,8 +8,8 @@ import io.vertx.kafka.client.consumer.KafkaConsumer
 import io.vertx.kotlin.coroutines.await
 import kotlinx.coroutines.CoroutineScope
 import org.slf4j.LoggerFactory
-import javax.inject.Inject
-import javax.inject.Singleton
+import com.google.inject.Inject
+import com.google.inject.Singleton
 
 /**
  * Handles Kafka consumption for the frame coordinator.

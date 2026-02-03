@@ -16,7 +16,7 @@ import io.vertx.kotlin.coroutines.await
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import org.slf4j.LoggerFactory
-import javax.inject.Inject
+import com.google.inject.Inject
 
 /**
  * Worker-side frame processing verticle.

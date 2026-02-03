@@ -9,8 +9,8 @@ import com.minare.core.transport.models.message.SyncCommandType
 import io.vertx.core.json.JsonArray
 import io.vertx.core.json.JsonObject
 import org.slf4j.LoggerFactory
-import javax.inject.Inject
-import javax.inject.Singleton
+import com.google.inject.Inject
+import com.google.inject.Singleton
 
 /**
  * Handles sync commands outside of the Kafka flow.

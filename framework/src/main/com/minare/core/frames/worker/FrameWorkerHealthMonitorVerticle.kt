@@ -9,7 +9,7 @@ import io.vertx.kotlin.coroutines.await
 import io.vertx.redis.client.RedisAPI
 import kotlinx.coroutines.launch
 import org.slf4j.LoggerFactory
-import javax.inject.Inject
+import com.google.inject.Inject
 
 /**
  * Health monitoring verticle for the frame processing system.

@@ -9,8 +9,8 @@ import com.minare.core.utils.debug.DebugLogger.Companion.DebugType
 import com.minare.core.utils.vertx.EventBusUtils
 import io.vertx.core.json.JsonObject
 import org.slf4j.LoggerFactory
-import javax.inject.Inject
-import javax.inject.Singleton
+import com.google.inject.Inject
+import com.google.inject.Singleton
 
 /**
  * Controls channel and context models, including channel subscriptions

@@ -6,7 +6,7 @@ import io.vertx.core.json.JsonObject
 import io.vertx.ext.mongo.MongoClient
 import io.vertx.kotlin.coroutines.await
 import org.slf4j.LoggerFactory
-import javax.inject.Singleton
+import com.google.inject.Singleton
 import com.minare.core.storage.interfaces.ContextStore
 
 @Singleton

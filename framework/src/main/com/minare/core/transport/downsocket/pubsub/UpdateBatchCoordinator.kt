@@ -7,8 +7,8 @@ import io.vertx.core.json.JsonObject
 import org.slf4j.LoggerFactory
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
-import javax.inject.Inject
-import javax.inject.Singleton
+import com.google.inject.Inject
+import com.google.inject.Singleton
 
 @Singleton
 class UpdateBatchCoordinator @Inject constructor(

@@ -4,7 +4,7 @@ import io.vertx.core.json.JsonArray
 import io.vertx.core.json.JsonObject
 import org.slf4j.LoggerFactory
 import java.util.UUID
-import javax.inject.Inject
+import com.google.inject.Inject
 
 class OperationDebugUtils @Inject constructor() {
     private val log = LoggerFactory.getLogger(OperationDebugUtils::class.java)

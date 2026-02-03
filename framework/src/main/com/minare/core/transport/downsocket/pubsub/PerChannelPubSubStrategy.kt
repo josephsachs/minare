@@ -2,7 +2,7 @@ package com.minare.core.transport.downsocket.pubsub
 
 import io.vertx.core.impl.logging.LoggerFactory
 import io.vertx.core.json.JsonObject
-import javax.inject.Singleton
+import com.google.inject.Singleton
 
 /**
  * Pub/sub strategy that publishes entity changes to channel-specific Redis pub/sub channels.

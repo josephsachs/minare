@@ -6,7 +6,7 @@ import com.minare.core.frames.models.FrameDelta
 import com.minare.core.storage.interfaces.SnapshotStore
 import io.vertx.core.json.JsonArray
 import io.vertx.core.json.JsonObject
-import javax.inject.Singleton
+import com.google.inject.Singleton
 
 /**
  * MongoDB implementation of SnapshotStore

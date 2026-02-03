@@ -13,7 +13,7 @@ import io.vertx.core.json.JsonObject
 import io.vertx.kotlin.coroutines.await
 import io.vertx.redis.client.RedisAPI
 import org.slf4j.LoggerFactory
-import javax.inject.Inject
+import com.google.inject.Inject
 import com.minare.core.storage.interfaces.StateStore
 import com.minare.exceptions.EntityStorageException
 import io.vertx.core.json.JsonArray

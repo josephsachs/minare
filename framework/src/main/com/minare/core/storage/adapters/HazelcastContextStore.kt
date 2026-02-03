@@ -6,7 +6,7 @@ import com.hazelcast.map.IMap
 import com.minare.core.storage.interfaces.ContextStore
 import com.minare.core.transport.models.Context
 import org.slf4j.LoggerFactory
-import javax.inject.Inject
+import com.google.inject.Inject
 
 @Singleton
 class HazelcastContextStore @Inject constructor(

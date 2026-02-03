@@ -22,7 +22,7 @@ import io.vertx.kotlin.coroutines.dispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import org.slf4j.LoggerFactory
-import javax.inject.Inject
+import com.google.inject.Inject
 import com.minare.worker.upsocket.handlers.CloseHandler
 import com.minare.worker.upsocket.handlers.ReconnectionHandler
 

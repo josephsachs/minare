@@ -7,7 +7,7 @@ import com.minare.core.storage.interfaces.ConnectionStore
 import com.minare.core.transport.models.Connection
 import org.slf4j.LoggerFactory
 import java.util.UUID
-import javax.inject.Inject
+import com.google.inject.Inject
 
 @Singleton
 class HazelcastConnectionStore @Inject constructor(

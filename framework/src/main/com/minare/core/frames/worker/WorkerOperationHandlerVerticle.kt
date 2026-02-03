@@ -10,7 +10,7 @@ import io.vertx.kotlin.coroutines.CoroutineVerticle
 import io.vertx.kotlin.coroutines.await
 import kotlinx.coroutines.launch
 import org.slf4j.LoggerFactory
-import javax.inject.Inject
+import com.google.inject.Inject
 import kotlin.system.measureTimeMillis
 
 /**

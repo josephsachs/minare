@@ -41,6 +41,7 @@ import com.minare.time.DockerTimeService
 import com.minare.time.TimeService
 import com.minare.core.frames.coordinator.handlers.LateOperationHandler
 import com.minare.core.frames.services.*
+import com.minare.core.storage.services.DatabaseInitializer
 import com.minare.core.transport.upsocket.handlers.SyncCommandHandler
 import com.minare.core.utils.vertx.EventBusUtils
 import com.minare.exceptions.EntityFactoryException
@@ -63,6 +64,7 @@ class MinareModule(
 
         if (frameworkConfig.mongo.enabled) {
             bind(EntityGraphStore::class.java).to(MongoEntityStore::class.java).`in`(Singleton::class.java)
+            bind(DatabaseInitializer::class.java).`in`(Singleton::class.java)
         } else {
             log.warn("No entity graph store is available, binding no-op entity graph adapter")
             bind(EntityGraphStore::class.java).to(NoopEntityGraphStore::class.java).`in`(Singleton::class.java)
