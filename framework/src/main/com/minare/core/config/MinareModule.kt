@@ -60,26 +60,27 @@ class MinareModule(
     private val log = LoggerFactory.getLogger(MinareModule::class.java)
 
     override fun configure() {
-        // Internal services, do not permit override
+        // Internal service adapters
         bind(StateStore::class.java).to(RedisEntityStore::class.java).`in`(Singleton::class.java)
-
-        val optionalDatabaseInitializer = OptionalBinder.newOptionalBinder(binder(), DatabaseInitializer::class.java)
-
-        if (frameworkConfig.mongo.enabled) {
-            optionalDatabaseInitializer.setBinding()
-        } else {
-            log.warn("No entity graph store is available, binding no-op entity graph adapter")
-            bind(EntityGraphStore::class.java).to(NoopEntityGraphStore::class.java).`in`(Singleton::class.java)
-        }
-
         bind(EntityPublishService::class.java).to(RedisEntityPublishService::class.java).`in`(Singleton::class.java)
-        bind(EntityVersioningService::class.java).`in`(Singleton::class.java)
         bind(MessageQueue::class.java).to(KafkaMessageQueue::class.java).`in`(Singleton::class.java)
-
         bind(ConnectionStore::class.java).to(HazelcastConnectionStore::class.java).`in`(Singleton::class.java)
         bind(ChannelStore::class.java).to(HazelcastChannelStore::class.java).`in`(Singleton::class.java)
         bind(ContextStore::class.java).to(HazelcastContextStore::class.java).`in`(Singleton::class.java)
         bind(DeltaStore::class.java).to(RedisDeltaStore::class.java).`in`(Singleton::class.java)
+
+        // Optional Mongo services
+        OptionalBinder.newOptionalBinder(binder(), DatabaseInitializer::class.java)
+        if (frameworkConfig.mongo.enabled) {
+            bind(DatabaseInitializer::class.java)
+        }
+
+        // Configurable adapters
+        if (frameworkConfig.mongo.enabled) { // Make this configurable like snapshot stores
+            bind(EntityGraphStore::class.java).to(MongoEntityStore::class.java).`in`(Singleton::class.java)
+        } else {
+            bind(EntityGraphStore::class.java).to(NoopEntityGraphStore::class.java).`in`(Singleton::class.java)
+        }
 
         when (frameworkConfig.frames.snapshot.store) {
             SnapshotStoreOption.MONGO -> bind(SnapshotStore::class.java).to(MongoSnapshotStore::class.java).`in`(Singleton::class.java)
@@ -90,24 +91,16 @@ class MinareModule(
             }
         }
 
+        // Minare services
         bind(TimeService::class.java).to(DockerTimeService::class.java).`in`(Singleton::class.java)
-        bind(MutationService::class.java).`in`(Singleton::class.java)
         bind(ConnectionCache::class.java).to(InMemoryConnectionCache::class.java).`in`(Singleton::class.java)
-        bind(ReflectionCache::class.java).`in`(Singleton::class.java)
 
-        bind(UpdateBatchCoordinator::class.java).`in`(Singleton::class.java)
-        bind(CommandMessageHandler::class.java).`in`(Singleton::class.java)
-        bind(SyncCommandHandler::class.java).`in`(Singleton::class.java)
-        bind(DefaultEntityFactory::class.java).`in`(Singleton::class.java)
-
-        // Overridable services
+        // Strategies
         bind(PubSubChannelStrategy::class.java).to(PerChannelPubSubStrategy::class.java).`in`(Singleton::class.java)
         bind(LateOperationHandler::class.java).to(DelayLateOperation::class.java)
 
         // Providers
         bind(AppState::class.java).toProvider(AppStateProvider::class.java).`in`(Singleton::class.java)
-
-        bind(VerticleLogger::class.java).`in`(Singleton::class.java)
 
         // Workers
         bind(RedisPubSubWorkerVerticle::class.java)
