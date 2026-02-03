@@ -67,7 +67,6 @@ class MinareModule(
 
         if (frameworkConfig.mongo.enabled) {
             optionalDatabaseInitializer.setBinding()
-            bind(DatabaseInitializer::class.java).`in`(Singleton::class.java)
         } else {
             log.warn("No entity graph store is available, binding no-op entity graph adapter")
             bind(EntityGraphStore::class.java).to(NoopEntityGraphStore::class.java).`in`(Singleton::class.java)

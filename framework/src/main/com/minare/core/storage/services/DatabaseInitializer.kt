@@ -7,10 +7,11 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import org.slf4j.LoggerFactory
 import com.google.inject.Inject
+import com.google.inject.Singleton
 import io.vertx.core.json.JsonObject
 
 // TODO: Figure out if we want the Mongo transport adapters to remain as config options or just eliminate them
-
+@Singleton
 class DatabaseInitializer @Inject constructor(
     private val frameworkConfig: FrameworkConfig,
     private val mongoClient: MongoClient,
