@@ -74,7 +74,7 @@ class MinareModule(
 
         bind(ConnectionStore::class.java).to(HazelcastConnectionStore::class.java).`in`(Singleton::class.java)
         bind(ChannelStore::class.java).to(HazelcastChannelStore::class.java).`in`(Singleton::class.java)
-        bind(ContextStore::class.java).to(MongoContextStore::class.java).`in`(Singleton::class.java)
+        bind(ContextStore::class.java).to(HazelcastContextStore::class.java).`in`(Singleton::class.java)
         bind(DeltaStore::class.java).to(RedisDeltaStore::class.java).`in`(Singleton::class.java)
 
         when (frameworkConfig.frames.snapshot.store) {
