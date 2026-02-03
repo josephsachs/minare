@@ -8,6 +8,7 @@ import io.vertx.redis.client.RedisAPI
 import org.slf4j.LoggerFactory
 import com.google.inject.Inject
 import com.google.inject.Singleton
+import java.util.*
 
 /**
  * Handles initialization and optional reset of all stateful services.
@@ -21,8 +22,8 @@ class StateInitializer @Inject constructor(
 ) {
     private val log = LoggerFactory.getLogger(StateInitializer::class.java)
 
-    @Inject(optional = true)
-    private val databaseInitializer: DatabaseInitializer? = null
+    @Inject
+    private lateinit var databaseInitializer: Optional<DatabaseInitializer>
 
     /**
      * Initialize all stateful services, optionally resetting them first
@@ -36,8 +37,8 @@ class StateInitializer @Inject constructor(
         }
 
         // Initialize database (DatabaseInitializer already handles RESET_DB internally)
-        if (frameworkConfig.mongo.enabled && databaseInitializer != null) {
-            databaseInitializer.initialize()
+        if (frameworkConfig.mongo.enabled) {
+            databaseInitializer.get().initialize()
             log.info("Database initialized")
         }
 

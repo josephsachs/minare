@@ -1,5 +1,6 @@
 package com.minare.application.config
 
+import com.minare.core.frames.services.SnapshotService.Companion.SnapshotStoreOption
 import com.minare.exceptions.ConfigurationException
 import io.vertx.core.Vertx
 import io.vertx.core.json.JsonObject
@@ -11,8 +12,19 @@ import io.vertx.kotlin.coroutines.await
  */
 class AdapterConfigValidator {
     suspend fun validate(vertx: Vertx, config: FrameworkConfig) {
+        validateMongo(vertx, config)
+    }
+
+    /**
+     * If any adapters are set to use Mongo, ensure it is available
+     */
+    private suspend fun validateMongo(vertx: Vertx, config: FrameworkConfig) {
+        if (config.frames.snapshot.store == SnapshotStoreOption.MONGO && config.mongo.configured.not()) {
+            throw ConfigurationException("Snapshots are configured to use Mongo database store, but Mongo configuration is missing or incomplete")
+        }
+
         if (config.mongo.configured) {
-            val isValid = validateMongo(vertx, config)
+            val isValid = testMongoConnection(vertx, config)
 
             config.mongo.enabled = if (isValid) {
                 true
@@ -25,7 +37,7 @@ class AdapterConfigValidator {
     /**
      * Test if a Mongo connection is possible to establish with the given configuration
      */
-    private suspend fun validateMongo(vertx: Vertx, config: FrameworkConfig): Boolean {
+    private suspend fun testMongoConnection(vertx: Vertx, config: FrameworkConfig): Boolean {
         val mongoUri = "mongodb://${config.mongo.host}:${config.mongo.port}"
         val dbName = config.mongo.database
 

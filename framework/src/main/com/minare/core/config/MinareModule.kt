@@ -1,6 +1,7 @@
 package com.minare.core.config
 
 import com.google.inject.*
+import com.google.inject.multibindings.OptionalBinder
 import com.google.inject.name.Names
 import com.hazelcast.core.HazelcastInstance
 import com.minare.application.config.FrameworkConfig
@@ -62,8 +63,10 @@ class MinareModule(
         // Internal services, do not permit override
         bind(StateStore::class.java).to(RedisEntityStore::class.java).`in`(Singleton::class.java)
 
+        val optionalDatabaseInitializer = OptionalBinder.newOptionalBinder(binder(), DatabaseInitializer::class.java)
+
         if (frameworkConfig.mongo.enabled) {
-            bind(EntityGraphStore::class.java).to(MongoEntityStore::class.java).`in`(Singleton::class.java)
+            optionalDatabaseInitializer.setBinding()
             bind(DatabaseInitializer::class.java).`in`(Singleton::class.java)
         } else {
             log.warn("No entity graph store is available, binding no-op entity graph adapter")
