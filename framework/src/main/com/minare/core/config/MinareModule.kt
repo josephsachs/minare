@@ -72,7 +72,7 @@ class MinareModule(
         bind(EntityVersioningService::class.java).`in`(Singleton::class.java)
         bind(MessageQueue::class.java).to(KafkaMessageQueue::class.java).`in`(Singleton::class.java)
 
-        bind(ConnectionStore::class.java).to(MongoConnectionStore::class.java).`in`(Singleton::class.java)
+        bind(ConnectionStore::class.java).to(HazelcastConnectionStore::class.java).`in`(Singleton::class.java)
         bind(ChannelStore::class.java).to(MongoChannelStore::class.java).`in`(Singleton::class.java)
         bind(ContextStore::class.java).to(MongoContextStore::class.java).`in`(Singleton::class.java)
         bind(DeltaStore::class.java).to(RedisDeltaStore::class.java).`in`(Singleton::class.java)

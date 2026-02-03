@@ -136,7 +136,7 @@ class UpSocketVerticle @Inject constructor(
         channelCleanupEvent.register(debugTraceLogs)
         upSocketCleanupEvent.register(debugTraceLogs)
         connectionCleanupEvent.register(debugTraceLogs)
-        entitySyncEvent.register()
+        //entitySyncEvent.register()
     }
 
     /**

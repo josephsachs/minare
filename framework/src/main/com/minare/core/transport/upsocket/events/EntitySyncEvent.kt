@@ -3,7 +3,6 @@ package com.minare.core.transport.upsocket.events
 import com.google.inject.Inject
 import com.minare.cache.ConnectionCache
 import com.minare.core.storage.interfaces.ConnectionStore
-import com.minare.core.storage.interfaces.EntityGraphStore
 import com.minare.core.storage.interfaces.StateStore
 import com.minare.core.transport.downsocket.services.ConnectionTracker
 import com.minare.core.transport.upsocket.UpSocketVerticle
@@ -84,6 +83,8 @@ class EntitySyncEvent @Inject constructor(
                     .put("timestamp", System.currentTimeMillis()))
 
             upSocket.writeTextMessage(syncMessage.encode())
+
+            vlog.logInfo("MINARE_ENTITY_SYNC: ${entities.count()} entities found for sync event on connection $connectionId")
 
             connectionStore.updateLastActivity(connectionId)
 

@@ -49,10 +49,10 @@ filesystem:
   storage_path: /var/log
 
 
-#mongo:
-#  host: mongodb-rs
-#  port: 27017
-#  database: node_graph
+mongo:
+  host: mongodb-rs
+  port: 27017
+  database: node_graph
 
 
 redis:
