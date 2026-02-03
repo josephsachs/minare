@@ -5,7 +5,7 @@ import com.google.inject.Singleton
 import com.minare.core.utils.vertx.EventBusUtils
 import com.minare.core.utils.vertx.VerticleLogger
 import io.vertx.core.json.JsonObject
-import com.minare.worker.upsocket.UpSocketVerticle
+import com.minare.core.transport.upsocket.UpSocketVerticle
 import com.minare.worker.upsocket.ConnectionLifecycle
 
 /**

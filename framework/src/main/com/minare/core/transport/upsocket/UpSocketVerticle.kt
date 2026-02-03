@@ -1,14 +1,16 @@
-package com.minare.worker.upsocket
+package com.minare.core.transport.upsocket
 
 import com.minare.application.config.FrameworkConfig
 import com.minare.controller.MessageController
 import com.minare.core.utils.vertx.VerticleLogger
 import com.minare.utils.HeartbeatManager
 import com.minare.core.transport.downsocket.services.ConnectionTracker
+import com.minare.core.transport.upsocket.events.EntitySyncEvent
 import com.minare.core.utils.debug.DebugLogger
 import com.minare.core.utils.debug.DebugLogger.Companion.DebugType
 import com.minare.utils.HttpServerUtils
 import com.minare.utils.WebSocketUtils
+import com.minare.worker.upsocket.ConnectionLifecycle
 import com.minare.worker.upsocket.events.*
 import io.vertx.core.http.HttpServer
 import io.vertx.core.http.ServerWebSocket
@@ -134,7 +136,7 @@ class UpSocketVerticle @Inject constructor(
         channelCleanupEvent.register(debugTraceLogs)
         upSocketCleanupEvent.register(debugTraceLogs)
         connectionCleanupEvent.register(debugTraceLogs)
-        entitySyncEvent.register(debugTraceLogs)
+        entitySyncEvent.register()
     }
 
     /**

@@ -4,7 +4,7 @@ import com.google.inject.Inject
 import io.vertx.core.Vertx
 import io.vertx.core.json.JsonObject
 import io.vertx.ext.web.Router
-import com.minare.worker.upsocket.UpSocketVerticle
+import com.minare.core.transport.upsocket.UpSocketVerticle
 
 class UpSocketGetRouterEvent @Inject constructor(
     private val vertx: Vertx

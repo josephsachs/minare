@@ -23,6 +23,7 @@ class DebugLogger {
         DebugType.UPSOCKET_DEPLOYING_HTTP_SERVER to true,
         DebugType.UPSOCKET_HTTP_SERVER_DEPLOYED to true,
         DebugType.UPSOCKET_HTTP_SERVER_STOPPING to true,
+        DebugType.UPSOCKET_ENTITY_SYNC_EVENT_ERROR to true,
 
         DebugType.DOWNSOCKET_PUBSUB_WORKER_NO_CHANNELS to false,
         DebugType.DOWNSOCKET_PUBSUB_WORKER_SUBSCRIBED_TO_PATTERN to false,
@@ -163,6 +164,7 @@ class DebugLogger {
                     vlog.logStartupStep("STOPPING")
                     return
                 }
+                DebugType.UPSOCKET_ENTITY_SYNC_EVENT_ERROR -> { "Error occurred during entity sync for connection ${args[0]}" }
 
                 DebugType.DOWNSOCKET_PUBSUB_WORKER_NO_CHANNELS -> { "No Redis pub/sub channels to subscribe to" }
                 DebugType.DOWNSOCKET_PUBSUB_WORKER_SUBSCRIBED_TO_PATTERN -> { "Subscribed to pattern: ${args[0]}" }
@@ -267,6 +269,7 @@ class DebugLogger {
             UPSOCKET_DEPLOYING_HTTP_SERVER,
             UPSOCKET_HTTP_SERVER_DEPLOYED,
             UPSOCKET_HTTP_SERVER_STOPPING,
+            UPSOCKET_ENTITY_SYNC_EVENT_ERROR,
 
             DOWNSOCKET_PUBSUB_WORKER_NO_CHANNELS,
             DOWNSOCKET_PUBSUB_WORKER_SUBSCRIBED_TO_PATTERN,

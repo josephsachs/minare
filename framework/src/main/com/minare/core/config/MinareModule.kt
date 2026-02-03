@@ -64,7 +64,8 @@ class MinareModule(
         if (frameworkConfig.mongo.enabled) {
             bind(EntityGraphStore::class.java).to(MongoEntityStore::class.java).`in`(Singleton::class.java)
         } else {
-            log.warn("Mongo connection not available, Entity graphing is disabled")
+            log.warn("No entity graph store is available, binding no-op entity graph adapter")
+            bind(EntityGraphStore::class.java).to(NoopEntityGraphStore::class.java).`in`(Singleton::class.java)
         }
 
         bind(EntityPublishService::class.java).to(RedisEntityPublishService::class.java).`in`(Singleton::class.java)
