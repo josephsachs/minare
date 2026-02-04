@@ -28,6 +28,13 @@ class EntityValidator {
             "java.util.concurrent",
             "java.io"
         )
+
+        private val FLOAT_TYPES = setOf(
+            Float::class.java,
+            java.lang.Float::class.java,
+            Double::class.java,
+            java.lang.Double::class.java
+        )
     }
 
     data class ValidationIssue(
@@ -113,6 +120,20 @@ class EntityValidator {
                     customTypeClass = null,
                     depth = depth,
                     message = "Map types have known deserialization issues with Jackson: (1) Deserialization can fail based on JSON property order (Jackson #1183), (2) Enum keys with unknown values throw InvalidFormatException - READ_UNKNOWN_ENUM_VALUES_AS_NULL does not work for Map keys (Jackson #1859, #1674, #1882), (3) Custom enum serializers are ignored for Map keys (Jackson #2440), (4) WRITE_ENUM_KEYS_USING_INDEX cannot round-trip (Jackson #1877, #2536).",
+                    isError = false
+                )
+            )
+            return
+        }
+
+        if (fieldType in FLOAT_TYPES) {
+            issues.add(
+                ValidationIssue(
+                    entityClass = entityName,
+                    fieldPath = fieldPath,
+                    customTypeClass = null,
+                    depth = depth,
+                    message = "IEEE-754 floating-point types (Float, Double) are nondeterministic across distributed clusters; consider using BigDecimal, BigInteger, or Long instead.",
                     isError = false
                 )
             )
