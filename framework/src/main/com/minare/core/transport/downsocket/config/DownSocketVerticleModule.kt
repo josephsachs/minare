@@ -5,13 +5,12 @@ import com.google.inject.Provides
 import com.google.inject.Singleton
 import com.google.inject.name.Named
 import com.minare.application.config.FrameworkConfig
-import com.minare.application.config.FrameworkConfigBuilder
 import com.minare.cache.ConnectionCache
 import com.minare.core.storage.interfaces.ChannelStore
 import com.minare.core.storage.interfaces.ConnectionStore
 import com.minare.core.storage.interfaces.ContextStore
 import com.minare.core.utils.vertx.EventBusUtils
-import com.minare.utils.HeartbeatManager
+import com.minare.core.transport.services.HeartbeatManager
 import com.minare.core.utils.vertx.VerticleLogger
 import com.minare.core.transport.downsocket.DownSocketVerticle
 import com.minare.core.transport.downsocket.DownSocketVerticleCache
@@ -22,7 +21,6 @@ import kotlinx.coroutines.CoroutineScope
 import com.minare.worker.downsocket.events.UpdateConnectionClosedEvent
 import com.minare.worker.downsocket.events.UpdateConnectionEstablishedEvent
 import com.minare.worker.downsocket.handlers.EntityUpdateHandler
-import io.vertx.kotlin.coroutines.dispatcher
 import kotlin.coroutines.CoroutineContext
 
 /**

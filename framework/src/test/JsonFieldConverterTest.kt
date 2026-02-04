@@ -1,5 +1,6 @@
 package com.minare.core.utils.json
 
+import com.minare.core.entity.services.json.JsonFieldConverter
 import io.vertx.core.json.JsonArray
 import io.vertx.core.json.JsonObject
 import org.assertj.core.api.Assertions.assertThat

@@ -1,10 +1,10 @@
-package com.minare.core.utils.json
+package com.minare.core.entity.services.json
 
+import com.google.inject.Singleton
 import io.vertx.core.json.JsonArray
 import io.vertx.core.json.JsonObject
 import java.lang.reflect.Field
 import java.lang.reflect.ParameterizedType
-import com.google.inject.Singleton
 
 /**
  * Utility for converting JSON values to appropriate field types during entity deserialization.

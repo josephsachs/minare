@@ -1,4 +1,4 @@
-package com.minare.core.utils.graph
+package com.minare.core.entity.graph
 
 import com.google.inject.Inject
 import com.google.inject.Singleton

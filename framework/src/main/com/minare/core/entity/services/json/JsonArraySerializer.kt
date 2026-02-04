@@ -1,4 +1,4 @@
-package com.minare.core.utils.json
+package com.minare.core.entity.services.json
 
 import com.hazelcast.nio.ObjectDataInput
 import com.hazelcast.nio.ObjectDataOutput
@@ -36,12 +36,3 @@ class JsonArraySerializer : StreamSerializer<JsonArray> {
         // No resources to clean up
     }
 }
-
-// To enable JsonArray serialization, add this to HazelcastConfigFactory.configureJsonObjectSerialization():
-/*
-val jsonArraySerializerConfig = SerializerConfig()
-    .setImplementation(JsonArraySerializer())
-    .setTypeClass(JsonArray::class.java)
-
-config.serializationConfig.addSerializerConfig(jsonArraySerializerConfig)
-*/

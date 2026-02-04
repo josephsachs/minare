@@ -1,4 +1,4 @@
-package com.minare.utils
+package com.minare.core.transport.services
 
 import com.minare.cache.ConnectionCache
 import com.minare.core.utils.vertx.VerticleLogger
@@ -149,7 +149,6 @@ object WebSocketUtils {
             .put("type", confirmationType)
             .put("connectionId", connectionId)
             .put("timestamp", System.currentTimeMillis())
-
 
         extraFields.forEach { (key, value) ->
             if (value != null) {

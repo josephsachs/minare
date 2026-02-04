@@ -1,3 +1,5 @@
+package com.minare.core.utils.types
+
 import com.google.inject.Inject
 import com.google.inject.Singleton
 import com.hazelcast.core.HazelcastInstance

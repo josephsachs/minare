@@ -13,7 +13,7 @@ import com.minare.core.storage.interfaces.ConnectionStore
 import com.minare.core.transport.downsocket.services.ConnectionTracker
 import com.minare.core.transport.upsocket.events.EntitySyncEvent
 import com.minare.core.utils.vertx.EventBusUtils
-import com.minare.utils.HeartbeatManager
+import com.minare.core.transport.services.HeartbeatManager
 import com.minare.core.utils.vertx.VerticleLogger
 import io.vertx.core.Vertx
 import io.vertx.ext.web.Router

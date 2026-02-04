@@ -5,7 +5,6 @@ import io.vertx.core.json.JsonObject
 import com.minare.core.frames.coordinator.services.SessionService.Companion.AutoSession
 import com.minare.core.frames.services.SnapshotService.Companion.SnapshotStoreOption
 import com.minare.core.storage.interfaces.EntityGraphStoreOption
-import com.minare.core.utils.graph.EntityGraph
 import io.vertx.core.impl.logging.LoggerFactory
 
 class FrameworkConfigBuilder {

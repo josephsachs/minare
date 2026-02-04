@@ -1,6 +1,6 @@
 package com.minare.core.frames.coordinator
 
-import DistributedEnum
+import com.minare.core.utils.types.DistributedEnum
 import com.hazelcast.core.HazelcastInstance
 import com.hazelcast.cp.IAtomicLong
 import com.minare.core.frames.coordinator.services.FrameCalculatorService

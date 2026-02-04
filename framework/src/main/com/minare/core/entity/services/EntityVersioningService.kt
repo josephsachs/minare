@@ -9,7 +9,7 @@ import io.vertx.core.json.JsonObject
 import org.jgrapht.Graph
 import org.jgrapht.graph.DefaultEdge
 import com.minare.core.storage.interfaces.StateStore
-import com.minare.core.utils.graph.EntityGraphService
+import com.minare.core.entity.graph.EntityGraphService
 
 /**
  * Updated to work with JsonObject documents instead of Entity instances,

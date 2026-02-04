@@ -9,7 +9,7 @@ import com.minare.core.transport.models.Connection
 import com.minare.core.transport.models.message.*
 import com.minare.core.utils.vertx.VerticleLogger
 import com.minare.exceptions.BackpressureException
-import com.minare.utils.WebSocketUtils
+import com.minare.core.transport.services.WebSocketUtils
 import com.minare.core.transport.upsocket.handlers.SyncCommandHandler
 import io.vertx.core.http.ServerWebSocket
 import io.vertx.core.json.JsonObject
