@@ -15,13 +15,13 @@ import com.minare.core.utils.debug.DebugLogger.Companion.DebugType
 /**
  * Handles Entity sync requests
  *
- * TODO: This should return results via downsocket to preserve unidirectional flow
+ * This has largely been replaced by SyncCommandHandler but is maintained for cases in which
+ * the application wants to trigger resync using an event rather than the message command interface.
  */
 class EntitySyncEvent @Inject constructor(
     private val eventBusUtils: EventBusUtils,
     private val vlog: VerticleLogger,
     private val connectionCache: ConnectionCache,
-    //private val entityGraphStore: EntityGraphStore,
     private val connectionStore: ConnectionStore,
     private val stateStore: StateStore,
     private val debug: DebugLogger
@@ -64,7 +64,6 @@ class EntitySyncEvent @Inject constructor(
                 return false
             }
 
-            //val entities = entityGraphStore.findEntitiesByIds(listOf(entityId))
             val entities = stateStore.findEntitiesJsonByIds(listOf(entityId))
 
             if (entities.isEmpty()) {
@@ -73,9 +72,7 @@ class EntitySyncEvent @Inject constructor(
                 return false
             }
 
-            val entity = entities.getOrElse(entityId, {
-                throw Exception("Something weird happened")
-            })
+            val entity = entities.getOrElse(entityId, { return false })
 
             val syncMessage = JsonObject()
                 .put("type", "entity_sync")
@@ -83,8 +80,6 @@ class EntitySyncEvent @Inject constructor(
                     .put("timestamp", System.currentTimeMillis()))
 
             upSocket.writeTextMessage(syncMessage.encode())
-
-            vlog.logInfo("MINARE_ENTITY_SYNC: ${entities.count()} entities found for sync event on connection $connectionId")
 
             connectionStore.updateLastActivity(connectionId)
 

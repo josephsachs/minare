@@ -24,6 +24,9 @@ class DebugLogger {
         DebugType.UPSOCKET_HTTP_SERVER_DEPLOYED to true,
         DebugType.UPSOCKET_HTTP_SERVER_STOPPING to true,
         DebugType.UPSOCKET_ENTITY_SYNC_EVENT_ERROR to true,
+        DebugType.UPSOCKET_SOCKET_ACCEPTED to true,
+        DebugType.UPSOCKET_INITIATE_CONNECTION_ERROR to true,
+        DebugType.UPSOCKET_CLOSED_CONNECTION_MISSING_ID to true,
 
         DebugType.DOWNSOCKET_PUBSUB_WORKER_NO_CHANNELS to false,
         DebugType.DOWNSOCKET_PUBSUB_WORKER_SUBSCRIBED_TO_PATTERN to false,
@@ -165,6 +168,25 @@ class DebugLogger {
                     return
                 }
                 DebugType.UPSOCKET_ENTITY_SYNC_EVENT_ERROR -> { "Error occurred during entity sync for connection ${args[0]}" }
+                DebugType.UPSOCKET_SOCKET_ACCEPTED -> {
+                    val vlog = args[0] as VerticleLogger
+                    vlog.getEventLogger().trace(
+                        "WEBSOCKET_ACCEPTED", mapOf(
+                            "socketId" to args[1]
+                        ), args[2] as String
+                    )
+                    return
+                }
+                DebugType.UPSOCKET_INITIATE_CONNECTION_ERROR -> {
+                    val vlog = args[0] as VerticleLogger
+                    vlog.logVerticleError(
+                        "INITIATE_CONNECTION", args[1] as Exception, mapOf(
+                            "socketId" to args[2] as String
+                        )
+                    )
+                    return
+                }
+                DebugType.UPSOCKET_CLOSED_CONNECTION_MISSING_ID -> { "Tried to close websocket ${args[0]} with no connection" }
 
                 DebugType.DOWNSOCKET_PUBSUB_WORKER_NO_CHANNELS -> { "No Redis pub/sub channels to subscribe to" }
                 DebugType.DOWNSOCKET_PUBSUB_WORKER_SUBSCRIBED_TO_PATTERN -> { "Subscribed to pattern: ${args[0]}" }
@@ -270,6 +292,9 @@ class DebugLogger {
             UPSOCKET_HTTP_SERVER_DEPLOYED,
             UPSOCKET_HTTP_SERVER_STOPPING,
             UPSOCKET_ENTITY_SYNC_EVENT_ERROR,
+            UPSOCKET_SOCKET_ACCEPTED,
+            UPSOCKET_INITIATE_CONNECTION_ERROR,
+            UPSOCKET_CLOSED_CONNECTION_MISSING_ID,
 
             DOWNSOCKET_PUBSUB_WORKER_NO_CHANNELS,
             DOWNSOCKET_PUBSUB_WORKER_SUBSCRIBED_TO_PATTERN,
