@@ -2,18 +2,13 @@ package com.minare.core.config
 
 import com.google.inject.*
 import com.google.inject.multibindings.OptionalBinder
-import com.google.inject.name.Names
 import com.hazelcast.core.HazelcastInstance
 import com.minare.application.config.FrameworkConfig
 import com.minare.application.interfaces.AppState
 import com.minare.cache.ConnectionCache
 import com.minare.cache.InMemoryConnectionCache
-import com.minare.core.entity.ReflectionCache
-import com.minare.core.entity.factories.DefaultEntityFactory
 import com.minare.core.entity.factories.EntityFactory
 import com.minare.core.entity.services.EntityPublishService
-import com.minare.core.entity.services.EntityVersioningService
-import com.minare.core.entity.services.MutationService
 import com.minare.core.entity.services.RedisEntityPublishService
 import com.minare.core.operation.adapters.KafkaMessageQueue
 import com.minare.core.operation.interfaces.MessageQueue
@@ -27,7 +22,6 @@ import com.minare.core.transport.downsocket.RedisPubSubWorkerVerticle
 import com.minare.core.frames.services.SnapshotService.Companion.SnapshotStoreOption
 import com.minare.core.storage.adapters.*
 import com.minare.core.storage.interfaces.*
-import com.minare.core.utils.vertx.VerticleLogger
 import io.vertx.core.Vertx
 import io.vertx.core.impl.logging.LoggerFactory
 import io.vertx.core.json.JsonObject
@@ -37,16 +31,13 @@ import io.vertx.redis.client.Redis
 import io.vertx.redis.client.RedisAPI
 import io.vertx.redis.client.RedisOptions
 import io.vertx.spi.cluster.hazelcast.HazelcastClusterManager
-import com.minare.core.transport.downsocket.pubsub.UpdateBatchCoordinator
 import com.minare.time.DockerTimeService
 import com.minare.time.TimeService
 import com.minare.core.frames.coordinator.handlers.LateOperationHandler
 import com.minare.core.frames.services.*
 import com.minare.core.storage.services.DatabaseInitializer
-import com.minare.core.transport.upsocket.handlers.SyncCommandHandler
 import com.minare.core.utils.vertx.EventBusUtils
 import com.minare.exceptions.EntityFactoryException
-import com.minare.worker.upsocket.CommandMessageHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlin.coroutines.CoroutineContext
 
@@ -76,10 +67,12 @@ class MinareModule(
         }
 
         // Configurable adapters
-        if (frameworkConfig.mongo.enabled) { // Make this configurable like snapshot stores
-            bind(EntityGraphStore::class.java).to(MongoEntityStore::class.java).`in`(Singleton::class.java)
-        } else {
-            bind(EntityGraphStore::class.java).to(NoopEntityGraphStore::class.java).`in`(Singleton::class.java)
+        when (frameworkConfig.entity.graph.store) {
+            EntityGraphStoreOption.MONGO -> bind(EntityGraphStore::class.java).to(MongoEntityStore::class.java).`in`(Singleton::class.java)
+            else -> {
+                log.warn("No entity graph store configured, binding no-op adapter")
+                bind(EntityGraphStore::class.java).to(NoopEntityGraphStore::class.java).`in`(Singleton::class.java)
+            }
         }
 
         when (frameworkConfig.frames.snapshot.store) {

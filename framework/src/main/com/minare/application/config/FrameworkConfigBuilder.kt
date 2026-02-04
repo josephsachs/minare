@@ -4,6 +4,8 @@ import com.minare.exceptions.ConfigurationException
 import io.vertx.core.json.JsonObject
 import com.minare.core.frames.coordinator.services.SessionService.Companion.AutoSession
 import com.minare.core.frames.services.SnapshotService.Companion.SnapshotStoreOption
+import com.minare.core.storage.interfaces.EntityGraphStoreOption
+import com.minare.core.utils.graph.EntityGraph
 import io.vertx.core.impl.logging.LoggerFactory
 
 class FrameworkConfigBuilder {
@@ -70,6 +72,16 @@ class FrameworkConfigBuilder {
         val collectChanges = require(entityUpdate.getString("collect_changes"), "entity.update.collect_changes must be specified")
         config.entity.update.collectChanges = toBoolean(collectChanges)
         config.entity.update.interval = entityUpdate.getInteger("interval")?.toLong() ?: 0L
+
+        val entityGraph = withInfo(entity.getJsonObject("graphing"), "entity.graphing section not specified, defaulting to disabled")
+        if (!entityGraph.isEmpty) {
+            val entityGraphStore = require(entityGraph.getString("store"), "entity.graphing.store must be specified, since entity.graph exists")
+            config.entity.graph.store = when (entityGraphStore) {
+                "mongo" -> EntityGraphStoreOption.MONGO
+                "none" -> EntityGraphStoreOption.NONE
+                else -> EntityGraphStoreOption.NONE
+            }
+        }
 
         return config
     }
@@ -162,7 +174,7 @@ class FrameworkConfigBuilder {
      * Set configuration for MongoDB
      */
     private fun setMongoConfig(file: JsonObject, config: FrameworkConfig): FrameworkConfig {
-        val mongo = withInfo(file.getJsonObject("mongo"), "mongo section not specified, any features configured to use mongo driver are implicitly disabled")
+        val mongo = withInfo(file.getJsonObject("mongo"), "mongo section not specified, if any features are configured to use the Mongo adapter application startup will fail")
 
         if (!mongo.isEmpty) {
             config.mongo.host = require(mongo.getString("host"), "mongo.host must be specified, since mongo section exists")

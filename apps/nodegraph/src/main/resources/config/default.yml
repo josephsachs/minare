@@ -21,6 +21,8 @@ entity:
   update:
     collect_changes: true
     interval: 25
+  graphing:
+    store: mongo
 
 
 frames:
