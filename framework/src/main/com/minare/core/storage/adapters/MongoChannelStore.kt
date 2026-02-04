@@ -6,12 +6,12 @@ import io.vertx.ext.mongo.MongoClient
 import io.vertx.ext.mongo.UpdateOptions
 import io.vertx.kotlin.coroutines.await
 import org.slf4j.LoggerFactory
-import javax.inject.Inject
+import com.google.inject.Inject
 import com.minare.core.storage.interfaces.ChannelStore
 import com.minare.core.utils.debug.DebugLogger
 
 class MongoChannelStore @Inject constructor(
-    private val mongoClient: MongoClient
+    private val mongoClient: MongoClient,
 ) : ChannelStore {
     private val collection = "channels"
     private val log = LoggerFactory.getLogger(MongoChannelStore::class.java)

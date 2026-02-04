@@ -1,4 +1,4 @@
-package com.minare.utils
+package com.minare.core.transport.services
 
 import com.minare.core.utils.vertx.VerticleLogger
 import io.vertx.core.Future
@@ -101,7 +101,8 @@ object HttpServerUtils {
         router.get(path).handler { ctx ->
             ctx.response()
                 .putHeader("Content-Type", "application/json")
-                .end(JsonObject()
+                .end(
+                    JsonObject()
                     .put("status", "ok")
                     .put("message", "$verticleName router is working")
                     .put("timestamp", System.currentTimeMillis())

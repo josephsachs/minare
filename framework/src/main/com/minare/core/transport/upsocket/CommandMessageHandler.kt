@@ -7,8 +7,8 @@ import io.vertx.core.eventbus.ReplyException
 import io.vertx.core.json.JsonObject
 import io.vertx.kotlin.coroutines.await
 import org.slf4j.LoggerFactory
-import javax.inject.Inject
-import javax.inject.Singleton
+import com.google.inject.Inject
+import com.google.inject.Singleton
 
 /**
  * Handles command messages after they've been processed through Kafka.

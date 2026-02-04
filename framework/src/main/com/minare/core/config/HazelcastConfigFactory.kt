@@ -2,7 +2,7 @@ package com.minare.core.config
 
 import com.hazelcast.config.Config
 import com.hazelcast.config.SerializerConfig
-import com.minare.core.utils.json.JsonObjectSerializer
+import com.minare.core.entity.services.json.JsonObjectSerializer
 import io.vertx.core.json.JsonObject
 import io.vertx.spi.cluster.hazelcast.HazelcastClusterManager
 import org.slf4j.LoggerFactory
@@ -18,11 +18,11 @@ object HazelcastConfigFactory {
      * Creates a HazelcastClusterManager with all necessary configuration,
      * including JsonObject serialization support.
      */
-    fun createConfiguredClusterManager(): HazelcastClusterManager {
+    fun createConfiguredClusterManager(clusterName: String): HazelcastClusterManager {
         val config = Config()
 
         // Set cluster name from environment
-        config.clusterName = System.getenv("HAZELCAST_CLUSTER_NAME") ?: "minare-cluster"
+        config.clusterName = clusterName
         log.info("Configuring Hazelcast cluster: ${config.clusterName}")
 
         // Configure JsonObject serialization
@@ -53,11 +53,10 @@ object HazelcastConfigFactory {
 
     /**
      * Creates a standalone Hazelcast configuration for testing or other purposes.
-     * Uses the same configuration as the cluster manager.
      */
-    fun createStandaloneConfig(): Config {
+    fun createStandaloneConfig(clusterName: String): Config {
         val config = Config()
-        config.clusterName = System.getenv("HAZELCAST_CLUSTER_NAME") ?: "minare-cluster"
+        config.clusterName = clusterName
         configureJsonObjectSerialization(config)
         return config
     }

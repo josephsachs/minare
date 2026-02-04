@@ -1,6 +1,5 @@
 package com.minare.core.transport.downsocket
 
-import com.google.inject.name.Named
 import com.minare.application.config.FrameworkConfig
 import com.minare.core.MinareApplication
 import com.minare.cache.ConnectionCache
@@ -11,7 +10,6 @@ import com.minare.core.transport.downsocket.pubsub.UpdateBatchCoordinator
 import com.minare.core.transport.downsocket.services.ConnectionTracker
 import com.minare.core.utils.vertx.EventBusUtils
 import com.minare.core.utils.vertx.VerticleLogger
-import com.minare.utils.*
 import io.vertx.core.http.HttpServer
 import io.vertx.core.http.ServerWebSocket
 import io.vertx.core.json.JsonObject
@@ -23,8 +21,10 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import org.slf4j.LoggerFactory
 import java.util.concurrent.ConcurrentHashMap
-import javax.inject.Inject
-import com.minare.worker.upsocket.UpSocketVerticle
+import com.google.inject.Inject
+import com.minare.core.transport.services.HeartbeatManager
+import com.minare.core.transport.services.HttpServerUtils
+import com.minare.core.transport.services.WebSocketUtils
 import com.minare.worker.downsocket.events.UpdateConnectionClosedEvent
 import com.minare.worker.downsocket.events.UpdateConnectionClosedEvent.Companion.ADDRESS_CONNECTION_CLOSED
 import com.minare.worker.downsocket.events.UpdateConnectionEstablishedEvent

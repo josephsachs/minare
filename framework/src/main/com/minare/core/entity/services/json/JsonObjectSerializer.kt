@@ -1,4 +1,4 @@
-package com.minare.core.utils.json
+package com.minare.core.entity.services.json
 
 import com.hazelcast.nio.ObjectDataInput
 import com.hazelcast.nio.ObjectDataOutput
@@ -19,13 +19,11 @@ class JsonObjectSerializer : StreamSerializer<JsonObject> {
     override fun getTypeId(): Int = TYPE_ID
 
     override fun write(out: ObjectDataOutput, obj: JsonObject) {
-        // Convert JsonObject to its string representation
         val jsonString = obj.encode()
         out.writeString(jsonString)
     }
 
     override fun read(input: ObjectDataInput): JsonObject {
-        // Read the string and reconstruct JsonObject
         val jsonString = input.readString()
         return JsonObject(jsonString)
     }

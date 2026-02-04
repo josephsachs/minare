@@ -19,7 +19,10 @@ sockets:
 entity:
   factory: com.minare.integration.TestEntityFactory
   update:
-    batch_interval: 100
+    collect_changes: true
+    interval: 100
+  graphing:
+    store: mongo
 
 
 frames:
@@ -63,6 +66,10 @@ kafka:
   host: kafka
   port: 29092
   group_id: minare-coordinator
+
+
+hazelcast:
+  cluster_name: minare-integration-tests
 
 
 development:

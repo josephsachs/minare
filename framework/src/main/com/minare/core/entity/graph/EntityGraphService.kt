@@ -1,10 +1,9 @@
-package com.minare.core.utils.graph
+package com.minare.core.entity.graph
 
 import com.google.inject.Inject
 import com.google.inject.Singleton
 import com.minare.core.entity.models.Entity
 import com.minare.core.storage.adapters.MongoEntityStore
-import com.minare.core.storage.adapters.MongoEntityStore.Companion.COLLECTION_NAME
 import io.vertx.core.json.JsonArray
 import io.vertx.core.json.JsonObject
 import org.jgrapht.Graph
@@ -28,7 +27,7 @@ class EntityGraphService @Inject constructor(
 
             // Graph lookup for ancestors
             add(JsonObject().put("\$graphLookup", JsonObject().apply {
-                put("from", COLLECTION_NAME)
+                put("from", "entity_graph")
                 put("startWith", "\$_id")
                 put("connectFromField", "_id")
                 put("connectToField", "state.*")

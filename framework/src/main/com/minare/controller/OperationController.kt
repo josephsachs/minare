@@ -8,7 +8,7 @@ import com.minare.core.utils.debug.DebugLogger.Companion.DebugType as DebugType
 import io.vertx.core.json.JsonArray
 import io.vertx.core.json.JsonObject
 import org.slf4j.LoggerFactory
-import javax.inject.Inject
+import com.google.inject.Inject
 
 /**
  * Controller for the operation event queue.

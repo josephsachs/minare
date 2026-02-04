@@ -6,8 +6,9 @@ import com.minare.core.operation.adapters.KafkaMessageQueue
 import io.vertx.kotlin.coroutines.await
 import io.vertx.redis.client.RedisAPI
 import org.slf4j.LoggerFactory
-import javax.inject.Inject
-import javax.inject.Singleton
+import com.google.inject.Inject
+import com.google.inject.Singleton
+import java.util.*
 
 /**
  * Handles initialization and optional reset of all stateful services.
@@ -16,11 +17,13 @@ import javax.inject.Singleton
 @Singleton
 class StateInitializer @Inject constructor(
     private val frameworkConfig: FrameworkConfig,
-    private val databaseInitializer: DatabaseInitializer,
     private val redisAPI: RedisAPI,
     private val messageQueue: MessageQueue
 ) {
     private val log = LoggerFactory.getLogger(StateInitializer::class.java)
+
+    @Inject
+    private lateinit var databaseInitializer: Optional<DatabaseInitializer>
 
     /**
      * Initialize all stateful services, optionally resetting them first
@@ -34,8 +37,10 @@ class StateInitializer @Inject constructor(
         }
 
         // Initialize database (DatabaseInitializer already handles RESET_DB internally)
-        databaseInitializer.initialize()
-        log.info("Database initialized")
+        if (frameworkConfig.mongo.enabled) {
+            databaseInitializer.get().initialize()
+            log.info("Database initialized")
+        }
 
         // Any other initialization logic can go here
         log.info("State initialization completed")

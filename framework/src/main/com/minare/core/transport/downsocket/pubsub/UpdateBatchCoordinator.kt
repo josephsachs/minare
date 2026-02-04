@@ -1,172 +1,129 @@
 package com.minare.core.transport.downsocket.pubsub
 
-import com.minare.application.config.FrameworkConfig
+import com.minare.core.utils.debug.DebugLogger
+import com.minare.core.utils.debug.DebugLogger.Companion.DebugType
 import io.vertx.core.Vertx
 import io.vertx.core.json.JsonObject
 import org.slf4j.LoggerFactory
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
-import javax.inject.Inject
-import javax.inject.Singleton
+import com.google.inject.Inject
+import com.google.inject.Singleton
 
-/**
- * Coordinates batching of entity updates across all DownSocketVerticles.
- *
- * This class collects entity updates from Redis and distributes them in batches
- * at regular intervals to ensure all DownSocketVerticles receive identical update batches.
- */
 @Singleton
 class UpdateBatchCoordinator @Inject constructor(
     private val vertx: Vertx,
-    private val frameworkConfig: FrameworkConfig
+    private val debug: DebugLogger
 ) {
     private val log = LoggerFactory.getLogger(UpdateBatchCoordinator::class.java)
 
     private val pendingUpdates = ConcurrentHashMap<String, JsonObject>()
     private val isRunning = AtomicBoolean(false)
 
-    private var batchIntervalMs = frameworkConfig.entity.update.batchInterval
-
+    private var batchIntervalMs = 0L
     private var timerId: Long? = null
-
-    private var tickCount = 0L
-    private var totalProcessingTimeMs = 0L
-    private var lastTickTimeMs = 0L
 
     companion object {
         const val ADDRESS_BATCHED_UPDATES = "minare.entity.batched.updates"
     }
 
-    /**
-     * Start the batch coordinator
-     */
-    fun start(intervalMs: Long = batchIntervalMs) {
-        if (isRunning.compareAndSet(false, true)) {
-            this.batchIntervalMs = intervalMs
-            startBatchTimer()
-            log.info("Started UpdateBatchCoordinator with batch interval {}ms", batchIntervalMs)
-        } else {
+    fun start(intervalMs: Long) {
+        if (!isRunning.compareAndSet(false, true)) {
             log.warn("UpdateBatchCoordinator already running")
-        }
-    }
-
-    /**
-     * Stop the batch coordinator
-     */
-    fun stop() {
-        if (isRunning.compareAndSet(true, false)) {
-            timerId?.let { vertx.cancelTimer(it) }
-            timerId = null
-            log.info("UpdateBatchCoordinator stopped after {} ticks", tickCount)
-        } else {
-            log.warn("UpdateBatchCoordinator not running")
-        }
-    }
-
-    /**
-     * Set the batch processing interval
-     */
-    fun setBatchInterval(intervalMs: Long) {
-        if (intervalMs <= 0) {
-            throw IllegalArgumentException("Batch interval must be positive")
-        }
-
-        if (intervalMs != this.batchIntervalMs) {
-            this.batchIntervalMs = intervalMs
-
-            if (isRunning.get()) {
-                // Restart the timer with the new interval
-                timerId?.let { vertx.cancelTimer(it) }
-                startBatchTimer()
-            }
-
-            log.info("Batch interval updated to {}ms", intervalMs)
-        }
-    }
-
-    /**
-     * Queue an entity update for processing in the next batch.
-     * If an update for the same entity already exists, it will only be replaced
-     * if the new update has a higher version number.
-     */
-    fun queueUpdate(entityUpdate: JsonObject) {
-        val entityId = entityUpdate.getString("_id")
-        if (entityId == null) {
-            log.warn("Received entity update without _id field: {}", entityUpdate.encode())
             return
         }
 
-        // Check if we already have an update for this entity
-        val existingUpdate = pendingUpdates[entityId]
+        batchIntervalMs = intervalMs
 
-        if (existingUpdate != null) {
-            // Compare versions and only replace if newer
-            val existingVersion = existingUpdate.getLong("version", 0)
-            val newVersion = entityUpdate.getLong("version", 0)
-
-            if (newVersion > existingVersion) {
-                // TODO: Merge JsonObjects instead of overwriting, with newer taking priority in case of delta conflict
-                pendingUpdates[entityId] = entityUpdate
-
-                log.trace("Updated entity in batch queue: id={}, version={}", entityId, newVersion)
-            } else {
-                log.trace("Ignored outdated entity update: id={}, existing={}, new={}",
-                    entityId, existingVersion, newVersion)
-            }
+        if (shouldUseBatchTimer()) {
+            startBatchTimer()
+            debug.log(DebugType.DOWNSOCKET_PUBSUB_STARTED_WITH_BATCHING, listOf(batchIntervalMs))
         } else {
-            pendingUpdates[entityId] = entityUpdate
-            log.trace("Added entity to batch queue: id={}", entityId)
+            debug.log(DebugType.DOWNSOCKET_PUBSUB_STARTED_NO_BATCHING, listOf(batchIntervalMs))
         }
     }
 
-    /**
-     * Start the timer for batch distribution
-     */
+    fun stop() {
+        if (!isRunning.compareAndSet(true, false)) {
+            return
+        }
+
+        stopBatchTimer()
+    }
+
+    fun queueUpdate(entityUpdate: JsonObject) {
+        val entityId = extractEntityId(entityUpdate) ?:
+            run {
+                log.error("Received change update for entity missing ID: ${entityUpdate.encodePrettily()}")
+                return
+            }
+
+        val existingUpdate = pendingUpdates[entityId]
+        if (existingUpdate == null) {
+            pendingUpdates[entityId] = entityUpdate
+            return
+        }
+
+        if (isNewerVersion(entityUpdate, existingUpdate)) {
+            pendingUpdates[entityId] = existingUpdate.mergeIn(entityUpdate, true)
+        }
+    }
+
+    fun flushBatch() {
+        distributeBatch()
+    }
+
+    private fun shouldUseBatchTimer(): Boolean {
+        return batchIntervalMs > 0
+    }
+
+    private fun extractEntityId(entityUpdate: JsonObject): String? {
+        return entityUpdate.getString("_id")
+    }
+
+    private fun getVersion(entityUpdate: JsonObject): Long {
+        return entityUpdate.getLong("version", 0)
+    }
+
+    private fun isNewerVersion(newUpdate: JsonObject, existingUpdate: JsonObject): Boolean {
+        return getVersion(newUpdate) > getVersion(existingUpdate)
+    }
+
     private fun startBatchTimer() {
-        timerId = vertx.setPeriodic(batchIntervalMs) { _ ->
+        timerId = vertx.setPeriodic(batchIntervalMs) {
             if (!isRunning.get()) {
                 return@setPeriodic
             }
 
-            val startTime = System.currentTimeMillis()
             try {
-                tickCount++
                 distributeBatch()
             } catch (e: Exception) {
                 log.error("Error in batch distribution: {}", e.message, e)
-            } finally {
-                lastTickTimeMs = System.currentTimeMillis() - startTime
-                totalProcessingTimeMs += lastTickTimeMs
-
-                if (lastTickTimeMs > batchIntervalMs * 0.8) {
-                    log.warn("Batch processing took {}ms ({}% of batch interval)",
-                        lastTickTimeMs, (lastTickTimeMs * 100 / batchIntervalMs))
-                }
-
-                if (tickCount % 100 == 0L) {
-                    val avgTickTime = if (tickCount > 0) totalProcessingTimeMs / tickCount else 0
-                    log.info("Batch stats: count={}, avg={}ms, last={}ms",
-                        tickCount, avgTickTime, lastTickTimeMs)
-                }
             }
         }
     }
 
-    /**
-     * Distribute the current batch of updates to all DownSocketVerticles
-     */
+    private fun stopBatchTimer() {
+        timerId?.let { vertx.cancelTimer(it) }
+        timerId = null
+    }
+
     private fun distributeBatch() {
         if (pendingUpdates.isEmpty()) {
             return
         }
 
         val updatesBatch = HashMap(pendingUpdates)
-
         pendingUpdates.clear()
 
-        // Create the update message in the same format as DownSocketVerticle currently uses
-        // TODO: Send to application hook for developer to convert to client's expected format
-        val updateMessage = JsonObject()
+        val updateMessage = createBatchMessage(updatesBatch)
+        vertx.eventBus().publish(ADDRESS_BATCHED_UPDATES, updateMessage)
+
+        debug.log(DebugType.DOWNSOCKET_PUBSUB_DISTRIBUTED_BATCH, listOf(updatesBatch.size))
+    }
+
+    private fun createBatchMessage(updatesBatch: Map<String, JsonObject>): JsonObject {
+        return JsonObject()
             .put("type", "update_batch")
             .put("timestamp", System.currentTimeMillis())
             .put("updates", JsonObject().apply {
@@ -174,16 +131,5 @@ class UpdateBatchCoordinator @Inject constructor(
                     put(entityId, update)
                 }
             })
-
-        vertx.eventBus().publish(ADDRESS_BATCHED_UPDATES, updateMessage)
-
-        if (updatesBatch.size > 0 && (
-                    updatesBatch.size > 100 ||
-                            lastTickTimeMs > batchIntervalMs / 2 ||
-                            tickCount % 100 == 0L
-                    )) {
-            log.info("Distributed batch with {} entity updates in {}ms",
-                updatesBatch.size, lastTickTimeMs)
-        }
     }
 }

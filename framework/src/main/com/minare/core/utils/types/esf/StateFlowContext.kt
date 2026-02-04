@@ -1,4 +1,4 @@
-package com.minare.core.utils
+package com.minare.core.utils.types.esf
 
 interface StateFlowContext {
     /** * Triggers the transition to the next state unconditionally.

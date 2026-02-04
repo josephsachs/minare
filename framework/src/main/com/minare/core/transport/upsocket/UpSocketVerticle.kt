@@ -1,14 +1,16 @@
-package com.minare.worker.upsocket
+package com.minare.core.transport.upsocket
 
 import com.minare.application.config.FrameworkConfig
 import com.minare.controller.MessageController
 import com.minare.core.utils.vertx.VerticleLogger
-import com.minare.utils.HeartbeatManager
+import com.minare.core.transport.services.HeartbeatManager
 import com.minare.core.transport.downsocket.services.ConnectionTracker
+import com.minare.core.transport.upsocket.events.EntitySyncEvent
 import com.minare.core.utils.debug.DebugLogger
 import com.minare.core.utils.debug.DebugLogger.Companion.DebugType
-import com.minare.utils.HttpServerUtils
-import com.minare.utils.WebSocketUtils
+import com.minare.core.transport.services.HttpServerUtils
+import com.minare.core.transport.services.WebSocketUtils
+import com.minare.worker.upsocket.ConnectionLifecycle
 import com.minare.worker.upsocket.events.*
 import io.vertx.core.http.HttpServer
 import io.vertx.core.http.ServerWebSocket
@@ -20,7 +22,7 @@ import io.vertx.kotlin.coroutines.dispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import org.slf4j.LoggerFactory
-import javax.inject.Inject
+import com.google.inject.Inject
 import com.minare.worker.upsocket.handlers.CloseHandler
 import com.minare.worker.upsocket.handlers.ReconnectionHandler
 
@@ -80,9 +82,7 @@ class UpSocketVerticle @Inject constructor(
         registerEventBusConsumers()
         deployHttpServer()
 
-        // Save deployment ID
-        // TODO: If this is the deployment ID for the worker, it should be set in MinareApplication instead
-        deploymentID?.let {
+        deploymentID.let {
             vlog.logDeployment(it)
         }
 
@@ -134,7 +134,7 @@ class UpSocketVerticle @Inject constructor(
         channelCleanupEvent.register(debugTraceLogs)
         upSocketCleanupEvent.register(debugTraceLogs)
         connectionCleanupEvent.register(debugTraceLogs)
-        entitySyncEvent.register(debugTraceLogs)
+        entitySyncEvent.register()
     }
 
     /**
@@ -148,24 +148,18 @@ class UpSocketVerticle @Inject constructor(
         websocket.textMessageHandler { message ->
             CoroutineScope(vertx.dispatcher()).launch {
                 try {
-                    // Only process the first message before handshake completes
+                    val msg = JsonObject(message)
+
                     if (!handshakeCompleted) {
-                        val msg = JsonObject(message)
                         if (msg.containsKey("reconnect") && msg.containsKey("connectionId")) {
-                            // This is a reconnection attempt
                             val connectionId = msg.getString("connectionId")
+
                             handshakeCompleted = true
                             reconnectionHandler.handle(websocket, connectionId, deploymentID, traceId)
-                        } else {
-                            // For regular messages after handshake, use the standard handler
-                            val msg = JsonObject(message)
-                            messageController.handleUpsocket(connectionTracker, websocket, msg)
                         }
-                    } else {
-                        // Regular message handling after handshake is complete
-                        val msg = JsonObject(message)
-                        messageController.handleUpsocket(connectionTracker, websocket, msg)
                     }
+
+                    messageController.handleUpsocket(connectionTracker, websocket, msg)
                 } catch (e: Exception) {
                     WebSocketUtils.sendErrorResponse(
                         websocket, e,
@@ -183,23 +177,15 @@ class UpSocketVerticle @Inject constructor(
                     closeHandler.handle(websocket, connectionId)
                 }
             } else {
-                log.warn("Tried to close websocket ${websocket.textHandlerID()} with no connection")
+                debug.log(DebugType.UPSOCKET_CLOSED_CONNECTION_MISSING_ID, listOf(websocket.textHandlerID()))
             }
 
             debug.log(DebugType.UPSOCKET_WEBSOCKET_CLOSED, listOf(vlog, websocket.textHandlerID(), connectionId, traceId))
         }
 
         websocket.accept()
+        debug.log(DebugType.UPSOCKET_SOCKET_ACCEPTED, listOf(vlog, websocket.textHandlerID(), traceId))
 
-        if (debugTraceLogs) {
-            vlog.getEventLogger().trace(
-                "WEBSOCKET_ACCEPTED", mapOf(
-                    "socketId" to websocket.textHandlerID()
-                ), traceId
-            )
-        }
-
-        // If no reconnection message is received, create a new connection
         vertx.setTimer(handshakeTimeoutMs) {
             if (!handshakeCompleted) {
                 debug.log(DebugType.UPSOCKET_CONNECTION_TIMEOUT, listOf(vlog, websocket.textHandlerID(), handshakeTimeoutMs, traceId))
@@ -209,11 +195,8 @@ class UpSocketVerticle @Inject constructor(
                     try {
                         connectionLifecycle.initiateConnection(websocket, deploymentID, traceId)
                     } catch (e: Exception) {
-                        vlog.logVerticleError(
-                            "INITIATE_CONNECTION", e, mapOf(
-                                "socketId" to websocket.textHandlerID()
-                            )
-                        )
+                        debug.log(DebugType.UPSOCKET_INITIATE_CONNECTION_ERROR, listOf(vlog, e, websocket.textHandlerID()))
+
                         WebSocketUtils.sendErrorResponse(websocket, e, null, vlog)
                     }
                 }

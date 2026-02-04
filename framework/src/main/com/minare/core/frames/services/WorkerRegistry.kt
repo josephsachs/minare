@@ -2,8 +2,8 @@ package com.minare.core.frames.services
 
 import io.vertx.core.json.JsonObject
 import org.slf4j.LoggerFactory
-import javax.inject.Inject
-import javax.inject.Singleton
+import com.google.inject.Inject
+import com.google.inject.Singleton
 
 /**
  * Manages the authoritative registry of workers in the cluster.

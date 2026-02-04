@@ -5,8 +5,8 @@ import com.hazelcast.map.IMap
 import com.minare.core.frames.services.WorkerRegistry
 import io.vertx.core.json.JsonObject
 import org.slf4j.LoggerFactory
-import javax.inject.Inject
-import javax.inject.Singleton
+import com.google.inject.Inject
+import com.google.inject.Singleton
 
 /**
  * Tracks frame completion status across workers using Hazelcast.

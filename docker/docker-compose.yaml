@@ -39,32 +39,9 @@ services:
       - INSTANCE_ROLE=COORDINATOR
       - LOG_PATH=/app/logs
 
-      # Cluster configuration
-      - VERTX_CLUSTER_HOST=app-coordinator
-      - HAZELCAST_CLUSTER_NAME=minare-cluster
-
-      # Database configuration
-      - RESET_STATE=true # Development only
-      - MONGO_URI=mongodb://mongodb-rs:27017/minare?replicaSet=rs0
-      - REDIS_URI=redis://redis:6379
-
       # JVM configuration
       - JAVA_OPTS=-Xmx512m -XX:+UseContainerSupport
       - NTP_URL=ntp.local
-
-      # Kafka configuration
-      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
-      - KAFKA_TOPIC_PARTITIONS=3
-      - KAFKA_TOPIC_REPLICATION_FACTOR=1
-      - KAFKA_PRODUCER_ACKS=all
-      - KAFKA_PRODUCER_COMPRESSION=gzip
-      - KAFKA_PRODUCER_RETRIES=3
-
-      # Kafka consumer configuration
-      - KAFKA_CONSUMER_GROUP=minare-coordinator
-      - KAFKA_SESSION_TIMEOUT_MS=30000
-      - KAFKA_MAX_POLL_RECORDS=100
-      - KAFKA_AUTO_OFFSET_RESET=earliest
 
       # Debug configuration (conditional)
       - JAVA_DEBUG=${JAVA_DEBUG:-false}
@@ -141,32 +118,9 @@ services:
       - INSTANCE_ROLE=WORKER
       - LOG_PATH=/app/logs
 
-      # Cluster configuration - use HOSTNAME for unique cluster identity
-      - VERTX_CLUSTER_HOST=${HOSTNAME}
-      - VERTX_CLUSTERED=true
-      - HAZELCAST_CLUSTER_NAME=minare-cluster
-
-      # Database configuration
-      - MONGO_URI=mongodb://mongodb-rs:27017/minare?replicaSet=rs0
-      - REDIS_URI=redis://redis:6379
-
       # JVM configuration
       - JAVA_OPTS=-Xmx512m -XX:+UseContainerSupport
       - NTP_URL=ntp.local
-
-      # Kafka configuration
-      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
-      - KAFKA_TOPIC_PARTITIONS=3
-      - KAFKA_TOPIC_REPLICATION_FACTOR=1
-      - KAFKA_PRODUCER_ACKS=all
-      - KAFKA_PRODUCER_COMPRESSION=gzip
-      - KAFKA_PRODUCER_RETRIES=3
-
-      # Kafka consumer configuration
-      - KAFKA_CONSUMER_GROUP=minare-worker
-      - KAFKA_SESSION_TIMEOUT_MS=30000
-      - KAFKA_MAX_POLL_RECORDS=100
-      - KAFKA_AUTO_OFFSET_RESET=earliest
 
       # Debug configuration (conditional)
       - JAVA_DEBUG=${JAVA_DEBUG:-false}

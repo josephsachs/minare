@@ -5,12 +5,14 @@ import io.vertx.kotlin.coroutines.CoroutineVerticle
 import io.vertx.kotlin.coroutines.dispatcher
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
-import javax.inject.Inject
+import com.google.inject.Inject
+import com.google.inject.Singleton
 
 /**
  * Extension of EventLogger specifically for use with Verticles.
  * Provides verticle-specific logging patterns and lifecycle tracking.
  */
+@Singleton
 class VerticleLogger @Inject constructor() {
     private var verticle: CoroutineVerticle? = null
     private var log: Logger? = null

@@ -1,16 +1,14 @@
 package com.minare.worker.upsocket.handlers
 
 import com.google.inject.Inject
-import com.google.inject.name.Named
 import com.minare.application.config.FrameworkConfig
 import com.minare.core.MinareApplication
 import com.minare.cache.ConnectionCache
 import com.minare.controller.ConnectionController
 import com.minare.core.storage.interfaces.ConnectionStore
 import com.minare.core.transport.downsocket.services.ConnectionTracker
-import com.minare.utils.HeartbeatManager
+import com.minare.core.transport.services.HeartbeatManager
 import com.minare.core.utils.vertx.VerticleLogger
-import com.minare.core.transport.CleanupVerticle
 import io.vertx.core.http.ServerWebSocket
 import io.vertx.core.json.JsonObject
 import com.minare.worker.upsocket.ConnectionLifecycle

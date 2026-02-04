@@ -2,6 +2,7 @@ package com.minare.application.config
 
 import com.minare.core.frames.coordinator.services.SessionService.Companion.AutoSession
 import com.minare.core.frames.services.SnapshotService.Companion.SnapshotStoreOption
+import com.minare.core.storage.interfaces.EntityGraphStoreOption
 
 class FrameworkConfig {
     class SocketsSection {
@@ -30,10 +31,16 @@ class FrameworkConfig {
     class EntityConfig {
         var factoryName: String = ""
         var update = EntityUpdateConfig()
+        var graph = EntityGraphConfig()
     }
 
     class EntityUpdateConfig {
-        var batchInterval: Long = 0L
+        var collectChanges: Boolean = true
+        var interval: Long = 0L
+    }
+
+    class EntityGraphConfig {
+        var store: EntityGraphStoreOption = EntityGraphStoreOption.NONE
     }
 
     class FramesConfig {
@@ -82,7 +89,8 @@ class FrameworkConfig {
         var host: String = ""
         var port: Int = 0
         var database: String = ""
-        var hasMongo: Boolean = false
+        var configured: Boolean = false
+        var enabled: Boolean = false
     }
 
     class RedisConfig {
@@ -100,6 +108,10 @@ class FrameworkConfig {
         var resetData: Boolean = false
     }
 
+    class HazelcastConfig {
+        var clusterName: String = ""
+    }
+
     var sockets = SocketsSection()
     var entity = EntityConfig()
     var frames = FramesConfig()
@@ -111,4 +123,5 @@ class FrameworkConfig {
     var kafka = KafkaConfig()
 
     var development = DevelopmentSettings()
+    var hazelcast = HazelcastConfig()
 }

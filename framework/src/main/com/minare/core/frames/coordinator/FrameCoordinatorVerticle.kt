@@ -19,7 +19,7 @@ import io.vertx.kotlin.coroutines.CoroutineVerticle
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.slf4j.LoggerFactory
-import javax.inject.Inject
+import com.google.inject.Inject
 import kotlin.math.max
 
 /**

@@ -2,7 +2,7 @@ package com.minare.core.transport.downsocket.pubsub
 
 import io.vertx.core.json.JsonObject
 import org.slf4j.LoggerFactory
-import javax.inject.Singleton
+import com.google.inject.Singleton
 
 /**
  * Pub/sub strategy that publishes all entity changes to a single global Redis channel.

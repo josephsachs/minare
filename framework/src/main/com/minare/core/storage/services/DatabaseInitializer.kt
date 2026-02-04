@@ -6,11 +6,11 @@ import io.vertx.kotlin.coroutines.await
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import org.slf4j.LoggerFactory
-import javax.inject.Inject
-import javax.inject.Named
-import javax.inject.Singleton
+import com.google.inject.Inject
+import com.google.inject.Singleton
 import io.vertx.core.json.JsonObject
 
+// TODO: Figure out if we want the Mongo transport adapters to remain as config options or just eliminate them
 @Singleton
 class DatabaseInitializer @Inject constructor(
     private val frameworkConfig: FrameworkConfig,
@@ -20,11 +20,10 @@ class DatabaseInitializer @Inject constructor(
 
     // Collections that we manage
     private val managedCollections = listOf(
-        "entity_graph",
-        "connections",
-        "channels",
-        "contexts"
+        "entity_graph"
     )
+
+    // TODO: Handle snapshot collections here too, if mongo is selected for snapshots
 
     /**
      * Initialize database collections and indexes
@@ -45,15 +44,15 @@ class DatabaseInitializer @Inject constructor(
             coroutineScope {
                 // Launch all initialization tasks concurrently
                 val entitiesTask = async { initializeEntities() }
-                val connectionsTask = async { initializeConnections() }
-                val channelsTask = async { initializeChannels() }
-                val contextsTask = async { initializeContexts() }
+                //val connectionsTask = async { initializeConnections() }
+                //val channelsTask = async { initializeChannels() }
+                //val contextsTask = async { initializeContexts() }
 
                 // Wait for all tasks to complete
                 entitiesTask.await()
-                connectionsTask.await()
-                channelsTask.await()
-                contextsTask.await()
+                //connectionsTask.await()
+                //channelsTask.await()
+                //contextsTask.await()
             }
 
             log.info("Database initialization completed successfully")
@@ -114,7 +113,7 @@ class DatabaseInitializer @Inject constructor(
         }
     }
 
-    private suspend fun initializeConnections() {
+    /**private suspend fun initializeConnections() {
         try {
             val collections = mongoClient.getCollections().await()
 
@@ -180,5 +179,5 @@ class DatabaseInitializer @Inject constructor(
             log.error("Failed to initialize contexts collection", e)
             throw e
         }
-    }
+    }**/
 }

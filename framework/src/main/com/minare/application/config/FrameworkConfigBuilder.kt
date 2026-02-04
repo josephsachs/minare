@@ -4,6 +4,7 @@ import com.minare.exceptions.ConfigurationException
 import io.vertx.core.json.JsonObject
 import com.minare.core.frames.coordinator.services.SessionService.Companion.AutoSession
 import com.minare.core.frames.services.SnapshotService.Companion.SnapshotStoreOption
+import com.minare.core.storage.interfaces.EntityGraphStoreOption
 import io.vertx.core.impl.logging.LoggerFactory
 
 class FrameworkConfigBuilder {
@@ -22,6 +23,7 @@ class FrameworkConfigBuilder {
             .let { setMongoConfig(file, it) }
             .let { setRedisConfig(file, it) }
             .let { setKafkaConfig(file, it) }
+            .let { setHazelcastConfig(file, it) }
             .let { setDevelopmentConfig(file, it) }
 
         validate()
@@ -66,7 +68,19 @@ class FrameworkConfigBuilder {
         )
 
         val entityUpdate = require(entity.getJsonObject("update"), "entity.update section must be specified")
-        config.entity.update.batchInterval = require(entityUpdate.getInteger("batch_interval"), "entity.update.batch_interval must be specified").toLong()
+        val collectChanges = require(entityUpdate.getString("collect_changes"), "entity.update.collect_changes must be specified")
+        config.entity.update.collectChanges = toBoolean(collectChanges)
+        config.entity.update.interval = entityUpdate.getInteger("interval")?.toLong() ?: 0L
+
+        val entityGraph = withInfo(entity.getJsonObject("graphing"), "entity.graphing section not specified, defaulting to disabled")
+        if (!entityGraph.isEmpty) {
+            val entityGraphStore = require(entityGraph.getString("store"), "entity.graphing.store must be specified, since entity.graph exists")
+            config.entity.graph.store = when (entityGraphStore) {
+                "mongo" -> EntityGraphStoreOption.MONGO
+                "none" -> EntityGraphStoreOption.NONE
+                else -> EntityGraphStoreOption.NONE
+            }
+        }
 
         return config
     }
@@ -159,13 +173,13 @@ class FrameworkConfigBuilder {
      * Set configuration for MongoDB
      */
     private fun setMongoConfig(file: JsonObject, config: FrameworkConfig): FrameworkConfig {
-        val mongo = withInfo(file.getJsonObject("mongo"), "mongo section not specified, any features configured to use mongo driver are implicitly disabled")
+        val mongo = withInfo(file.getJsonObject("mongo"), "mongo section not specified, if any features are configured to use the Mongo adapter application startup will fail")
 
         if (!mongo.isEmpty) {
             config.mongo.host = require(mongo.getString("host"), "mongo.host must be specified, since mongo section exists")
             config.mongo.port = require(mongo.getInteger("port"), "mongo.port must be specified, since mongo section exists")
             config.mongo.database = require(mongo.getString("database"), "mongo.database must be specified, since mongo section exists")
-            config.mongo.hasMongo = true
+            config.mongo.configured = true
         }
 
         return config
@@ -189,6 +203,21 @@ class FrameworkConfigBuilder {
         config.kafka.host = require(kafka.getString("host"), "kafka.host must be specified")
         config.kafka.port = require(kafka.getInteger("port"), "kafka.port must be specified")
         config.kafka.groupId = kafka.getString("group_id")  ?: "minare-coordinator"
+        return config
+    }
+
+    /**
+     * Set configuration for Hazelcast
+     */
+    private fun setHazelcastConfig(file: JsonObject, config: FrameworkConfig): FrameworkConfig {
+        val hazelcast = withInfo(file.getJsonObject("hazelcast"), "Hazelcast section not specified, using defaults")
+
+        if (!hazelcast.isEmpty) {
+            config.hazelcast.clusterName = hazelcast.getString("cluster_name") ?: "minare-application"
+        } else {
+            config.hazelcast.clusterName = "minare-application"
+        }
+
         return config
     }
 

@@ -6,8 +6,8 @@ import com.minare.core.utils.debug.DebugLogger.Companion.DebugType
 import com.minare.worker.coordinator.events.WorkerReadinessEvent
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.delay
-import javax.inject.Inject
-import javax.inject.Singleton
+import com.google.inject.Inject
+import com.google.inject.Singleton
 
 /**
  * Minimal service to ensure all workers are ready before starting session.

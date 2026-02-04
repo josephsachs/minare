@@ -3,7 +3,7 @@ package com.minare.controller
 import com.minare.application.config.FrameworkConfig
 import com.minare.cache.ConnectionCache
 import com.minare.core.transport.models.Connection
-import com.minare.worker.upsocket.UpSocketVerticle
+import com.minare.core.transport.upsocket.UpSocketVerticle
 import io.vertx.core.http.ServerWebSocket
 import org.slf4j.LoggerFactory
 import com.minare.core.storage.interfaces.*
@@ -11,8 +11,8 @@ import com.minare.core.config.InternalInjectorHolder
 import com.minare.core.transport.CleanupVerticle
 import com.minare.core.utils.debug.DebugLogger
 import com.minare.core.utils.debug.DebugLogger.Companion.DebugType as DebugType
-import javax.inject.Inject
-import javax.inject.Singleton
+import com.google.inject.Inject
+import com.google.inject.Singleton
 
 /**
  * Controls connection lifecycle and maintains in-memory connection worker.

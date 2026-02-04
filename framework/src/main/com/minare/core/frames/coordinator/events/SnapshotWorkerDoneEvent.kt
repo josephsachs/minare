@@ -4,7 +4,7 @@ import com.minare.core.frames.services.WorkerRegistry
 import com.minare.core.utils.vertx.EventBusUtils
 import com.minare.core.utils.vertx.VerticleLogger
 import io.vertx.core.json.JsonObject
-import javax.inject.Inject
+import com.google.inject.Inject
 
 class SnapshotCompletionEvent @Inject constructor(
     private val eventBusUtils: EventBusUtils,

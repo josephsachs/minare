@@ -10,8 +10,8 @@ import io.vertx.kotlin.coroutines.dispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import org.slf4j.LoggerFactory
-import javax.inject.Inject
-import com.minare.worker.upsocket.UpSocketVerticle
+import com.google.inject.Inject
+import com.minare.core.transport.upsocket.UpSocketVerticle
 import io.vertx.kotlin.ext.stomp.frameOf
 
 /**

@@ -7,6 +7,7 @@ import com.minare.core.MinareApplication.ConnectionEvents.ADDRESS_COORDINATOR_ST
 import com.minare.core.MinareApplication.ConnectionEvents.ADDRESS_WORKER_STARTED
 import com.minare.application.interfaces.AppState
 import com.minare.application.adapters.ClusteredAppState
+import com.minare.application.config.AdapterConfigValidator
 import com.minare.application.config.EntityValidator
 import com.minare.application.config.FrameworkConfig
 import com.minare.application.config.FrameworkConfigBuilder
@@ -14,11 +15,10 @@ import com.minare.core.config.HazelcastInstanceHolder
 import com.minare.core.config.*
 import com.minare.controller.ConnectionController
 import com.minare.core.MinareApplication.ConnectionEvents.ADDRESS_TASK_COORDINATOR_STARTED
-import com.minare.worker.upsocket.UpSocketVerticle
+import com.minare.core.transport.upsocket.UpSocketVerticle
 import com.minare.core.transport.downsocket.DownSocketVerticle
 import com.minare.worker.coordinator.config.FrameCoordinatorVerticleModule
 import com.minare.worker.downsocket.config.DownSocketVerticleModule
-import com.minare.worker.upsocket.config.UpSocketVerticleModule
 import io.vertx.core.DeploymentOptions
 import io.vertx.core.Vertx
 import io.vertx.core.VertxOptions
@@ -29,7 +29,7 @@ import io.vertx.kotlin.coroutines.await
 import io.vertx.kotlin.coroutines.dispatcher
 import org.slf4j.LoggerFactory
 import java.util.concurrent.ConcurrentHashMap
-import javax.inject.Inject
+import com.google.inject.Inject
 import com.minare.core.config.AppStateProvider
 import com.minare.core.entity.factories.EntityFactory
 import com.minare.core.factories.MinareVerticleFactory
@@ -47,11 +47,13 @@ import com.minare.core.operation.MutationVerticle
 import com.minare.core.transport.downsocket.RedisPubSubWorkerVerticle
 import com.minare.core.storage.services.StateInitializer
 import com.minare.core.transport.CleanupVerticle
+import com.minare.core.transport.upsocket.config.UpSocketVerticleModule
 import com.minare.exceptions.EntityFactoryException
 import com.minare.worker.coordinator.events.WorkerReadinessEvent
 import io.vertx.config.ConfigRetriever
 import io.vertx.config.ConfigRetrieverOptions
 import io.vertx.config.ConfigStoreOptions
+import io.vertx.ext.mongo.MongoClient
 import kotlinx.coroutines.*
 import kotlin.system.exitProcess
 
@@ -598,28 +600,37 @@ abstract class MinareApplication : CoroutineVerticle() {
         }
 
         /**
-         * Start the application with the given implementation class.
-         * This is the main entry point that applications should use.
+         * Starts clustered Vert.x, reads the framework configuration and builds the dependency injection tree.
+         * This is the public interface used by the application to pass its own extension of MinareApplication.
+         * Typically we expect this to occur in the Main module of the application.
          */
         fun start(applicationClass: Class<out MinareApplication>, args: Array<String>) {
+            val frameworkConfig = getFrameworkConfiguration()
+
             val vertxOptions = VertxOptions()
+            val clusterManager = HazelcastConfigFactory.createConfiguredClusterManager(frameworkConfig.hazelcast.clusterName)
 
-            log.info("Clustering is enabled")
-
-            val clusterManager = HazelcastConfigFactory.createConfiguredClusterManager()
             vertxOptions.clusterManager = clusterManager
             HazelcastInstanceHolder.setClusterManager(clusterManager)
 
             Vertx.clusteredVertx(vertxOptions).onComplete { ar ->
                 if (ar.succeeded()) {
                     val vertx = ar.result()
-                    log.info("Successfully created clustered Vertx instance")
+                    log.info("Clustered Vertx instance created at ${System.currentTimeMillis()}")
 
                     CoroutineScope(vertx.dispatcher()).launch {
-                        completeStartup(vertx, applicationClass, args)
+                        try {
+                            completeStartup(vertx, applicationClass, frameworkConfig, args)
+
+                        } catch (e: Exception) {
+                            log.error("Startup failed with exception", e)
+
+                            exitProcess(1)
+                        }
                     }
                 } else {
                     log.error("Failed to create clustered Vertx instance", ar.cause())
+
                     exitProcess(1)
                 }
             }
@@ -628,7 +639,7 @@ abstract class MinareApplication : CoroutineVerticle() {
         /**
          *
          */
-        private fun getConfiguration(): FrameworkConfig {
+        private fun getFrameworkConfiguration(): FrameworkConfig {
             val env = System.getenv("ENVIRONMENT") ?: "default"
             val configPath = "config/${env}.yml"
             val frameworkConfigBuilder = FrameworkConfigBuilder()
@@ -648,12 +659,13 @@ abstract class MinareApplication : CoroutineVerticle() {
         private suspend fun completeStartup(
             vertx: Vertx,
             applicationClass: Class<out MinareApplication>,
+            config: FrameworkConfig,
             args: Array<String>
         ) {
+            AdapterConfigValidator().validate(vertx, config)
             configureJackson()
 
             try {
-                val config = getConfiguration()
                 val configModule = object : AbstractModule() {
                     override fun configure() {
                         bind(FrameworkConfig::class.java).toInstance(config)

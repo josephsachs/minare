@@ -23,6 +23,18 @@ class DebugLogger {
         DebugType.UPSOCKET_DEPLOYING_HTTP_SERVER to true,
         DebugType.UPSOCKET_HTTP_SERVER_DEPLOYED to true,
         DebugType.UPSOCKET_HTTP_SERVER_STOPPING to true,
+        DebugType.UPSOCKET_ENTITY_SYNC_EVENT_ERROR to true,
+        DebugType.UPSOCKET_SOCKET_ACCEPTED to true,
+        DebugType.UPSOCKET_INITIATE_CONNECTION_ERROR to true,
+        DebugType.UPSOCKET_CLOSED_CONNECTION_MISSING_ID to true,
+
+        DebugType.DOWNSOCKET_PUBSUB_WORKER_NO_CHANNELS to false,
+        DebugType.DOWNSOCKET_PUBSUB_WORKER_SUBSCRIBED_TO_PATTERN to false,
+        DebugType.DOWNSOCKET_PUBSUB_WORKER_SUBSCRIBED_TO_CHANNEL to false,
+        DebugType.DOWNSOCKET_PUBSUB_WORKER_RECEIVED_UPDATE to false,
+        DebugType.DOWNSOCKET_PUBSUB_STARTED_WITH_BATCHING to false,
+        DebugType.DOWNSOCKET_PUBSUB_STARTED_NO_BATCHING to false,
+        DebugType.DOWNSOCKET_PUBSUB_DISTRIBUTED_BATCH to false,
 
         DebugType.COORDINATOR_STATE_WORKER_FRAME_COMPLETE to false,
         DebugType.COORDINATOR_STATE_RESET_SESSION to false,
@@ -155,6 +167,35 @@ class DebugLogger {
                     vlog.logStartupStep("STOPPING")
                     return
                 }
+                DebugType.UPSOCKET_ENTITY_SYNC_EVENT_ERROR -> { "Error occurred during entity sync for connection ${args[0]}" }
+                DebugType.UPSOCKET_SOCKET_ACCEPTED -> {
+                    val vlog = args[0] as VerticleLogger
+                    vlog.getEventLogger().trace(
+                        "WEBSOCKET_ACCEPTED", mapOf(
+                            "socketId" to args[1]
+                        ), args[2] as String
+                    )
+                    return
+                }
+                DebugType.UPSOCKET_INITIATE_CONNECTION_ERROR -> {
+                    val vlog = args[0] as VerticleLogger
+                    vlog.logVerticleError(
+                        "INITIATE_CONNECTION", args[1] as Exception, mapOf(
+                            "socketId" to args[2] as String
+                        )
+                    )
+                    return
+                }
+                DebugType.UPSOCKET_CLOSED_CONNECTION_MISSING_ID -> { "Tried to close websocket ${args[0]} with no connection" }
+
+                DebugType.DOWNSOCKET_PUBSUB_WORKER_NO_CHANNELS -> { "No Redis pub/sub channels to subscribe to" }
+                DebugType.DOWNSOCKET_PUBSUB_WORKER_SUBSCRIBED_TO_PATTERN -> { "Subscribed to pattern: ${args[0]}" }
+                DebugType.DOWNSOCKET_PUBSUB_WORKER_SUBSCRIBED_TO_CHANNEL -> { "Subscribed to channel: ${args[0]}" }
+                DebugType.DOWNSOCKET_PUBSUB_WORKER_RECEIVED_UPDATE -> { "RedisPubSubWorker received update: ${args[0]}" }
+                DebugType.DOWNSOCKET_PUBSUB_STARTED_WITH_BATCHING -> { "Started UpdateBatchCoordinator with batch interval ${args[0]}ms" }
+                DebugType.DOWNSOCKET_PUBSUB_STARTED_NO_BATCHING -> { "Started UpdateBatchCoordinator in immediate flush mode" }
+                DebugType.DOWNSOCKET_PUBSUB_DISTRIBUTED_BATCH -> { "Distributed batch with ${args[0]} entity updates" }
+
                 DebugType.COORDINATOR_STATE_WORKER_FRAME_COMPLETE -> { "Worker ${args[0]} completed logical frame ${args[1]}" }
                 DebugType.COORDINATOR_STATE_RESET_SESSION -> { "Started new session at timestamp ${args[0]} (nanos: ${args[1]})" }
                 DebugType.COORDINATOR_SESSION_ANNOUNCEMENT -> { "Frame coordinator announced new session ${args[0]}" }
@@ -250,6 +291,19 @@ class DebugLogger {
             UPSOCKET_DEPLOYING_HTTP_SERVER,
             UPSOCKET_HTTP_SERVER_DEPLOYED,
             UPSOCKET_HTTP_SERVER_STOPPING,
+            UPSOCKET_ENTITY_SYNC_EVENT_ERROR,
+            UPSOCKET_SOCKET_ACCEPTED,
+            UPSOCKET_INITIATE_CONNECTION_ERROR,
+            UPSOCKET_CLOSED_CONNECTION_MISSING_ID,
+
+            DOWNSOCKET_PUBSUB_WORKER_NO_CHANNELS,
+            DOWNSOCKET_PUBSUB_WORKER_SUBSCRIBED_TO_PATTERN,
+            DOWNSOCKET_PUBSUB_WORKER_SUBSCRIBED_TO_CHANNEL,
+            DOWNSOCKET_PUBSUB_WORKER_RECEIVED_UPDATE,
+            DOWNSOCKET_PUBSUB_STARTED_WITH_BATCHING,
+            DOWNSOCKET_PUBSUB_STARTED_NO_BATCHING,
+            DOWNSOCKET_PUBSUB_DISTRIBUTED_BATCH,
+
             COORDINATOR_STATE_WORKER_FRAME_COMPLETE,
             COORDINATOR_STATE_RESET_SESSION,
             COORDINATOR_SESSION_ANNOUNCEMENT,

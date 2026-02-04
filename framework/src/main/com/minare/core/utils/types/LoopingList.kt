@@ -1,4 +1,4 @@
-package com.minare.core.utils
+package com.minare.core.utils.types
 
 /**
  * A List with looping iterator

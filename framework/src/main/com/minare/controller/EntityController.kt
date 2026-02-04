@@ -1,5 +1,6 @@
 package com.minare.controller
 
+import com.minare.application.config.FrameworkConfig
 import com.minare.core.entity.factories.EntityFactory
 import com.minare.core.entity.models.*
 import com.minare.core.entity.services.EntityObjectHydrator
@@ -8,8 +9,8 @@ import com.minare.core.storage.interfaces.StateStore
 import com.minare.core.utils.debug.DebugLogger
 import io.vertx.core.json.JsonObject
 import org.slf4j.LoggerFactory
-import javax.inject.Inject
-import javax.inject.Singleton
+import com.google.inject.Inject
+import com.google.inject.Singleton
 
 /**
  * Controller for entity persistence operations.
@@ -22,6 +23,7 @@ import javax.inject.Singleton
  */
 @Singleton
 open class EntityController @Inject constructor() {
+    @Inject private lateinit var frameworkConfig: FrameworkConfig
     @Inject private lateinit var stateStore: StateStore
     @Inject private lateinit var entityGraphStore: EntityGraphStore
     @Inject private lateinit var objectHydrator: EntityObjectHydrator
@@ -41,11 +43,20 @@ open class EntityController @Inject constructor() {
      */
     open suspend fun create(entity: Entity): Entity {
         try {
-            //  Save to graph store to get ID assigned
-            val entityWithId = entityGraphStore.save(entity)
-            val finalEntity = stateStore.save(entityWithId)
+            val create = if (entity._id.endsWith("-unsaved")) {
+                setId(entity)
+                true
+            } else {
+                false
+            }
 
-            return finalEntity
+            val newEntity = stateStore.save(entity)
+
+            if (frameworkConfig.mongo.enabled) {
+                entityGraphStore.save(entity, create)
+            }
+
+            return newEntity
         } catch (e: Exception) {
             log.error("EntityController failed to write with ${e}")
             throw e
@@ -64,7 +75,9 @@ open class EntityController @Inject constructor() {
 
         stateStore.saveState(entityId, deltas, incrementVersion)
 
-        entityGraphStore.updateRelationships(entityId, deltas)
+        if (frameworkConfig.mongo.enabled) {
+            entityGraphStore.updateRelationships(entityId, deltas)
+        }
 
         return stateStore.findEntity(entityId)
     }
@@ -97,5 +110,14 @@ open class EntityController @Inject constructor() {
         }
 
         return results
+    }
+
+    /**
+     * Set the ID of the newly persisted entity. By default, strips
+     * the suffix from the Java random UUID. Application can override
+     * to set its own ID format if desired.
+     */
+    open suspend fun setId(entity: Entity) {
+        entity._id = entity._id.removeSuffix("-unsaved")
     }
 }

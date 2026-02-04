@@ -3,7 +3,7 @@ package com.minare.core.entity.factories
 import com.google.inject.Inject
 import com.google.inject.Injector
 import com.minare.core.entity.models.Entity
-import javax.inject.Singleton
+import com.google.inject.Singleton
 
 /**
  * Default implementation that only provides the base Entity type.

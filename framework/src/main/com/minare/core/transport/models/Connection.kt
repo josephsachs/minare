@@ -1,5 +1,7 @@
 package com.minare.core.transport.models
 
+import java.io.Serializable
+
 /**
  * Represents a client connection with two communication sockets:
  * - An up socket for receiving client requests
@@ -15,4 +17,4 @@ data class Connection(
     val downSocketId: String? = null,
     val downSocketDeploymentId: String? = null,
     val reconnectable: Boolean = true
-)
+): Serializable

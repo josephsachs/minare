@@ -1,4 +1,4 @@
-package com.minare.core.utils.graph
+package com.minare.core.entity.graph
 
 import com.minare.core.entity.services.EntityInspector
 import com.minare.core.entity.ReflectionCache

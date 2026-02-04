@@ -8,7 +8,7 @@ import io.vertx.ext.mongo.MongoClient
 import io.vertx.kotlin.coroutines.await
 import org.slf4j.LoggerFactory
 import java.util.UUID
-import javax.inject.Inject
+import com.google.inject.Inject
 
 @Singleton
 class MongoConnectionStore @Inject constructor(

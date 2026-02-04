@@ -16,8 +16,6 @@ class EntityInspector @Inject constructor(
     private val entityFactory: EntityFactory,
     private val stateStore: StateStore
 ) {
-    private val log = LoggerFactory.getLogger(EntityInspector::class.java)
-
     suspend fun getFieldsOfType(entityId: String, annotationTypes: List<KClass<out Annotation>>): List<Field> {
         val entityType = stateStore.findEntityType(entityId)
         if (entityType.isNullOrBlank()) {

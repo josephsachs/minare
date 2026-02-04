@@ -1,6 +1,7 @@
 package com.minare.core.storage.adapters
 
 import com.google.inject.Singleton
+import com.google.inject.name.Named
 import com.minare.core.entity.services.EntityInspector
 import com.minare.core.entity.models.Entity
 import com.minare.core.entity.factories.EntityFactory
@@ -13,7 +14,7 @@ import io.vertx.ext.mongo.MongoClient
 import io.vertx.ext.mongo.WriteOption
 import io.vertx.kotlin.coroutines.await
 import org.slf4j.LoggerFactory
-import javax.inject.Inject
+import com.google.inject.Inject
 import com.minare.core.storage.interfaces.EntityGraphStore
 
 /**
@@ -27,10 +28,7 @@ class MongoEntityStore @Inject constructor(
     private val entityFactory: EntityFactory,
     private val entityInspector: EntityInspector
 ) : EntityGraphStore {
-
-    companion object {
-        const val COLLECTION_NAME = "entity_graph"
-    }
+    private val collection = "entity_graph"
 
     private val log = LoggerFactory.getLogger(MongoEntityStore::class.java)
 
@@ -38,24 +36,25 @@ class MongoEntityStore @Inject constructor(
      * Creates a new entity with its relationships in the graph.
      * Only stores relationship fields, not full state.
      */
-    override suspend fun save(entity: Entity): Entity {
-        require(!entity.type.isNullOrBlank()) { "Entity type must be specified" }
+    override suspend fun save(entity: Entity, create: Boolean): Entity {
+        require(entity.type.isNotBlank()) { "Entity type must be specified" }
 
         log.debug("Saving entity relationships for type: ${entity.type}")
 
         val document = buildEntityDocument(entity)
 
         try {
-            if (entity._id.startsWith("unsaved-")) {
-                // New entity - insert and let MongoDB generate an ID
+            if (create) {
+                entity.version = 1
                 document.put("version", 1)
-                val generatedId = mongoClient.insertWithOptions(
-                    COLLECTION_NAME,
+                document.put("_id", entity._id)
+
+                mongoClient.insertWithOptions(
+                    collection,
                     document,
                     WriteOption.ACKNOWLEDGED
                 ).await()
-                entity._id = generatedId
-                entity.version = 1
+
                 log.debug("Created new entity with ID: ${entity._id}")
             } else {
                 // Existing entity - update relationships
@@ -63,7 +62,7 @@ class MongoEntityStore @Inject constructor(
                 val update = JsonObject().put("\$set", document)
 
                 val result = mongoClient.findOneAndUpdateWithOptions(
-                    COLLECTION_NAME,
+                    collection,
                     query,
                     update,
                     io.vertx.ext.mongo.FindOptions(),
@@ -77,6 +76,7 @@ class MongoEntityStore @Inject constructor(
                 entity.version = result.getLong("version", 1)
                 log.debug("Updated entity relationships: ${entity._id}")
             }
+
             return entity
         } catch (err: Exception) {
             log.error("Failed to save entity: ${entity._id}", err)
@@ -115,7 +115,7 @@ class MongoEntityStore @Inject constructor(
 
         try {
             val result = mongoClient.findOneAndUpdateWithOptions(
-                COLLECTION_NAME,
+                collection,
                 query,
                 update,
                 io.vertx.ext.mongo.FindOptions(),
@@ -152,7 +152,7 @@ class MongoEntityStore @Inject constructor(
         }
 
         val result = mongoClient.bulkWriteWithOptions(
-            COLLECTION_NAME,
+            collection,
             operations,
             io.vertx.ext.mongo.BulkWriteOptions().setWriteOption(WriteOption.ACKNOWLEDGED)
         ).await()
@@ -177,7 +177,7 @@ class MongoEntityStore @Inject constructor(
                 JsonArray(entityIds.map { JsonObject().put("_id", it) })
             )
 
-            val results = mongoClient.find(COLLECTION_NAME, query).await()
+            val results = mongoClient.find(collection, query).await()
 
             return results.mapNotNull { document ->
                 try {
@@ -232,14 +232,14 @@ class MongoEntityStore @Inject constructor(
             JsonArray(entityIds.map { JsonObject().put("_id", it) })
         )
 
-        return mongoClient.find(COLLECTION_NAME, query).await()
+        return mongoClient.find(collection, query).await()
     }
 
     suspend fun executeAggregation(pipeline: JsonArray): JsonArray {
         val results = JsonArray()
         val promise = io.vertx.core.Promise.promise<JsonArray>()
 
-        mongoClient.aggregate(COLLECTION_NAME, pipeline)
+        mongoClient.aggregate(collection, pipeline)
             .handler { results.add(it) }
             .endHandler { promise.complete(results) }
             .exceptionHandler { promise.fail(it) }

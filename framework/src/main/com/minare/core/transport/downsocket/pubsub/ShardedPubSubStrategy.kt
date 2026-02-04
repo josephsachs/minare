@@ -1,7 +1,7 @@
 package com.minare.core.transport.downsocket.pubsub
 
 import io.vertx.core.json.JsonObject
-import javax.inject.Singleton
+import com.google.inject.Singleton
 
 /**
  * Pub/sub strategy that distributes entity changes across multiple sharded Redis channels.

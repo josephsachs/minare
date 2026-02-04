@@ -1,6 +1,6 @@
 package com.minare.core.frames.coordinator
 
-import DistributedEnum
+import com.minare.core.utils.types.DistributedEnum
 import com.hazelcast.core.HazelcastInstance
 import com.hazelcast.cp.IAtomicLong
 import com.minare.core.frames.coordinator.services.FrameCalculatorService
@@ -12,8 +12,8 @@ import org.slf4j.LoggerFactory
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.atomic.AtomicLong
-import javax.inject.Inject
-import javax.inject.Singleton
+import com.google.inject.Inject
+import com.google.inject.Singleton
 
 /**
  * Shared state for the Frame Coordinator system.

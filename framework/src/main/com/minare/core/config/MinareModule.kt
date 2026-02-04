@@ -1,18 +1,14 @@
 package com.minare.core.config
 
 import com.google.inject.*
-import com.google.inject.name.Names
+import com.google.inject.multibindings.OptionalBinder
 import com.hazelcast.core.HazelcastInstance
 import com.minare.application.config.FrameworkConfig
 import com.minare.application.interfaces.AppState
 import com.minare.cache.ConnectionCache
 import com.minare.cache.InMemoryConnectionCache
-import com.minare.core.entity.ReflectionCache
-import com.minare.core.entity.factories.DefaultEntityFactory
 import com.minare.core.entity.factories.EntityFactory
 import com.minare.core.entity.services.EntityPublishService
-import com.minare.core.entity.services.EntityVersioningService
-import com.minare.core.entity.services.MutationService
 import com.minare.core.entity.services.RedisEntityPublishService
 import com.minare.core.operation.adapters.KafkaMessageQueue
 import com.minare.core.operation.interfaces.MessageQueue
@@ -26,7 +22,6 @@ import com.minare.core.transport.downsocket.RedisPubSubWorkerVerticle
 import com.minare.core.frames.services.SnapshotService.Companion.SnapshotStoreOption
 import com.minare.core.storage.adapters.*
 import com.minare.core.storage.interfaces.*
-import com.minare.core.utils.vertx.VerticleLogger
 import io.vertx.core.Vertx
 import io.vertx.core.impl.logging.LoggerFactory
 import io.vertx.core.json.JsonObject
@@ -36,15 +31,13 @@ import io.vertx.redis.client.Redis
 import io.vertx.redis.client.RedisAPI
 import io.vertx.redis.client.RedisOptions
 import io.vertx.spi.cluster.hazelcast.HazelcastClusterManager
-import com.minare.core.transport.downsocket.pubsub.UpdateBatchCoordinator
 import com.minare.time.DockerTimeService
 import com.minare.time.TimeService
 import com.minare.core.frames.coordinator.handlers.LateOperationHandler
 import com.minare.core.frames.services.*
-import com.minare.core.transport.upsocket.handlers.SyncCommandHandler
+import com.minare.core.storage.services.DatabaseInitializer
 import com.minare.core.utils.vertx.EventBusUtils
 import com.minare.exceptions.EntityFactoryException
-import com.minare.worker.upsocket.CommandMessageHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlin.coroutines.CoroutineContext
 
@@ -58,17 +51,29 @@ class MinareModule(
     private val log = LoggerFactory.getLogger(MinareModule::class.java)
 
     override fun configure() {
-        // Internal services, do not permit override
+        // Internal service adapters
         bind(StateStore::class.java).to(RedisEntityStore::class.java).`in`(Singleton::class.java)
-        bind(EntityGraphStore::class.java).to(MongoEntityStore::class.java).`in`(Singleton::class.java)
         bind(EntityPublishService::class.java).to(RedisEntityPublishService::class.java).`in`(Singleton::class.java)
-        bind(EntityVersioningService::class.java).`in`(Singleton::class.java)
         bind(MessageQueue::class.java).to(KafkaMessageQueue::class.java).`in`(Singleton::class.java)
-
-        bind(ConnectionStore::class.java).to(MongoConnectionStore::class.java).`in`(Singleton::class.java)
-        bind(ChannelStore::class.java).to(MongoChannelStore::class.java).`in`(Singleton::class.java)
-        bind(ContextStore::class.java).to(MongoContextStore::class.java).`in`(Singleton::class.java)
+        bind(ConnectionStore::class.java).to(HazelcastConnectionStore::class.java).`in`(Singleton::class.java)
+        bind(ChannelStore::class.java).to(HazelcastChannelStore::class.java).`in`(Singleton::class.java)
+        bind(ContextStore::class.java).to(HazelcastContextStore::class.java).`in`(Singleton::class.java)
         bind(DeltaStore::class.java).to(RedisDeltaStore::class.java).`in`(Singleton::class.java)
+
+        // Optional Mongo services
+        OptionalBinder.newOptionalBinder(binder(), DatabaseInitializer::class.java)
+        if (frameworkConfig.mongo.enabled) {
+            bind(DatabaseInitializer::class.java)
+        }
+
+        // Configurable adapters
+        when (frameworkConfig.entity.graph.store) {
+            EntityGraphStoreOption.MONGO -> bind(EntityGraphStore::class.java).to(MongoEntityStore::class.java).`in`(Singleton::class.java)
+            else -> {
+                log.warn("No entity graph store configured, binding no-op adapter")
+                bind(EntityGraphStore::class.java).to(NoopEntityGraphStore::class.java).`in`(Singleton::class.java)
+            }
+        }
 
         when (frameworkConfig.frames.snapshot.store) {
             SnapshotStoreOption.MONGO -> bind(SnapshotStore::class.java).to(MongoSnapshotStore::class.java).`in`(Singleton::class.java)
@@ -79,33 +84,16 @@ class MinareModule(
             }
         }
 
+        // Minare services
         bind(TimeService::class.java).to(DockerTimeService::class.java).`in`(Singleton::class.java)
-        bind(MutationService::class.java).`in`(Singleton::class.java)
         bind(ConnectionCache::class.java).to(InMemoryConnectionCache::class.java).`in`(Singleton::class.java)
-        bind(ReflectionCache::class.java).`in`(Singleton::class.java)
 
-        bind(UpdateBatchCoordinator::class.java).`in`(Singleton::class.java)
-        bind(CommandMessageHandler::class.java).`in`(Singleton::class.java)
-        bind(SyncCommandHandler::class.java).`in`(Singleton::class.java)
-        bind(DefaultEntityFactory::class.java).`in`(Singleton::class.java)
-
-        // Overridable services
+        // Strategies
         bind(PubSubChannelStrategy::class.java).to(PerChannelPubSubStrategy::class.java).`in`(Singleton::class.java)
         bind(LateOperationHandler::class.java).to(DelayLateOperation::class.java)
 
         // Providers
         bind(AppState::class.java).toProvider(AppStateProvider::class.java).`in`(Singleton::class.java)
-
-        bind(String::class.java).annotatedWith(Names.named("channels")).toInstance("channels")
-        bind(String::class.java).annotatedWith(Names.named("contexts")).toInstance("contexts")
-        bind(String::class.java).annotatedWith(Names.named("entity_graph")).toInstance("entity_graph")
-        bind(String::class.java).annotatedWith(Names.named("connections")).toInstance("connections")
-
-        bind(Int::class.java)
-            .annotatedWith(Names.named("intervalMs"))
-            .toInstance(100)
-
-        bind(VerticleLogger::class.java).`in`(Singleton::class.java)
 
         // Workers
         bind(RedisPubSubWorkerVerticle::class.java)

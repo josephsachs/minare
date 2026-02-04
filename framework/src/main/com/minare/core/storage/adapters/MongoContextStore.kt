@@ -6,14 +6,14 @@ import io.vertx.core.json.JsonObject
 import io.vertx.ext.mongo.MongoClient
 import io.vertx.kotlin.coroutines.await
 import org.slf4j.LoggerFactory
-import javax.inject.Singleton
+import com.google.inject.Singleton
 import com.minare.core.storage.interfaces.ContextStore
 
 @Singleton
 class MongoContextStore @Inject constructor(
-    private val mongoClient: MongoClient,
-    @Named("contexts") private val collection: String
+    private val mongoClient: MongoClient
 ) : ContextStore {
+    private val collection = "contexts"
     private val log = LoggerFactory.getLogger(MongoContextStore::class.java)
 
     /**

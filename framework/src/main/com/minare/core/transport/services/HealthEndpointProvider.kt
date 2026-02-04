@@ -1,4 +1,4 @@
-package com.minare.utils
+package com.minare.core.transport.services
 
 import io.vertx.core.json.JsonObject
 import io.vertx.ext.web.Router
@@ -104,7 +104,8 @@ class HealthEndpointProvider(
         router.get(path).handler { ctx ->
             ctx.response()
                 .putHeader("Content-Type", "application/json")
-                .end(JsonObject()
+                .end(
+                    JsonObject()
                     .put("status", "ok")
                     .put("component", componentName)
                     .put("message", "$componentName router is working")

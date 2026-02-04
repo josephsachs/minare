@@ -1,5 +1,6 @@
-package com.minare.core.utils
+package com.minare.core.utils.types.esf
 
+import com.minare.core.utils.types.LoopingList
 import io.vertx.core.Vertx
 import io.vertx.core.eventbus.DeliveryOptions
 import io.vertx.core.eventbus.Message
@@ -88,12 +89,10 @@ class EventStateFlow(
 
                 coroutineScope.launch {
                     try {
-                        action(this@EventStateFlow) // Execute state logic
+                        action(this@EventStateFlow)
                     } catch (e: Exception) {
-                        // Log errors from the state action
                         System.err.println("Error executing state '$stateName' for $eventKey: ${e.message}")
                     } finally {
-                        // Ensure flag is reset whether successful or failed
                         isProcessing = false
                     }
                 }
@@ -101,7 +100,6 @@ class EventStateFlow(
             consumers[address] = vertx.eventBus().localConsumer(address, vertxHandler)
         }
 
-        // Use next() here since isProcessing is initially false
         coroutineScope.launch { next() }
     }
 
@@ -111,7 +109,7 @@ class EventStateFlow(
         if (::tracker.isInitialized) {
             tracker.reset()
         }
-        // Ensure flag is reset on cleanup
+
         isProcessing = false
     }
 }

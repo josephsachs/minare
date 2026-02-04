@@ -9,8 +9,8 @@ import com.minare.core.transport.models.message.SyncCommandType
 import io.vertx.core.json.JsonArray
 import io.vertx.core.json.JsonObject
 import org.slf4j.LoggerFactory
-import javax.inject.Inject
-import javax.inject.Singleton
+import com.google.inject.Inject
+import com.google.inject.Singleton
 
 /**
  * Handles sync commands outside of the Kafka flow.
@@ -160,7 +160,12 @@ class SyncCommandHandler @Inject constructor(
 
             // TODO: Return sync results via downsocket instead
             val upSocket = connectionCache.getUpSocket(connectionId)
-            if (upSocket != null && !upSocket.isClosed()) {
+
+            // TODO: MIN-142 - Debug sync command attempts by null connections
+            log.info("MINARE_SYNC_EVENT: Upsocket looks like this ${upSocket.toString()}")
+            log.info("MINARE_SYNC_EVENT: Upsocket.isClosed: ${upSocket?.isClosed}")
+
+            if (upSocket != null && !upSocket.isClosed) {
                 upSocket.writeTextMessage(syncMessage.encode())
                 log.debug("Sent sync data for channel {} to connection {}", channelId, connectionId)
             } else {

@@ -3,7 +3,7 @@ package com.minare.core
 import io.vertx.core.Vertx
 import org.slf4j.LoggerFactory
 import java.util.concurrent.atomic.AtomicBoolean
-import javax.inject.Inject
+import com.google.inject.Inject
 
 /**
  * Base class for timing-based processing.
