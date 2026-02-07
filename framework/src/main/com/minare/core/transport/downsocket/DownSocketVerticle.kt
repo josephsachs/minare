@@ -336,7 +336,7 @@ class DownSocketVerticle @Inject constructor(
                     .put("traceId", traceId)
             )
 
-            connectionController.onClientFullyConnected(connection)
+            //connectionController.onClientFullyConnected(connection)
         } catch (e: Exception) {
             vlog.logVerticleError("ASSOCIATE_DOWN_SOCKET", e, mapOf(
                 "connectionId" to connectionId

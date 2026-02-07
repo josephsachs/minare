@@ -96,14 +96,9 @@ class RedisEntityStore @Inject constructor(
 
             val currentState = currentDocument.getJsonObject("state", JsonObject())
 
-            delta.fieldNames().forEach { fieldName ->
-                val rawValue = delta.getValue(fieldName)
-                if (rawValue != null) {
-                    val serializedValue = serializer.serialize(rawValue)
-                    currentState.put(fieldName, serializedValue)
-                } else {
-                    currentState.putNull(fieldName)
-                }
+            val serializedDelta = serializeDelta(delta)
+            serializedDelta.fieldNames().forEach { fieldName ->
+                currentState.put(fieldName, serializedDelta.getValue(fieldName))
             }
 
             currentDocument.put("state", currentState)
@@ -135,14 +130,9 @@ class RedisEntityStore @Inject constructor(
 
         val currentProperties = currentDocument.getJsonObject("properties", JsonObject())
 
-        delta.fieldNames().forEach { fieldName ->
-            val rawValue = delta.getValue(fieldName)
-            if (rawValue != null) {
-                val serializedValue = serializer.serialize(rawValue)
-                currentProperties.put(fieldName, serializedValue)
-            } else {
-                currentProperties.putNull(fieldName)
-            }
+        val serializedDelta = serializeDelta(delta)
+        serializedDelta.fieldNames().forEach { fieldName ->
+            currentProperties.put(fieldName, serializedDelta.getValue(fieldName))
         }
 
         currentDocument.put("properties", currentProperties)
@@ -485,26 +475,10 @@ class RedisEntityStore @Inject constructor(
      */
     private fun versionIncrementScript(): String {
         return """
-            local doc_json = redis.call('JSON.GET', KEYS[1])
-            if not doc_json then
-                error('Entity not found: ' .. KEYS[1])
-            end
-            
-            local doc = cjson.decode(doc_json)
-            local delta = cjson.decode(ARGV[1])
-            
-            -- Apply delta to state
-            local state = doc.state or {}
-            for key, value in pairs(delta) do
-                state[key] = value
-            end
-            doc.state = state
-            
-            -- Increment version
-            doc.version = (doc.version or 1) + 1
-            
-            redis.call('JSON.SET', KEYS[1], '${'$'}', cjson.encode(doc))
-            return doc.version
+            redis.call('JSON.MERGE', KEYS[1], '${'$'}.state', ARGV[1])
+            redis.call('JSON.NUMINCRBY', KEYS[1], '${'$'}.version', 1)
+            local version = redis.call('JSON.GET', KEYS[1], 'version')
+            return tonumber(version)
         """
     }
 }
