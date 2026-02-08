@@ -41,8 +41,8 @@ class TestApplication : MinareApplication() {
         val testRunner = IntegrationTestRunner()
         testRunner.runAllAndExit(
             SmokeTestSuite(injector),
-            EntityControllerTestSuite(injector)
-            //OperationTestSuite(injector)
+            EntityControllerTestSuite(injector),
+            OperationTestSuite(injector)
         )
     }
 

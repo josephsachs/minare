@@ -16,6 +16,6 @@ class NodeGraphEntityController @Inject constructor(
 
     override suspend fun setId(entity: Entity) {
         val withoutSuffix = entity._id.removeSuffix("-unsaved")
-        entity._id = "$withoutSuffix-node"
+        entity._id = withoutSuffix
     }
 }

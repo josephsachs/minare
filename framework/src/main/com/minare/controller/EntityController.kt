@@ -96,6 +96,30 @@ open class EntityController @Inject constructor() {
     }
 
     /**
+     * Delete an entity from all stores.
+     *
+     * @param entityId The ID of the entity to delete
+     * @return true if successfully deleted
+     */
+    open suspend fun delete(entityId: String): Boolean {
+        log.debug("Deleting entity {}", entityId)
+
+        val deleted = stateStore.delete(entityId)
+
+        if (frameworkConfig.mongo.enabled) {
+            entityGraphStore.delete(entityId)
+        }
+
+        if (deleted) {
+            log.debug("Entity {} deleted successfully", entityId)
+        } else {
+            log.warn("Entity {} not found for deletion", entityId)
+        }
+
+        return deleted
+    }
+
+    /**
      * Find multiple entities by their IDs from Redis.
      *
      * @param ids List of entity IDs

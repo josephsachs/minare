@@ -194,6 +194,25 @@ class MongoEntityStore @Inject constructor(
         }
     }
 
+    /**
+     * Deletes an entity from the graph store
+     * @param entityId The ID of the entity to delete
+     * @return true if entity was deleted, false if not found
+     */
+    override suspend fun delete(entityId: String): Boolean {
+        val query = JsonObject().put("_id", entityId)
+        val result = mongoClient.removeDocument(collection, query).await()
+
+        val deleted = result.removedCount > 0
+        if (deleted) {
+            log.debug("Deleted entity {} from graph store", entityId)
+        } else {
+            log.warn("Entity {} not found in graph store for deletion", entityId)
+        }
+
+        return deleted
+    }
+
     private suspend fun buildEntityDocument(entity: Entity): JsonObject {
         val document = JsonObject()
             .put("type", entity.type)

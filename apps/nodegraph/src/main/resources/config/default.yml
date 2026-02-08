@@ -20,7 +20,7 @@ entity:
   factory: com.minare.nodegraph.NodeGraphEntityFactory
   update:
     collect_changes: true
-    interval: 25
+    interval: 5
   graphing:
     store: mongo
 

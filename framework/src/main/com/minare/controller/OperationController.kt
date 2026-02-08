@@ -9,6 +9,7 @@ import io.vertx.core.json.JsonArray
 import io.vertx.core.json.JsonObject
 import org.slf4j.LoggerFactory
 import com.google.inject.Inject
+import com.minare.core.entity.models.Entity
 
 /**
  * Controller for the operation event queue.
@@ -73,7 +74,7 @@ abstract class OperationController @Inject constructor() {
      * @param message The raw message from the client
      * @return Operation, OperationSet, or null to skip processing
      */
-    protected abstract suspend fun preQueue(message: JsonObject): Any?
+    abstract suspend fun preQueue(message: JsonObject): Any?
 
     /**
      * Application developer override hook.
@@ -81,8 +82,14 @@ abstract class OperationController @Inject constructor() {
      *
      * @param operations The JsonArray that was sent to Kafka
      */
-    protected open suspend fun postQueue(operations: JsonArray) {
-        // Default implementation does nothing
+    open suspend fun postQueue(operations: JsonArray) {
+    }
+
+    /**
+     * Application developer override hook.
+     * Called by the operation worker after a create command is processed
+     */
+    open suspend fun afterCreateOperation(operation: JsonObject, entity: Entity) {
     }
 
     /**

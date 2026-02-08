@@ -144,6 +144,36 @@ class RedisEntityStore @Inject constructor(
             ?: throw EntityStorageException("Failed to save properties for nonexistent entity $entityId")
     }
 
+    /**
+     * Deletes an entity from the state store
+     * @param entityId The ID of the entity to delete
+     * @return true if entity was deleted, false if not found
+     */
+    override suspend fun delete(entityId: String): Boolean {
+        // Get entity type before deletion (needed to remove from type set)
+        // Use a try-catch since findEntityType throws on missing entities
+        val entityType = try {
+            findEntityType(entityId)
+        } catch (e: Exception) {
+            log.warn("Cannot delete entity {}: not found or error fetching type", entityId)
+            return false
+        }
+
+        if (entityType == null) {
+            log.warn("Cannot delete entity {}: no type found", entityId)
+            return false
+        }
+
+        // Delete the entity document
+        val deleted = redisAPI.del(listOf(entityId)).await()
+
+        // Remove from type set
+        redisAPI.srem(listOf("entity:types:$entityType", entityId)).await()
+
+        log.debug("Deleted entity {} of type {}", entityId, entityType)
+        return deleted.toInteger() > 0
+    }
+
     private fun serializeDelta(delta: JsonObject): JsonObject {
         val serialized = JsonObject()
         delta.fieldNames().forEach { fieldName ->

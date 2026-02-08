@@ -1,7 +1,11 @@
 package com.minare.core.frames.worker
 
+import com.minare.controller.EntityController
+import com.minare.core.entity.factories.EntityFactory
+import com.minare.core.entity.services.EntityPublishService
 import com.minare.core.frames.services.DeltaStorageService
 import com.minare.core.operation.models.OperationType
+import com.minare.core.storage.interfaces.ContextStore
 import com.minare.core.storage.interfaces.StateStore
 import com.minare.core.utils.vertx.VerticleLogger
 import io.vertx.core.Vertx
@@ -11,6 +15,7 @@ import io.vertx.kotlin.coroutines.await
 import kotlinx.coroutines.launch
 import org.slf4j.LoggerFactory
 import com.google.inject.Inject
+import com.minare.controller.OperationController
 import kotlin.system.measureTimeMillis
 
 /**
@@ -22,7 +27,12 @@ class WorkerOperationHandlerVerticle @Inject constructor(
     private val vertx: Vertx,
     private val verticleLogger: VerticleLogger,
     private val deltaStorageService: DeltaStorageService,
-    private val stateStore: StateStore
+    private val stateStore: StateStore,
+    private val entityFactory: EntityFactory,
+    private val entityController: EntityController,
+    private val operationController: OperationController,
+    private val publishService: EntityPublishService,
+    private val contextStore: ContextStore
 ) : CoroutineVerticle() {
 
     private val log = LoggerFactory.getLogger(WorkerOperationHandlerVerticle::class.java)
@@ -78,6 +88,8 @@ class WorkerOperationHandlerVerticle @Inject constructor(
         log.info("Registered operation handlers for MUTATE, CREATE, DELETE")
     }
 
+    // ===== MUTATE =====
+
     /**
      * Process a MUTATE operation.
      * Requires an existing entity, captures before/after states for delta storage.
@@ -129,41 +141,129 @@ class WorkerOperationHandlerVerticle @Inject constructor(
         if (debugTraceLogs) log.info("Processed MUTATE operation {} for entity {} in {}ms", operationId, entityId, processingTime)
     }
 
+    // ===== CREATE =====
+
     /**
      * Process a CREATE operation.
      * Creates a new entity, no before state exists.
      */
-    private suspend fun processCreateOperation(operationJson: JsonObject) {
+    private suspend fun processCreateOperation(context: JsonObject) {
+        val frameNumber = context.getLong("frameNumber")
+            ?: throw IllegalArgumentException("Frame number required")
+        val operationJson = context.getJsonObject("operation")
+        val entityType = extractEntityType(operationJson)
+            ?: throw IllegalArgumentException("Entity type required for CREATE operation")
         val operationId = extractOperationId(operationJson)
+        val delta = operationJson.getJsonObject("delta") ?: JsonObject()
 
-        log.debug("Processing CREATE operation {}", operationId)
+        log.debug("Processing CREATE operation {} for type {}", operationId, entityType)
 
-        // CREATE logic to be implemented
-        // No entity ID yet - will be generated
-        // No before state for delta storage
+        val processingTime = measureTimeMillis {
+            val entity = entityFactory.getNew(entityType)
+            entity.type = entityType
 
-        log.warn("CREATE operation not yet fully implemented: {}", operationJson)
+            stateStore.setEntityState(entity, entityType, delta)
+            stateStore.setEntityProperties(entity, entityType, delta)
+
+            val savedEntity = entityController.create(entity)
+
+            val afterEntity = stateStore.findEntityJson(savedEntity._id)
+                ?: throw IllegalStateException("Entity ${savedEntity._id} not found after creation")
+
+            deltaStorageService.captureAndStoreDelta(
+                frameNumber = frameNumber,
+                entityId = savedEntity._id,
+                operationType = OperationType.CREATE,
+                operationId = operationId,
+                operationJson = operationJson,
+                beforeEntity = null,
+                afterEntity = afterEntity
+            )
+
+            operationController.afterCreateOperation(operationJson, entity)
+
+            val afterState = afterEntity.getJsonObject("state") ?: JsonObject()
+            publishService.publishStateChange(
+                savedEntity._id,
+                entityType,
+                savedEntity.version,
+                afterState
+            )
+
+            log.debug("Created entity {} of type {} with version {}", savedEntity._id, entityType, savedEntity.version)
+        }
+
+        log.debug("Processed CREATE operation {} in {}ms", operationId, processingTime)
     }
+
+    // ===== DELETE =====
 
     /**
      * Process a DELETE operation.
      * Removes an existing entity, captures final state before deletion.
      */
-    private suspend fun processDeleteOperation(operationJson: JsonObject) {
+    private suspend fun processDeleteOperation(context: JsonObject) {
+        val frameNumber = context.getLong("frameNumber")
+            ?: throw IllegalArgumentException("Frame number required")
+        val operationJson = context.getJsonObject("operation")
         val entityId = extractEntityId(operationJson)
             ?: throw IllegalArgumentException("Entity ID required for DELETE operation")
+        val entityType = extractEntityType(operationJson)
+            ?: throw IllegalArgumentException("Entity type required for DELETE operation")
         val operationId = extractOperationId(operationJson)
 
         log.debug("Processing DELETE operation {} for entity {}", operationId, entityId)
 
-        // DELETE logic to be implemented
-        // Should capture before state for delta
-        // After state would be null/deleted
+        val processingTime = measureTimeMillis {
+            // 1. Capture before state
+            val beforeEntity = stateStore.findEntityJson(entityId)
+                ?: throw IllegalStateException("Entity $entityId not found for deletion")
 
-        log.warn("DELETE operation not yet fully implemented: {}", operationJson)
+            // 2. Publish delete notification BEFORE removing from contexts
+            // DEFERRED: Should have a dedicated publishEntityDeleted method
+            // For now, we publish with operation="DELETE" in the delta
+            val beforeVersion = beforeEntity.getLong("version") ?: 0L
+            publishService.publishStateChange(
+                entityId,
+                entityType,
+                beforeVersion,
+                JsonObject().put("_deleted", true)
+            )
+
+            // 3. Remove from all contexts
+            val channels = contextStore.getChannelsByEntityId(entityId)
+            channels.forEach { channelId ->
+                contextStore.remove(entityId, channelId)
+            }
+            if (channels.isNotEmpty()) {
+                log.debug("Removed entity {} from {} channels", entityId, channels.size)
+            }
+
+            // 4. DEFERRED: Relationship cleanup
+            // Should update related entities to remove references to this entity
+            // For now, orphaned references may exist
+
+            // 5. Delete from stores
+            entityController.delete(entityId)
+
+            // 6. Store delta (after is null for DELETE)
+            deltaStorageService.captureAndStoreDelta(
+                frameNumber = frameNumber,
+                entityId = entityId,
+                operationType = OperationType.DELETE,
+                operationId = operationId,
+                operationJson = operationJson,
+                beforeEntity = beforeEntity,
+                afterEntity = null
+            )
+
+            log.debug("Deleted entity {} of type {}", entityId, entityType)
+        }
+
+        log.debug("Processed DELETE operation {} in {}ms", operationId, processingTime)
     }
 
-    // ===== Common extraction functions =====
+    // ===== Helper functions =====
 
     /**
      * Extract operation ID.
@@ -175,13 +275,14 @@ class WorkerOperationHandlerVerticle @Inject constructor(
 
     /**
      * Extract entity ID from operation.
-     * Returns null if not present (valid for CREATE operations).
+     * Returns null if not present (valid for some CREATE operations).
      */
     private fun extractEntityId(operationJson: JsonObject): String? =
         operationJson.getString("entityId")
 
     /**
-     * Extract entity type from operation. Returns null if not present.
+     * Extract entity type from operation.
+     * Returns null if not present.
      */
     private fun extractEntityType(operationJson: JsonObject): String? =
         operationJson.getString("entityType")
@@ -209,13 +310,10 @@ class WorkerOperationHandlerVerticle @Inject constructor(
     /**
      * Execute mutation via event bus to MutationVerticle.
      */
-    private suspend fun executeMutation(
-        mutationCommand: JsonObject
-    ): JsonObject {
+    private suspend fun executeMutation(mutationCommand: JsonObject): JsonObject {
         return vertx.eventBus()
             .request<JsonObject>("minare.mutation.process",
-                JsonObject()
-                    .put("entity", mutationCommand.getJsonObject("entity"))
+                JsonObject().put("entity", mutationCommand.getJsonObject("entity"))
             )
             .await()
             .body()
