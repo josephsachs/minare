@@ -124,6 +124,51 @@ class TestClient(
         }
     }
 
+    /**
+     * Wait for an entity update matching the predicate.
+     * Unwraps from update_batch envelope and returns the entity update directly.
+     *
+     * Expected wire format:
+     * {
+     *   "type": "update_batch",
+     *   "timestamp": 1234567890,
+     *   "updates": {
+     *     "<entityId>": {
+     *       "type": "Node",
+     *       "_id": "<entityId>",
+     *       "version": 1,
+     *       "operation": "update",
+     *       "delta": { ... }
+     *     }
+     *   }
+     * }
+     *
+     * @return Pair of (entityId, entityUpdate JsonObject)
+     */
+    suspend fun waitForEntityUpdate(
+        timeoutMs: Long = 5000,
+        predicate: (entityId: String, update: JsonObject) -> Boolean
+    ): Pair<String, JsonObject> {
+        val batchMessage = waitForMessage(timeoutMs) { msg ->
+            if (msg.getString("type") != "update_batch") return@waitForMessage false
+
+            val updates = msg.getJsonObject("updates") ?: return@waitForMessage false
+
+            updates.fieldNames().any { entityId ->
+                val update = updates.getJsonObject(entityId) ?: return@any false
+                predicate(entityId, update)
+            }
+        }
+
+        val updates = batchMessage.getJsonObject("updates")
+        val entityId = updates.fieldNames().first { id ->
+            val update = updates.getJsonObject(id) ?: return@first false
+            predicate(id, update)
+        }
+
+        return entityId to updates.getJsonObject(entityId)
+    }
+
     suspend fun disconnect() {
         upSocket?.close()?.await()
         downSocket?.close()?.await()

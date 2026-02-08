@@ -36,7 +36,6 @@ class OperationTestSuite(private val injector: Injector) : TestSuite {
             try {
                 // Connect and subscribe to default channel
                 val connectionId = client.connect()
-                val defaultChannel = channelController.getDefaultChannel()!!
 
                 // === CREATE ===
                 val createOp = JsonObject()
@@ -52,19 +51,22 @@ class OperationTestSuite(private val injector: Injector) : TestSuite {
 
                 client.send(createOp)
 
-                // Wait for entity update on downsocket
-                val createUpdate = client.waitForMessage { msg ->
-                    msg.getString("type") == "Node" &&
-                            msg.getJsonObject("delta")?.getString("label") == "Test Node"
+                val (entityId, createUpdate) = client.waitForEntityUpdate { id, update ->
+                    update.getString("type") == "Node" &&
+                            update.getJsonObject("delta")?.getString("label") == "Test Node"
                 }
 
-                val entityId = createUpdate.getString("_id")
+                log.info("OPERATION_TEST: Finding entity json by ID $entityId")
+
                 assertNotNull(entityId) { "Created entity should have an ID" }
+                assertEquals(1L, createUpdate.getLong("version")) { "New entity should have version 1" }
 
                 // Verify in StateStore
                 val createdEntity = stateStore.findEntityJson(entityId)
                 assertNotNull(createdEntity) { "Entity should exist in StateStore" }
                 assertEquals(1L, createdEntity!!.getLong("version")) { "New entity should have version 1" }
+
+                log.info("OPERATION_TEST: Sending mutate...")
 
                 // === MUTATE ===
                 val mutateOp = JsonObject()
