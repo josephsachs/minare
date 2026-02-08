@@ -56,8 +56,6 @@ class OperationTestSuite(private val injector: Injector) : TestSuite {
                             update.getJsonObject("delta")?.getString("label") == "Test Node"
                 }
 
-                log.info("OPERATION_TEST: Finding entity json by ID $entityId")
-
                 assertNotNull(entityId) { "Created entity should have an ID" }
                 assertEquals(1L, createUpdate.getLong("version")) { "New entity should have version 1" }
 
@@ -65,8 +63,6 @@ class OperationTestSuite(private val injector: Injector) : TestSuite {
                 val createdEntity = stateStore.findEntityJson(entityId)
                 assertNotNull(createdEntity) { "Entity should exist in StateStore" }
                 assertEquals(1L, createdEntity!!.getLong("version")) { "New entity should have version 1" }
-
-                log.info("OPERATION_TEST: Sending mutate...")
 
                 // === MUTATE ===
                 val mutateOp = JsonObject()
@@ -83,9 +79,9 @@ class OperationTestSuite(private val injector: Injector) : TestSuite {
                 client.send(mutateOp)
 
                 // Wait for mutation update
-                val mutateUpdate = client.waitForMessage { msg ->
-                    msg.getString("_id") == entityId &&
-                            msg.getLong("version") == 2L
+                val (mutatedEntityId, mutateUpdate) = client.waitForEntityUpdate { id, update ->
+                    update.getString("type") == "Node" &&
+                            update.getJsonObject("delta")?.getString("label") == "Test Node"
                 }
 
                 assertEquals("#00FF00", mutateUpdate.getJsonObject("delta")?.getString("color")) {
@@ -110,9 +106,9 @@ class OperationTestSuite(private val injector: Injector) : TestSuite {
                 client.send(deleteOp)
 
                 // Wait for delete notification (TBD what this looks like)
-                val deleteUpdate = client.waitForMessage { msg ->
-                    msg.getString("_id") == entityId &&
-                            msg.getString("operation") == "DELETE"
+                val (deletedEntityId, deleteUpdate) = client.waitForEntityUpdate { id, update ->
+                    update.getString("type") == "Node" &&
+                            update.getJsonObject("delta")?.getString("label") == "Test Node"
                 }
 
                 assertNotNull(deleteUpdate) { "Should receive delete notification" }
