@@ -16,6 +16,7 @@ import kotlinx.coroutines.launch
 import org.slf4j.LoggerFactory
 import com.google.inject.Inject
 import com.minare.controller.OperationController
+import com.minare.core.entity.graph.EntityGraphReferenceService
 import kotlin.system.measureTimeMillis
 
 /**
@@ -32,6 +33,7 @@ class WorkerOperationHandlerVerticle @Inject constructor(
     private val entityController: EntityController,
     private val operationController: OperationController,
     private val publishService: EntityPublishService,
+    private val entityGraphReferenceService: EntityGraphReferenceService,
     private val contextStore: ContextStore
 ) : CoroutineVerticle() {
 
@@ -239,9 +241,8 @@ class WorkerOperationHandlerVerticle @Inject constructor(
                 log.debug("Removed entity {} from {} channels", entityId, channels.size)
             }
 
-            // 4. DEFERRED: Relationship cleanup
-            // Should update related entities to remove references to this entity
-            // For now, orphaned references may exist
+            // 4. Relationship cleanup
+            entityGraphReferenceService.removeReferencesToEntity(entityId)
 
             // 5. Delete from stores
             entityController.delete(entityId)

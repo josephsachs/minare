@@ -26,6 +26,12 @@ interface StateStore {
     suspend fun saveState(entityId: String, delta: JsonObject, incrementVersion: Boolean = true): JsonObject
 
     /**
+     * Batch updates state for multiple entities, incrementing versions
+     * @param updates Map of entityId to delta JsonObject
+     */
+    suspend fun batchSaveState(updates: Map<String, JsonObject>)
+
+    /**
      * Persists all of an entity's properties
      * @param entityId The ID of the entity to update
      * @param delta

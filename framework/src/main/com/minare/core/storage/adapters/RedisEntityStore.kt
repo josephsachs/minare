@@ -120,6 +120,40 @@ class RedisEntityStore @Inject constructor(
     }
 
     /**
+     * Batch updates state for multiple entities, incrementing versions.
+     * Uses a Lua script for single round-trip execution.
+     */
+    override suspend fun batchSaveState(updates: Map<String, JsonObject>) {
+        if (updates.isEmpty()) return
+
+        val entityIds = updates.keys.toList()
+        val deltas = entityIds.map { serializeDelta(updates[it]!!).encode() }
+
+        val args = mutableListOf<String>()
+        args.add(batchMergeDeltasScript())
+        args.add(entityIds.size.toString())   // numkeys
+        args.addAll(entityIds)                // KEYS
+        args.addAll(deltas)                   // ARGV (but ARGV[1] will be first delta, not numkeys)
+
+        redisAPI.send(Command.create("EVAL"), *args.toTypedArray()).await()
+
+        // Publish state changes
+        for ((entityId, delta) in updates) {
+            val updatedDoc = findEntityJson(entityId)
+            if (updatedDoc != null) {
+                publishService.publishStateChange(
+                    entityId,
+                    updatedDoc.getString("type"),
+                    updatedDoc.getLong("version") ?: 1L,
+                    delta
+                )
+            }
+        }
+
+        log.debug("Batch updated state for {} entities", updates.size)
+    }
+
+    /**
      * Save properties to document. Properties are stored in a Json box similar to state,
      * and expect a delta. Updating properties does not result in a version increment.
      * Default is no pubsub notification.
@@ -243,11 +277,7 @@ class RedisEntityStore @Inject constructor(
                     result[entityId] = entity
                 }
             } catch (e: Exception) {
-                // TEMPORARY DEBUG
-                val document = JsonArray(item.toString()).getJsonObject(0)
-
-                val entityId = document.getString("_id")
-                log.warn("StateStore found Entity document with invalid state field for ${entityId}: ${e.message}", e)
+                log.warn("StateStore encountered an issue fetching this entity: ${e.message}", e)
             }
         }
 
@@ -353,6 +383,8 @@ class RedisEntityStore @Inject constructor(
         val collection = JsonArray(response.toString())
 
         for (item in collection) {
+            if (item == null) continue
+
             try {
                 val document = JsonArray(item.toString()).getJsonObject(0)
                 val entityId = document.getString("_id")
@@ -455,9 +487,7 @@ class RedisEntityStore @Inject constructor(
      * @return The entity as a JsonObject, or null if not found
      */
     override suspend fun findEntityJson(entityId: String): JsonObject? {
-        val json = findEntitiesJsonByIds(listOf(entityId))[entityId]
-
-        return json ?: throw EntityStorageException("StateStore.findEntityJson returned null for entityId $entityId")
+        return findEntitiesJsonByIds(listOf(entityId))[entityId]
     }
 
     /**
@@ -510,5 +540,17 @@ class RedisEntityStore @Inject constructor(
             local version = redis.call('JSON.GET', KEYS[1], 'version')
             return tonumber(version)
         """
+    }
+
+    /**
+     * Batch merge entity deltas
+     */
+    private fun batchMergeDeltasScript(): String {
+        return """
+        for i = 1, #KEYS do
+            redis.call('JSON.MERGE', KEYS[i], '${'$'}.state', ARGV[i])
+            redis.call('JSON.NUMINCRBY', KEYS[i], '${'$'}.version', 1)
+        end
+    """
     }
 }

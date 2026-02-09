@@ -23,6 +23,12 @@ interface EntityGraphStore {
     suspend fun updateRelationships(entityId: String, delta: JsonObject): JsonObject
 
     /**
+     * Batch updates relationship fields for multiple entities
+     * @param updates Map of entityId to delta JsonObject
+     */
+    suspend fun bulkUpdateRelationships(updates: Map<String, JsonObject>)
+
+    /**
      * Updates versions for multiple entities
      * @param entityIds Set of entity IDs to update
      * @return The update result

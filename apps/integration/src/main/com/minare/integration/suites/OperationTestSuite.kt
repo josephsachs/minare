@@ -80,8 +80,7 @@ class OperationTestSuite(private val injector: Injector) : TestSuite {
 
                 // Wait for mutation update
                 val (mutatedEntityId, mutateUpdate) = client.waitForEntityUpdate { id, update ->
-                    update.getString("type") == "Node" &&
-                            update.getJsonObject("delta")?.getString("label") == "Test Node"
+                    update.getString("type") == "Node" && update.getString("_id") == entityId
                 }
 
                 assertEquals("#00FF00", mutateUpdate.getJsonObject("delta")?.getString("color")) {
@@ -105,16 +104,18 @@ class OperationTestSuite(private val injector: Injector) : TestSuite {
 
                 client.send(deleteOp)
 
-                // Wait for delete notification (TBD what this looks like)
-                val (deletedEntityId, deleteUpdate) = client.waitForEntityUpdate { id, update ->
-                    update.getString("type") == "Node" &&
-                            update.getJsonObject("delta")?.getString("label") == "Test Node"
+                val (deletedId, deleteUpdate) = client.waitForEntityUpdate { id, update ->
+                    id == entityId && update.getJsonObject("delta")?.getBoolean("_deleted") == true
                 }
 
                 assertNotNull(deleteUpdate) { "Should receive delete notification" }
 
-                // Verify entity is gone
-                val deletedEntity = stateStore.findEntityJson(entityId)
+                // Verify entity is gone from StateStore
+                val deletedEntity = try {
+                    stateStore.findEntityJson(entityId)
+                } catch (e: Exception) {
+                    null
+                }
                 assertNull(deletedEntity) { "Entity should no longer exist in StateStore" }
 
             } finally {

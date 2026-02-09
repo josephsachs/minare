@@ -11,7 +11,7 @@ import org.jgrapht.graph.DefaultDirectedGraph
 import org.jgrapht.graph.DefaultEdge
 
 @Singleton
-class EntityGraphService @Inject constructor(
+class   EntityGraphService @Inject constructor(
     private val mongoEntityStore: MongoEntityStore
 ) {
     companion object {

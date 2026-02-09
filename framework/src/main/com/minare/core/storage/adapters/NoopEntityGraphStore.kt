@@ -20,6 +20,10 @@ class NoopEntityGraphStore : EntityGraphStore {
         return JsonObject()
     }
 
+    override suspend fun bulkUpdateRelationships(updates: Map<String, JsonObject>) {
+        // No-op
+    }
+
     override suspend fun updateVersions(entityIds: Set<String>): JsonObject {
         return JsonObject().put("modified", 0)
     }
