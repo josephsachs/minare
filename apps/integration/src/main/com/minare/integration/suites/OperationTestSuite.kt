@@ -1,10 +1,8 @@
 package com.minare.integration.suites
 
 import com.google.inject.Injector
-import com.minare.controller.EntityController
 import com.minare.core.frames.services.WorkerRegistry
 import com.minare.core.storage.interfaces.StateStore
-import com.minare.integration.controller.TestChannelController
 import com.minare.integration.harness.Assertions.assertEquals
 import com.minare.integration.harness.Assertions.assertNotNull
 import com.minare.integration.harness.Assertions.assertNull
@@ -22,8 +20,6 @@ class OperationTestSuite(private val injector: Injector) : TestSuite {
     override suspend fun run(runner: TestRunner) {
         val vertx = injector.getInstance(Vertx::class.java)
         val stateStore = injector.getInstance(StateStore::class.java)
-        val channelController = injector.getInstance(TestChannelController::class.java)
-        val entityController = injector.getInstance(EntityController::class.java)
 
         runner.test("full entity lifecycle: CREATE -> MUTATE -> DELETE") {
             val workerRegistry = injector.getInstance(WorkerRegistry::class.java)
@@ -60,7 +56,7 @@ class OperationTestSuite(private val injector: Injector) : TestSuite {
                 assertEquals(1L, createUpdate.getLong("version")) { "New entity should have version 1" }
 
                 // Verify in StateStore
-                val createdEntity = stateStore.findEntityJson(entityId)
+                val createdEntity = stateStore.findOneJson(entityId)
                 assertNotNull(createdEntity) { "Entity should exist in StateStore" }
                 assertEquals(1L, createdEntity!!.getLong("version")) { "New entity should have version 1" }
 
@@ -88,13 +84,12 @@ class OperationTestSuite(private val injector: Injector) : TestSuite {
                 }
 
                 // Verify in StateStore
-                val mutatedEntity = stateStore.findEntityJson(entityId)
+                val mutatedEntity = stateStore.findOneJson(entityId)
                 assertEquals(2L, mutatedEntity!!.getLong("version")) { "Version should be 2" }
                 assertEquals("#00FF00", mutatedEntity.getJsonObject("state")?.getString("color")) {
                     "Color should be updated"
                 }
 
-                // === DELETE ===
                 val deleteOp = JsonObject()
                     .put("command", "delete")
                     .put("connectionId", connectionId)
@@ -112,7 +107,7 @@ class OperationTestSuite(private val injector: Injector) : TestSuite {
 
                 // Verify entity is gone from StateStore
                 val deletedEntity = try {
-                    stateStore.findEntityJson(entityId)
+                    stateStore.findOneJson(entityId)
                 } catch (e: Exception) {
                     null
                 }

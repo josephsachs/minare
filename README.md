@@ -1,5 +1,5 @@
 # Minare Framework
-Current version: 0.5.0
+Current version: 0.6.0
 
 ## Concept
 Multiplayer games and collaborative simulations need consistency, determinism, and the ability to recover quickly
@@ -48,11 +48,11 @@ One benefit of this is "time-travel debugging": a developer can locate the exact
 wrong and be certain they are addressing the true cause. 
 
 ### Caveats
-"Parallel interleaving" remains an unsolved problem. While you can guarantee operations are replayed in the same frames,
+~~"Parallel interleaving" remains an unsolved problem. While you can guarantee operations are replayed in the same frames,
 in the same subsets, ordered the same, how do you ensure that closely-grouped, intra-frame operations complete in the same 
 order across the cluster? Right now, your best bet is to configure a very fast frame (that is, one containing
 fewer operations per); future efforts may include configurable per-frame work limits, single-thread pipelines for 
-designated operations, and worker/scope affinities.
+designated operations, and worker/scope affinities.~~ **\[MIN-201] Implement MinimumAffinityScope**
 
 ## Technical Details
 
@@ -76,15 +76,19 @@ between my goals and the developer's experience. I chose
 
 0.5.0 - Serialization, application hooks, common interfaces
 
-0.6.0 - Developer experience improvements, more test coverage
+0.6.0 - Config builder, modular infra, schema validation, more test coverage
 
-0.7.0 - Improved entity factory behavior
+0.7.0 - Affinity scope
 
-0.8.0 - Improved session boundary behavior, update strategies
-
-0.9.0 - Modular infrastructure
+0.8.0 - Update controller, views 
 
 1.0.0 - Quick start
+
+1.1.0 - Replay, improved session snapshot behavior, NodeGraph v2
+
+1.2.0 - Operation recovery, monitoring tools
+
+1.3.0 - Worker health monitoring
 
 1.1.0 and Beyond
 * Timeline replay/branch

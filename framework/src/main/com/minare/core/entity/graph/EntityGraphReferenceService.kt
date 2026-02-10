@@ -7,6 +7,7 @@ import com.minare.core.entity.annotations.Child
 import com.minare.core.entity.annotations.Parent
 import com.minare.core.entity.services.EntityInspector
 import com.minare.core.storage.interfaces.EntityGraphStore
+import com.minare.core.storage.interfaces.EntityGraphStoreOption
 import com.minare.core.storage.interfaces.StateStore
 import io.vertx.core.json.JsonArray
 import io.vertx.core.json.JsonObject
@@ -26,29 +27,24 @@ class EntityGraphReferenceService @Inject constructor(
      * Updates both Redis (state) and Mongo (graph) stores.
      */
     suspend fun removeReferencesToEntity(entityId: String) {
-        val entityJson = stateStore.findEntityJson(entityId)
+        val entityJson = stateStore.findOneJson(entityId)
         if (entityJson == null) {
             log.warn("Cannot clean up references: entity {} not found", entityId)
             return
         }
 
-        // 1. Collect all referenced entity IDs
         val referencedIds = collectReferencedEntityIds(entityId, entityJson)
         if (referencedIds.isEmpty()) return
 
-        // 2. Batch fetch all referenced entities
-        val referencedEntities = stateStore.findEntitiesJson(referencedIds)
+        val referencedEntities = stateStore.findJson(referencedIds)
 
-        // 3. Build deltas for each entity that needs updating
         val deltas = buildRemovalDeltas(referencedEntities, entityId)
         if (deltas.isEmpty()) return
 
-        // 4. Batch update Redis
         removeReferencesFromRedis(deltas)
 
-        // 5. Batch update Mongo if enabled
-        if (frameworkConfig.mongo.enabled) {
-            removeReferencesFromMongo(deltas)
+        if (frameworkConfig.entity.graph.store in listOf(EntityGraphStoreOption.MONGO)) {
+            removeReferencesFromGraphStore(deltas)
         }
 
         log.debug("Removed references to {} from {} entities", entityId, deltas.size)
@@ -126,7 +122,7 @@ class EntityGraphReferenceService @Inject constructor(
     /**
      * Batch update Mongo graph store
      */
-    private suspend fun removeReferencesFromMongo(deltas: Map<String, JsonObject>) {
+    private suspend fun removeReferencesFromGraphStore(deltas: Map<String, JsonObject>) {
         entityGraphStore.bulkUpdateRelationships(deltas)
     }
 

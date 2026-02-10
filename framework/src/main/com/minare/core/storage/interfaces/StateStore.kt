@@ -87,13 +87,6 @@ interface StateStore {
     suspend fun hydrateGraph(graph: Graph<JsonObject, DefaultEdge>)
 
     /**
-     * Finds an entity by ID and returns it as an Entity
-     * @param entityId The ID of the entity to fetch
-     * @return The entity, or null if not found
-     */
-    suspend fun findEntity(entityId: String): Entity?
-
-    /**
      * Finds an entity's type by ID
      * @param entityId The ID of the entity to fetch
      * @return The entity type, or null if not found
@@ -112,21 +105,21 @@ interface StateStore {
      * @param entityIds List of entity IDs to fetch
      * @return Map of entity IDs to JsonObject documents
      */
-    suspend fun findEntitiesJson(entityIds: List<String>): Map<String, JsonObject>
+    suspend fun findJson(entityIds: List<String>): Map<String, JsonObject>
 
     /**
      * Finds an entity by ID and returns it as a JsonObject
      * @param entityId The ID of the entity to fetch
      * @return The entity as a JsonObject, or null if not found
      */
-    suspend fun findEntityJson(entityId: String): JsonObject?
+    suspend fun findOneJson(entityId: String): JsonObject?
 
     /**
      * Finds multiple entities by their IDs and returns them as JsonObjects
      * @param entityIds List of entity IDs to fetch
      * @return Map of entity IDs to JsonObjects
      */
-    suspend fun findEntitiesJsonByIds(entityIds: List<String>): Map<String, JsonObject>
+    suspend fun findJsonByIds(entityIds: List<String>): Map<String, JsonObject>
 
     /**
      * Get all entity keys from the store

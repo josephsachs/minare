@@ -111,7 +111,7 @@ class WorkerOperationHandlerVerticle @Inject constructor(
         }
 
         // Capture BEFORE state
-        val beforeEntity = stateStore.findEntityJson(entityId)
+        val beforeEntity = stateStore.findOneJson(entityId)
             ?: throw IllegalStateException("Entity $entityId not found before mutation")
 
         val mutationCommand = buildMutationCommand(operationJson, entityId, entityType)
@@ -126,7 +126,7 @@ class WorkerOperationHandlerVerticle @Inject constructor(
             }
 
             // Capture the AFTER state
-            val afterEntity = stateStore.findEntityJson(entityId)
+            val afterEntity = stateStore.findOneJson(entityId)
                 ?: throw IllegalStateException("Entity $entityId not found after mutation")
 
             deltaStorageService.captureAndStoreDelta(
@@ -142,8 +142,6 @@ class WorkerOperationHandlerVerticle @Inject constructor(
 
         if (debugTraceLogs) log.info("Processed MUTATE operation {} for entity {} in {}ms", operationId, entityId, processingTime)
     }
-
-    // ===== CREATE =====
 
     /**
      * Process a CREATE operation.
@@ -169,7 +167,7 @@ class WorkerOperationHandlerVerticle @Inject constructor(
 
             val savedEntity = entityController.create(entity)
 
-            val afterEntity = stateStore.findEntityJson(savedEntity._id)
+            val afterEntity = stateStore.findOneJson(savedEntity._id)
                 ?: throw IllegalStateException("Entity ${savedEntity._id} not found after creation")
 
             deltaStorageService.captureAndStoreDelta(
@@ -198,8 +196,6 @@ class WorkerOperationHandlerVerticle @Inject constructor(
         log.debug("Processed CREATE operation {} in {}ms", operationId, processingTime)
     }
 
-    // ===== DELETE =====
-
     /**
      * Process a DELETE operation.
      * Removes an existing entity, captures final state before deletion.
@@ -217,13 +213,9 @@ class WorkerOperationHandlerVerticle @Inject constructor(
         log.debug("Processing DELETE operation {} for entity {}", operationId, entityId)
 
         val processingTime = measureTimeMillis {
-            // 1. Capture before state
-            val beforeEntity = stateStore.findEntityJson(entityId)
+            val beforeEntity = stateStore.findOneJson(entityId)
                 ?: throw IllegalStateException("Entity $entityId not found for deletion")
 
-            // 2. Publish delete notification BEFORE removing from contexts
-            // DEFERRED: Should have a dedicated publishEntityDeleted method
-            // For now, we publish with operation="DELETE" in the delta
             val beforeVersion = beforeEntity.getLong("version") ?: 0L
             publishService.publishStateChange(
                 entityId,
@@ -232,7 +224,6 @@ class WorkerOperationHandlerVerticle @Inject constructor(
                 JsonObject().put("_deleted", true)
             )
 
-            // 3. Remove from all contexts
             val channels = contextStore.getChannelsByEntityId(entityId)
             channels.forEach { channelId ->
                 contextStore.remove(entityId, channelId)
@@ -241,13 +232,9 @@ class WorkerOperationHandlerVerticle @Inject constructor(
                 log.debug("Removed entity {} from {} channels", entityId, channels.size)
             }
 
-            // 4. Relationship cleanup
             entityGraphReferenceService.removeReferencesToEntity(entityId)
-
-            // 5. Delete from stores
             entityController.delete(entityId)
 
-            // 6. Store delta (after is null for DELETE)
             deltaStorageService.captureAndStoreDelta(
                 frameNumber = frameNumber,
                 entityId = entityId,
@@ -263,8 +250,6 @@ class WorkerOperationHandlerVerticle @Inject constructor(
 
         log.debug("Processed DELETE operation {} in {}ms", operationId, processingTime)
     }
-
-    // ===== Helper functions =====
 
     /**
      * Extract operation ID.
@@ -288,7 +273,6 @@ class WorkerOperationHandlerVerticle @Inject constructor(
     private fun extractEntityType(operationJson: JsonObject): String? =
         operationJson.getString("entityType")
 
-    // ===== MUTATE-specific helper functions =====
 
     /**
      * Build the mutation command structure expected by MutationVerticle.

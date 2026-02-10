@@ -91,7 +91,7 @@ class RedisEntityStore @Inject constructor(
 
             response.toLong()
         } else {
-            val currentDocument = findEntityJson(entityId)
+            val currentDocument = findOneJson(entityId)
                 ?: throw EntityStorageException("Entity not found: $entityId")
 
             val currentState = currentDocument.getJsonObject("state", JsonObject())
@@ -106,7 +106,7 @@ class RedisEntityStore @Inject constructor(
             currentDocument.getLong("version", 1L)
         }
 
-        val updatedDocument = findEntityJson(entityId)
+        val updatedDocument = findOneJson(entityId)
             ?: throw EntityStorageException("Updated document not found for $entityId after set command")
 
         publishService.publishStateChange(
@@ -139,7 +139,7 @@ class RedisEntityStore @Inject constructor(
 
         // Publish state changes
         for ((entityId, delta) in updates) {
-            val updatedDoc = findEntityJson(entityId)
+            val updatedDoc = findOneJson(entityId)
             if (updatedDoc != null) {
                 publishService.publishStateChange(
                     entityId,
@@ -159,7 +159,7 @@ class RedisEntityStore @Inject constructor(
      * Default is no pubsub notification.
      */
     override suspend fun saveProperties(entityId: String, delta: JsonObject, publish: Boolean): JsonObject {
-        val currentDocument = findEntityJson(entityId)
+        val currentDocument = findOneJson(entityId)
             ?: throw IllegalStateException("Entity not found: $entityId")
 
         val currentProperties = currentDocument.getJsonObject("properties", JsonObject())
@@ -172,7 +172,7 @@ class RedisEntityStore @Inject constructor(
         currentDocument.put("properties", currentProperties)
         redisAPI.jsonSet(listOf(entityId, "$", currentDocument.encode())).await()
 
-        val updatedDocument = findEntityJson(entityId)
+        val updatedDocument = findOneJson(entityId)
 
         return updatedDocument
             ?: throw EntityStorageException("Failed to save properties for nonexistent entity $entityId")
@@ -305,8 +305,7 @@ class RedisEntityStore @Inject constructor(
                     }
 
                 } catch (e: Exception) {
-                    // TODO: Fix serialization so this bug stops happening
-                    log.warn("StateStore found Entity document with invalid state field for ${entity._id}: ${e.message}", e)
+                    log.warn("StateStore found Entity document with invalid state field for ${entity._id}: ${field.name}, ${field.type};\\n ${e.message}", e)
                 }
             }
         }
@@ -356,7 +355,7 @@ class RedisEntityStore @Inject constructor(
         }
 
         // Batch fetch all entities from Redis
-        val fullEntities = findEntitiesJsonByIds(entityIds)
+        val fullEntities = findJsonByIds(entityIds)
 
         for (vertex in graph.vertexSet()) {
             val entityId = vertex.getString("_id") ?: continue
@@ -372,7 +371,7 @@ class RedisEntityStore @Inject constructor(
      * @param entityIds List of entity IDs to fetch
      * @return Map of entity IDs to JsonObjects
      */
-    override suspend fun findEntitiesJsonByIds(entityIds: List<String>): Map<String, JsonObject> {
+    override suspend fun findJsonByIds(entityIds: List<String>): Map<String, JsonObject> {
         if (entityIds.isEmpty()) {
             return emptyMap()
         }
@@ -398,17 +397,6 @@ class RedisEntityStore @Inject constructor(
         }
 
         return result
-    }
-
-    /**
-     * Finds an entity by ID and returns it as an Entity
-     * @param entityId The ID of the entity to fetch
-     * @return The entity as a JsonObject, or null if not found
-     *
-     * @deprecated Use find()
-     */
-    override suspend fun findEntity(entityId: String): Entity? {
-        return find(listOf(entityId))[entityId]
     }
 
     /**
@@ -450,7 +438,7 @@ class RedisEntityStore @Inject constructor(
      * @param entityIds List of entity IDs to fetch
      * @return Map of entity IDs to JsonObject documents
      */
-    override suspend fun findEntitiesJson(entityIds: List<String>): Map<String, JsonObject> {
+    override suspend fun findJson(entityIds: List<String>): Map<String, JsonObject> {
         if (entityIds.isEmpty()) {
             return emptyMap()
         }
@@ -486,8 +474,8 @@ class RedisEntityStore @Inject constructor(
      * @param entityId The ID of the entity to fetch
      * @return The entity as a JsonObject, or null if not found
      */
-    override suspend fun findEntityJson(entityId: String): JsonObject? {
-        return findEntitiesJsonByIds(listOf(entityId))[entityId]
+    override suspend fun findOneJson(entityId: String): JsonObject? {
+        return findJsonByIds(listOf(entityId))[entityId]
     }
 
     /**

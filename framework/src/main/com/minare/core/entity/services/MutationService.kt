@@ -41,7 +41,7 @@ class MutationService @Inject constructor(
         val delta = requestObject.getJsonObject("state") ?: JsonObject()
         val deltaEntityVersion = requestObject.getLong("version", 0L)
 
-        val currentJson = stateStore.findEntityJson(entityId)
+        val currentJson = stateStore.findOneJson(entityId)
             ?: return JsonObject()
                 .put("success", false)
                 .put("message", "Entity not found: $entityId")

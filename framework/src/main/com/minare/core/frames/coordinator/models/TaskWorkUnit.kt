@@ -34,7 +34,7 @@ class TaskWorkUnit @Inject constructor(
         val keys = items.map { it.toString() }
 
         // Batch fetch all entity JSONs from Redis
-        val entityJsons = stateStore.findEntitiesJson(keys)
+        val entityJsons = stateStore.findJson(keys)
 
         entityJsons.forEach { (entityKey, entityJson) ->
             val entity = objectHydrator.hydrate(entityJson)

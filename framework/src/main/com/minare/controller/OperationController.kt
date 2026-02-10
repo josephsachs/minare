@@ -93,6 +93,13 @@ abstract class OperationController @Inject constructor() {
     }
 
     /**
+     * Application developer override hook
+     * Called by the oepration worker after a delete command si processed
+     */
+    open suspend fun afterDeleteOperation(operation: JsonObject, entity: Entity) {
+    }
+
+    /**
      * Send an operation set to the message broker
      *
      * @param message JsonArray of operations
