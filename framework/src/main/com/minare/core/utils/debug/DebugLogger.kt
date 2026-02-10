@@ -36,6 +36,12 @@ class DebugLogger {
         DebugType.DOWNSOCKET_PUBSUB_STARTED_NO_BATCHING to false,
         DebugType.DOWNSOCKET_PUBSUB_DISTRIBUTED_BATCH to false,
 
+        DebugType.CLEANUP_STARTING_PROCESS to false,
+        DebugType.CLEANUP_FOUND_INACTIVE_CONNECTIONS to false,
+        DebugType.CLEANUP_FOUND_NON_RECONNECTABLE to false,
+        DebugType.CLEANUP_VALIDATED_CACHE to false,
+        DebugType.CLEANUP_VERTICLE_METRICS to false,
+
         DebugType.COORDINATOR_STATE_WORKER_FRAME_COMPLETE to false,
         DebugType.COORDINATOR_STATE_RESET_SESSION to false,
         DebugType.COORDINATOR_SESSION_ANNOUNCEMENT to true,
@@ -196,6 +202,12 @@ class DebugLogger {
                 DebugType.DOWNSOCKET_PUBSUB_STARTED_NO_BATCHING -> { "Started UpdateBatchCoordinator in immediate flush mode" }
                 DebugType.DOWNSOCKET_PUBSUB_DISTRIBUTED_BATCH -> { "Distributed batch with ${args[0]} entity updates" }
 
+                DebugType.CLEANUP_STARTING_PROCESS -> { "Starting connection cleanup process (aggressive=${args[0]})" }
+                DebugType.CLEANUP_FOUND_INACTIVE_CONNECTIONS -> { "Found ${args[0]} expired connections (inactive > ${args[1]} minutes)" }
+                DebugType.CLEANUP_FOUND_NON_RECONNECTABLE -> { "Found ${args[0]} recently disconnected non-reconnectable connections" }
+                DebugType.CLEANUP_VALIDATED_CACHE -> { "Found ${args[0]} connections in cache" }
+                DebugType.CLEANUP_VERTICLE_METRICS -> { "Connection cleanup removed ${args[0]} connections and ${args[1]} cache entries}" }
+
                 DebugType.COORDINATOR_STATE_WORKER_FRAME_COMPLETE -> { "Worker ${args[0]} completed logical frame ${args[1]}" }
                 DebugType.COORDINATOR_STATE_RESET_SESSION -> { "Started new session at timestamp ${args[0]} (nanos: ${args[1]})" }
                 DebugType.COORDINATOR_SESSION_ANNOUNCEMENT -> { "Frame coordinator announced new session ${args[0]}" }
@@ -303,6 +315,12 @@ class DebugLogger {
             DOWNSOCKET_PUBSUB_STARTED_WITH_BATCHING,
             DOWNSOCKET_PUBSUB_STARTED_NO_BATCHING,
             DOWNSOCKET_PUBSUB_DISTRIBUTED_BATCH,
+
+            CLEANUP_STARTING_PROCESS,
+            CLEANUP_FOUND_INACTIVE_CONNECTIONS,
+            CLEANUP_FOUND_NON_RECONNECTABLE,
+            CLEANUP_VALIDATED_CACHE,
+            CLEANUP_VERTICLE_METRICS,
 
             COORDINATOR_STATE_WORKER_FRAME_COMPLETE,
             COORDINATOR_STATE_RESET_SESSION,

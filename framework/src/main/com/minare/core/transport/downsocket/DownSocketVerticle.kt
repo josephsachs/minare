@@ -40,7 +40,6 @@ class DownSocketVerticle @Inject constructor(
     private val frameworkConfig: FrameworkConfig,
     private val connectionStore: ConnectionStore,
     private val connectionCache: ConnectionCache,
-    private val connectionController: ConnectionController,
     private val downSocketVerticleCache: DownSocketVerticleCache,
     private val updateConnectionClosedEvent: UpdateConnectionClosedEvent,
     private val updateConnectionEstablishedEvent: UpdateConnectionEstablishedEvent,
