@@ -52,7 +52,7 @@ wrong and be certain they are addressing the true cause.
 in the same subsets, ordered the same, how do you ensure that closely-grouped, intra-frame operations complete in the same 
 order across the cluster? Right now, your best bet is to configure a very fast frame (that is, one containing
 fewer operations per); future efforts may include configurable per-frame work limits, single-thread pipelines for 
-designated operations, and worker/scope affinities.~~ **\[MIN-201] Implement MinimumAffinityScope**
+designated operations, and worker/scope affinities.~~ **\[MIN-201] Implement Operation affinity scope**
 
 ## Technical Details
 
@@ -76,11 +76,11 @@ between my goals and the developer's experience. I chose
 
 0.5.0 - Serialization, application hooks, common interfaces
 
-0.6.0 - Config builder, modular infra, schema validation, more test coverage
+**0.6.0** - Config builder, modular infra, schema validation, more test coverage
 
 0.7.0 - Affinity scope
 
-0.8.0 - Update controller, views 
+0.8.0 - UpdateController, views
 
 1.0.0 - Quick start
 
@@ -90,12 +90,9 @@ between my goals and the developer's experience. I chose
 
 1.3.0 - Worker health monitoring
 
-1.1.0 and Beyond
-* Timeline replay/branch
-* Views (custom update sets)
-* Complex Operation behaviors
-* Scope affinity
-* Graph visitor builder
+1.4.0 - OperationSet 
+
+1.5.0 - Session branching, graph visitor builder
 
 # Utilities
 The framework repository contains several testing and debugging utilities. To use these, 
