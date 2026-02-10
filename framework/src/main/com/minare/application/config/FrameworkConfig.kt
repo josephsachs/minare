@@ -24,6 +24,7 @@ class FrameworkConfig {
 
     class SocketConnectionConfig {
         var cleanupInterval: Long = 0L
+        var aggressiveCleanup: Boolean = false
         var reconnectTimeout: Long = 0L
         var connectionExpiry: Long = 0L
     }

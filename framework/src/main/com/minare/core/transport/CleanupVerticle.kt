@@ -12,7 +12,8 @@ import kotlinx.coroutines.launch
 import org.slf4j.LoggerFactory
 import com.google.inject.Inject
 import com.minare.core.transport.upsocket.UpSocketVerticle
-import io.vertx.kotlin.ext.stomp.frameOf
+import com.minare.core.utils.debug.DebugLogger
+import com.minare.core.utils.debug.DebugLogger.Companion.DebugType
 
 /**
  * Verticle that handles periodic cleaning of stale connections and data.
@@ -21,7 +22,8 @@ import io.vertx.kotlin.ext.stomp.frameOf
 class CleanupVerticle @Inject constructor(
     private val frameworkConfig: FrameworkConfig,
     private val connectionStore: ConnectionStore,
-    private val connectionCache: ConnectionCache
+    private val connectionCache: ConnectionCache,
+    private val debug: DebugLogger
 ) : CoroutineVerticle() {
 
     private val log = LoggerFactory.getLogger(CleanupVerticle::class.java)
@@ -33,6 +35,7 @@ class CleanupVerticle @Inject constructor(
     private val reconnectTimeout = frameworkConfig.sockets.connection.reconnectTimeout
     private val cleanupInterval = frameworkConfig.sockets.connection.cleanupInterval
     private val connectionExpiry = frameworkConfig.sockets.connection.connectionExpiry
+    private val aggressiveCleanup = frameworkConfig.sockets.connection.aggressiveCleanup
 
     override suspend fun start() {
         log.info("Starting CleanupVerticle")
@@ -40,7 +43,9 @@ class CleanupVerticle @Inject constructor(
         vertx.setPeriodic(cleanupInterval) { _ ->
             CoroutineScope(vertx.dispatcher()).launch {
                 try {
-                    performCleanup()
+                    val result = performCleanup(aggressiveCleanup)
+
+                    debug.log(DebugType.CLEANUP_VERTICLE_METRICS, listOf(result.first, result.second))
                 } catch (e: Exception) {
                     log.error("Error during scheduled cleanup", e)
                 }
@@ -74,9 +79,8 @@ class CleanupVerticle @Inject constructor(
      * @return Pair of (removedConnections, remainingCacheEntries)
      */
     private suspend fun performCleanup(aggressive: Boolean = false): Pair<Int, Int> {
-        log.info("Starting connection cleanup process (aggressive=${aggressive})")
+        debug.log(DebugType.CLEANUP_STARTING_PROCESS, listOf(aggressive))
 
-        // Track metrics
         var connectionsRemoved = 0
 
         try {
@@ -85,7 +89,9 @@ class CleanupVerticle @Inject constructor(
 
             // Find expired inactive connections
             val expiredConnections = connectionStore.findInactiveConnections(connectionExpiry)
-            log.info("Found ${expiredConnections.size} expired connections (inactive > ${connectionExpiry /1000/60} minutes)")
+
+            debug.log(DebugType.CLEANUP_FOUND_INACTIVE_CONNECTIONS, listOf(expiredConnections.size, (connectionExpiry/1000/60)))
+
             connectionsToClear.addAll(expiredConnections.map { it._id })
 
             // If aggressive cleanup is enabled, find disconnected non-reconnectable connections
@@ -93,14 +99,13 @@ class CleanupVerticle @Inject constructor(
                 val recentlyDisconnected = connectionStore.findInactiveConnections(reconnectTimeout)
                     .filter { !it.reconnectable || it.upSocketId == null }
 
-                log.info("Found ${recentlyDisconnected.size} recently disconnected non-reconnectable connections")
+                debug.log(DebugType.CLEANUP_FOUND_NON_RECONNECTABLE, listOf(recentlyDisconnected.size))
+
                 connectionsToClear.addAll(recentlyDisconnected.map { it._id })
             }
 
             for (connectionId in connectionsToClear) {
                 try {
-                    log.info("Cleaning up connection: $connectionId")
-
                     if (cleanupStaleConnection(connectionId)) {
                         connectionsRemoved++
                     }
@@ -112,17 +117,14 @@ class CleanupVerticle @Inject constructor(
             // Check for any orphaned connections in the cache
             val cacheConnectionIds = connectionCache.getAllConnectedIds()
             val orphanedConnections = cacheConnectionIds.filter { connectionId ->
-                try {
-                    connectionStore.find(connectionId)
-                    false // Found in database, not orphaned
-                } catch (e: Exception) {
-                    // Not found in database, orphaned in cache
+                if (connectionStore.exists(connectionId)) {
+                    false
+                } else {
                     log.warn("Found orphaned connection in cache: $connectionId")
                     true
                 }
             }
 
-            // Clean up orphaned cache entries
             for (connectionId in orphanedConnections) {
                 try {
                     log.info("Removing orphaned cache entry: $connectionId")
@@ -135,7 +137,6 @@ class CleanupVerticle @Inject constructor(
                 }
             }
 
-            // Return metrics
             return Pair(connectionsRemoved, connectionCache.getConnectionCount())
 
         } catch (e: Exception) {
@@ -148,10 +149,9 @@ class CleanupVerticle @Inject constructor(
      * Validates that cache and database are in sync
      */
     private suspend fun validateCacheIntegrity() {
-        log.debug("Starting cache integrity validation")
-
         val cacheConnectionIds = connectionCache.getAllConnectedIds()
-        log.debug("Found ${cacheConnectionIds.size} connections in cache")
+
+        debug.log(DebugType.CLEANUP_VALIDATED_CACHE, listOf(cacheConnectionIds.size))
     }
 
     /**
@@ -159,11 +159,10 @@ class CleanupVerticle @Inject constructor(
      */
     private suspend fun cleanupStaleConnection(connectionId: String): Boolean {
         return try {
-            // First try closing any sockets
             val upSocket = connectionCache.getUpSocket(connectionId)
             val downSocket = connectionCache.getDownSocket(connectionId)
 
-            if (upSocket != null && !upSocket.isClosed()) {
+            if (upSocket != null && !upSocket.isClosed) {
                 try {
                     upSocket.close()
                 } catch (e: Exception) {
@@ -171,7 +170,7 @@ class CleanupVerticle @Inject constructor(
                 }
             }
 
-            if (downSocket != null && !downSocket.isClosed()) {
+            if (downSocket != null && !downSocket.isClosed) {
                 try {
                     downSocket.close()
                 } catch (e: Exception) {

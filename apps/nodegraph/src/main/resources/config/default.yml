@@ -14,6 +14,7 @@ sockets:
     connection_expiry: 180000
     cleanup_interval: 60000
     reconnect_timeout: 60000
+    aggressive_cleanup: true
 
 
 entity:

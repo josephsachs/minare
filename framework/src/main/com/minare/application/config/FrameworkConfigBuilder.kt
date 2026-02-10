@@ -52,6 +52,9 @@ class FrameworkConfigBuilder {
         config.sockets.connection.connectionExpiry = require(connection.getString("connection_expiry"), "sockets.connection.connection_expiry must be specified").toLong()
         config.sockets.connection.cleanupInterval = require(connection.getString("cleanup_interval"), "sockets.connection.cleanup_interval must be specified").toLong()
         config.sockets.connection.reconnectTimeout = require(connection.getString("reconnect_timeout"), "sockets.connection.reconnect_timeout must be specified").toLong()
+        config.sockets.connection.aggressiveCleanup = toBoolean(
+            withInfo(connection.getString("aggressive_cleanup"), "sockets.connection.aggressive_cleanup not specified, defaulting to false")
+        )
 
         return config
     }

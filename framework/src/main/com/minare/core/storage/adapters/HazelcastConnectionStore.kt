@@ -8,6 +8,7 @@ import com.minare.core.transport.models.Connection
 import org.slf4j.LoggerFactory
 import java.util.UUID
 import com.google.inject.Inject
+import com.minare.exceptions.ClientConnectionException
 
 @Singleton
 class HazelcastConnectionStore @Inject constructor(
@@ -52,7 +53,7 @@ class HazelcastConnectionStore @Inject constructor(
 
     override suspend fun find(connectionId: String): Connection {
         return map[connectionId]
-            ?: throw IllegalArgumentException("Connection not found: $connectionId")
+            ?: throw ClientConnectionException("Connection not found: $connectionId")
     }
 
     override suspend fun find(connectionId: Set<String>): Set<Connection> {
