@@ -1,7 +1,6 @@
 package com.minare.integration
 
 import com.google.inject.Inject
-import com.google.inject.Injector
 import com.minare.core.entity.factories.EntityFactory
 import com.minare.integration.models.Node
 import javax.inject.Singleton

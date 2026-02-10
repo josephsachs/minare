@@ -49,6 +49,22 @@ class EntityValidatorTest {
         var config: HashMap<String, String> = hashMapOf()
     }
 
+    class EntityWithFloat : Entity() {
+        @State
+        var value: Float = 0f
+    }
+
+    class EntityWithDouble : Entity() {
+        @State
+        var value: Double = 0.0
+    }
+
+    class EntityWithDualAnnotation : Entity() {
+        @State
+        @Property
+        var conflicted: String = ""
+    }
+
     class EntityWithBlacklistedType : Entity() {
         @State
         var name: String = ""
@@ -249,6 +265,47 @@ class EntityValidatorTest {
             val result = validator.validate(factory)
 
             assertThat(result).isTrue()
+        }
+    }
+
+    @Nested
+    @DisplayName("Float field validation")
+    inner class FloatFieldValidation {
+
+        @Test
+        @DisplayName("should pass validation with warning for Float field")
+        fun entityWithFloatFieldPassesWithWarning() {
+            val factory = createFactory("EntityWithFloat" to EntityWithFloat::class.java)
+
+            val result = validator.validate(factory)
+
+            assertThat(result).isTrue()
+        }
+
+        @Test
+        @DisplayName("should pass validation with warning for Double field")
+        fun entityWithDoubleFieldPassesWithWarning() {
+            val factory = createFactory("EntityWithDouble" to EntityWithDouble::class.java)
+
+            val result = validator.validate(factory)
+
+            assertThat(result).isTrue()
+        }
+    }
+
+    @Nested
+    @DisplayName("Dual annotation validation")
+    inner class DualAnnotationValidation {
+
+        @Test
+        @DisplayName("should throw error for field with both State and Property annotations")
+        fun entityWithDualAnnotationThrowsError() {
+            val factory = createFactory("EntityWithDualAnnotation" to EntityWithDualAnnotation::class.java)
+
+            assertThatThrownBy { validator.validate(factory) }
+                .isInstanceOf(EntityFactoryException::class.java)
+                .hasMessageContaining("cannot be both State and Property")
+                .hasMessageContaining("conflicted")
         }
     }
 
