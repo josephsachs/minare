@@ -1,7 +1,6 @@
 package com.minare.controller
 
 import com.minare.application.config.FrameworkConfig
-import com.minare.core.entity.factories.EntityFactory
 import com.minare.core.entity.models.*
 import com.minare.core.entity.services.EntityObjectHydrator
 import com.minare.core.storage.interfaces.EntityGraphStore
@@ -11,6 +10,7 @@ import io.vertx.core.json.JsonObject
 import org.slf4j.LoggerFactory
 import com.google.inject.Inject
 import com.google.inject.Singleton
+import com.minare.core.storage.interfaces.EntityGraphStoreOption
 
 /**
  * Controller for entity persistence operations.
@@ -52,7 +52,7 @@ open class EntityController @Inject constructor() {
 
             val newEntity = stateStore.save(entity)
 
-            if (frameworkConfig.mongo.enabled) {
+            if (frameworkConfig.entity.graph.store in listOf(EntityGraphStoreOption.MONGO)) {
                 entityGraphStore.save(entity, create)
             }
 
@@ -75,11 +75,11 @@ open class EntityController @Inject constructor() {
 
         stateStore.saveState(entityId, deltas, incrementVersion)
 
-        if (frameworkConfig.mongo.enabled) {
+        if (frameworkConfig.entity.graph.store in listOf(EntityGraphStoreOption.MONGO)) {
             entityGraphStore.updateRelationships(entityId, deltas)
         }
 
-        return stateStore.findEntity(entityId)
+        return stateStore.findOne(entityId)
     }
 
     /**
@@ -92,7 +92,31 @@ open class EntityController @Inject constructor() {
     open suspend fun saveProperties(entityId: String, deltas: JsonObject): Entity? {
         stateStore.saveProperties(entityId, deltas)
 
-        return stateStore.findEntity(entityId)
+        return stateStore.findOne(entityId)
+    }
+
+    /**
+     * Delete an entity from all stores.
+     *
+     * @param entityId The ID of the entity to delete
+     * @return true if successfully deleted
+     */
+    open suspend fun delete(entityId: String): Boolean {
+        log.debug("Deleting entity {}", entityId)
+
+        val deleted = stateStore.delete(entityId)
+
+        if (frameworkConfig.entity.graph.store in listOf(EntityGraphStoreOption.MONGO)) {
+            entityGraphStore.delete(entityId)
+        }
+
+        if (deleted) {
+            log.debug("Entity {} deleted successfully", entityId)
+        } else {
+            log.warn("Entity {} not found for deletion", entityId)
+        }
+
+        return deleted
     }
 
     /**
@@ -103,7 +127,7 @@ open class EntityController @Inject constructor() {
      */
     open suspend fun findByIds(ids: List<String>): Map<String, Entity> {
         val results = mutableMapOf<String, Entity>()
-        val entityJsons = stateStore.findEntitiesJson(ids)
+        val entityJsons = stateStore.findJson(ids)
 
         entityJsons.forEach { (entityKey, entityJson) ->
             results[entityKey] = objectHydrator.hydrate(entityJson)

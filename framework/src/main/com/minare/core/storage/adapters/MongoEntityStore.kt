@@ -137,6 +137,45 @@ class MongoEntityStore @Inject constructor(
     }
 
     /**
+     * Batch updates relationship fields for multiple entities
+     * @param updates Map of entityId to delta JsonObject
+     */
+    override suspend fun bulkUpdateRelationships(updates: Map<String, JsonObject>) {
+        if (updates.isEmpty()) return
+
+        val operations = updates.mapNotNull { (entityId, delta) ->
+            val fieldNames = entityInspector
+                .getFieldsOfType(entityId, listOf(Parent::class, Child::class))
+                .map { it.name }.toSet()
+
+            val filteredDelta = delta.fieldNames()
+                .filter { it in fieldNames }
+                .fold(JsonObject()) { acc, field ->
+                    acc.put("state.$field", delta.getValue(field))
+                }
+
+            if (filteredDelta.isEmpty) {
+                null
+            } else {
+                BulkOperation.createUpdate(
+                    JsonObject().put("_id", entityId),
+                    JsonObject().put("\$set", filteredDelta)
+                )
+            }
+        }
+
+        if (operations.isNotEmpty()) {
+            mongoClient.bulkWriteWithOptions(
+                collection,
+                operations,
+                io.vertx.ext.mongo.BulkWriteOptions().setWriteOption(WriteOption.ACKNOWLEDGED)
+            ).await()
+
+            log.debug("Bulk updated relationships for {} entities", operations.size)
+        }
+    }
+
+    /**
      * Bulk updates versions for multiple entities with write concern.
      */
     override suspend fun updateVersions(entityIds: Set<String>): JsonObject {
@@ -192,6 +231,25 @@ class MongoEntityStore @Inject constructor(
             log.error("Failed to fetch entities by IDs", err)
             throw err
         }
+    }
+
+    /**
+     * Deletes an entity from the graph store
+     * @param entityId The ID of the entity to delete
+     * @return true if entity was deleted, false if not found
+     */
+    override suspend fun delete(entityId: String): Boolean {
+        val query = JsonObject().put("_id", entityId)
+        val result = mongoClient.removeDocument(collection, query).await()
+
+        val deleted = result.removedCount > 0
+        if (deleted) {
+            log.debug("Deleted entity {} from graph store", entityId)
+        } else {
+            log.warn("Entity {} not found in graph store for deletion", entityId)
+        }
+
+        return deleted
     }
 
     private suspend fun buildEntityDocument(entity: Entity): JsonObject {

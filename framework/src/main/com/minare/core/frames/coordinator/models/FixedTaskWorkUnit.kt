@@ -7,7 +7,6 @@ import com.minare.core.entity.factories.EntityFactory
 import com.minare.core.entity.services.EntityObjectHydrator
 import com.minare.core.storage.interfaces.StateStore
 import com.minare.core.work.WorkUnit
-import io.vertx.core.json.JsonObject
 import kotlin.reflect.full.callSuspend
 import kotlin.reflect.jvm.kotlinFunction
 
@@ -37,7 +36,7 @@ class FixedTaskWorkUnit @Inject constructor(
         val keys = items.map { it.toString() }
 
         // Batch fetch all entity JSONs from Redis
-        val entityJsons = stateStore.findEntitiesJson(keys)
+        val entityJsons = stateStore.findJson(keys)
 
         entityJsons.forEach { (entityId, json) ->
             var entity = objectHydrator.hydrate(json)

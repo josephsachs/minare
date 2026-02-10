@@ -91,19 +91,14 @@ class RedisEntityStore @Inject constructor(
 
             response.toLong()
         } else {
-            val currentDocument = findEntityJson(entityId)
+            val currentDocument = findOneJson(entityId)
                 ?: throw EntityStorageException("Entity not found: $entityId")
 
             val currentState = currentDocument.getJsonObject("state", JsonObject())
 
-            delta.fieldNames().forEach { fieldName ->
-                val rawValue = delta.getValue(fieldName)
-                if (rawValue != null) {
-                    val serializedValue = serializer.serialize(rawValue)
-                    currentState.put(fieldName, serializedValue)
-                } else {
-                    currentState.putNull(fieldName)
-                }
+            val serializedDelta = serializeDelta(delta)
+            serializedDelta.fieldNames().forEach { fieldName ->
+                currentState.put(fieldName, serializedDelta.getValue(fieldName))
             }
 
             currentDocument.put("state", currentState)
@@ -111,7 +106,7 @@ class RedisEntityStore @Inject constructor(
             currentDocument.getLong("version", 1L)
         }
 
-        val updatedDocument = findEntityJson(entityId)
+        val updatedDocument = findOneJson(entityId)
             ?: throw EntityStorageException("Updated document not found for $entityId after set command")
 
         publishService.publishStateChange(
@@ -125,33 +120,92 @@ class RedisEntityStore @Inject constructor(
     }
 
     /**
+     * Batch updates state for multiple entities, incrementing versions.
+     * Uses a Lua script for single round-trip execution.
+     */
+    override suspend fun batchSaveState(updates: Map<String, JsonObject>) {
+        if (updates.isEmpty()) return
+
+        val entityIds = updates.keys.toList()
+        val deltas = entityIds.map { serializeDelta(updates[it]!!).encode() }
+
+        val args = mutableListOf<String>()
+        args.add(batchMergeDeltasScript())
+        args.add(entityIds.size.toString())   // numkeys
+        args.addAll(entityIds)                // KEYS
+        args.addAll(deltas)                   // ARGV (but ARGV[1] will be first delta, not numkeys)
+
+        redisAPI.send(Command.create("EVAL"), *args.toTypedArray()).await()
+
+        // Publish state changes
+        for ((entityId, delta) in updates) {
+            val updatedDoc = findOneJson(entityId)
+            if (updatedDoc != null) {
+                publishService.publishStateChange(
+                    entityId,
+                    updatedDoc.getString("type"),
+                    updatedDoc.getLong("version") ?: 1L,
+                    delta
+                )
+            }
+        }
+
+        log.debug("Batch updated state for {} entities", updates.size)
+    }
+
+    /**
      * Save properties to document. Properties are stored in a Json box similar to state,
      * and expect a delta. Updating properties does not result in a version increment.
      * Default is no pubsub notification.
      */
     override suspend fun saveProperties(entityId: String, delta: JsonObject, publish: Boolean): JsonObject {
-        val currentDocument = findEntityJson(entityId)
+        val currentDocument = findOneJson(entityId)
             ?: throw IllegalStateException("Entity not found: $entityId")
 
         val currentProperties = currentDocument.getJsonObject("properties", JsonObject())
 
-        delta.fieldNames().forEach { fieldName ->
-            val rawValue = delta.getValue(fieldName)
-            if (rawValue != null) {
-                val serializedValue = serializer.serialize(rawValue)
-                currentProperties.put(fieldName, serializedValue)
-            } else {
-                currentProperties.putNull(fieldName)
-            }
+        val serializedDelta = serializeDelta(delta)
+        serializedDelta.fieldNames().forEach { fieldName ->
+            currentProperties.put(fieldName, serializedDelta.getValue(fieldName))
         }
 
         currentDocument.put("properties", currentProperties)
         redisAPI.jsonSet(listOf(entityId, "$", currentDocument.encode())).await()
 
-        val updatedDocument = findEntityJson(entityId)
+        val updatedDocument = findOneJson(entityId)
 
         return updatedDocument
             ?: throw EntityStorageException("Failed to save properties for nonexistent entity $entityId")
+    }
+
+    /**
+     * Deletes an entity from the state store
+     * @param entityId The ID of the entity to delete
+     * @return true if entity was deleted, false if not found
+     */
+    override suspend fun delete(entityId: String): Boolean {
+        // Get entity type before deletion (needed to remove from type set)
+        // Use a try-catch since findEntityType throws on missing entities
+        val entityType = try {
+            findEntityType(entityId)
+        } catch (e: Exception) {
+            log.warn("Cannot delete entity {}: not found or error fetching type", entityId)
+            return false
+        }
+
+        if (entityType == null) {
+            log.warn("Cannot delete entity {}: no type found", entityId)
+            return false
+        }
+
+        // Delete the entity document
+        val deleted = redisAPI.del(listOf(entityId)).await()
+
+        // Remove from type set
+        redisAPI.srem(listOf("entity:types:$entityType", entityId)).await()
+
+        log.debug("Deleted entity {} of type {}", entityId, entityType)
+        return deleted.toInteger() > 0
     }
 
     private fun serializeDelta(delta: JsonObject): JsonObject {
@@ -223,11 +277,7 @@ class RedisEntityStore @Inject constructor(
                     result[entityId] = entity
                 }
             } catch (e: Exception) {
-                // TEMPORARY DEBUG
-                val document = JsonArray(item.toString()).getJsonObject(0)
-
-                val entityId = document.getString("_id")
-                log.warn("StateStore found Entity document with invalid state field for ${entityId}: ${e.message}", e)
+                log.warn("StateStore encountered an issue fetching this entity: ${e.message}", e)
             }
         }
 
@@ -255,8 +305,7 @@ class RedisEntityStore @Inject constructor(
                     }
 
                 } catch (e: Exception) {
-                    // TODO: Fix serialization so this bug stops happening
-                    log.warn("StateStore found Entity document with invalid state field for ${entity._id}: ${e.message}", e)
+                    log.warn("StateStore found Entity document with invalid state field for ${entity._id}: ${field.name}, ${field.type};\\n ${e.message}", e)
                 }
             }
         }
@@ -306,7 +355,7 @@ class RedisEntityStore @Inject constructor(
         }
 
         // Batch fetch all entities from Redis
-        val fullEntities = findEntitiesJsonByIds(entityIds)
+        val fullEntities = findJsonByIds(entityIds)
 
         for (vertex in graph.vertexSet()) {
             val entityId = vertex.getString("_id") ?: continue
@@ -322,7 +371,7 @@ class RedisEntityStore @Inject constructor(
      * @param entityIds List of entity IDs to fetch
      * @return Map of entity IDs to JsonObjects
      */
-    override suspend fun findEntitiesJsonByIds(entityIds: List<String>): Map<String, JsonObject> {
+    override suspend fun findJsonByIds(entityIds: List<String>): Map<String, JsonObject> {
         if (entityIds.isEmpty()) {
             return emptyMap()
         }
@@ -333,6 +382,8 @@ class RedisEntityStore @Inject constructor(
         val collection = JsonArray(response.toString())
 
         for (item in collection) {
+            if (item == null) continue
+
             try {
                 val document = JsonArray(item.toString()).getJsonObject(0)
                 val entityId = document.getString("_id")
@@ -346,17 +397,6 @@ class RedisEntityStore @Inject constructor(
         }
 
         return result
-    }
-
-    /**
-     * Finds an entity by ID and returns it as an Entity
-     * @param entityId The ID of the entity to fetch
-     * @return The entity as a JsonObject, or null if not found
-     *
-     * @deprecated Use find()
-     */
-    override suspend fun findEntity(entityId: String): Entity? {
-        return find(listOf(entityId))[entityId]
     }
 
     /**
@@ -398,7 +438,7 @@ class RedisEntityStore @Inject constructor(
      * @param entityIds List of entity IDs to fetch
      * @return Map of entity IDs to JsonObject documents
      */
-    override suspend fun findEntitiesJson(entityIds: List<String>): Map<String, JsonObject> {
+    override suspend fun findJson(entityIds: List<String>): Map<String, JsonObject> {
         if (entityIds.isEmpty()) {
             return emptyMap()
         }
@@ -434,10 +474,8 @@ class RedisEntityStore @Inject constructor(
      * @param entityId The ID of the entity to fetch
      * @return The entity as a JsonObject, or null if not found
      */
-    override suspend fun findEntityJson(entityId: String): JsonObject? {
-        val json = findEntitiesJsonByIds(listOf(entityId))[entityId]
-
-        return json ?: throw EntityStorageException("StateStore.findEntityJson returned null for entityId $entityId")
+    override suspend fun findOneJson(entityId: String): JsonObject? {
+        return findJsonByIds(listOf(entityId))[entityId]
     }
 
     /**
@@ -485,26 +523,22 @@ class RedisEntityStore @Inject constructor(
      */
     private fun versionIncrementScript(): String {
         return """
-            local doc_json = redis.call('JSON.GET', KEYS[1])
-            if not doc_json then
-                error('Entity not found: ' .. KEYS[1])
-            end
-            
-            local doc = cjson.decode(doc_json)
-            local delta = cjson.decode(ARGV[1])
-            
-            -- Apply delta to state
-            local state = doc.state or {}
-            for key, value in pairs(delta) do
-                state[key] = value
-            end
-            doc.state = state
-            
-            -- Increment version
-            doc.version = (doc.version or 1) + 1
-            
-            redis.call('JSON.SET', KEYS[1], '${'$'}', cjson.encode(doc))
-            return doc.version
+            redis.call('JSON.MERGE', KEYS[1], '${'$'}.state', ARGV[1])
+            redis.call('JSON.NUMINCRBY', KEYS[1], '${'$'}.version', 1)
+            local version = redis.call('JSON.GET', KEYS[1], 'version')
+            return tonumber(version)
         """
+    }
+
+    /**
+     * Batch merge entity deltas
+     */
+    private fun batchMergeDeltasScript(): String {
+        return """
+        for i = 1, #KEYS do
+            redis.call('JSON.MERGE', KEYS[i], '${'$'}.state', ARGV[i])
+            redis.call('JSON.NUMINCRBY', KEYS[i], '${'$'}.version', 1)
+        end
+    """
     }
 }

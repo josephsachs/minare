@@ -21,7 +21,7 @@ class SnapshotService @Inject constructor(
         deltaStore.clearDeltas()
 
         val entities = stateStore.getAllEntityKeys()
-        val entitiesMap = stateStore.findEntitiesJsonByIds(entities)
+        val entitiesMap = stateStore.findJsonByIds(entities)
 
         snapshotStore.storeState(
             sessionId,

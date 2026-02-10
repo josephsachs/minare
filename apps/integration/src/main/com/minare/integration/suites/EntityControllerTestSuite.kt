@@ -6,6 +6,7 @@ import com.minare.core.storage.interfaces.StateStore
 import com.minare.integration.harness.Assertions.assertEquals
 import com.minare.integration.harness.Assertions.assertNotNull
 import com.minare.integration.harness.Assertions.assertNotStartsWith
+import com.minare.integration.harness.Assertions.fail
 import com.minare.integration.harness.TestRunner
 import com.minare.integration.harness.TestSuite
 import com.minare.integration.models.Node
@@ -46,10 +47,9 @@ class EntityControllerTestSuite(private val injector: Injector) : TestSuite {
             }
 
             val created = entityController.create(node)
-            val retrieved = stateStore.findEntity(created._id)
+            val retrieved = stateStore.findOne(created._id) ?: fail("Should be able to retrieve created entity")
 
-            assertNotNull(retrieved) { "Should be able to retrieve created entity" }
-            assertEquals(created._id, retrieved!!._id) { "Retrieved ID should match" }
+            assertEquals(created._id, retrieved._id) { "Retrieved ID should match" }
             assertEquals("Node", retrieved.type) { "Type should be Node" }
         }
 
@@ -61,7 +61,7 @@ class EntityControllerTestSuite(private val injector: Injector) : TestSuite {
             }
 
             val created = entityController.create(node)
-            val json = stateStore.findEntityJson(created._id)
+            val json = stateStore.findOneJson(created._id)
 
             assertNotNull(json) { "Should retrieve entity JSON" }
 
@@ -91,7 +91,7 @@ class EntityControllerTestSuite(private val injector: Injector) : TestSuite {
             assertNotNull(updated) { "Updated entity should not be null" }
             assertEquals(2L, updated!!.version) { "Version should increment to 2" }
 
-            val json = stateStore.findEntityJson(created._id)
+            val json = stateStore.findOneJson(created._id)
             val state = json!!.getJsonObject("state")
             assertEquals("#FFFFFF", state.getString("color")) { "Color should be updated" }
         }

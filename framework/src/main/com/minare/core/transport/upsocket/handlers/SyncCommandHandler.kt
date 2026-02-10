@@ -148,7 +148,7 @@ class SyncCommandHandler @Inject constructor(
                 return
             }
 
-            val entities = stateStore.findEntitiesJsonByIds(entityIds).values  // Get just the values
+            val entities = stateStore.findJsonByIds(entityIds).values  // Get just the values
             val syncData = JsonObject()
                 .put("entities", JsonArray(entities.toList()))  // Convert to list for JsonArray
                 .put("channelId", channelId)

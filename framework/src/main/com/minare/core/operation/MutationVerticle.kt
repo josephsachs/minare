@@ -46,7 +46,7 @@ class MutationVerticle @Inject constructor(
                     }
 
                     try {
-                        val entityJson = stateStore.findEntityJson(entityId)
+                        val entityJson = stateStore.findOneJson(entityId)
 
                         if (entityJson == null) {
                             message.fail(404, "Entity not found: $entityId")
@@ -56,7 +56,7 @@ class MutationVerticle @Inject constructor(
                         val result = mutationService.mutate(entityId, entityType, entityObject)
 
                         if (result.getBoolean("success", false)) {
-                            val updatedEntityJson = stateStore.findEntityJson(entityId)
+                            val updatedEntityJson = stateStore.findOneJson(entityId)
 
                             val response = JsonObject()
                                 .put("success", true)

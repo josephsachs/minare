@@ -3,12 +3,13 @@ package com.minare.integration.models
 import com.minare.core.entity.annotations.*
 import com.minare.core.entity.models.Entity
 import org.slf4j.LoggerFactory
+import java.io.Serializable
 
 data class NodeDiag(
     val timestamp: Long,
     val message: String,
     val level: String  // e.g., "INFO", "WARN", "ERROR"
-)
+): Serializable
 
 @EntityType("Node")
 class Node(): Entity() {

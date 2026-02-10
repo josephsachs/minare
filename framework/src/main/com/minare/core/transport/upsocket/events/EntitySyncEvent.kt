@@ -64,7 +64,7 @@ class EntitySyncEvent @Inject constructor(
                 return false
             }
 
-            val entities = stateStore.findEntitiesJsonByIds(listOf(entityId))
+            val entities = stateStore.findJsonByIds(listOf(entityId))
 
             if (entities.isEmpty()) {
                 vlog.getEventLogger().trace("ENTITY_NOT_FOUND", mapOf("entityId" to entityId), traceId)

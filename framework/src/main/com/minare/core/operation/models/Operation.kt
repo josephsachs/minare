@@ -125,9 +125,12 @@ class Operation {
      * Build the operation into a JsonObject
      */
     fun build(): JsonObject {
-        requireNotNull(entity) { "Entity ID is required" }
         requireNotNull(entityType) { "Entity type is required" }
         requireNotNull(action) { "Action is required" }
+
+        if (action == OperationType.MUTATE || action == OperationType.DELETE) {
+            requireNotNull(entity) { "Entity ID is required" }
+        }
 
         val operation = JsonObject()
             .put("id", id)
@@ -136,16 +139,9 @@ class Operation {
             .put("action", action.toString())
             .put("timestamp", timestamp)
 
-        // Add version if present
         version?.let { operation.put("version", it) }
-
-        // Add delta if present
         delta?.let { operation.put("delta", it) }
-
-        // Add meta if present
         meta?.let { operation.put("meta", it ) }
-
-        // Merge any additional values
         operation.mergeIn(values)
 
         return operation
@@ -166,22 +162,22 @@ class Operation {
             // Set ID if present, otherwise keep generated one
             json.getString("id")?.let { op.id(it) }
 
-            // Required fields
-            op.entity(json.getString("entityId")
-                ?: throw IllegalArgumentException("Missing entityId"))
             op.entity(json.getString("entityType")
                 ?: throw IllegalArgumentException("Missing entityType"))
             op.action(
                 OperationType.valueOf(json.getString("action")
                 ?: throw IllegalArgumentException("Missing action")))
 
-            // Optional fields
+            if (op.action == OperationType.MUTATE || op.action == OperationType.DELETE) {
+                op.entity(json.getString("entityId")
+                    ?: throw IllegalArgumentException("Missing entityId"))
+            }
+
             json.getLong("timestamp")?.let { op.timestamp(it) }
             json.getLong("version")?.let { op.version(it) }
             json.getJsonObject("delta")?.let { op.delta(it) }
             json.getString("meta")?.let { op.meta(it) }
 
-            // Copy any other fields to values
             json.fieldNames()
                 .filter { it !in setOf(
                     "id", "entityId", "entityType", "action", "timestamp", "version", "delta", "meta"

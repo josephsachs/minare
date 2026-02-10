@@ -26,6 +26,12 @@ interface StateStore {
     suspend fun saveState(entityId: String, delta: JsonObject, incrementVersion: Boolean = true): JsonObject
 
     /**
+     * Batch updates state for multiple entities, incrementing versions
+     * @param updates Map of entityId to delta JsonObject
+     */
+    suspend fun batchSaveState(updates: Map<String, JsonObject>)
+
+    /**
      * Persists all of an entity's properties
      * @param entityId The ID of the entity to update
      * @param delta
@@ -35,7 +41,14 @@ interface StateStore {
     suspend fun saveProperties(entityId: String, delta: JsonObject, publish: Boolean = false): JsonObject
 
     /**
-     * Find  single entity by ID
+     * Deletes an entity from the state store
+     * @param entityId The ID of the entity to delete
+     * @return true if entity was deleted, false if not found
+     */
+    suspend fun delete(entityId: String): Boolean
+
+    /**
+     * Find single entity by ID
      * @param entityId String
      * @return Entity?
      */
@@ -49,16 +62,20 @@ interface StateStore {
     suspend fun find(entityIds: List<String>): Map<String, Entity>
 
     /**
-     * Finds multiple entities by their IDs
-     * @param entityIds List of entity IDs to fetch
-     * @return Map of entities with full state
+     * Populates all @State fields on an entity using reflection
+     * @param entity The entity to populate
+     * @param entityType The type name for reflection lookup
+     * @param state The state JSON to apply
+     * @return The entity with state fields populated
      */
     suspend fun setEntityState(entity: Entity, entityType: String, state: JsonObject): Entity
 
     /**
-     * Finds multiple entities by their IDs
-     * @param entityIds List of entity IDs to fetch
-     * @return Map of entities with full state
+     * Populates all @Property fields on an entity using reflection
+     * @param entity The entity to populate
+     * @param entityType The type name for reflection lookup
+     * @param properties The properties JSON to apply
+     * @return The entity with property fields populated
      */
     suspend fun setEntityProperties(entity: Entity, entityType: String, properties: JsonObject): Entity
 
@@ -70,16 +87,9 @@ interface StateStore {
     suspend fun hydrateGraph(graph: Graph<JsonObject, DefaultEdge>)
 
     /**
-     * Finds an entity by ID and returns it as an Entity
+     * Finds an entity's type by ID
      * @param entityId The ID of the entity to fetch
-     * @return The entity, or null if not found
-     */
-    suspend fun findEntity(entityId: String): Entity?
-
-    /**
-     * Finds an entity by ID and returns it as an Entity
-     * @param entityId The ID of the entity to fetch
-     * @return The entity, or null if not found
+     * @return The entity type, or null if not found
      */
     suspend fun findEntityType(entityId: String): String?
 
@@ -95,21 +105,21 @@ interface StateStore {
      * @param entityIds List of entity IDs to fetch
      * @return Map of entity IDs to JsonObject documents
      */
-    suspend fun findEntitiesJson(entityIds: List<String>): Map<String, JsonObject>
+    suspend fun findJson(entityIds: List<String>): Map<String, JsonObject>
 
     /**
      * Finds an entity by ID and returns it as a JsonObject
      * @param entityId The ID of the entity to fetch
      * @return The entity as a JsonObject, or null if not found
      */
-    suspend fun findEntityJson(entityId: String): JsonObject?
+    suspend fun findOneJson(entityId: String): JsonObject?
 
     /**
      * Finds multiple entities by their IDs and returns them as JsonObjects
      * @param entityIds List of entity IDs to fetch
      * @return Map of entity IDs to JsonObjects
      */
-    suspend fun findEntitiesJsonByIds(entityIds: List<String>): Map<String, JsonObject>
+    suspend fun findJsonByIds(entityIds: List<String>): Map<String, JsonObject>
 
     /**
      * Get all entity keys from the store
