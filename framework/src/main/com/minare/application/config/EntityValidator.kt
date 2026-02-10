@@ -112,6 +112,20 @@ class EntityValidator {
             return
         }
 
+        if (field.isAnnotationPresent(State::class.java) && field.isAnnotationPresent(Property::class.java)) {
+            issues.add(
+                ValidationIssue(
+                    entityClass = entityName,
+                    fieldPath = fieldPath,
+                    customTypeClass = null,
+                    depth = depth,
+                    message = "Field cannot be both State and Property",
+                    isError = true
+                )
+            )
+            return
+        }
+
         if (Map::class.java.isAssignableFrom(fieldType)) {
             issues.add(
                 ValidationIssue(
