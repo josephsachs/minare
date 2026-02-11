@@ -6,20 +6,27 @@ import com.minare.core.storage.interfaces.EntityGraphStoreOption
 
 class FrameworkConfig {
     class SocketsSection {
-        var up: SocketConfig = SocketConfig()
-        var down: SocketConfig = SocketConfig()
+        var up: UpSocketConfig = UpSocketConfig()
+        var down: DownSocketConfig = DownSocketConfig()
         var connection: SocketConnectionConfig = SocketConnectionConfig()
     }
 
-    class SocketConfig {
+    class UpSocketConfig {
         var host: String = ""
         var port: Int = 0
         var basePath: String = ""
         var handshakeTimeout: Long = 0L
         var heartbeatInterval: Long = 0L
+        var ack: Boolean = true
+    }
 
+    class DownSocketConfig {
+        var host: String = ""
+        var port: Int = 0
+        var basePath: String = ""
         var tickInterval: Long = 0L
         var cacheTtl: Long = 0L
+        var heartbeatInterval: Long = 0L
     }
 
     class SocketConnectionConfig {

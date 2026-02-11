@@ -159,6 +159,10 @@ class UpSocketVerticle @Inject constructor(
                         }
                     }
 
+                    if (frameworkConfig.sockets.up.ack) {
+                        websocket.writeTextMessage(JsonObject().put("type", "ack").toString())
+                    }
+
                     messageController.handleUpsocket(connectionTracker, websocket, msg)
                 } catch (e: Exception) {
                     WebSocketUtils.sendErrorResponse(
