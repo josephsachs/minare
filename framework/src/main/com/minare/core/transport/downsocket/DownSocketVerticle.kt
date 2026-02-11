@@ -29,6 +29,7 @@ import com.minare.worker.downsocket.events.UpdateConnectionClosedEvent
 import com.minare.worker.downsocket.events.UpdateConnectionClosedEvent.Companion.ADDRESS_CONNECTION_CLOSED
 import com.minare.worker.downsocket.events.UpdateConnectionEstablishedEvent
 import com.minare.worker.downsocket.events.UpdateConnectionEstablishedEvent.Companion.ADDRESS_CONNECTION_ESTABLISHED
+import io.vertx.core.eventbus.DeliveryOptions
 
 /**
  * Verticle responsible for accumulating entity updates and distributing them
@@ -332,10 +333,8 @@ class DownSocketVerticle @Inject constructor(
                     .put("connectionId", connection._id)
                     .put("socketId", socketId)
                     .put("deploymentId", deploymentID)
-                    .put("traceId", traceId)
+                    .put("traceId", traceId),
             )
-
-            //connectionController.onClientFullyConnected(connection)
         } catch (e: Exception) {
             vlog.logVerticleError("ASSOCIATE_DOWN_SOCKET", e, mapOf(
                 "connectionId" to connectionId
