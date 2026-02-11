@@ -68,7 +68,6 @@ class ConnectionLifecycle @Inject constructor(
                 deploymentId
             )
 
-            // Save cache entry with the updated connection
             connectionCache.storeConnection(updatedConnection)
             connectionCache.storeUpSocket(connection._id, websocket, updatedConnection)
 
@@ -111,7 +110,6 @@ class ConnectionLifecycle @Inject constructor(
                 ), traceId
             )
 
-            // Clean up channels
             val channelCleanupResult = cleanupConnectionChannels(connectionId)
             if (!channelCleanupResult) {
                 vlog.getEventLogger().trace(
@@ -121,7 +119,6 @@ class ConnectionLifecycle @Inject constructor(
                 )
             }
 
-            // Clean up sockets and stop heartbeat
             heartbeatManager.stopHeartbeat(connectionId)
             val updateSocket = connectionCache.getDownSocket(connectionId)
             val socketCleanupResult = cleanupConnectionSockets(connectionId, updateSocket != null)
@@ -133,7 +130,6 @@ class ConnectionLifecycle @Inject constructor(
                 )
             }
 
-            // Mark connection as not reconnectable
             try {
                 connectionStore.updateReconnectable(connectionId, false)
                 vlog.getEventLogger().logStateChange(
@@ -148,9 +144,7 @@ class ConnectionLifecycle @Inject constructor(
                 )
             }
 
-            // Remove the connection from DB and cache
             try {
-                // Try to delete from the database first
                 connectionStore.delete(connectionId)
                 vlog.getEventLogger().logDbOperation(
                     "DELETE", "connections",
@@ -162,10 +156,8 @@ class ConnectionLifecycle @Inject constructor(
                         "connectionId" to connectionId
                     )
                 )
-                // Continue anyway - the connection might already be gone
             }
 
-            // Final cleanup from cache
             try {
                 connectionCache.removeConnection(connectionId)
                 connectionTracker.removeConnection(connectionId)
@@ -196,7 +188,6 @@ class ConnectionLifecycle @Inject constructor(
                 )
             )
 
-            // Do emergency cleanup as a last resort
             try {
                 connectionCache.removeUpSocket(connectionId)
                 connectionCache.removeDownSocket(connectionId)

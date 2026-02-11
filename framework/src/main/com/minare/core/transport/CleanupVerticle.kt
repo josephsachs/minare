@@ -184,7 +184,6 @@ class CleanupVerticle @Inject constructor(
             ).await().body().getBoolean("success", false)
 
             if (!result) {
-                // If the regular cleanup fails, try direct removal
                 connectionCache.removeUpSocket(connectionId)
                 connectionCache.removeDownSocket(connectionId)
                 connectionCache.removeConnection(connectionId)
