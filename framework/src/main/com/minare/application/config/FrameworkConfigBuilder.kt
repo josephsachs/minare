@@ -26,6 +26,7 @@ class FrameworkConfigBuilder {
             .let { setHazelcastConfig(file, it) }
             .let { setDevelopmentConfig(file, it) }
 
+        logInfo()
         validate()
 
         return config
@@ -42,6 +43,9 @@ class FrameworkConfigBuilder {
         config.sockets.up.basePath = require(upsocket.getString("base_path"), "sockets.up.base_path must be specified")
         config.sockets.up.heartbeatInterval = require(upsocket.getInteger("heartbeat_interval"), "sockets.up.heartbeat_interval must be specified").toLong()
         config.sockets.up.handshakeTimeout = require(upsocket.getInteger("handshake_timeout"), "sockets.up.handshake_timeout must be specified").toLong()
+        config.sockets.up.ack = toBoolean(
+            withInfo(upsocket.getString("ack"), "sockets.up.ack not specified, defaulting to true"), true
+        )
 
         val downsocket = require(sockets.getJsonObject("down"), "sockets.down section must be specified")
         config.sockets.down.host = require(downsocket.getString("host"), "sockets.down.host must be specified")
@@ -266,23 +270,30 @@ class FrameworkConfigBuilder {
         return value ?: run { infos.add(message); JsonObject() }
     }
 
-    private fun toBoolean(value: String): Boolean {
+    private fun toBoolean(value: String, default: Boolean = false): Boolean {
         return when (value) {
             "true" -> true
             "false" -> false
-            else -> false
+            else -> default
         }
     }
 
     private fun validate() {
         if (errors.isNotEmpty()) {
-            throw ConfigurationException("Config errors:\n${errors.joinToString("\n")}")
+            log.error("Minare configuration builder found the following errors:")
+            for(error in errors) {
+                log.error(error)
+            }
+            throw ConfigurationException("Configuration errors prevented application bootstrap")
         }
     }
 
     private fun logInfo() {
-        if (errors.isNotEmpty()) {
-            log.info("Info:\n${errors.joinToString("\n")}")
+        if (infos.isNotEmpty()) {
+            log.info("Minare configuration builder made the following comments:")
+            for(info in infos) {
+                log.info(info)
+            }
         }
     }
 }

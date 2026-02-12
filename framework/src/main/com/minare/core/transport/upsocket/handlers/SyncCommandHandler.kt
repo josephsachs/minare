@@ -46,7 +46,7 @@ class SyncCommandHandler @Inject constructor(
                 .put("timestamp", System.currentTimeMillis())
 
             val upSocket = connectionCache.getUpSocket(connectionId)
-            if (upSocket != null && !upSocket.isClosed()) {
+            if (upSocket != null && !upSocket.isClosed) {
                 upSocket.writeTextMessage(response.encode())
             } else {
                 log.warn("Cannot send sync initiated response: up socket not found or closed for {}", connectionId)
@@ -77,7 +77,7 @@ class SyncCommandHandler @Inject constructor(
             .put("error", errorMessage)
 
         val socket = connectionCache.getUpSocket(connectionId)
-        if (socket != null && !socket.isClosed()) {
+        if (socket != null && !socket.isClosed) {
             socket.writeTextMessage(response.encode())
         } else {
             log.warn("Cannot send error response: up socket not found or closed for {}", connectionId)
@@ -108,7 +108,7 @@ class SyncCommandHandler @Inject constructor(
      * @param connectionId The ID of the connection to synchronize
      * @return True if sync was successful, false otherwise
      */
-    suspend fun syncConnection(connectionId: String): Boolean {
+    private suspend fun syncConnection(connectionId: String): Boolean {
         try {
             log.info("Starting sync for connection: {}", connectionId)
 

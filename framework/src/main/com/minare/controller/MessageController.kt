@@ -15,6 +15,7 @@ import io.vertx.core.http.ServerWebSocket
 import io.vertx.core.json.JsonObject
 import org.slf4j.LoggerFactory
 import com.google.inject.Inject
+import java.util.UUID
 
 /**
  * Controller for the handling socket messages.
@@ -131,6 +132,14 @@ abstract class MessageController @Inject constructor() {
                 webSocket, e, connectionId, vlog
             )
         }
+    }
+
+    /**
+     * Application hook
+     * Returns a trace ID for the command acknowledgment
+     */
+    open suspend fun getTraceId(): String {
+        return UUID.randomUUID().toString()
     }
 
     protected abstract suspend fun handle(connection: Connection, message: JsonObject)

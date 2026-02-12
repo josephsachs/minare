@@ -11,6 +11,7 @@ import com.minare.core.transport.services.HeartbeatManager
 import com.minare.core.utils.vertx.VerticleLogger
 import com.minare.core.transport.services.WebSocketUtils
 import io.vertx.core.Vertx
+import io.vertx.core.eventbus.DeliveryOptions
 import io.vertx.core.http.ServerWebSocket
 import io.vertx.core.impl.logging.LoggerFactory
 import io.vertx.core.json.JsonObject
@@ -67,7 +68,6 @@ class ConnectionLifecycle @Inject constructor(
                 deploymentId
             )
 
-            // Save cache entry with the updated connection
             connectionCache.storeConnection(updatedConnection)
             connectionCache.storeUpSocket(connection._id, websocket, updatedConnection)
 
@@ -84,11 +84,12 @@ class ConnectionLifecycle @Inject constructor(
                 mapOf("connectionId" to connection._id), traceId
             )
 
-            vertx.eventBus().publish(
+            vertx.eventBus().send(
                 MinareApplication.ConnectionEvents.ADDRESS_UP_SOCKET_CONNECTED,
                 JsonObject()
                     .put("connectionId", connection._id)
-                    .put("traceId", traceId)
+                    .put("traceId", traceId),
+                DeliveryOptions().setLocalOnly(true)
             )
         } catch (e: Exception) {
             vlog.getEventLogger().logError("CONNECTION_FAILED", e, emptyMap(), traceId)
@@ -109,7 +110,6 @@ class ConnectionLifecycle @Inject constructor(
                 ), traceId
             )
 
-            // Clean up channels
             val channelCleanupResult = cleanupConnectionChannels(connectionId)
             if (!channelCleanupResult) {
                 vlog.getEventLogger().trace(
@@ -119,7 +119,6 @@ class ConnectionLifecycle @Inject constructor(
                 )
             }
 
-            // Clean up sockets and stop heartbeat
             heartbeatManager.stopHeartbeat(connectionId)
             val updateSocket = connectionCache.getDownSocket(connectionId)
             val socketCleanupResult = cleanupConnectionSockets(connectionId, updateSocket != null)
@@ -131,7 +130,6 @@ class ConnectionLifecycle @Inject constructor(
                 )
             }
 
-            // Mark connection as not reconnectable
             try {
                 connectionStore.updateReconnectable(connectionId, false)
                 vlog.getEventLogger().logStateChange(
@@ -146,9 +144,7 @@ class ConnectionLifecycle @Inject constructor(
                 )
             }
 
-            // Remove the connection from DB and cache
             try {
-                // Try to delete from the database first
                 connectionStore.delete(connectionId)
                 vlog.getEventLogger().logDbOperation(
                     "DELETE", "connections",
@@ -160,10 +156,8 @@ class ConnectionLifecycle @Inject constructor(
                         "connectionId" to connectionId
                     )
                 )
-                // Continue anyway - the connection might already be gone
             }
 
-            // Final cleanup from cache
             try {
                 connectionCache.removeConnection(connectionId)
                 connectionTracker.removeConnection(connectionId)
@@ -194,7 +188,6 @@ class ConnectionLifecycle @Inject constructor(
                 )
             )
 
-            // Do emergency cleanup as a last resort
             try {
                 connectionCache.removeUpSocket(connectionId)
                 connectionCache.removeDownSocket(connectionId)
@@ -224,7 +217,6 @@ class ConnectionLifecycle @Inject constructor(
         val traceId = connectionTracker.getTraceId(connectionId)
 
         try {
-            // Get the channels this connection is in
             val channels = channelStore.getChannelsForClient(connectionId)
 
             vlog.getEventLogger().trace("CHANNEL_CLEANUP_STARTED", mapOf(
@@ -239,7 +231,6 @@ class ConnectionLifecycle @Inject constructor(
                 return true
             }
 
-            // Remove the connection from each channel
             var success = true
             for (channelId in channels) {
                 try {
@@ -282,7 +273,7 @@ class ConnectionLifecycle @Inject constructor(
     /**
      * Cleans up sockets for a connection
      */
-    public suspend fun cleanupConnectionSockets(connectionId: String, hasUpdateSocket: Boolean): Boolean {
+    public suspend fun cleanupConnectionSockets(connectionId: String, hasDownSocket: Boolean): Boolean {
         val traceId = connectionTracker.getTraceId(connectionId)
 
         try {
@@ -290,10 +281,9 @@ class ConnectionLifecycle @Inject constructor(
 
             vlog.getEventLogger().trace("SOCKET_CLEANUP_STARTED", mapOf(
                 "connectionId" to connectionId,
-                "hasUpdateSocket" to hasUpdateSocket
+                "hasUpdateSocket" to hasDownSocket
             ), traceId)
 
-            // Clean up up socket
             try {
                 connectionCache.removeUpSocket(connectionId)?.let { socket ->
                     if (!socket.isClosed()) {
@@ -317,8 +307,7 @@ class ConnectionLifecycle @Inject constructor(
                 success = false
             }
 
-            // Clean up down socket if it exists
-            if (hasUpdateSocket) {
+            if (hasDownSocket) {
                 try {
                     connectionCache.removeDownSocket(connectionId)?.let { socket ->
                         if (!socket.isClosed()) {

@@ -389,7 +389,6 @@ abstract class MinareApplication : CoroutineVerticle() {
     private fun workerGetRegistry() {
         val workerId = System.getenv("HOSTNAME") ?: throw IllegalStateException("HOSTNAME not set")
 
-        // Get the worker registry map from dependency injection
         val workerRegistryMap = injector.getInstance(WorkerRegistryMap::class.java)
         val activeWorkerSet = injector.getInstance(ActiveWorkerSet::class.java)
 
