@@ -55,8 +55,6 @@ class DownSocketVerticle @Inject constructor(
     private var debugTraceLogs: Boolean = false
 
     private lateinit var router: Router
-
-    //private lateinit var heartbeatManager: HeartbeatManager
     private lateinit var connectionTracker: ConnectionTracker
 
     private var httpServer: HttpServer? = null

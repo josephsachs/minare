@@ -30,39 +30,31 @@ class DownSocketVerticleCache @Inject constructor(
         }
     }
 
+    private suspend fun tryOrInvalidate(key: String, cache: ConcurrentHashMap<String, Pair<Set<String>, Long>>): Set<String> {
+        val now = System.currentTimeMillis()
+        val entry = cache[key]
+        if (entry != null) {
+            val (items, expiry) = entry
+            if (now < expiry) {
+                // Cache entry is still valid
+                return items
+            }
+            // Cache entry expired, remove it
+            cache.remove(key)
+        }
+        return emptySet()
+    }
+
     /**
      * Get all channels that contain a specific entity.
      * Uses a cache with TTL to reduce database queries.
      */
     suspend fun getChannelsForEntity(entityId: String): Set<String> {
-        val now = System.currentTimeMillis()
-
-        // Check cache first
-        val cachedEntry = entityChannelCache[entityId]
-        if (cachedEntry != null) {
-            val (channels, expiry) = cachedEntry
-            if (now < expiry) {
-                // Cache entry is still valid
-                return channels
+        return tryOrInvalidate(entityId, entityChannelCache).ifEmpty {
+            contextStore.getChannelsByEntityId(entityId).toSet().also {
+                entityChannelCache[entityId] = Pair(it, System.currentTimeMillis() + frameworkConfig.sockets.down.cacheTtl)
             }
-            // Cache entry expired, remove it
-            entityChannelCache.remove(entityId)
         }
-
-        val channels = try {
-            contextStore.getChannelsByEntityId(entityId).toSet()
-        } catch (e: Exception) {
-            vlog.logVerticleError("CHANNEL_LOOKUP", e, mapOf(
-                "entityId" to entityId
-            ))
-            emptySet()
-        }
-
-        // Cache the result with expiry
-        // TODO: Find a better way than caching with TTL, still too vulnerable to stale data
-        entityChannelCache[entityId] = Pair(channels, now + frameworkConfig.sockets.down.cacheTtl)
-
-        return channels
     }
 
     /**
@@ -70,32 +62,11 @@ class DownSocketVerticleCache @Inject constructor(
      * Uses a cache with TTL to reduce database queries.
      */
     suspend fun getConnectionsForChannel(channelId: String): Set<String> {
-        val now = System.currentTimeMillis()
-
-        // Check cache first
-        val cachedEntry = channelConnectionCache[channelId]
-        if (cachedEntry != null) {
-            val (connections, expiry) = cachedEntry
-            if (now < expiry) {
-                return connections
+        return tryOrInvalidate(channelId, channelConnectionCache).ifEmpty {
+            contextStore.getChannelsByEntityId(channelId).toSet().also {
+                entityChannelCache[channelId] = Pair(it, System.currentTimeMillis() + frameworkConfig.sockets.down.cacheTtl)
             }
-            channelConnectionCache.remove(channelId)
         }
-
-        // Query database
-        val connections = try {
-            channelStore.getClientIds(channelId).toSet()
-        } catch (e: Exception) {
-            vlog.logVerticleError("CLIENT_LOOKUP", e, mapOf(
-                "channelId" to channelId
-            ))
-            emptySet()
-        }
-
-        // Cache the result with expiry
-        channelConnectionCache[channelId] = Pair(connections, now + frameworkConfig.sockets.down.cacheTtl)
-
-        return connections
     }
 
     /**

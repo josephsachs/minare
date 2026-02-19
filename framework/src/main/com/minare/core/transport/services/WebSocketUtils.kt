@@ -55,7 +55,7 @@ object WebSocketUtils {
                         ))
 
                         try {
-                            if (!socket.isClosed()) {
+                            if (!socket.isClosed) {
                                 socket.close()
                             }
                         } catch (closeEx: Exception) {
