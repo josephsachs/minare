@@ -10,9 +10,7 @@ import java.util.concurrent.ConcurrentHashMap
 
 class DownSocketVerticleCache @Inject constructor(
     private val frameworkConfig: FrameworkConfig,
-    private val channelStore: ChannelStore,
-    private val contextStore: ContextStore,
-    private val vlog: VerticleLogger
+    private val contextStore: ContextStore
 ) {
     val entityChannelCache = ConcurrentHashMap<String, Pair<Set<String>, Long>>()
     val channelConnectionCache = ConcurrentHashMap<String, Pair<Set<String>, Long>>()
@@ -45,6 +43,13 @@ class DownSocketVerticleCache @Inject constructor(
         return emptySet()
     }
 
+    private suspend fun getCacheEntry(value: Set<String>): Pair<Set<String>, Long> {
+        return Pair(
+            value,
+            System.currentTimeMillis() + frameworkConfig.sockets.down.cacheTtl
+        )
+    }
+
     /**
      * Get all channels that contain a specific entity.
      * Uses a cache with TTL to reduce database queries.
@@ -52,7 +57,7 @@ class DownSocketVerticleCache @Inject constructor(
     suspend fun getChannelsForEntity(entityId: String): Set<String> {
         return tryOrInvalidate(entityId, entityChannelCache).ifEmpty {
             contextStore.getChannelsByEntityId(entityId).toSet().also {
-                entityChannelCache[entityId] = Pair(it, System.currentTimeMillis() + frameworkConfig.sockets.down.cacheTtl)
+                entityChannelCache[entityId] = getCacheEntry(it)
             }
         }
     }
@@ -64,7 +69,7 @@ class DownSocketVerticleCache @Inject constructor(
     suspend fun getConnectionsForChannel(channelId: String): Set<String> {
         return tryOrInvalidate(channelId, channelConnectionCache).ifEmpty {
             contextStore.getChannelsByEntityId(channelId).toSet().also {
-                entityChannelCache[channelId] = Pair(it, System.currentTimeMillis() + frameworkConfig.sockets.down.cacheTtl)
+                entityChannelCache[channelId] = getCacheEntry(it)
             }
         }
     }
@@ -78,7 +83,6 @@ class DownSocketVerticleCache @Inject constructor(
 
         // Check if we already have an update for this entity
         val existingUpdate = updates[entityId]
-
         if (existingUpdate != null) {
             // Compare versions and only replace if newer
             val existingVersion = existingUpdate.getLong("version", 0)

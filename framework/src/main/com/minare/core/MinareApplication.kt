@@ -350,18 +350,6 @@ abstract class MinareApplication : CoroutineVerticle() {
 
         log.info("Initialized clustered app state for worker")
 
-        val initResult = vertx.eventBus().request<JsonObject>(
-            UpSocketVerticle.ADDRESS_UP_SOCKET_INITIALIZE,
-            JsonObject()
-        ).await()
-
-        if (initResult.body().getBoolean("success", false)) {
-            log.info("UpSocketVerticle router initialized: {}",
-                initResult.body().getString("message"))
-        } else {
-            log.error("Failed to initialize UpSocketVerticle router")
-        }
-
         // Delegate application routes setup
         log.info("Setting up application routes...")
 

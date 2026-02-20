@@ -36,10 +36,6 @@ class UpSocketVerticleModule : PrivateModule() {
 
         bind(EntitySyncEvent::class.java).`in`(Singleton::class.java)
         bind(ConnectionCleanupEvent::class.java).`in`(Singleton::class.java)
-        bind(ChannelCleanupEvent::class.java).`in`(Singleton::class.java)
-        bind(UpSocketCleanupEvent::class.java).`in`(Singleton::class.java)
-        bind(UpSocketInitEvent::class.java).`in`(Singleton::class.java)
-        bind(UpSocketGetRouterEvent::class.java).`in`(Singleton::class.java)
 
         bind(CloseHandler::class.java).`in`(Singleton::class.java)
         bind(ReconnectionHandler::class.java).`in`(Singleton::class.java)

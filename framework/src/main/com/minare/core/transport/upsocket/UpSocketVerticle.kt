@@ -39,10 +39,6 @@ class UpSocketVerticle @Inject constructor(
     private val messageController: MessageController,
     private val closeHandler: CloseHandler,
     private val connectionLifecycle: ConnectionLifecycle,
-    private val channelCleanupEvent: ChannelCleanupEvent,
-    private val upSocketGetRouterEvent: UpSocketGetRouterEvent,
-    private val upSocketCleanupEvent: UpSocketCleanupEvent,
-    private val upSocketInitEvent: UpSocketInitEvent,
     private val connectionCleanupEvent: ConnectionCleanupEvent,
     private val entitySyncEvent: EntitySyncEvent,
     private val debug: DebugLogger
@@ -57,11 +53,8 @@ class UpSocketVerticle @Inject constructor(
     lateinit var router: Router
 
     companion object {
-        const val ADDRESS_UP_SOCKET_INITIALIZE = "minare.up.socket.initialize"
-        const val ADDRESS_SOCKET_CLEANUP = "minare.socket.cleanup"
         const val ADDRESS_CONNECTION_CLEANUP = "minare.connection.cleanup"
         const val ADDRESS_ENTITY_SYNC = "minare.entity.sync"
-        const val ADDRESS_GET_ROUTER = "minare.up.socket.get.router"
     }
 
     private val basePath = frameworkConfig.sockets.up.basePath
@@ -129,10 +122,10 @@ class UpSocketVerticle @Inject constructor(
      * Register all event bus consumers
      */
     private suspend fun registerEventBusConsumers() {
-        upSocketInitEvent.register(debugTraceLogs)
-        upSocketGetRouterEvent.register(router)
-        channelCleanupEvent.register(debugTraceLogs)
-        upSocketCleanupEvent.register(debugTraceLogs)
+        //upSocketInitEvent.register(debugTraceLogs)
+        //upSocketGetRouterEvent.register(router)
+        //channelCleanupEvent.register(debugTraceLogs)
+        //upSocketCleanupEvent.register(debugTraceLogs)
         connectionCleanupEvent.register(debugTraceLogs)
         entitySyncEvent.register()
     }
