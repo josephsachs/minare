@@ -66,7 +66,7 @@ A fuller account of the behavior will be included in the developer documentation
 ### Architecture
 Because Minare is intended to be not just a solution but tooling, the choice of technical stack requires a careful balance 
 between my goals and the developer's experience. I chose 
-- **JVM** because it performs better than Node.js or Python, is polyglot, doesn't require the developer to learn novel patterns like Rust or Go, and has a mature ecosystem;
+- **JVM** because it performs better than Node.js or Python, is polyglot, doesn't require the developer to learn novel patterns like Go, and has a mature ecosystem;
 - **Vert.x** because it scales up to handle massive socket pools without blinking; 
 - **Redis** because it's a proven cache with good Json support and pub-sub for free; 
 - **Hazelcast** because it has already solved numerous distributed consensus challenges that are outside my domain;
