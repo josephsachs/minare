@@ -50,14 +50,14 @@ wrong and be certain they are addressing the true cause.
 ### Determinism
 Determinism in a distributed state context means that you can replay scheduled changes from a snapshot and it will produce
 the same outcome. This trades against concurrency. Even ordered queues, if distributed without regard for semantics, will
-result in unpredictable sequences because the speed at which workers process cannot be guaranteed. Even capping the number
+result in unpredictable sequences because the speed at which workers process cannot be guaranteed. Capping the number
 of operations per-frame is an incomplete solution. 
 
 Version 0.8.0 will address the parallel interleaving problem by providing developers with a configurable affinity scope. 
 At max settings, any operations which affect the same entities will be routed to the same worker and follow the ordering
 rule. The trade-off is that maximum concurrency will be a function of schema design, not dependent on blunt tools 
 like frame speed or on random chance. To ensure as close to equal distribution of work as possible, the developer must 
-make choices around which entity fields are logically related and which can considered separate.
+make choices around which entity fields are logically related and which can considered independent.
 
 A fuller account of the behavior will be included in the developer documentation.
 
