@@ -47,12 +47,19 @@ reconstruction of the state.
 One benefit of this is "time-travel debugging": a developer can locate the exact time when something went 
 wrong and be certain they are addressing the true cause. 
 
-### Caveats
-~~"Parallel interleaving" remains an unsolved problem. While you can guarantee operations are replayed in the same frames,
-in the same subsets, ordered the same, how do you ensure that closely-grouped, intra-frame operations complete in the same 
-order across the cluster? Right now, your best bet is to configure a very fast frame (that is, one containing
-fewer operations per); future efforts may include configurable per-frame work limits, single-thread pipelines for 
-designated operations, and worker/scope affinities.~~ **\[MIN-201] Implement Operation affinity scope**
+### Determinism
+Determinism in a distributed state context means that you can replay scheduled changes from a snapshot and it will produce
+the same outcome. This trades against concurrency. Even ordered queues, if distributed without regard for semantics, will
+result in unpredictable sequences because the speed at which workers process cannot be guaranteed. Even capping the number
+of operations per-frame is an incomplete solution. 
+
+Version 0.8.0 will address the parallel interleaving problem by providing developers with a configurable affinity scope. 
+At max settings, any operations which affect the same entities will be routed to the same worker and follow the ordering
+rule. The trade-off is that maximum concurrency will be a function of schema design, not dependent on blunt tools 
+like frame speed or on random chance. To ensure as close to equal distribution of work as possible, the developer must 
+make choices around which entity fields are logically related and which can considered separate.
+
+A fuller account of the behavior will be included in the developer documentation.
 
 ## Technical Details
 
@@ -62,11 +69,11 @@ between my goals and the developer's experience. I chose
 - **JVM** because it performs better than Node.js or Python, is polyglot, doesn't require the developer to learn novel patterns like Rust or Go, and has a mature ecosystem;
 - **Vert.x** because it scales up to handle massive socket pools without blinking; 
 - **Redis** because it's a proven cache with good Json support and pub-sub for free; 
-- **Hazelcast** because it has already solved numerous distributed consensus challenges that are outside my domain; 
-- and **MongoDB** because it is schemaless and Json-native, has good graph lookups and, with replica sets, is quite durable. A graphing database was perhaps due a consideration here; it would not, in any case, be difficult to implement in-place. 
+- **Hazelcast** because it has already solved numerous distributed consensus challenges that are outside my domain;
+- **MongoDB** because it is schemaless and Json-native, has good graph lookups and, with replica sets, is quite durable. A graphing database was perhaps due a consideration here; it would not, in any case, be difficult to implement in-place. *(Note: As of 0.6.0, MongoDB is optional, used for graph traversal and snapshot storage if configured.)* 
 
 ### History and Roadmap
-0.1.0 - Transport layer, Entity, datastores, publish events, NodeGraph application
+0.1.0 - Transport, Entity, datastores, publish events, NodeGraph application
 
 0.2.0 - Clustering, logical frames
 
@@ -76,11 +83,13 @@ between my goals and the developer's experience. I chose
 
 0.5.0 - Serialization, application hooks, common interfaces
 
-**0.6.0** - Config builder, modular infra, schema validation, more test coverage
+**0.6.0** - Config builder, modular infra, schema validation, integration test application
 
-0.7.0 - Affinity scope
+0.7.0 - Transport layer rewrite
 
-0.8.0 - UpdateController, views
+0.8.0 - Affinity scope 
+
+0.9.0 - UpdateController, views
 
 1.0.0 - Quick start
 
@@ -90,7 +99,7 @@ between my goals and the developer's experience. I chose
 
 1.3.0 - Worker health monitoring
 
-1.4.0 - OperationSet 
+1.4.0 - OperationSet behavior
 
 1.5.0 - Session branching, graph visitor builder
 
