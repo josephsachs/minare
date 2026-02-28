@@ -1,8 +1,8 @@
 package com.minare.core.frames.worker
 
+import com.minare.controller.ChannelController
 import com.minare.controller.EntityController
 import com.minare.core.entity.factories.EntityFactory
-import com.minare.core.entity.services.EntityPublishService
 import com.minare.core.frames.services.DeltaStorageService
 import com.minare.core.operation.models.OperationType
 import com.minare.core.storage.interfaces.ContextStore
@@ -23,6 +23,9 @@ import kotlin.system.measureTimeMillis
  * Handles operation processing for frame workers.
  * Receives operations from FrameWorkerVerticle and processes them
  * according to their type (MUTATE, CREATE, DELETE).
+ *
+ * CREATE and DELETE broadcast updates directly to channels for immediate delivery.
+ * MUTATE goes through the pub/sub path and is delivered on the tick.
  */
 class WorkerOperationHandlerVerticle @Inject constructor(
     private val vertx: Vertx,
@@ -32,9 +35,9 @@ class WorkerOperationHandlerVerticle @Inject constructor(
     private val entityFactory: EntityFactory,
     private val entityController: EntityController,
     private val operationController: OperationController,
-    private val publishService: EntityPublishService,
     private val entityGraphReferenceService: EntityGraphReferenceService,
-    private val contextStore: ContextStore
+    private val contextStore: ContextStore,
+    private val channelController: ChannelController
 ) : CoroutineVerticle() {
 
     private val log = LoggerFactory.getLogger(WorkerOperationHandlerVerticle::class.java)
@@ -95,6 +98,7 @@ class WorkerOperationHandlerVerticle @Inject constructor(
     /**
      * Process a MUTATE operation.
      * Requires an existing entity, captures before/after states for delta storage.
+     * Mutations go through the pub/sub path and are delivered on the tick.
      */
     private suspend fun processMutateOperation(context: JsonObject) {
         val frameNumber = context.getLong("frameNumber")
@@ -143,9 +147,12 @@ class WorkerOperationHandlerVerticle @Inject constructor(
         if (debugTraceLogs) log.info("Processed MUTATE operation {} for entity {} in {}ms", operationId, entityId, processingTime)
     }
 
+    // ===== CREATE =====
+
     /**
      * Process a CREATE operation.
      * Creates a new entity, no before state exists.
+     * Broadcasts the update directly to channels — no pub/sub, no tick delay.
      */
     private suspend fun processCreateOperation(context: JsonObject) {
         val frameNumber = context.getLong("frameNumber")
@@ -180,15 +187,27 @@ class WorkerOperationHandlerVerticle @Inject constructor(
                 afterEntity = afterEntity
             )
 
+            // Application hook
             operationController.afterCreateOperation(operationJson, entity)
 
             val afterState = afterEntity.getJsonObject("state") ?: JsonObject()
-            publishService.publishStateChange(
-                savedEntity._id,
-                entityType,
-                savedEntity.version,
-                afterState
-            )
+            val entityUpdate = JsonObject()
+                .put("type", entityType)
+                .put("_id", savedEntity._id)
+                .put("version", savedEntity.version)
+                .put("operation", "update")
+                .put("changedAt", System.currentTimeMillis())
+                .put("delta", afterState)
+
+            val updateMessage = JsonObject()
+                .put("type", "update")
+                .put("timestamp", System.currentTimeMillis())
+                .put("updates", JsonObject().put(savedEntity._id, entityUpdate))
+
+            val channels = contextStore.getChannelsByEntityId(savedEntity._id)
+            for (channelId in channels) {
+                channelController.broadcast(channelId, updateMessage)
+            }
 
             log.debug("Created entity {} of type {} with version {}", savedEntity._id, entityType, savedEntity.version)
         }
@@ -196,9 +215,13 @@ class WorkerOperationHandlerVerticle @Inject constructor(
         log.debug("Processed CREATE operation {} in {}ms", operationId, processingTime)
     }
 
+    // ===== DELETE =====
+
     /**
      * Process a DELETE operation.
      * Removes an existing entity, captures final state before deletion.
+     * Broadcasts the delete notification directly to channels before cleanup —
+     * no pub/sub, no race condition with channel removal.
      */
     private suspend fun processDeleteOperation(context: JsonObject) {
         val frameNumber = context.getLong("frameNumber")
@@ -218,14 +241,13 @@ class WorkerOperationHandlerVerticle @Inject constructor(
 
             val beforeVersion = beforeEntity.getLong("version") ?: 0L
 
-            // Publish delete notification BEFORE removing from channels,
-            // so downstream handlers can still route via channel membership
-            publishService.publishStateChange(
-                entityId,
-                entityType,
-                beforeVersion,
-                JsonObject().put("_deleted", true)
-            )
+            // Capture channels before any cleanup
+            val channels = contextStore.getChannelsByEntityId(entityId)
+
+            // Clean up channel membership, graph references, and delete entity
+            channels.forEach { channelId ->
+                contextStore.remove(entityId, channelId)
+            }
 
             entityGraphReferenceService.removeReferencesToEntity(entityId)
             entityController.delete(entityId)
@@ -240,14 +262,28 @@ class WorkerOperationHandlerVerticle @Inject constructor(
                 afterEntity = null
             )
 
-            // Build a lightweight entity for the application hook
+            val entityUpdate = JsonObject()
+                .put("type", entityType)
+                .put("_id", entityId)
+                .put("version", beforeVersion)
+                .put("operation", "update")
+                .put("changedAt", System.currentTimeMillis())
+                .put("delta", JsonObject().put("_deleted", true))
+
+            val updateMessage = JsonObject()
+                .put("type", "update")
+                .put("timestamp", System.currentTimeMillis())
+                .put("updates", JsonObject().put(entityId, entityUpdate))
+
+            for (channelId in channels) {
+                channelController.broadcast(channelId, updateMessage)
+            }
+
+            // Application hook
             val entity = entityFactory.getNew(entityType).apply {
                 _id = entityId
                 type = entityType
             }
-
-            // Application hook — channel removal is the application's responsibility,
-            // mirroring how afterCreateOperation adds entities to channels
             operationController.afterDeleteOperation(operationJson, entity)
 
             log.debug("Deleted entity {} of type {}", entityId, entityType)

@@ -18,7 +18,7 @@ class FrameCompletionTracker @Inject constructor(
     private val workerRegistry: WorkerRegistry
 ) {
     private val log = LoggerFactory.getLogger(FrameCompletionTracker::class.java)
-    // TEMPORARY DEBUG
+
     private val debugTraceLogs: Boolean = false
 
     private val completionMap: IMap<String, JsonObject> by lazy {

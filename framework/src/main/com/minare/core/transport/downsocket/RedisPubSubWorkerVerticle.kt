@@ -249,12 +249,15 @@ class RedisPubSubWorkerVerticle @Inject constructor(
     /**
      * Publish update directly without batching or deduplication.
      * Used when collectChanges is disabled.
+     * Wraps entity in updates map to match the standard wire format.
      */
     private fun publishUpdateDirectly(changeNotification: JsonObject) {
+        val entityId = changeNotification.getString("_id") ?: return
+
         val updateMessage = JsonObject()
-            .put("type", "update_batch")
+            .put("type", "update")
             .put("timestamp", System.currentTimeMillis())
-            .put("updates", JsonObject().put(changeNotification.getString("_id"), changeNotification))
+            .put("updates", JsonObject().put(entityId, changeNotification))
 
         vertx.eventBus().publish(UpdateBatchCoordinator.ADDRESS_BATCHED_UPDATES, updateMessage)
     }

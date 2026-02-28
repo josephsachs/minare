@@ -70,12 +70,6 @@ abstract class Timer @Inject constructor(
             } finally {
                 lastTickTimeMs = System.currentTimeMillis() - startTime
                 totalProcessingTimeMs += lastTickTimeMs
-
-
-                if (lastTickTimeMs > intervalMs * 0.8) {
-                    log.warn("Tick processing took {}ms ({}% of tick budget)",
-                        lastTickTimeMs, (lastTickTimeMs * 100 / intervalMs))
-                }
             }
         }
     }

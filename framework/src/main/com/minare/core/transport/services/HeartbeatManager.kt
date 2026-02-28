@@ -26,9 +26,6 @@ class HeartbeatManager(
     fun startHeartbeat(socketId: String, connectionId: String) {
         stopHeartbeat(socketId)
 
-        // TEMPORARY DEBUG
-        log.info("TIMER_DEBUG: $heartbeatIntervalMs")
-
         val timerId = vertx.setPeriodic(heartbeatIntervalMs) { _ ->
             coroutineScope.launch {
                 try {

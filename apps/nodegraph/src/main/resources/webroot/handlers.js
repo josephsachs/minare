@@ -230,20 +230,11 @@ export const handleDownSocketMessage = (event) => {
     // Update last activity time
     store.updateLastActivity();
 
-    // Handle the new update_batch format
-    if (message.type === 'update_batch' && message.updates) {
-      // Convert the updates object (map of ID -> entity) to an array of entities
+    // Handle entity updates — each message contains one entity in the updates map
+    if (message.type === 'update' && message.updates) {
       const entityArray = Object.values(message.updates);
 
       if (entityArray.length > 0) {
-        const shouldLog = config.logging?.verbose ||
-                         (entityArray.length > 10 && Math.random() < 0.01); // Log ~1% of large updates
-
-        if (shouldLog) {
-          logger.info(`Received batch update with ${entityArray.length} entities`);
-        }
-
-        // Note: update_batch entities come with delta format, no transform needed
         queueEntityUpdates(entityArray, false);
       }
       return;

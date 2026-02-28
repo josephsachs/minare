@@ -20,29 +20,18 @@ class TestConnectionController @Inject constructor(
 
         val defaultChannelId = channelController.getDefaultChannel()
 
-        // TEMPORARY DEBUG
-        log.info("DEBUG_DOWN: $defaultChannelId")
-
         if (defaultChannelId == null) {
             log.warn("No default channel found for client {}, skipping auto-subscription", connection.id)
             return
         }
 
         if (channelController.addClient(connection.id, defaultChannelId)) {
-            // TEMPORARY DEBUG
-            log.info("DEBUG_DOWN: ${connection.id} added to $defaultChannelId")
-
             syncCommandHandler.syncChannelToConnection(defaultChannelId, connection.id)
-
-            // TEMPORARY DEBUG
-            log.info("DEBUG_DOWN: $defaultChannelId synced to ${connection.id}")
 
             sendToUpSocket(connection.id, JsonObject()
                 .put("type", "initial_sync_complete")
                 .put("timestamp", System.currentTimeMillis())
             )
-        } else {
-            log.warn("DEBUG_DOWN: channelController.addClient returned false")
         }
     }
 }

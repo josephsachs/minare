@@ -239,6 +239,11 @@ class DownSocketVerticle @Inject constructor(
         protocol.router.stopServer()
     }
 
+    /**
+     * UpdateTimer flushes pending updates to clients on a fixed interval.
+     * Sends one 'update' message per entity, with the entity nested in an updates map
+     * to avoid field collisions (e.g. entity "type" vs message "type").
+     */
     private inner class UpdateTimer : Timer(vertx) {
         override fun tick() {
             try {
@@ -256,14 +261,14 @@ class DownSocketVerticle @Inject constructor(
                 updates.clear()
                 if (batch.isEmpty()) continue
 
-                val updateMessage = JsonObject()
-                    .put("type", "update_batch")
-                    .put("timestamp", System.currentTimeMillis())
-                    .put("updates", JsonObject().apply {
-                        batch.forEach { (entityId, update) -> put(entityId, update) }
-                    })
+                for ((entityId, update) in batch) {
+                    val updateMessage = JsonObject()
+                        .put("type", "update")
+                        .put("timestamp", System.currentTimeMillis())
+                        .put("updates", JsonObject().put(entityId, update))
 
-                protocol.sockets.send(connectionId, updateMessage.encode())
+                    protocol.sockets.send(connectionId, updateMessage.encode())
+                }
             }
         }
     }
