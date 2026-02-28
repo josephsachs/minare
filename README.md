@@ -1,5 +1,5 @@
 # Minare Framework
-Current version: 0.6.0
+Current version: 0.7.0
 
 ## Concept
 Multiplayer games and collaborative simulations need consistency, determinism, and the ability to recover quickly
@@ -83,9 +83,9 @@ between my goals and the developer's experience. I chose
 
 0.5.0 - Serialization, application hooks, common interfaces
 
-**0.6.0** - Config builder, modular infra, schema validation, integration test application
+0.6.0 - Config builder, modular infra, schema validation, integration test application
 
-0.7.0 - Transport layer rewrite
+**0.7.0** - Transport layer rewrite
 
 0.8.0 - Affinity scope 
 
