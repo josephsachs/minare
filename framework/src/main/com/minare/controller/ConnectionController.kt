@@ -52,7 +52,7 @@ open class ConnectionController @Inject constructor() {
         try {
             val connection = connectionStore.find(connectionId)
             // TEMPORARY DEBUG
-            log.info("DEBUG_DOWN: connectionStore.find($connectionId) returns ", connection)
+            log.info("DEBUG_DOWN: connectionStore.find($connectionId) returns ", connection.toString())
 
             val deploymentId = connection.upSocketDeploymentId
 

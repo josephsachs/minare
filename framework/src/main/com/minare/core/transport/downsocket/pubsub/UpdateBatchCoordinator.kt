@@ -1,5 +1,9 @@
 package com.minare.core.transport.downsocket.pubsub
 
+import com.minare.core.storage.interfaces.ChannelStore
+import com.minare.core.storage.interfaces.ConnectionStore
+import com.minare.core.storage.interfaces.ContextStore
+import com.minare.core.transport.downsocket.DownSocketVerticle
 import com.minare.core.utils.debug.DebugLogger
 import com.minare.core.utils.debug.DebugLogger.Companion.DebugType
 import io.vertx.core.Vertx
@@ -9,10 +13,16 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import com.google.inject.Inject
 import com.google.inject.Singleton
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
+import io.vertx.kotlin.coroutines.dispatcher
 
 @Singleton
 class UpdateBatchCoordinator @Inject constructor(
     private val vertx: Vertx,
+    private val connectionStore: ConnectionStore,
+    private val contextStore: ContextStore,
+    private val channelStore: ChannelStore,
     private val debug: DebugLogger
 ) {
     private val log = LoggerFactory.getLogger(UpdateBatchCoordinator::class.java)
@@ -53,10 +63,10 @@ class UpdateBatchCoordinator @Inject constructor(
 
     fun queueUpdate(entityUpdate: JsonObject) {
         val entityId = extractEntityId(entityUpdate) ?:
-            run {
-                log.error("Received change update for entity missing ID: ${entityUpdate.encodePrettily()}")
-                return
-            }
+        run {
+            log.error("Received change update for entity missing ID: ${entityUpdate.encodePrettily()}")
+            return
+        }
 
         val existingUpdate = pendingUpdates[entityId]
         if (existingUpdate == null) {
@@ -108,6 +118,10 @@ class UpdateBatchCoordinator @Inject constructor(
         timerId = null
     }
 
+    /**
+     * Fan out each pending entity update to the specific DownSocketVerticle instance
+     * that owns each subscribed connection, using downSocketDeploymentId for targeting.
+     */
     private fun distributeBatch() {
         if (pendingUpdates.isEmpty()) {
             return
@@ -116,20 +130,43 @@ class UpdateBatchCoordinator @Inject constructor(
         val updatesBatch = HashMap(pendingUpdates)
         pendingUpdates.clear()
 
-        val updateMessage = createBatchMessage(updatesBatch)
-        vertx.eventBus().publish(ADDRESS_BATCHED_UPDATES, updateMessage)
+        CoroutineScope(vertx.dispatcher()).launch {
+            try {
+                routeUpdatesToConnections(updatesBatch)
+            } catch (e: Exception) {
+                log.error("Error routing batch updates to connections", e)
+            }
+        }
 
         debug.log(DebugType.DOWNSOCKET_PUBSUB_DISTRIBUTED_BATCH, listOf(updatesBatch.size))
     }
 
-    private fun createBatchMessage(updatesBatch: Map<String, JsonObject>): JsonObject {
-        return JsonObject()
-            .put("type", "update_batch")
-            .put("timestamp", System.currentTimeMillis())
-            .put("updates", JsonObject().apply {
-                updatesBatch.forEach { (entityId, update) ->
-                    put(entityId, update)
+    private suspend fun routeUpdatesToConnections(updatesBatch: Map<String, JsonObject>) {
+        for ((entityId, entityUpdate) in updatesBatch) {
+            val channels = contextStore.getChannelsByEntityId(entityId)
+            if (channels.isEmpty()) continue
+
+            val processedConnections = mutableSetOf<String>()
+
+            for (channelId in channels) {
+                val connectionIds = channelStore.getClientIds(channelId)
+                val connections = connectionStore.find(connectionIds.toSet())
+
+                for (connection in connections) {
+                    if (connection.id in processedConnections) continue
+                    processedConnections.add(connection.id)
+
+                    val downInstanceId = connection.downSocketDeploymentId ?: continue
+
+                    vertx.eventBus().send(
+                        "${DownSocketVerticle.ADDRESS_SEND_TO_DOWN_CONNECTION}.${downInstanceId}",
+                        JsonObject()
+                            .put("connectionId", connection.id)
+                            .put("entityId", entityId)
+                            .put("update", entityUpdate)
+                    )
                 }
-            })
+            }
+        }
     }
 }

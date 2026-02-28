@@ -6,7 +6,6 @@ import com.minare.core.Timer
 import com.minare.core.storage.interfaces.ChannelStore
 import com.minare.core.storage.interfaces.ConnectionStore
 import com.minare.core.transport.adapters.WebsocketProtocol
-import com.minare.core.transport.downsocket.pubsub.UpdateBatchCoordinator
 import com.minare.core.transport.services.HeartbeatManager
 import com.minare.core.transport.upsocket.UpSocketVerticle
 import com.minare.core.utils.vertx.EventBusUtils
@@ -28,7 +27,6 @@ import java.util.concurrent.ConcurrentHashMap
 class DownSocketVerticle @Inject constructor(
     private val frameworkConfig: FrameworkConfig,
     private val connectionStore: ConnectionStore,
-    private val downSocketVerticleCache: DownSocketVerticleCache,
     private val channelStore: ChannelStore,
     private val updateConnectionClosedEvent: UpdateConnectionClosedEvent,
     private val updateConnectionEstablishedEvent: UpdateConnectionEstablishedEvent
@@ -36,7 +34,7 @@ class DownSocketVerticle @Inject constructor(
 
     private val log = LoggerFactory.getLogger(DownSocketVerticle::class.java)
 
-    private val instanceId = UUID.randomUUID().toString()
+    private lateinit var instanceId: String
 
     private lateinit var vlog: VerticleLogger
     private lateinit var eventBusUtils: EventBusUtils
@@ -46,8 +44,15 @@ class DownSocketVerticle @Inject constructor(
 
     private var deployedAt: Long = 0
 
+    /**
+     * Per-instance pending updates. Populated via targeted ADDRESS_SEND_TO_DOWN_CONNECTION
+     * messages; flushed to clients by UpdateTimer.
+     */
+    private val connectionPendingUpdates = ConcurrentHashMap<String, ConcurrentHashMap<String, JsonObject>>()
+
     companion object {
         const val ADDRESS_BROADCAST_CHANNEL = "address.downsocket.broadcast.channel"
+        const val ADDRESS_SEND_TO_DOWN_CONNECTION = "minare.downsocket.send"
     }
 
     private val httpHost = frameworkConfig.sockets.down.host
@@ -56,6 +61,7 @@ class DownSocketVerticle @Inject constructor(
 
     override suspend fun start() {
         try {
+            instanceId = "$deploymentID-${UUID.randomUUID()}"
             deployedAt = System.currentTimeMillis()
             vlog = VerticleLogger()
             vlog.setVerticle(this)
@@ -70,16 +76,16 @@ class DownSocketVerticle @Inject constructor(
             }
 
             protocol.router.addHealthEndpoint(
-                "/health", "DownSocketVerticle", deploymentID, deployedAt
+                "/health", "DownSocketVerticle", instanceId, deployedAt
             ) {
                 JsonObject()
                     .put("connections", protocol.sockets.count())
                     .put("heartbeats", heartbeatManager.getMetrics())
-                    .put("pendingUpdateQueues", downSocketVerticleCache.connectionPendingUpdates.size)
+                    .put("pendingUpdateQueues", connectionPendingUpdates.size)
             }
 
             registerEventBusConsumers()
-            registerBatchedUpdateConsumer()
+            registerSendToDownConnectionConsumer()
             registerBroadcastChannelEvent()
 
             protocol.router.startServer(httpHost, httpPort)
@@ -87,7 +93,7 @@ class DownSocketVerticle @Inject constructor(
             timer = UpdateTimer()
             timer.start(defaultTickInterval.toInt())
 
-            deploymentID?.let { vlog.logDeployment(it) }
+            vlog.logDeployment(instanceId)
             vlog.logStartupStep("STARTED")
         } catch (e: Exception) {
             log.error("Failed to start DownSocketVerticle", e)
@@ -100,12 +106,24 @@ class DownSocketVerticle @Inject constructor(
         updateConnectionClosedEvent.register(false)
     }
 
-    private fun registerBatchedUpdateConsumer() {
-        vertx.eventBus().consumer<JsonObject>(UpdateBatchCoordinator.ADDRESS_BATCHED_UPDATES) { message ->
+    /**
+     * Receives targeted entity update messages for connections owned by this instance.
+     * Queues the update locally; UpdateTimer flushes it to the client.
+     */
+    private fun registerSendToDownConnectionConsumer() {
+        vertx.eventBus().consumer<JsonObject>("${ADDRESS_SEND_TO_DOWN_CONNECTION}.${instanceId}") { message ->
             try {
-                forwardUpdateToClients(message.body())
+                val connectionId = message.body().getString("connectionId") ?: return@consumer
+                val entityId = message.body().getString("entityId") ?: return@consumer
+                val update = message.body().getJsonObject("update") ?: return@consumer
+
+                val updates = connectionPendingUpdates.computeIfAbsent(connectionId) { ConcurrentHashMap() }
+                val existing = updates[entityId]
+                if (existing == null || update.getLong("version", 0) > existing.getLong("version", 0)) {
+                    updates[entityId] = update
+                }
             } catch (e: Exception) {
-                log.error("Error processing batched update", e)
+                log.error("Error queuing update for connection", e)
             }
         }
     }
@@ -158,19 +176,19 @@ class DownSocketVerticle @Inject constructor(
 
             val socketId = "down-${UUID.randomUUID()}"
 
-            val updatedConnection = connectionStore.putDownSocket(connectionId, socketId, deploymentID)
+            val updatedConnection = connectionStore.putDownSocket(connectionId, socketId, instanceId)
             protocol.sockets.put(connectionId, websocket)
 
             heartbeatManager.startHeartbeat(socketId, connectionId)
             protocol.router.sendConfirmation(websocket, "down_socket_confirm", connectionId)
 
-            downSocketVerticleCache.connectionPendingUpdates.computeIfAbsent(connectionId) { ConcurrentHashMap() }
+            connectionPendingUpdates.computeIfAbsent(connectionId) { ConcurrentHashMap() }
 
             vertx.eventBus().publish(
                 ADDRESS_CONNECTION_ESTABLISHED, JsonObject()
                     .put("connectionId", connectionId)
                     .put("socketId", socketId)
-                    .put("deploymentId", deploymentID)
+                    .put("deploymentId", instanceId)
             )
 
             notifyUpsocketFullyConnected(updatedConnection.upSocketDeploymentId, connectionId)
@@ -181,9 +199,6 @@ class DownSocketVerticle @Inject constructor(
     }
 
     private fun notifyUpsocketFullyConnected(upSocketDeploymentId: String?, connectionId: String) {
-        // TEMPORARY DEBUG
-        log.info("DEBUG_DOWN: $upSocketDeploymentId, $connectionId")
-
         if (upSocketDeploymentId == null) {
             log.warn("No upSocketDeploymentId for connection {}, cannot notify fully connected", connectionId)
             return
@@ -201,7 +216,7 @@ class DownSocketVerticle @Inject constructor(
         try {
             heartbeatManager.stopHeartbeat(connectionId)
             protocol.sockets.remove(connectionId)
-            //downSocketVerticleCache.invalidateChannelCacheForConnection(connectionId)
+            connectionPendingUpdates.remove(connectionId)
 
             vertx.eventBus().publish(
                 ADDRESS_CONNECTION_CLOSED, JsonObject()
@@ -211,16 +226,6 @@ class DownSocketVerticle @Inject constructor(
         } catch (e: Exception) {
             log.error("Error handling down socket close for {}", connectionId, e)
         }
-    }
-
-    private fun forwardUpdateToClients(batchedUpdate: JsonObject) {
-        for (connectionId in protocol.sockets.allConnectionIds()) {
-            sendUpdate(connectionId, batchedUpdate)
-        }
-    }
-
-    private fun sendUpdate(connectionId: String, update: JsonObject): Boolean {
-        return protocol.sockets.send(connectionId, update.encode())
     }
 
     override suspend fun stop() {
@@ -244,7 +249,7 @@ class DownSocketVerticle @Inject constructor(
         }
 
         private fun processAndSendUpdates() {
-            for ((connectionId, updates) in downSocketVerticleCache.connectionPendingUpdates) {
+            for ((connectionId, updates) in connectionPendingUpdates) {
                 if (updates.isEmpty()) continue
 
                 val batch = HashMap(updates)
@@ -258,7 +263,7 @@ class DownSocketVerticle @Inject constructor(
                         batch.forEach { (entityId, update) -> put(entityId, update) }
                     })
 
-                sendUpdate(connectionId, updateMessage)
+                protocol.sockets.send(connectionId, updateMessage.encode())
             }
         }
     }

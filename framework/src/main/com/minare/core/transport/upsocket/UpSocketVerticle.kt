@@ -6,11 +6,9 @@ import com.minare.controller.ConnectionController
 import com.minare.controller.MessageController
 import com.minare.core.storage.interfaces.ConnectionStore
 import com.minare.core.transport.adapters.WebsocketProtocol
-import com.minare.core.transport.adapters.WebsocketRouter
 import com.minare.core.transport.services.HeartbeatManager
 import com.minare.core.transport.upsocket.events.EntitySyncEvent
 import com.minare.core.utils.debug.DebugLogger
-import com.minare.core.utils.debug.DebugLogger.Companion.DebugType
 import com.minare.core.utils.vertx.VerticleLogger
 import com.minare.worker.upsocket.events.ConnectionCleanupEvent
 import io.vertx.core.http.ServerWebSocket
@@ -35,7 +33,7 @@ class UpSocketVerticle @Inject constructor(
 
     private val log = LoggerFactory.getLogger(UpSocketVerticle::class.java)
 
-    private val instanceId = UUID.randomUUID().toString()
+    private lateinit var instanceId: String
 
     private lateinit var protocol: WebsocketProtocol
     private lateinit var heartbeatManager: HeartbeatManager
@@ -55,6 +53,7 @@ class UpSocketVerticle @Inject constructor(
     private val handshakeTimeoutMs = frameworkConfig.sockets.up.handshakeTimeout
 
     override suspend fun start() {
+        instanceId = "$deploymentID-${UUID.randomUUID()}"
         deployedAt = System.currentTimeMillis()
         vlog.setVerticle(this)
 
@@ -68,7 +67,7 @@ class UpSocketVerticle @Inject constructor(
         }
 
         protocol.router.addHealthEndpoint(
-            "$basePath/health", "UpSocketVerticle", deploymentID, deployedAt
+            "$basePath/health", "UpSocketVerticle", instanceId, deployedAt
         ) {
             JsonObject()
                 .put("connections", protocol.sockets.count())
@@ -81,7 +80,7 @@ class UpSocketVerticle @Inject constructor(
 
         protocol.router.startServer(httpHost, httpPort)
 
-        vlog.logDeployment(deploymentID)
+        vlog.logDeployment(instanceId)
         vlog.logStartupStep("STARTED")
     }
 
@@ -92,10 +91,10 @@ class UpSocketVerticle @Inject constructor(
 
     /**
      * Receives notification from DownSocketVerticle that a connection is fully established.
-     * Targeted by deploymentId so only the correct upsocket instance handles it.
+     * Targeted by instanceId so only the correct upsocket instance handles it.
      */
     private fun registerFullyConnectedConsumer() {
-        vertx.eventBus().consumer<JsonObject>("${ADDRESS_FULLY_CONNECTED}.${deploymentID}") { message ->
+        vertx.eventBus().consumer<JsonObject>("${ADDRESS_FULLY_CONNECTED}.${instanceId}") { message ->
             val connectionId = message.body().getString("connectionId")
             CoroutineScope(vertx.dispatcher()).launch {
                 try {
@@ -110,13 +109,12 @@ class UpSocketVerticle @Inject constructor(
 
     /**
      * Receives targeted messages from controllers that need to send to a specific connection's socket.
+     * Targeted by instanceId so only the instance holding the socket handles it.
      */
     private fun registerSendToConnectionConsumer() {
-        vertx.eventBus().consumer<JsonObject>("${ADDRESS_SEND_TO_CONNECTION}.${deploymentID}") { message ->
+        vertx.eventBus().consumer<JsonObject>("${ADDRESS_SEND_TO_CONNECTION}.${instanceId}") { message ->
             val connectionId = message.body().getString("connectionId")
             val payload = message.body().getJsonObject("message")
-            log.info("SEND_TO_CONNECTION received for {} socket_exists={}", connectionId, protocol.sockets.get(connectionId) != null)
-            log.info("Received: ${message.body()}")
             if (connectionId != null && payload != null) {
                 protocol.sockets.send(connectionId, payload.encode())
             }
@@ -175,16 +173,8 @@ class UpSocketVerticle @Inject constructor(
             val connection = connectionStore.create()
             val socketId = "up-${UUID.randomUUID()}"
 
-            // TEMPORARY DEBUG
-            log.info("INITIATE_CONNECTION: connectionId={} deploymentID={} thread={}",
-                connection.id, deploymentID, Thread.currentThread().name)
-
-            val updatedConnection = connectionStore.putUpSocket(connection.id, socketId, deploymentID)
+            val updatedConnection = connectionStore.putUpSocket(connection.id, socketId, instanceId)
             protocol.sockets.put(connection.id, websocket)
-
-            // TEMPORARY DEBUG
-            log.info("SOCKET_PUT: connectionId={} socketExists={} deploymentID={}",
-                connection.id, protocol.sockets.get(connection.id) != null, deploymentID)
 
             protocol.router.sendConfirmation(websocket, "connection_confirm", connection.id)
             heartbeatManager.startHeartbeat(socketId, connection.id)
