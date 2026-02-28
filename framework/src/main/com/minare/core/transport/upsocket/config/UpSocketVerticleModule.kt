@@ -26,7 +26,7 @@ class UpSocketVerticleModule : PrivateModule() {
     override fun configure() {
         bind(UpSocketVerticle::class.java)
 
-        bind(SocketProtocol::class.java).to(WebsocketProtocol::class.java).`in`(Singleton::class.java)
+        bind(SocketProtocol::class.java).to(WebsocketProtocol::class.java)
 
         bind(EntitySyncEvent::class.java).`in`(Singleton::class.java)
         bind(ConnectionCleanupEvent::class.java).`in`(Singleton::class.java)

@@ -12,67 +12,7 @@ class DownSocketVerticleCache @Inject constructor(
     private val frameworkConfig: FrameworkConfig,
     private val contextStore: ContextStore
 ) {
-    val entityChannelCache = ConcurrentHashMap<String, Pair<Set<String>, Long>>()
-    val channelConnectionCache = ConcurrentHashMap<String, Pair<Set<String>, Long>>()
     val connectionPendingUpdates = ConcurrentHashMap<String, MutableMap<String, JsonObject>>()
-
-    /**
-     * Invalidate any channel cache entries containing this connection
-     */
-    fun invalidateChannelCacheForConnection(connectionId: String) {
-        for ((channelId, entry) in channelConnectionCache) {
-            val (connections, _) = entry
-            if (connectionId in connections) {
-                channelConnectionCache.remove(channelId)
-            }
-        }
-    }
-
-    private suspend fun tryOrInvalidate(key: String, cache: ConcurrentHashMap<String, Pair<Set<String>, Long>>): Set<String> {
-        val now = System.currentTimeMillis()
-        val entry = cache[key]
-        if (entry != null) {
-            val (items, expiry) = entry
-            if (now < expiry) {
-                // Cache entry is still valid
-                return items
-            }
-            // Cache entry expired, remove it
-            cache.remove(key)
-        }
-        return emptySet()
-    }
-
-    private suspend fun getCacheEntry(value: Set<String>): Pair<Set<String>, Long> {
-        return Pair(
-            value,
-            System.currentTimeMillis() + frameworkConfig.sockets.down.cacheTtl
-        )
-    }
-
-    /**
-     * Get all channels that contain a specific entity.
-     * Uses a cache with TTL to reduce database queries.
-     */
-    suspend fun getChannelsForEntity(entityId: String): Set<String> {
-        return tryOrInvalidate(entityId, entityChannelCache).ifEmpty {
-            contextStore.getChannelsByEntityId(entityId).toSet().also {
-                entityChannelCache[entityId] = getCacheEntry(it)
-            }
-        }
-    }
-
-    /**
-     * Get all connections subscribed to a specific channel.
-     * Uses a cache with TTL to reduce database queries.
-     */
-    suspend fun getConnectionsForChannel(channelId: String): Set<String> {
-        return tryOrInvalidate(channelId, channelConnectionCache).ifEmpty {
-            contextStore.getChannelsByEntityId(channelId).toSet().also {
-                entityChannelCache[channelId] = getCacheEntry(it)
-            }
-        }
-    }
 
     /**
      * Queue an entity update for a specific connection.

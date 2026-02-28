@@ -51,7 +51,14 @@ open class ConnectionController @Inject constructor() {
     suspend fun sendToUpSocket(connectionId: String, message: JsonObject) {
         try {
             val connection = connectionStore.find(connectionId)
+            // TEMPORARY DEBUG
+            log.info("DEBUG_DOWN: connectionStore.find($connectionId) returns ", connection)
+
             val deploymentId = connection.upSocketDeploymentId
+
+            // TEMPORARY DEBUG
+            log.info("DEBUG_DOWN: sending to upsocket ${connection.id} using $deploymentId")
+
             if (deploymentId == null) {
                 log.warn("No upSocketDeploymentId for connection {}, cannot send message", connectionId)
                 return

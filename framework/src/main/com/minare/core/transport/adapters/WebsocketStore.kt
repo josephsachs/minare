@@ -3,19 +3,19 @@ package com.minare.core.transport.adapters
 import com.minare.core.transport.interfaces.SocketStore
 import io.vertx.core.http.ServerWebSocket
 import org.slf4j.LoggerFactory
+import java.util.concurrent.ConcurrentHashMap
 
 class WebsocketStore : SocketStore<ServerWebSocket> {
     private val log = LoggerFactory.getLogger(WebsocketStore::class.java)
 
-    private val socketToConnectionId = HashMap<ServerWebSocket, String>()
-    private val connectionToSocket = HashMap<String, ServerWebSocket>()
+    private val socketToConnectionId = ConcurrentHashMap<ServerWebSocket, String>()
+    private val connectionToSocket = ConcurrentHashMap<String, ServerWebSocket>()
 
     override fun put(connectionId: String, socket: ServerWebSocket) {
-        connectionToSocket[connectionId]?.let { existing ->
-            socketToConnectionId.remove(existing)
+        connectionToSocket.put(connectionId, socket)?.let { evicted ->
+            socketToConnectionId.remove(evicted)
         }
         socketToConnectionId[socket] = connectionId
-        connectionToSocket[connectionId] = socket
     }
 
     override fun getConnectionId(socket: ServerWebSocket): String? {

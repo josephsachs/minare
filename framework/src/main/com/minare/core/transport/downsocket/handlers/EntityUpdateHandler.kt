@@ -1,6 +1,8 @@
 package com.minare.core.transport.downsocket.handlers
 
 import com.google.inject.Inject
+import com.minare.core.storage.adapters.HazelcastContextStore
+import com.minare.core.storage.interfaces.ChannelStore
 import com.minare.core.transport.downsocket.DownSocketVerticleCache
 import com.minare.core.storage.interfaces.ConnectionStore
 import com.minare.core.utils.vertx.VerticleLogger
@@ -14,7 +16,9 @@ import io.vertx.core.json.JsonObject
 class EntityUpdateHandler @Inject constructor(
     private val vlog: VerticleLogger,
     private val downSocketVerticleCache: DownSocketVerticleCache,
-    private val connectionStore: ConnectionStore
+    private val connectionStore: ConnectionStore,
+    private val contextStore: HazelcastContextStore,
+    private val channelStore: ChannelStore
 ) {
     private var deploymentId: String? = null
 
@@ -44,11 +48,8 @@ class EntityUpdateHandler @Inject constructor(
                 return
             }
 
-            /**val currentDeploymentId = this.deploymentId
-                ?: error("Deployment ID not set on EntityUpdateHandler - register() was not called properly")**/
-
             val startTime = System.currentTimeMillis()
-            val channels = downSocketVerticleCache.getChannelsForEntity(entityId)
+            val channels = contextStore.getChannelsByEntityId(entityId)
             val lookupTime = System.currentTimeMillis() - startTime
 
             if (lookupTime > 50) {
@@ -70,7 +71,7 @@ class EntityUpdateHandler @Inject constructor(
 
             for (channelId in channels) {
                 val connections = connectionStore.find(
-                    downSocketVerticleCache.getConnectionsForChannel(channelId)
+                    channelStore.getClientIds(channelId).toSet()
                 )
 
                 for (connection in connections) {

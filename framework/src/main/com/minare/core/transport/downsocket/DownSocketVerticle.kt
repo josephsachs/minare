@@ -3,6 +3,7 @@ package com.minare.core.transport.downsocket
 import com.google.inject.Inject
 import com.minare.application.config.FrameworkConfig
 import com.minare.core.Timer
+import com.minare.core.storage.interfaces.ChannelStore
 import com.minare.core.storage.interfaces.ConnectionStore
 import com.minare.core.transport.adapters.WebsocketProtocol
 import com.minare.core.transport.downsocket.pubsub.UpdateBatchCoordinator
@@ -28,11 +29,15 @@ class DownSocketVerticle @Inject constructor(
     private val frameworkConfig: FrameworkConfig,
     private val connectionStore: ConnectionStore,
     private val downSocketVerticleCache: DownSocketVerticleCache,
+    private val channelStore: ChannelStore,
     private val updateConnectionClosedEvent: UpdateConnectionClosedEvent,
     private val updateConnectionEstablishedEvent: UpdateConnectionEstablishedEvent
 ) : CoroutineVerticle() {
 
     private val log = LoggerFactory.getLogger(DownSocketVerticle::class.java)
+
+    private val instanceId = UUID.randomUUID().toString()
+
     private lateinit var vlog: VerticleLogger
     private lateinit var eventBusUtils: EventBusUtils
     private lateinit var protocol: WebsocketProtocol
@@ -111,7 +116,7 @@ class DownSocketVerticle @Inject constructor(
             val payload = message.body().getJsonObject("message")
 
             CoroutineScope(vertx.dispatcher()).launch {
-                for (connectionId in downSocketVerticleCache.getConnectionsForChannel(channelId)) {
+                for (connectionId in channelStore.getClientIds(channelId)) {
                     protocol.sockets.send(connectionId, payload.encode())
                 }
             }
@@ -149,14 +154,11 @@ class DownSocketVerticle @Inject constructor(
 
     private suspend fun associateDownSocket(connectionId: String, websocket: ServerWebSocket, traceId: String) {
         try {
-            val connection = connectionStore.find(connectionId)
-
-            // Reconnection branch: if there's an existing socket, close it and reuse the connection
             protocol.sockets.close(connectionId)
 
             val socketId = "down-${UUID.randomUUID()}"
 
-            connectionStore.putDownSocket(connectionId, socketId, deploymentID)
+            val updatedConnection = connectionStore.putDownSocket(connectionId, socketId, deploymentID)
             protocol.sockets.put(connectionId, websocket)
 
             heartbeatManager.startHeartbeat(socketId, connectionId)
@@ -171,7 +173,7 @@ class DownSocketVerticle @Inject constructor(
                     .put("deploymentId", deploymentID)
             )
 
-            notifyUpsocketFullyConnected(connection.upSocketDeploymentId, connectionId)
+            notifyUpsocketFullyConnected(updatedConnection.upSocketDeploymentId, connectionId)
         } catch (e: Exception) {
             log.error("Failed to associate down socket for {}", connectionId, e)
             protocol.router.sendError(websocket, e, connectionId)
@@ -179,6 +181,9 @@ class DownSocketVerticle @Inject constructor(
     }
 
     private fun notifyUpsocketFullyConnected(upSocketDeploymentId: String?, connectionId: String) {
+        // TEMPORARY DEBUG
+        log.info("DEBUG_DOWN: $upSocketDeploymentId, $connectionId")
+
         if (upSocketDeploymentId == null) {
             log.warn("No upSocketDeploymentId for connection {}, cannot notify fully connected", connectionId)
             return
@@ -196,7 +201,7 @@ class DownSocketVerticle @Inject constructor(
         try {
             heartbeatManager.stopHeartbeat(connectionId)
             protocol.sockets.remove(connectionId)
-            downSocketVerticleCache.invalidateChannelCacheForConnection(connectionId)
+            //downSocketVerticleCache.invalidateChannelCacheForConnection(connectionId)
 
             vertx.eventBus().publish(
                 ADDRESS_CONNECTION_CLOSED, JsonObject()

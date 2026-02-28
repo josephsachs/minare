@@ -256,9 +256,9 @@ abstract class MinareApplication : CoroutineVerticle() {
         createVerticle(
             UpSocketVerticle::class.java,
             DeploymentOptions()
-                .setWorker(true)
-                .setWorkerPoolName("up-socket-pool")
-                .setWorkerPoolSize(5)
+                //.setWorker(true)
+                //setWorkerPoolName("up-socket-pool")
+                //.setWorkerPoolSize(5)
                 .setInstances(3)
                 .setConfig(JsonObject().put("useOwnHttpServer", true)
                 )
@@ -267,9 +267,9 @@ abstract class MinareApplication : CoroutineVerticle() {
         createVerticle(
             DownSocketVerticle::class.java,
             DeploymentOptions()
-                .setWorker(true)
-                .setWorkerPoolName("down-socket-pool")
-                .setWorkerPoolSize(5)
+                //.setWorker(true)
+                //.setWorkerPoolName("down-socket-pool")
+                //.setWorkerPoolSize(5)
                 .setInstances(3)
         )
 

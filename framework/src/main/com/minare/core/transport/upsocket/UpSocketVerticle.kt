@@ -35,6 +35,8 @@ class UpSocketVerticle @Inject constructor(
 
     private val log = LoggerFactory.getLogger(UpSocketVerticle::class.java)
 
+    private val instanceId = UUID.randomUUID().toString()
+
     private lateinit var protocol: WebsocketProtocol
     private lateinit var heartbeatManager: HeartbeatManager
 
@@ -113,6 +115,8 @@ class UpSocketVerticle @Inject constructor(
         vertx.eventBus().consumer<JsonObject>("${ADDRESS_SEND_TO_CONNECTION}.${deploymentID}") { message ->
             val connectionId = message.body().getString("connectionId")
             val payload = message.body().getJsonObject("message")
+            log.info("SEND_TO_CONNECTION received for {} socket_exists={}", connectionId, protocol.sockets.get(connectionId) != null)
+            log.info("Received: ${message.body()}")
             if (connectionId != null && payload != null) {
                 protocol.sockets.send(connectionId, payload.encode())
             }
@@ -171,8 +175,16 @@ class UpSocketVerticle @Inject constructor(
             val connection = connectionStore.create()
             val socketId = "up-${UUID.randomUUID()}"
 
+            // TEMPORARY DEBUG
+            log.info("INITIATE_CONNECTION: connectionId={} deploymentID={} thread={}",
+                connection.id, deploymentID, Thread.currentThread().name)
+
             val updatedConnection = connectionStore.putUpSocket(connection.id, socketId, deploymentID)
             protocol.sockets.put(connection.id, websocket)
+
+            // TEMPORARY DEBUG
+            log.info("SOCKET_PUT: connectionId={} socketExists={} deploymentID={}",
+                connection.id, protocol.sockets.get(connection.id) != null, deploymentID)
 
             protocol.router.sendConfirmation(websocket, "connection_confirm", connection.id)
             heartbeatManager.startHeartbeat(socketId, connection.id)

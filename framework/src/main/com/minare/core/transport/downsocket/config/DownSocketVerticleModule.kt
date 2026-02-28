@@ -27,7 +27,7 @@ class DownSocketVerticleModule : PrivateModule() {
     override fun configure() {
         bind(DownSocketVerticle::class.java)
 
-        bind(SocketProtocol::class.java).to(WebsocketProtocol::class.java).`in`(Singleton::class.java)
+        bind(SocketProtocol::class.java).to(WebsocketProtocol::class.java)
 
         bind(EntityUpdatedEvent::class.java).`in`(Singleton::class.java)
         bind(UpdateConnectionClosedEvent::class.java).`in`(Singleton::class.java)
