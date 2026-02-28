@@ -5,8 +5,6 @@ import com.google.inject.multibindings.OptionalBinder
 import com.hazelcast.core.HazelcastInstance
 import com.minare.application.config.FrameworkConfig
 import com.minare.application.interfaces.AppState
-import com.minare.cache.ConnectionCache
-import com.minare.cache.InMemoryConnectionCache
 import com.minare.core.entity.factories.EntityFactory
 import com.minare.core.entity.services.EntityPublishService
 import com.minare.core.entity.services.RedisEntityPublishService
@@ -86,7 +84,7 @@ class MinareModule(
 
         // Minare services
         bind(TimeService::class.java).to(DockerTimeService::class.java).`in`(Singleton::class.java)
-        bind(ConnectionCache::class.java).to(InMemoryConnectionCache::class.java).`in`(Singleton::class.java)
+        //bind(ConnectionCache::class.java).to(InMemoryConnectionCache::class.java).`in`(Singleton::class.java)
 
         // Strategies
         bind(PubSubChannelStrategy::class.java).to(PerChannelPubSubStrategy::class.java).`in`(Singleton::class.java)

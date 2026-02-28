@@ -111,6 +111,7 @@ class OperationTestSuite(private val injector: Injector) : TestSuite {
                 } catch (e: Exception) {
                     null
                 }
+
                 assertNull(deletedEntity) { "Entity should no longer exist in StateStore" }
 
             } finally {

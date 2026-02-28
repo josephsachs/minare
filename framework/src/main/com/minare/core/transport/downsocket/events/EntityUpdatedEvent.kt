@@ -4,13 +4,12 @@ import com.google.inject.Inject
 import com.minare.core.utils.vertx.EventBusUtils
 import com.minare.core.utils.vertx.VerticleLogger
 import com.minare.core.transport.downsocket.RedisPubSubWorkerVerticle
-import com.minare.worker.downsocket.handlers.EntityUpdateHandler
+import com.minare.core.transport.downsocket.handlers.EntityUpdateHandler
 import io.vertx.core.json.JsonObject
 
 /**
- * Event handler for entity update events.
- *
- * Handles both legacy individual updates and batched updates during transition.
+ * Event handler for individual entity update events published by RedisPubSubWorkerVerticle.
+ * Routes each update to the correct DownSocketVerticle instance via EntityUpdateHandler.
  */
 class EntityUpdatedEvent @Inject constructor(
     private val eventBusUtils: EventBusUtils,
@@ -18,10 +17,7 @@ class EntityUpdatedEvent @Inject constructor(
     private val vlog: VerticleLogger
 ) {
     suspend fun register() {
-        // Register handler for legacy individual entity update events
         eventBusUtils.registerTracedConsumer<JsonObject>(ADDRESS_ENTITY_UPDATED) { message, traceId ->
-            // Only process individual updates if we're in transition period
-            // TODO: Remove once all components use batched updates
             entityUpdateHandler.handle(message.body(), traceId)
         }
         vlog.logHandlerRegistration(ADDRESS_ENTITY_UPDATED)

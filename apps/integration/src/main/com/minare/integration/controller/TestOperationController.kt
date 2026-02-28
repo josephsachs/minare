@@ -120,4 +120,10 @@ class TestOperationController @Inject constructor(
 
         channelController.addEntity(entity, defaultChannel)
     }
+
+    override suspend fun afterDeleteOperation(operation: JsonObject, entity: Entity) {
+        val defaultChannel = channelController.getDefaultChannel() ?: throw Exception("No default channel configured")
+
+        channelController.removeEntity(entity, defaultChannel)
+    }
 }

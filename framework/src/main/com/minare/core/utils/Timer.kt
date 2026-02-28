@@ -70,19 +70,6 @@ abstract class Timer @Inject constructor(
             } finally {
                 lastTickTimeMs = System.currentTimeMillis() - startTime
                 totalProcessingTimeMs += lastTickTimeMs
-
-
-                if (lastTickTimeMs > intervalMs * 0.8) {
-                    log.warn("Tick processing took {}ms ({}% of tick budget)",
-                        lastTickTimeMs, (lastTickTimeMs * 100 / intervalMs))
-                }
-
-
-                if (counter % 100 == 0L) {
-                    val avgTickTime = if (counter > 0) totalProcessingTimeMs / counter else 0
-                    log.info("Tick stats: count={}, avg={}ms, last={}ms",
-                        counter, avgTickTime, lastTickTimeMs)
-                }
             }
         }
     }

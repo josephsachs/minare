@@ -8,7 +8,7 @@ import java.io.Serializable
  * - An down socket for pushing updates to the client
  */
 data class Connection(
-    val _id: String,
+    val id: String,
     val createdAt: Long,
     val lastUpdated: Long,
     val lastActivity: Long = System.currentTimeMillis(),

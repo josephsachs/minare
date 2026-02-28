@@ -25,7 +25,7 @@ class MongoConnectionStore @Inject constructor(
         val now = System.currentTimeMillis()
 
         val connection = Connection(
-            _id = connectionId,
+            id = connectionId,
             createdAt = now,
             lastUpdated = now,
             lastActivity = now,
@@ -37,7 +37,7 @@ class MongoConnectionStore @Inject constructor(
         )
 
         val document = JsonObject()
-            .put("_id", connection._id)
+            .put("_id", connection.id)
             .put("createdAt", connection.createdAt)
             .put("lastUpdated", connection.lastUpdated)
             .put("lastActivity", connection.lastActivity)
@@ -109,7 +109,7 @@ class MongoConnectionStore @Inject constructor(
             }
 
             return Connection(
-                _id = result.getString("_id"),
+                id = result.getString("_id"),
                 createdAt = result.getLong("createdAt"),
                 lastUpdated = result.getLong("lastUpdated"),
                 lastActivity = result.getLong("lastActivity", result.getLong("lastUpdated")), // Fallback for compatibility
@@ -150,7 +150,7 @@ class MongoConnectionStore @Inject constructor(
 
             return documents.map { doc ->
                 Connection(
-                    _id = doc.getString("_id"),
+                    id = doc.getString("_id"),
                     createdAt = doc.getLong("createdAt"),
                     lastUpdated = doc.getLong("lastUpdated"),
                     lastActivity = doc.getLong("lastActivity", doc.getLong("lastUpdated")), // Fallback for compatibility
@@ -308,7 +308,7 @@ class MongoConnectionStore @Inject constructor(
             val documents = mongoClient.find(collection, query).await()
             return documents.map { doc ->
                 Connection(
-                    _id = doc.getString("_id"),
+                    id = doc.getString("_id"),
                     createdAt = doc.getLong("createdAt"),
                     lastUpdated = doc.getLong("lastUpdated"),
                     lastActivity = doc.getLong("lastActivity", doc.getLong("lastUpdated")),
@@ -337,7 +337,7 @@ class MongoConnectionStore @Inject constructor(
             val documents = mongoClient.find(collection, query).await()
             return documents.map { doc ->
                 Connection(
-                    _id = doc.getString("_id"),
+                    id = doc.getString("_id"),
                     createdAt = doc.getLong("createdAt"),
                     lastUpdated = doc.getLong("lastUpdated"),
                     lastActivity = doc.getLong("lastActivity", doc.getLong("lastUpdated")),

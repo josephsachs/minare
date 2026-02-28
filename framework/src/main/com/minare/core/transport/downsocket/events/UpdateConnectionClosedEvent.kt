@@ -19,7 +19,7 @@ class UpdateConnectionClosedEvent @Inject constructor(
             val connectionId = message.body().getString("connectionId")
             if (connectionId != null) {
                 downSocketVerticleCache.connectionPendingUpdates.remove(connectionId)
-                downSocketVerticleCache.invalidateChannelCacheForConnection(connectionId)
+                //downSocketVerticleCache.invalidateChannelCacheForConnection(connectionId)
 
                 if (debugTraceLogs) {
                     vlog.getEventLogger().trace("CONNECTION_TRACKING_REMOVED", mapOf(
