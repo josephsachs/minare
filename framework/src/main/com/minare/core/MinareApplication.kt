@@ -1,6 +1,5 @@
 package com.minare.core
 
-import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.google.inject.*
 import com.google.inject.name.Names
 import com.minare.core.MinareApplication.ConnectionEvents.ADDRESS_COORDINATOR_STARTED
@@ -13,7 +12,6 @@ import com.minare.application.config.FrameworkConfig
 import com.minare.application.config.FrameworkConfigBuilder
 import com.minare.core.config.HazelcastInstanceHolder
 import com.minare.core.config.*
-import com.minare.controller.ConnectionController
 import com.minare.core.MinareApplication.ConnectionEvents.ADDRESS_TASK_COORDINATOR_STARTED
 import com.minare.core.transport.upsocket.UpSocketVerticle
 import com.minare.core.transport.downsocket.DownSocketVerticle
@@ -60,14 +58,13 @@ abstract class MinareApplication : CoroutineVerticle() {
     private val log = LoggerFactory.getLogger(MinareApplication::class.java)
 
     // Dependency injections
-    @Inject private lateinit var connectionController: ConnectionController
     @Inject private lateinit var startupService: StartupService
     @Inject private lateinit var workerReadinessEvent: WorkerReadinessEvent
     @Inject lateinit var stateInitializer: StateInitializer
     @Inject lateinit var injector: Injector
 
     // Application utilities
-    protected lateinit var appState: AppState
+    private lateinit var appState: AppState
 
     // Verticle deployment information
     private var processorCount: Number? = null
@@ -174,7 +171,7 @@ abstract class MinareApplication : CoroutineVerticle() {
      * ID in internal map. Note that map is concurrent and will not contain IDs for
      * verticles deployed to other nodes.
      */
-    suspend fun createVerticle(verticleClass: Class<out CoroutineVerticle>, options: DeploymentOptions) {
+    private suspend fun createVerticle(verticleClass: Class<out CoroutineVerticle>, options: DeploymentOptions) {
         // @TODO Use merge reconciliation in Hazelcast to amass another map for all.
         // @TODO Use end of coordinator startup after all-ready is established.
         val id = vertx.deployVerticle("guice:" + verticleClass.name, options).await()
@@ -256,9 +253,6 @@ abstract class MinareApplication : CoroutineVerticle() {
         createVerticle(
             UpSocketVerticle::class.java,
             DeploymentOptions()
-                //.setWorker(true)
-                //setWorkerPoolName("up-socket-pool")
-                //.setWorkerPoolSize(5)
                 .setInstances(3)
                 .setConfig(JsonObject().put("useOwnHttpServer", true)
                 )
@@ -267,9 +261,6 @@ abstract class MinareApplication : CoroutineVerticle() {
         createVerticle(
             DownSocketVerticle::class.java,
             DeploymentOptions()
-                //.setWorker(true)
-                //.setWorkerPoolName("down-socket-pool")
-                //.setWorkerPoolSize(5)
                 .setInstances(3)
         )
 
@@ -439,96 +430,6 @@ abstract class MinareApplication : CoroutineVerticle() {
             }
         }
     }
-
-    /**
-     * Framework Events
-     */
-
-    /**
-     * Register connection event handlers. Originates in worker context.
-
-    private fun registerConnectionEventHandlers() {
-        vertx.eventBus().consumer<JsonObject>(ConnectionEvents.ADDRESS_UP_SOCKET_CONNECTED) { message ->
-            val connectionId = message.body().getString("connectionId")
-            val traceId = message.body().getString("traceId")
-
-            Companion.log.info("MinareApplication acknowledges up socket for ${connectionId}")
-
-            if (connectionId != null) {
-                CoroutineScope(vertx.dispatcher()).launch {
-                    handleUpSocketConnected(connectionId, traceId)
-                }
-            }
-        }
-
-        vertx.eventBus().consumer<JsonObject>(ConnectionEvents.ADDRESS_DOWN_SOCKET_CONNECTED) { message ->
-            val connectionId = message.body().getString("connectionId")
-            val traceId = message.body().getString("traceId")
-
-            Companion.log.info("MinareApplication acknowledges down socket for ${connectionId}")
-
-            if (connectionId != null) {
-                CoroutineScope(vertx.dispatcher()).launch {
-                    handleDownSocketConnected(connectionId, traceId)
-                }
-            }
-        }
-
-        Companion.log.info("Connection event handlers registered")
-    }
-
-    /**
-     * Route up socket command. Originates in worker context.
-     */
-    private suspend fun handleUpSocketConnected(connectionId: String, traceId: String?) {
-        val state = pendingConnections.computeIfAbsent(connectionId) { ConnectionState() }
-        state.upSocketConnected = true
-        if (traceId != null) state.traceId = traceId
-
-        checkConnectionComplete(connectionId)
-    }
-
-    /**
-     * Route down socket command. Originates in worker context.
-     */
-    private suspend fun handleDownSocketConnected(connectionId: String, traceId: String?) {
-        val state = pendingConnections.computeIfAbsent(connectionId) { ConnectionState() }
-        state.downSocketConnected = true
-        if (traceId != null) state.traceId = traceId
-
-        checkConnectionComplete(connectionId)
-    }
-
-    /**
-     * Confirm given connection is complete and persist it.
-     * Originates in worker context.
-     */
-    private suspend fun checkConnectionComplete(connectionId: String) {
-        val state = pendingConnections[connectionId] ?: return
-
-        if (state.upSocketConnected && state.downSocketConnected) {
-            Companion.log.info("Connection $connectionId is now fully established")
-
-            try {
-                val connection = connectionController.getConnection(connectionId)
-
-                connectionController.onClientFullyConnected(connection)
-
-                vertx.eventBus().publish(
-                    ConnectionEvents.ADDRESS_CONNECTION_COMPLETE,
-                    JsonObject()
-                        .put("connectionId", connectionId)
-                        .put("traceId", state.traceId)
-                )
-
-                pendingConnections.remove(connectionId)
-            } catch (e: Exception) {
-                Companion.log.error("Error handling connection completion for $connectionId", e)
-            }
-        }
-    }
-
-    **/
 
     /**
      * Main entry point that starts the application.
