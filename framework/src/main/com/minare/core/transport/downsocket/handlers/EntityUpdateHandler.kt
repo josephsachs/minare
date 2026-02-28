@@ -1,4 +1,4 @@
-package com.minare.worker.downsocket.handlers
+package com.minare.core.transport.downsocket.handlers
 
 import com.google.inject.Inject
 import com.minare.core.transport.downsocket.DownSocketVerticleCache
@@ -74,15 +74,15 @@ class EntityUpdateHandler @Inject constructor(
                 )
 
                 for (connection in connections) {
-                    if (connection._id in processedConnections) {
+                    if (connection.id in processedConnections) {
                         continue
                     }
 
                     hasOwnedConnections = true
-                    processedConnections.add(connection._id)
+                    processedConnections.add(connection.id)
 
                     // Queue update for this connection
-                    downSocketVerticleCache.queueUpdateForConnection(connection._id, entityId, entityUpdate)
+                    downSocketVerticleCache.queueUpdateForConnection(connection.id, entityId, entityUpdate)
                 }
             }
 

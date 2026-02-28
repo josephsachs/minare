@@ -86,7 +86,7 @@ class TestClient(
             syncDeferred.await()
 
             // Wait for initial_sync_complete
-            // waitForMessage { it.getString("type") == "initial_sync_complete" }
+            waitForMessage { it.getString("type") == "initial_sync_complete" }
 
             connectionId!!
         }

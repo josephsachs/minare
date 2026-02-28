@@ -1,126 +1,33 @@
 package com.minare.controller
 
-import com.minare.cache.ConnectionCache
+import com.google.inject.Inject
 import com.minare.core.frames.coordinator.FrameCoordinatorState
 import com.minare.core.frames.coordinator.FrameCoordinatorState.Companion.PauseState
 import com.minare.core.storage.interfaces.ConnectionStore
-import com.minare.core.transport.downsocket.services.ConnectionTracker
 import com.minare.core.transport.models.Connection
 import com.minare.core.transport.models.message.*
+import com.minare.core.transport.upsocket.handlers.SyncCommandHandler
 import com.minare.core.utils.vertx.VerticleLogger
 import com.minare.exceptions.BackpressureException
-import com.minare.core.transport.services.WebSocketUtils
-import com.minare.core.transport.upsocket.handlers.SyncCommandHandler
-import io.vertx.core.http.ServerWebSocket
 import io.vertx.core.json.JsonObject
 import org.slf4j.LoggerFactory
-import com.google.inject.Inject
 import java.util.UUID
 
-/**
- * Controller for the handling socket messages.
- *
- * This follows the framework pattern:
- * - Framework provides this open base class
- * - Applications must bind it in their module (to this class or their extension)
- * - Applications can extend this class to customize behavior
- */
 abstract class MessageController @Inject constructor() {
     private val log = LoggerFactory.getLogger(MessageController::class.java)
 
     @Inject protected lateinit var connectionStore: ConnectionStore
     @Inject protected lateinit var connectionController: ConnectionController
-    @Inject protected lateinit var connectionCache: ConnectionCache
     @Inject protected lateinit var syncCommandHandler: SyncCommandHandler
     @Inject protected lateinit var operationController: OperationController
     @Inject protected lateinit var coordinatorState: FrameCoordinatorState
     @Inject protected lateinit var vlog: VerticleLogger
 
-    /**
-     * Process an incoming message from the WebSocket.
-     * This is the entry point for messages to MessageHandler.
-     *
-     * @param message The raw message from the client
-     */
-    suspend fun dispatch(message: CommandMessageObject) {
-        when (message) {
-            is HeartbeatResponse -> {
-                try {
-                    val serverTimestamp = message.timestamp
-                    val clientTimestamp = message.clientTimestamp
-                    val now = System.currentTimeMillis()
-                    val roundTripTime = now - serverTimestamp
-
-                    if (Math.random() < 0.1) { // % of heartbeat responses
-                        vlog.getEventLogger().trace("HEARTBEAT_RESPONSE", mapOf(
-                            "connectionId" to message.connection._id,
-                            "roundTripMs" to roundTripTime,
-                            "clientTimestamp" to clientTimestamp
-                        ))
-                    }
-                } catch (e: Exception) {
-                    vlog.logVerticleError("HEARTBEAT_PROCESSING", e, mapOf(
-                        "connectionId" to message.connection._id
-                    ))
-                }
-            }
-
-            is SyncCommand -> {
-                val success = syncCommandHandler.tryHandle(message)
-
-                val response = JsonObject()
-                    .put("type", "sync_initiated")
-                    .put("success", success)
-                    .put("timestamp", System.currentTimeMillis())
-
-                sendToUpSocket(message.connection, response)
-            }
-
-            is OperationCommand -> {
-                if (coordinatorState.pauseState == PauseState.HARD) {
-                    throw BackpressureException("Service temporarily unavailable")
-                }
-
-                operationController.process(message.payload)
-            }
-        }
-    }
-
-    suspend fun sendToUpSocket(connection: Connection, message: JsonObject) {
-        val upSocket = connectionCache.getUpSocket(connection._id)
-        if (upSocket != null && !upSocket.isClosed()) {
-            upSocket.writeTextMessage(message.encode())
-        } else {
-            log.warn("Cannot send sync initiated response: up socket not found or closed for {}", connection._id)
-        }
-    }
-
-    /**
-     * Application developer override hook.
-     * Convert incoming client messages to Operations.
-     *
-     * @param message The raw message from the client
-     * @return Operation, OperationSet, or null to skip processing
-     */
-    internal suspend fun handleUpsocket(connectionTracker: ConnectionTracker, webSocket: ServerWebSocket, message: JsonObject) {
-        val connectionId = connectionTracker.getConnectionId(webSocket)
-
+    internal suspend fun handleUpsocket(connectionId: String?, message: JsonObject) {
         if (connectionId == null) {
-            WebSocketUtils.sendErrorResponse(
-                webSocket,
-                IllegalStateException("No connection found for this websocket"), null, vlog
-            )
+            log.warn("Received message with no associated connection")
             return
         }
-
-        val traceId = connectionTracker.getTraceId(connectionId)
-        val msgTraceId = vlog.getEventLogger().trace(
-            "MESSAGE_RECEIVED", mapOf(
-                "messageType" to message.getString("type", "unknown"),
-                "command" to message.getString("command", "unknown"),
-                "connectionId" to connectionId
-            ), traceId
-        )
 
         connectionStore.updateLastActivity(connectionId)
         val connection = connectionController.getConnection(connectionId)
@@ -128,16 +35,40 @@ abstract class MessageController @Inject constructor() {
         try {
             handle(connection, message)
         } catch (e: BackpressureException) {
-            WebSocketUtils.sendErrorResponse(
-                webSocket, e, connectionId, vlog
+            connectionController.sendToUpSocket(connectionId, JsonObject()
+                .put("type", "error")
+                .put("code", "BACKPRESSURE")
+                .put("message", e.message)
+                .put("timestamp", System.currentTimeMillis())
             )
         }
     }
 
-    /**
-     * Application hook
-     * Returns a trace ID for the command acknowledgment
-     */
+    suspend fun dispatch(message: CommandMessageObject) {
+        when (message) {
+            is HeartbeatResponse -> {
+                // Heartbeat responses are informational; no action needed
+            }
+
+            is SyncCommand -> {
+                val success = syncCommandHandler.tryHandle(message)
+
+                connectionController.sendToUpSocket(message.connection.id, JsonObject()
+                    .put("type", "sync_initiated")
+                    .put("success", success)
+                    .put("timestamp", System.currentTimeMillis())
+                )
+            }
+
+            is OperationCommand -> {
+                if (coordinatorState.pauseState == PauseState.HARD) {
+                    throw BackpressureException("Service temporarily unavailable")
+                }
+                operationController.process(message.payload)
+            }
+        }
+    }
+
     open suspend fun getTraceId(): String {
         return UUID.randomUUID().toString()
     }

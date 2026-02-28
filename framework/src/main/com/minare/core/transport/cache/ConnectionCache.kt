@@ -6,7 +6,7 @@ import io.vertx.core.http.ServerWebSocket
 /**
  * Interface for caching connection data and websocket associations.
  * Provides fast access to connections and related websockets.
- */
+
 interface ConnectionCache {
     /**
      * Store a connection in the cache
@@ -108,4 +108,4 @@ interface ConnectionCache {
      * Check if a connection has both up and down sockets
      */
     fun isFullyConnected(connectionId: String): Boolean
-}
+}**/

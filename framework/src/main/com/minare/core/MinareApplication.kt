@@ -18,7 +18,6 @@ import com.minare.core.MinareApplication.ConnectionEvents.ADDRESS_TASK_COORDINAT
 import com.minare.core.transport.upsocket.UpSocketVerticle
 import com.minare.core.transport.downsocket.DownSocketVerticle
 import com.minare.worker.coordinator.config.FrameCoordinatorVerticleModule
-import com.minare.worker.downsocket.config.DownSocketVerticleModule
 import io.vertx.core.DeploymentOptions
 import io.vertx.core.Vertx
 import io.vertx.core.VertxOptions
@@ -47,6 +46,7 @@ import com.minare.core.operation.MutationVerticle
 import com.minare.core.transport.downsocket.RedisPubSubWorkerVerticle
 import com.minare.core.storage.services.StateInitializer
 import com.minare.core.transport.CleanupVerticle
+import com.minare.core.transport.downsocket.config.DownSocketVerticleModule
 import com.minare.core.transport.upsocket.config.UpSocketVerticleModule
 import com.minare.exceptions.EntityFactoryException
 import com.minare.worker.coordinator.events.WorkerReadinessEvent

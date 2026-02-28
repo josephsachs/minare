@@ -1,16 +1,16 @@
 package com.minare.worker.upsocket.events
 
 import com.google.inject.Inject
+import com.minare.controller.ConnectionController
 import com.minare.core.utils.vertx.EventBusUtils
 import com.minare.core.utils.vertx.VerticleLogger
 import io.vertx.core.json.JsonObject
 import com.minare.core.transport.upsocket.UpSocketVerticle
-import com.minare.worker.upsocket.ConnectionLifecycle
 
 class ConnectionCleanupEvent @Inject constructor(
     private val eventBusUtils: EventBusUtils,
     private val vlog: VerticleLogger,
-    private val connectionLifecycle: ConnectionLifecycle
+    private val connectionController: ConnectionController
 ) {
 
     suspend fun register(debugTraceLogs: Boolean) {
@@ -22,8 +22,8 @@ class ConnectionCleanupEvent @Inject constructor(
             }
 
             try {
-                val result = connectionLifecycle.cleanupConnection(connectionId)
-                eventBusUtils.tracedReply(message, JsonObject().put("success", result), traceId)
+                connectionController.cleanupConnection(connectionId)
+                eventBusUtils.tracedReply(message, JsonObject().put("success", true), traceId)
             } catch (e: Exception) {
                 vlog.logVerticleError("CONNECTION_CLEANUP", e, mapOf("connectionId" to connectionId))
                 message.fail(500, e.message ?: "Error during connection cleanup")

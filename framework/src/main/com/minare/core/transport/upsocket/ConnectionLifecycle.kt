@@ -1,5 +1,5 @@
 package com.minare.worker.upsocket
-
+/**
 import com.google.inject.Inject
 import com.google.inject.Singleton
 import com.minare.core.MinareApplication
@@ -14,12 +14,12 @@ import io.vertx.core.Vertx
 import io.vertx.core.eventbus.DeliveryOptions
 import io.vertx.core.http.ServerWebSocket
 import io.vertx.core.impl.logging.LoggerFactory
-import io.vertx.core.json.JsonObject
+import io.vertx.core.json.JsonObject**/
 
 /**
  * Handles socket lifecycle events including connection tracking and verticle caches
  */
-@Singleton
+/**@Singleton
 class ConnectionLifecycle @Inject constructor(
     private val vertx: Vertx,
     private val vlog: VerticleLogger,
@@ -345,4 +345,4 @@ class ConnectionLifecycle @Inject constructor(
             return false
         }
     }
-}
+}**/

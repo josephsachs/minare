@@ -10,6 +10,7 @@ sockets:
     host: "0.0.0.0"
     port: 4226
     cache_ttl: 1000
+    heartbeat_interval: 15000
   connection:
     connection_expiry: 180000
     cleanup_interval: 60000

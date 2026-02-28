@@ -1,60 +1,50 @@
 package com.minare.core.transport.upsocket
 
+import com.google.inject.Inject
 import com.minare.application.config.FrameworkConfig
+import com.minare.controller.ConnectionController
 import com.minare.controller.MessageController
-import com.minare.core.utils.vertx.VerticleLogger
+import com.minare.core.storage.interfaces.ConnectionStore
+import com.minare.core.transport.adapters.WebsocketProtocol
+import com.minare.core.transport.adapters.WebsocketRouter
 import com.minare.core.transport.services.HeartbeatManager
-import com.minare.core.transport.downsocket.services.ConnectionTracker
 import com.minare.core.transport.upsocket.events.EntitySyncEvent
 import com.minare.core.utils.debug.DebugLogger
 import com.minare.core.utils.debug.DebugLogger.Companion.DebugType
-import com.minare.core.transport.services.HttpServerUtils
-import com.minare.core.transport.services.WebSocketUtils
-import com.minare.worker.upsocket.ConnectionLifecycle
-import com.minare.worker.upsocket.events.*
-import io.vertx.core.http.HttpServer
+import com.minare.core.utils.vertx.VerticleLogger
+import com.minare.worker.upsocket.events.ConnectionCleanupEvent
 import io.vertx.core.http.ServerWebSocket
 import io.vertx.core.json.JsonObject
-import io.vertx.ext.web.Router
 import io.vertx.kotlin.coroutines.CoroutineVerticle
-import io.vertx.kotlin.coroutines.await
 import io.vertx.kotlin.coroutines.dispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import org.slf4j.LoggerFactory
-import com.google.inject.Inject
-import com.minare.worker.upsocket.handlers.CloseHandler
-import com.minare.worker.upsocket.handlers.ReconnectionHandler
+import java.util.UUID
 
-/**
- * Verticle responsible for managing up socket connections and handling
- * socket lifecycle events. Creates and manages its own router for WebSocket endpoints.
- */
 class UpSocketVerticle @Inject constructor(
     private val vlog: VerticleLogger,
-    private val heartbeatManager: HeartbeatManager,
     private val frameworkConfig: FrameworkConfig,
-    private val connectionTracker: ConnectionTracker,
-    private val reconnectionHandler: ReconnectionHandler,
+    private val connectionStore: ConnectionStore,
+    private val connectionController: ConnectionController,
     private val messageController: MessageController,
-    private val closeHandler: CloseHandler,
-    private val connectionLifecycle: ConnectionLifecycle,
     private val connectionCleanupEvent: ConnectionCleanupEvent,
     private val entitySyncEvent: EntitySyncEvent,
     private val debug: DebugLogger
 ) : CoroutineVerticle() {
 
     private val log = LoggerFactory.getLogger(UpSocketVerticle::class.java)
-    // Looks like we still have some debug logs that need to go into the configurator
-    private val debugTraceLogs: Boolean = true
+
+    private lateinit var protocol: WebsocketProtocol
+    private lateinit var heartbeatManager: HeartbeatManager
 
     private var deployedAt: Long = 0
-    private var httpServer: HttpServer? = null
-    lateinit var router: Router
 
     companion object {
         const val ADDRESS_CONNECTION_CLEANUP = "minare.connection.cleanup"
         const val ADDRESS_ENTITY_SYNC = "minare.entity.sync"
+        const val ADDRESS_FULLY_CONNECTED = "minare.connection.fully_connected"
+        const val ADDRESS_SEND_TO_CONNECTION = "minare.upsocket.send"
     }
 
     private val basePath = frameworkConfig.sockets.up.basePath
@@ -63,184 +53,149 @@ class UpSocketVerticle @Inject constructor(
     private val handshakeTimeoutMs = frameworkConfig.sockets.up.handshakeTimeout
 
     override suspend fun start() {
+        deployedAt = System.currentTimeMillis()
         vlog.setVerticle(this)
 
-        deployedAt = System.currentTimeMillis()
-        debug.log(DebugType.UPSOCKET_STARTUP, listOf(deployedAt, vlog, config))
+        protocol = WebsocketProtocol(vertx, vertx.dispatcher(), vlog)
+        heartbeatManager = HeartbeatManager(vertx, connectionStore, CoroutineScope(vertx.dispatcher()), protocol.sockets)
 
-        router = Router.router(vertx)
-        debug.log(DebugType.UPSOCKET_ROUTER_CREATED, listOf(vlog))
-        initializeRouter()
+        heartbeatManager.setHeartbeatInterval(frameworkConfig.sockets.up.heartbeatInterval)
 
-        registerEventBusConsumers()
-        deployHttpServer()
-
-        deploymentID.let {
-            vlog.logDeployment(it)
+        protocol.router.setupRoutes(basePath) { socket, traceId ->
+            handleConnection(socket, traceId)
         }
 
-        vlog.logStartupStep("STARTED")
-    }
-
-    /**
-     * Initialize the router with up socket routes
-     */
-    private fun initializeRouter() {
-        debug.log(DebugType.UPSOCKET_INITIALIZING_ROUTER, listOf(vlog))
-
-        HttpServerUtils.addDebugEndpoint(router, "/ws-debug", "UpSocketVerticle")
-
-        debug.log(DebugType.UPSOCKET_SETTING_UP_ROUTE_HANDLER, listOf(basePath))
-
-        router.route(basePath).handler { context ->
-            WebSocketUtils.handleWebSocketUpgrade(
-                context,
-                vertx.dispatcher(),
-                basePath,
-                vlog
-            ) { socket, traceId ->
-                handleMessage(socket, traceId)
-            }
-        }
-
-        HttpServerUtils.addHealthEndpoint(
-            router = router,
-            path = "$basePath/health",
-            verticleName = "UpVerticle",
-            deploymentId = deploymentID,
-            deployedAt = deployedAt
+        protocol.router.addHealthEndpoint(
+            "$basePath/health", "UpSocketVerticle", deploymentID, deployedAt
         ) {
             JsonObject()
-                .put("connections", connectionTracker.getMetrics())
+                .put("connections", protocol.sockets.count())
                 .put("heartbeats", heartbeatManager.getMetrics())
         }
 
-        debug.log(DebugType.UPSOCKET_ROUTER_INITIALIZED, listOf(basePath, vlog))
+        registerEventBusConsumers()
+        registerFullyConnectedConsumer()
+        registerSendToConnectionConsumer()
+
+        protocol.router.startServer(httpHost, httpPort)
+
+        vlog.logDeployment(deploymentID)
+        vlog.logStartupStep("STARTED")
     }
 
-    /**
-     * Register all event bus consumers
-     */
     private suspend fun registerEventBusConsumers() {
-        //upSocketInitEvent.register(debugTraceLogs)
-        //upSocketGetRouterEvent.register(router)
-        //channelCleanupEvent.register(debugTraceLogs)
-        //upSocketCleanupEvent.register(debugTraceLogs)
-        connectionCleanupEvent.register(debugTraceLogs)
+        connectionCleanupEvent.register(false)
         entitySyncEvent.register()
     }
 
     /**
-     * Handle a new up socket connection
+     * Receives notification from DownSocketVerticle that a connection is fully established.
+     * Targeted by deploymentId so only the correct upsocket instance handles it.
      */
-    private suspend fun handleMessage(websocket: ServerWebSocket, traceId: String) {
-        var handshakeCompleted = false
+    private fun registerFullyConnectedConsumer() {
+        vertx.eventBus().consumer<JsonObject>("${ADDRESS_FULLY_CONNECTED}.${deploymentID}") { message ->
+            val connectionId = message.body().getString("connectionId")
+            CoroutineScope(vertx.dispatcher()).launch {
+                try {
+                    val connection = connectionStore.find(connectionId)
+                    connectionController.onClientFullyConnected(connection)
+                } catch (e: Exception) {
+                    log.error("Error handling fully connected for {}", connectionId, e)
+                }
+            }
+        }
+    }
 
-        debug.log(DebugType.UPSOCKET_NEW_WEBSOCKET_CONNECTION, listOf(websocket.remoteAddress()))
+    /**
+     * Receives targeted messages from controllers that need to send to a specific connection's socket.
+     */
+    private fun registerSendToConnectionConsumer() {
+        vertx.eventBus().consumer<JsonObject>("${ADDRESS_SEND_TO_CONNECTION}.${deploymentID}") { message ->
+            val connectionId = message.body().getString("connectionId")
+            val payload = message.body().getJsonObject("message")
+            if (connectionId != null && payload != null) {
+                protocol.sockets.send(connectionId, payload.encode())
+            }
+        }
+    }
+
+    private suspend fun handleConnection(websocket: ServerWebSocket, traceId: String) {
+        var handshakeCompleted = false
 
         websocket.textMessageHandler { message ->
             CoroutineScope(vertx.dispatcher()).launch {
                 try {
                     val msg = JsonObject(message)
 
-                    if (!handshakeCompleted) {
-                        if (msg.containsKey("reconnect") && msg.containsKey("connectionId")) {
-                            val connectionId = msg.getString("connectionId")
-
-                            handshakeCompleted = true
-                            reconnectionHandler.handle(websocket, connectionId, deploymentID, traceId)
-                        }
+                    if (!handshakeCompleted && msg.containsKey("reconnect") && msg.containsKey("connectionId")) {
+                        handshakeCompleted = true
+                        // Upsocket does not support reconnection; issue new connection
+                        initiateConnection(websocket, traceId)
+                        return@launch
                     }
 
                     if (frameworkConfig.sockets.up.ack) {
-                        websocket.writeTextMessage(
-                            JsonObject()
-                                .put("type", "ack")
-                                .put("traceId", messageController.getTraceId()
-                            ).toString()
+                        protocol.router.sendMessage(websocket, JsonObject()
+                            .put("type", "ack")
+                            .put("traceId", messageController.getTraceId())
                         )
                     }
 
-                    messageController.handleUpsocket(connectionTracker, websocket, msg)
+                    messageController.handleUpsocket(protocol.sockets.getConnectionId(websocket), msg)
                 } catch (e: Exception) {
-                    WebSocketUtils.sendErrorResponse(
-                        websocket, e,
-                        connectionTracker.getConnectionId(websocket), vlog
-                    )
+                    protocol.router.sendError(websocket, e, protocol.sockets.getConnectionId(websocket))
                 }
             }
         }
 
         websocket.closeHandler {
-            val connectionId = connectionTracker.getConnectionId(websocket)
-
-            if (connectionId != null) {
-                CoroutineScope(vertx.dispatcher()).launch {
-                    closeHandler.handle(websocket, connectionId)
-                }
-            } else {
-                debug.log(DebugType.UPSOCKET_CLOSED_CONNECTION_MISSING_ID, listOf(websocket.textHandlerID()))
+            CoroutineScope(vertx.dispatcher()).launch {
+                handleClose(websocket)
             }
-
-            debug.log(DebugType.UPSOCKET_WEBSOCKET_CLOSED, listOf(vlog, websocket.textHandlerID(), connectionId, traceId))
         }
 
         websocket.accept()
-        debug.log(DebugType.UPSOCKET_SOCKET_ACCEPTED, listOf(vlog, websocket.textHandlerID(), traceId))
 
         vertx.setTimer(handshakeTimeoutMs) {
             if (!handshakeCompleted) {
-                debug.log(DebugType.UPSOCKET_CONNECTION_TIMEOUT, listOf(vlog, websocket.textHandlerID(), handshakeTimeoutMs, traceId))
-
                 handshakeCompleted = true
                 CoroutineScope(vertx.dispatcher()).launch {
-                    try {
-                        connectionLifecycle.initiateConnection(websocket, deploymentID, traceId)
-                    } catch (e: Exception) {
-                        debug.log(DebugType.UPSOCKET_INITIATE_CONNECTION_ERROR, listOf(vlog, e, websocket.textHandlerID()))
-
-                        WebSocketUtils.sendErrorResponse(websocket, e, null, vlog)
-                    }
+                    initiateConnection(websocket, traceId)
                 }
             }
         }
     }
 
-    /**
-     * Deploy a dedicated HTTP server for up sockets
-     */
-    private suspend fun deployHttpServer() {
-        debug.log(DebugType.UPSOCKET_DEPLOYING_HTTP_SERVER, listOf(vlog))
+    private suspend fun initiateConnection(websocket: ServerWebSocket, traceId: String) {
+        try {
+            val connection = connectionStore.create()
+            val socketId = "up-${UUID.randomUUID()}"
+
+            val updatedConnection = connectionStore.putUpSocket(connection.id, socketId, deploymentID)
+            protocol.sockets.put(connection.id, websocket)
+
+            protocol.router.sendConfirmation(websocket, "connection_confirm", connection.id)
+            heartbeatManager.startHeartbeat(socketId, connection.id)
+        } catch (e: Exception) {
+            log.error("Failed to initiate connection", e)
+            protocol.router.sendError(websocket, e, null)
+        }
+    }
+
+    private suspend fun handleClose(websocket: ServerWebSocket) {
+        val connectionId = protocol.sockets.getConnectionId(websocket) ?: return
 
         try {
-            httpServer = HttpServerUtils.createAndStartHttpServer(
-                vertx = vertx,
-                router = router,
-                host = httpHost,
-                port = httpPort
-            ).await()
-
-            val actualPort = httpServer?.actualPort() ?: httpPort
-
-            debug.log(DebugType.UPSOCKET_HTTP_SERVER_DEPLOYED, listOf(vlog, actualPort, httpHost))
-
+            heartbeatManager.stopHeartbeat(connectionId)
+            connectionStore.updateReconnectable(connectionId, false)
+            protocol.sockets.remove(connectionId)
         } catch (e: Exception) {
-            vlog.logVerticleError("DEPLOY_HTTP_SERVER", e)
-            log.error("Failed to deploy HTTP server", e)
+            log.error("Error handling close for {}", connectionId, e)
         }
     }
 
     override suspend fun stop() {
-        debug.log(DebugType.UPSOCKET_HTTP_SERVER_STOPPING, listOf(vlog))
-
         heartbeatManager.stopAll()
-
-        if (httpServer != null) {
-            try {
-                httpServer!!.close().await()
-            } catch (e: Exception) {
-                log.error("Error closing HTTP server", e)
-            }
-        }
+        protocol.router.stopServer()
     }
 }

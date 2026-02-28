@@ -1,5 +1,5 @@
 package com.minare.core.transport.services
-
+/**
 import com.minare.cache.ConnectionCache
 import com.minare.core.utils.vertx.VerticleLogger
 import io.vertx.core.http.ServerWebSocket
@@ -158,4 +158,4 @@ object WebSocketUtils {
 
         websocket.writeTextMessage(confirmation.encode())
     }
-}
+}**/

@@ -1,5 +1,5 @@
 package com.minare.worker.upsocket.handlers
-
+/**
 import com.google.inject.Inject
 import com.minare.application.config.FrameworkConfig
 import com.minare.cache.ConnectionCache
@@ -52,4 +52,4 @@ class CloseHandler @Inject constructor(
             vlog.logVerticleError("WEBSOCKET_CLOSE", e, mapOf("connectionId" to connectionId))
         }
     }
-}
+}**/

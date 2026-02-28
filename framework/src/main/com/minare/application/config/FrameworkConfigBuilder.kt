@@ -50,6 +50,7 @@ class FrameworkConfigBuilder {
         val downsocket = require(sockets.getJsonObject("down"), "sockets.down section must be specified")
         config.sockets.down.host = require(downsocket.getString("host"), "sockets.down.host must be specified")
         config.sockets.down.port = require(downsocket.getInteger("port"), "sockets.down.port must be specified")
+        config.sockets.down.heartbeatInterval = require(downsocket.getInteger("heartbeat_interval"), "sockets.up.heartbeat_interval must be specified").toLong()
         config.sockets.down.cacheTtl = require(downsocket.getInteger("cache_ttl"), "sockets.down.cache_ttl must be specified").toLong()
 
         val connection = require(sockets.getJsonObject("connection"), "sockets.connection section must be specified")

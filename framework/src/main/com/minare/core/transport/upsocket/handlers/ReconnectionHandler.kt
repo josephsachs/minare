@@ -1,6 +1,6 @@
 package com.minare.worker.upsocket.handlers
 
-import com.google.inject.Inject
+/**import com.google.inject.Inject
 import com.minare.application.config.FrameworkConfig
 import com.minare.core.MinareApplication
 import com.minare.cache.ConnectionCache
@@ -202,4 +202,4 @@ class ReconnectionHandler @Inject constructor(
 
         websocket.writeTextMessage(response.encode())
     }
-}
+}**/

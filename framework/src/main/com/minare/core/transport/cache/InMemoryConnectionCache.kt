@@ -10,7 +10,7 @@ import com.google.inject.Singleton
 
 /**
  * In-memory implementation of ConnectionCache using ConcurrentHashMaps
- */
+
 @Singleton
 class InMemoryConnectionCache @Inject constructor(
     private val connectionStore: ConnectionStore
@@ -125,4 +125,4 @@ class InMemoryConnectionCache @Inject constructor(
     override fun isFullyConnected(connectionId: String): Boolean {
         return upSockets.containsKey(connectionId) && downSockets.containsKey(connectionId)
     }
-}
+}**/

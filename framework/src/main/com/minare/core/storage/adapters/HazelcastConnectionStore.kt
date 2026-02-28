@@ -1,14 +1,14 @@
 package com.minare.core.storage.adapters
 
+import com.google.inject.Inject
 import com.google.inject.Singleton
 import com.hazelcast.core.HazelcastInstance
 import com.hazelcast.map.IMap
 import com.minare.core.storage.interfaces.ConnectionStore
 import com.minare.core.transport.models.Connection
+import com.minare.exceptions.ClientConnectionException
 import org.slf4j.LoggerFactory
 import java.util.UUID
-import com.google.inject.Inject
-import com.minare.exceptions.ClientConnectionException
 
 @Singleton
 class HazelcastConnectionStore @Inject constructor(
@@ -22,19 +22,13 @@ class HazelcastConnectionStore @Inject constructor(
         val now = System.currentTimeMillis()
 
         val connection = Connection(
-            _id = connectionId,
+            id = connectionId,
             createdAt = now,
             lastUpdated = now,
-            lastActivity = now,
-            upSocketId = null,
-            upSocketDeploymentId = null,
-            downSocketId = null,
-            downSocketDeploymentId = null,
-            reconnectable = true
+            lastActivity = now
         )
 
         map[connectionId] = connection
-        log.info("Connection created: {}", connectionId)
         return connection
     }
 
@@ -42,8 +36,6 @@ class HazelcastConnectionStore @Inject constructor(
         val removed = map.remove(connectionId)
         if (removed == null) {
             log.debug("No connection found to delete: {}", connectionId)
-        } else {
-            log.info("Connection deleted: {}", connectionId)
         }
     }
 
@@ -57,9 +49,7 @@ class HazelcastConnectionStore @Inject constructor(
     }
 
     override suspend fun find(connectionId: Set<String>): Set<Connection> {
-        if (connectionId.isEmpty()) {
-            return emptySet()
-        }
+        if (connectionId.isEmpty()) return emptySet()
         return map.getAll(connectionId).values.toSet()
     }
 
@@ -84,7 +74,7 @@ class HazelcastConnectionStore @Inject constructor(
 
     override suspend fun putDownSocket(connectionId: String, socketId: String?, deploymentId: String?): Connection {
         val existing = map[connectionId]
-            ?: throw IllegalArgumentException("Connection not found: $connectionId")
+            ?: throw ClientConnectionException("Connection not found: $connectionId")
 
         val now = System.currentTimeMillis()
         val updated = existing.copy(
@@ -99,7 +89,7 @@ class HazelcastConnectionStore @Inject constructor(
 
     override suspend fun putUpSocket(connectionId: String, socketId: String?, deploymentId: String?): Connection {
         val existing = map[connectionId]
-            ?: throw IllegalArgumentException("Connection not found: $connectionId")
+            ?: throw ClientConnectionException("Connection not found: $connectionId")
 
         val now = System.currentTimeMillis()
         val updated = existing.copy(

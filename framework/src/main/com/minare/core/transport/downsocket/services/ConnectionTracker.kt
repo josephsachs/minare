@@ -1,5 +1,5 @@
 package com.minare.core.transport.downsocket.services
-
+/**
 import com.google.inject.Inject
 import com.google.inject.Singleton
 import com.minare.core.utils.debug.DebugLogger
@@ -134,4 +134,4 @@ class ConnectionTracker(
                 .put("active", connectionToSocket.size)
             )
     }
-}
+}**/

@@ -1,85 +1,55 @@
 package com.minare.core.transport.services
 
-import com.google.inject.Inject
-import com.google.inject.Singleton
 import com.minare.core.storage.interfaces.ConnectionStore
-import com.minare.core.utils.vertx.VerticleLogger
+import com.minare.core.transport.interfaces.SocketStore
 import io.vertx.core.Vertx
-import io.vertx.core.http.ServerWebSocket
 import io.vertx.core.json.JsonObject
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import org.slf4j.LoggerFactory
-import java.util.concurrent.ConcurrentHashMap
 
-/**
- * Manages heartbeats for WebSocket connections to detect disconnections.
- * Provides a central place to handle heartbeat logic shared by verticles.
- */
-@Singleton
-class HeartbeatManager @Inject constructor(
+class HeartbeatManager(
     private val vertx: Vertx,
-    private val logger: VerticleLogger,
     private val connectionStore: ConnectionStore,
-    private val coroutineScope: CoroutineScope
+    private val coroutineScope: CoroutineScope,
+    private val socketStore: SocketStore<*>
 ) {
     private val log = LoggerFactory.getLogger(HeartbeatManager::class.java)
 
-    private val heartbeatTimers = ConcurrentHashMap<String, Long>()
+    private val heartbeatTimers = HashMap<String, Long>()
     private var heartbeatIntervalMs = 15000L
 
-    /**
-     * Set the heartbeat interval
-     *
-     * @param intervalMs Interval in milliseconds
-     */
     fun setHeartbeatInterval(intervalMs: Long) {
         heartbeatIntervalMs = intervalMs
-        log.info("Heartbeat interval set to {}ms", intervalMs)
     }
 
-    /**
-     * Start heartbeat for a socket
-     *
-     * @param socketId WebSocket ID
-     * @param connectionId Associated connection ID (for activity updates)
-     * @param socket WebSocket to send heartbeats on
-     */
-    fun startHeartbeat(socketId: String, connectionId: String, socket: ServerWebSocket) {
+    fun startHeartbeat(socketId: String, connectionId: String) {
         stopHeartbeat(socketId)
+
+        // TEMPORARY DEBUG
+        log.info("TIMER_DEBUG: $heartbeatIntervalMs")
 
         val timerId = vertx.setPeriodic(heartbeatIntervalMs) { _ ->
             coroutineScope.launch {
                 try {
-                    if (socket.isClosed()) {
+                    val sent = socketStore.send(connectionId, JsonObject()
+                        .put("type", "heartbeat")
+                        .put("timestamp", System.currentTimeMillis())
+                        .encode()
+                    )
+
+                    if (!sent) {
                         stopHeartbeat(socketId)
                         return@launch
                     }
 
-                    val heartbeatMessage = JsonObject()
-                        .put("type", "heartbeat")
-                        .put("timestamp", System.currentTimeMillis())
-
-                    socket.writeTextMessage(heartbeatMessage.encode())
-
                     try {
                         connectionStore.updateLastActivity(connectionId)
                     } catch (e: Exception) {
-                        log.warn("Failed to update last activity for connection $connectionId", e)
-                    }
-
-                    if (Math.random() < 0.05) { // % of heartbeats
-                        logger.getEventLogger().trace("HEARTBEAT_SENT", mapOf(
-                            "socketId" to socketId,
-                            "connectionId" to connectionId
-                        ))
+                        log.warn("Failed to update last activity for connection {}", connectionId)
                     }
                 } catch (e: Exception) {
-                    logger.logVerticleError("HEARTBEAT_SEND", e, mapOf(
-                        "socketId" to socketId,
-                        "connectionId" to connectionId
-                    ))
-
+                    log.warn("Heartbeat failed for socket {}: {}", socketId, e.message)
                     if (e.message?.contains("Connection was closed") == true) {
                         stopHeartbeat(socketId)
                     }
@@ -88,58 +58,26 @@ class HeartbeatManager @Inject constructor(
         }
 
         heartbeatTimers[socketId] = timerId
-        logger.getEventLogger().trace("HEARTBEAT_STARTED", mapOf(
-            "socketId" to socketId,
-            "connectionId" to connectionId,
-            "intervalMs" to heartbeatIntervalMs
-        ))
     }
 
-    /**
-     * Stop heartbeat for a socket
-     *
-     * @param socketId Socket ID
-     */
     fun stopHeartbeat(socketId: String) {
         heartbeatTimers.remove(socketId)?.let { timerId ->
             vertx.cancelTimer(timerId)
-            logger.getEventLogger().trace("HEARTBEAT_STOPPED", mapOf(
-                "socketId" to socketId
-            ))
         }
     }
 
-    /**
-     * Stop all heartbeats
-     */
     fun stopAll() {
-        heartbeatTimers.forEach { (socketId, timerId) ->
+        heartbeatTimers.forEach { (_, timerId) ->
             vertx.cancelTimer(timerId)
-            log.debug("Stopped heartbeat for socket $socketId")
         }
         heartbeatTimers.clear()
-        log.info("Stopped all heartbeats")
     }
 
-    /**
-     * Get the number of active heartbeat timers
-     *
-     * @return Count of active heartbeats
-     */
-    fun getActiveHeartbeatCount(): Int {
-        return heartbeatTimers.size
-    }
+    fun activeCount(): Int = heartbeatTimers.size
 
-    /**
-     * Get metrics about heartbeats
-     *
-     * @return JsonObject with heartbeat metrics
-     */
     fun getMetrics(): JsonObject {
         return JsonObject()
-            .put("heartbeats", JsonObject()
-                .put("active", heartbeatTimers.size)
-                .put("intervalMs", heartbeatIntervalMs)
-            )
+            .put("active", heartbeatTimers.size)
+            .put("intervalMs", heartbeatIntervalMs)
     }
 }

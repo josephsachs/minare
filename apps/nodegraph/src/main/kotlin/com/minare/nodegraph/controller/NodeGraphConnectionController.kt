@@ -24,33 +24,21 @@ class NodeGraphConnectionController @Inject constructor(
      * Subscribes the client to the default channel and initiates sync.
      */
     override suspend fun onClientFullyConnected(connection: Connection) {
-        log.info("Example client {} is now fully connected", connection._id)
+        log.info("Test client {} is now fully connected", connection.id)
 
         val defaultChannelId = channelController.getDefaultChannel()
 
         if (defaultChannelId == null) {
-            log.warn("No default channel found for client {}, skipping auto-subscription", connection._id)
+            log.warn("No default channel found for client {}, skipping auto-subscription", connection.id)
             return
         }
 
-        if (channelController.addClient(connection._id, defaultChannelId)) {
-            syncCommandHandler.syncChannelToConnection(defaultChannelId, connection._id)
-            sendInitialSyncComplete(connection._id)
-        }
-    }
-
-    /**
-     * Send a message to the client indicating that initial sync is complete
-     */
-    private fun sendInitialSyncComplete(connectionId: String) {
-        val commandSocket = getUpSocket(connectionId)
-        if (commandSocket != null && !commandSocket.isClosed()) {
-            val message = JsonObject()
+        if (channelController.addClient(connection.id, defaultChannelId)) {
+            syncCommandHandler.syncChannelToConnection(defaultChannelId, connection.id)
+            sendToUpSocket(connection.id, JsonObject()
                 .put("type", "initial_sync_complete")
                 .put("timestamp", System.currentTimeMillis())
-
-            commandSocket.writeTextMessage(message.encode())
-            log.debug("Sent initial sync complete notification to client {}", connectionId)
+            )
         }
     }
 }

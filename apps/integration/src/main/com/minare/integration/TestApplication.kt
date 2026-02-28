@@ -4,6 +4,7 @@ import com.minare.core.MinareApplication
 import com.minare.integration.config.TestModule
 import com.minare.integration.controller.TestChannelController
 import com.minare.integration.harness.IntegrationTestRunner
+import com.minare.integration.suites.ConnectionTestSuite
 import com.minare.integration.suites.SmokeTestSuite
 import com.minare.integration.suites.EntityControllerTestSuite
 import com.minare.integration.suites.OperationTestSuite
@@ -42,6 +43,7 @@ class TestApplication : MinareApplication() {
         testRunner.runAllAndExit(
             SmokeTestSuite(injector),
             EntityControllerTestSuite(injector),
+            ConnectionTestSuite(injector),
             OperationTestSuite(injector)
         )
     }
