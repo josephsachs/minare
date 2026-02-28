@@ -217,20 +217,15 @@ class WorkerOperationHandlerVerticle @Inject constructor(
                 ?: throw IllegalStateException("Entity $entityId not found for deletion")
 
             val beforeVersion = beforeEntity.getLong("version") ?: 0L
+
+            // Publish delete notification BEFORE removing from channels,
+            // so downstream handlers can still route via channel membership
             publishService.publishStateChange(
                 entityId,
                 entityType,
                 beforeVersion,
                 JsonObject().put("_deleted", true)
             )
-
-            val channels = contextStore.getChannelsByEntityId(entityId)
-            channels.forEach { channelId ->
-                contextStore.remove(entityId, channelId)
-            }
-            if (channels.isNotEmpty()) {
-                log.debug("Removed entity {} from {} channels", entityId, channels.size)
-            }
 
             entityGraphReferenceService.removeReferencesToEntity(entityId)
             entityController.delete(entityId)
@@ -244,6 +239,16 @@ class WorkerOperationHandlerVerticle @Inject constructor(
                 beforeEntity = beforeEntity,
                 afterEntity = null
             )
+
+            // Build a lightweight entity for the application hook
+            val entity = entityFactory.getNew(entityType).apply {
+                _id = entityId
+                type = entityType
+            }
+
+            // Application hook — channel removal is the application's responsibility,
+            // mirroring how afterCreateOperation adds entities to channels
+            operationController.afterDeleteOperation(operationJson, entity)
 
             log.debug("Deleted entity {} of type {}", entityId, entityType)
         }
