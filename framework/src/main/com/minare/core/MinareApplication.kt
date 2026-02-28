@@ -48,12 +48,7 @@ import com.minare.core.storage.services.StateInitializer
 import com.minare.core.transport.CleanupVerticle
 import com.minare.core.transport.downsocket.config.DownSocketVerticleModule
 import com.minare.core.transport.upsocket.config.UpSocketVerticleModule
-import com.minare.exceptions.EntityFactoryException
 import com.minare.worker.coordinator.events.WorkerReadinessEvent
-import io.vertx.config.ConfigRetriever
-import io.vertx.config.ConfigRetrieverOptions
-import io.vertx.config.ConfigStoreOptions
-import io.vertx.ext.mongo.MongoClient
 import kotlinx.coroutines.*
 import kotlin.system.exitProcess
 
@@ -78,23 +73,10 @@ abstract class MinareApplication : CoroutineVerticle() {
     private var processorCount: Number? = null
     private var verticleDeploymentIds = ConcurrentHashMap<String, String>()
 
-    // Connection state
-    private val pendingConnections = ConcurrentHashMap<String, ConnectionState>()
-
-    private class ConnectionState {
-        var upSocketConnected = false
-        var downSocketConnected = false
-        var traceId: String? = null
-    }
-
     // Servers
     var httpServer: HttpServer? = null
 
     object ConnectionEvents {
-        const val ADDRESS_UP_SOCKET_CONNECTED = "minare.connection.up.connected"
-        const val ADDRESS_DOWN_SOCKET_CONNECTED = "minare.connection.down.connected"
-        const val ADDRESS_CONNECTION_COMPLETE = "minare.connection.complete"
-
         const val ADDRESS_COORDINATOR_STARTED = "minare.cluster.coordinator.started"
         const val ADDRESS_TASK_COORDINATOR_STARTED = "minare.cluster.task.coordinator.started"
         const val ADDRESS_WORKER_STARTED = "minare.cluster.worker.started"
@@ -360,7 +342,7 @@ abstract class MinareApplication : CoroutineVerticle() {
             setupApplicationRoutes()
         }
 
-        registerConnectionEventHandlers()
+        //registerConnectionEventHandlers()
         workerGetRegistry()
 
         // Announce worker is ready
@@ -464,7 +446,7 @@ abstract class MinareApplication : CoroutineVerticle() {
 
     /**
      * Register connection event handlers. Originates in worker context.
-     */
+
     private fun registerConnectionEventHandlers() {
         vertx.eventBus().consumer<JsonObject>(ConnectionEvents.ADDRESS_UP_SOCKET_CONNECTED) { message ->
             val connectionId = message.body().getString("connectionId")
@@ -545,6 +527,8 @@ abstract class MinareApplication : CoroutineVerticle() {
             }
         }
     }
+
+    **/
 
     /**
      * Main entry point that starts the application.

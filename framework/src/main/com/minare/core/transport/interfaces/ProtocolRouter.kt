@@ -1,10 +1,11 @@
 package com.minare.core.transport.interfaces
 
+import com.google.inject.Inject
 import io.vertx.core.Vertx
 import io.vertx.core.json.JsonObject
 import kotlin.coroutines.CoroutineContext
 
-abstract class ProtocolRouter<T>(
+abstract class ProtocolRouter<T> @Inject constructor(
     protected val vertx: Vertx,
     protected val context: CoroutineContext
 ) {

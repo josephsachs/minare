@@ -1,12 +1,13 @@
 package com.minare.core.transport.adapters
 
+import com.google.inject.Inject
 import com.minare.core.transport.interfaces.SocketProtocol
 import com.minare.core.utils.vertx.VerticleLogger
 import io.vertx.core.Vertx
 import io.vertx.core.http.ServerWebSocket
 import kotlin.coroutines.CoroutineContext
 
-class WebsocketProtocol(
+class WebsocketProtocol @Inject constructor(
     vertx: Vertx,
     context: CoroutineContext,
     logger: VerticleLogger
