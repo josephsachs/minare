@@ -36,7 +36,6 @@ open class ConnectionController @Inject constructor() {
      * Override to provide auth and preflight on all incoming socket messages to the upsocket
      */
     open suspend fun onConnectionAttempt(message: String): Boolean {
-        log.info("Connection attempted")
         return true
     }
 

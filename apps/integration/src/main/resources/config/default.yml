@@ -1,16 +1,20 @@
 # config/default.yaml
 sockets:
   up:
+    type: websocket
     host: "0.0.0.0"
     port: 4225
     base_path: "/command"
     handshake_timeout: 3000
     heartbeat_interval: 15000
+    threads: 3
   down:
+    type: websocket
     host: "0.0.0.0"
     port: 4226
     cache_ttl: 1000
     heartbeat_interval: 15000
+    threads: 3
   connection:
     connection_expiry: 180000
     cleanup_interval: 60000

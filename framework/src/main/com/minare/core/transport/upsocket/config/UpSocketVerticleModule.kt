@@ -12,21 +12,34 @@ import com.minare.core.storage.interfaces.ChannelStore
 import com.minare.core.storage.interfaces.ConnectionStore
 import com.minare.core.transport.adapters.WebsocketProtocol
 import com.minare.core.transport.interfaces.SocketProtocol
+import com.minare.core.transport.models.SocketTypeConfigOption
 import com.minare.core.transport.upsocket.UpSocketVerticle
 import com.minare.core.transport.upsocket.events.EntitySyncEvent
 import com.minare.core.utils.vertx.EventBusUtils
 import com.minare.core.utils.vertx.VerticleLogger
+import com.minare.exceptions.ConfigurationException
 import com.minare.worker.upsocket.events.ConnectionCleanupEvent
 import io.vertx.core.Vertx
 import kotlinx.coroutines.CoroutineScope
+import org.slf4j.LoggerFactory
 import kotlin.coroutines.CoroutineContext
 
-class UpSocketVerticleModule : PrivateModule() {
+class UpSocketVerticleModule(
+    private val frameworkConfig: FrameworkConfig
+) : PrivateModule() {
+    private val log = LoggerFactory.getLogger(UpSocketVerticleModule::class.java)
 
     override fun configure() {
         bind(UpSocketVerticle::class.java)
 
-        bind(SocketProtocol::class.java).to(WebsocketProtocol::class.java)
+        when (frameworkConfig.sockets.up.type) {
+            SocketTypeConfigOption.WEBSOCKET -> {
+                bind(SocketProtocol::class.java).to(WebsocketProtocol::class.java)
+            }
+            else -> {
+                throw ConfigurationException("No socket type configured for down")
+            }
+        }
 
         bind(EntitySyncEvent::class.java).`in`(Singleton::class.java)
         bind(ConnectionCleanupEvent::class.java).`in`(Singleton::class.java)
