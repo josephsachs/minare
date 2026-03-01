@@ -32,6 +32,14 @@ open class ConnectionController @Inject constructor() {
         return connectionStore.exists(connectionId)
     }
 
+    /**
+     * Override to provide auth and preflight on all incoming socket messages to the upsocket
+     */
+    open suspend fun onConnectionAttempt(message: String): Boolean {
+        log.info("Connection attempted")
+        return true
+    }
+
     suspend fun isConnectionReconnectable(connectionId: String): Boolean {
         return try {
             val connection = connectionStore.find(connectionId)
@@ -44,7 +52,7 @@ open class ConnectionController @Inject constructor() {
         }
     }
 
-    open suspend fun onClientFullyConnected(connection: Connection) {
+    open suspend fun onConnected(connection: Connection) {
         log.info("Client {} is now fully connected", connection.id)
     }
 

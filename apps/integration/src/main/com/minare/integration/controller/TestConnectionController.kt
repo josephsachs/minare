@@ -15,7 +15,7 @@ class TestConnectionController @Inject constructor(
 ) : ConnectionController() {
     private val log = LoggerFactory.getLogger(TestConnectionController::class.java)
 
-    override suspend fun onClientFullyConnected(connection: Connection) {
+    override suspend fun onConnected(connection: Connection) {
         log.info("Test client {} is now fully connected", connection.id)
 
         val defaultChannelId = channelController.getDefaultChannel()

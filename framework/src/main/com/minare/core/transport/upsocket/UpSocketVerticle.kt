@@ -58,8 +58,8 @@ class UpSocketVerticle @Inject constructor(
         vlog.setVerticle(this)
 
         protocol = WebsocketProtocol(vertx, vertx.dispatcher(), vlog)
-        heartbeatManager = HeartbeatManager(vertx, connectionStore, CoroutineScope(vertx.dispatcher()), protocol.sockets)
 
+        heartbeatManager = HeartbeatManager(vertx, connectionStore, CoroutineScope(vertx.dispatcher()), protocol.sockets)
         heartbeatManager.setHeartbeatInterval(frameworkConfig.sockets.up.heartbeatInterval)
 
         protocol.router.setupRoutes(basePath) { socket, traceId ->
@@ -99,7 +99,9 @@ class UpSocketVerticle @Inject constructor(
             CoroutineScope(vertx.dispatcher()).launch {
                 try {
                     val connection = connectionStore.find(connectionId)
-                    connectionController.onClientFullyConnected(connection)
+
+                    // Application hook
+                    connectionController.onConnected(connection)
                 } catch (e: Exception) {
                     log.error("Error handling fully connected for {}", connectionId, e)
                 }
@@ -128,6 +130,9 @@ class UpSocketVerticle @Inject constructor(
             CoroutineScope(vertx.dispatcher()).launch {
                 try {
                     val msg = JsonObject(message)
+
+                    // Application hook
+                    if (!connectionController.onConnectionAttempt(message)) return@launch
 
                     if (!handshakeCompleted && msg.containsKey("reconnect") && msg.containsKey("connectionId")) {
                         handshakeCompleted = true

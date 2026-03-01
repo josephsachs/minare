@@ -23,7 +23,7 @@ class NodeGraphConnectionController @Inject constructor(
      * Called when a client becomes fully connected.
      * Subscribes the client to the default channel and initiates sync.
      */
-    override suspend fun onClientFullyConnected(connection: Connection) {
+    override suspend fun onConnected(connection: Connection) {
         log.info("Test client {} is now fully connected", connection.id)
 
         val defaultChannelId = channelController.getDefaultChannel()
