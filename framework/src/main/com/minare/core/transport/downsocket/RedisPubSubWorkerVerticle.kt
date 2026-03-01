@@ -198,9 +198,6 @@ class RedisPubSubWorkerVerticle @Inject constructor(
 
     /**
      * Determine which Redis pub/sub channels to subscribe to.
-     * Updated to use the strategy's own getSubscriptions() method instead of
-     * brittle string-based class name matching. This is both type-safe and
-     * delegates to the strategy itself to determine its subscription needs.
      */
     private fun determineSubscriptionChannels(): List<String> {
         return try {

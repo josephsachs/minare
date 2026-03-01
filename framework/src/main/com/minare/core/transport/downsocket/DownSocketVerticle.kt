@@ -191,7 +191,7 @@ class DownSocketVerticle @Inject constructor(
                     .put("deploymentId", instanceId)
             )
 
-            notifyUpsocketFullyConnected(updatedConnection.upSocketDeploymentId, connectionId)
+            notifyUpsocketFullyConnected(updatedConnection.upSocketInstanceId, connectionId)
         } catch (e: Exception) {
             log.error("Failed to associate down socket for {}", connectionId, e)
             protocol.router.sendError(websocket, e, connectionId)

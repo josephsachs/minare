@@ -5,7 +5,9 @@ import io.vertx.core.json.JsonObject
 import com.minare.core.frames.coordinator.services.SessionService.Companion.AutoSession
 import com.minare.core.frames.services.SnapshotService.Companion.SnapshotStoreOption
 import com.minare.core.storage.interfaces.EntityGraphStoreOption
+import com.minare.core.transport.models.SocketTypeConfigOption
 import io.vertx.core.impl.logging.LoggerFactory
+import kotlin.math.max
 
 class FrameworkConfigBuilder {
     private val log = LoggerFactory.getLogger(FrameworkConfigBuilder::class.java)
@@ -38,20 +40,36 @@ class FrameworkConfigBuilder {
     private fun setSocketsConfig(file: JsonObject, config: FrameworkConfig): FrameworkConfig {
         val sockets = require(file.getJsonObject("sockets"), "sockets section must be specified")
         val upsocket = require(sockets.getJsonObject("up"), "sockets.up section must be specified")
+
+        val upsocketType = withInfo(upsocket.getString("type"), "sockets.up.type not specified, defaults to websocket")
+        config.sockets.up.type = when(upsocketType) {
+            "websocket" -> { SocketTypeConfigOption.WEBSOCKET }
+            else -> { SocketTypeConfigOption.WEBSOCKET }
+        }
+
         config.sockets.up.host = require(upsocket.getString("host"), "sockets.up.host must be specified")
         config.sockets.up.port = require(upsocket.getInteger("port"), "sockets.up.port must be specified")
         config.sockets.up.basePath = require(upsocket.getString("base_path"), "sockets.up.base_path must be specified")
         config.sockets.up.heartbeatInterval = require(upsocket.getInteger("heartbeat_interval"), "sockets.up.heartbeat_interval must be specified").toLong()
         config.sockets.up.handshakeTimeout = require(upsocket.getInteger("handshake_timeout"), "sockets.up.handshake_timeout must be specified").toLong()
+        config.sockets.up.threads = max(withInfo(upsocket.getInteger("threads"), "sockets.up.threads not specified, defaults to 1"), 1)
+
         config.sockets.up.ack = toBoolean(
             withInfo(upsocket.getString("ack"), "sockets.up.ack not specified, defaulting to true"), true
         )
+
+        val downsocketType = withInfo(upsocket.getString("type"), "sockets.up.type not specified, defaults to websocket")
+        config.sockets.down.type = when(downsocketType) {
+            "websocket" -> { SocketTypeConfigOption.WEBSOCKET }
+            else -> { SocketTypeConfigOption.WEBSOCKET }
+        }
 
         val downsocket = require(sockets.getJsonObject("down"), "sockets.down section must be specified")
         config.sockets.down.host = require(downsocket.getString("host"), "sockets.down.host must be specified")
         config.sockets.down.port = require(downsocket.getInteger("port"), "sockets.down.port must be specified")
         config.sockets.down.heartbeatInterval = require(downsocket.getInteger("heartbeat_interval"), "sockets.up.heartbeat_interval must be specified").toLong()
         config.sockets.down.cacheTtl = require(downsocket.getInteger("cache_ttl"), "sockets.down.cache_ttl must be specified").toLong()
+        config.sockets.down.threads = max(withInfo(downsocket.getInteger("threads"), "sockets.down.threads not specified, defaults to 1"), 1)
 
         val connection = require(sockets.getJsonObject("connection"), "sockets.connection section must be specified")
         config.sockets.connection.connectionExpiry = require(connection.getString("connection_expiry"), "sockets.connection.connection_expiry must be specified").toLong()
@@ -76,8 +94,9 @@ class FrameworkConfigBuilder {
         )
 
         val entityUpdate = require(entity.getJsonObject("update"), "entity.update section must be specified")
-        val collectChanges = require(entityUpdate.getString("collect_changes"), "entity.update.collect_changes must be specified")
-        config.entity.update.collectChanges = toBoolean(collectChanges)
+        config.entity.update.collectChanges = toBoolean(
+            require(entityUpdate.getString("collect_changes"), "entity.update.collect_changes must be specified")
+        )
         config.entity.update.interval = entityUpdate.getInteger("interval")?.toLong() ?: 0L
 
         val entityGraph = withInfo(entity.getJsonObject("graphing"), "entity.graphing section not specified, defaulting to disabled")

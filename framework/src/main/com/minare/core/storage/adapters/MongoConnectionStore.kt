@@ -30,9 +30,9 @@ class MongoConnectionStore @Inject constructor(
             lastUpdated = now,
             lastActivity = now,
             upSocketId = null,
-            upSocketDeploymentId = null,
+            upSocketInstanceId = null,
             downSocketId = null,
-            downSocketDeploymentId = null,
+            downSocketInstanceId = null,
             reconnectable = true
         )
 
@@ -42,9 +42,9 @@ class MongoConnectionStore @Inject constructor(
             .put("lastUpdated", connection.lastUpdated)
             .put("lastActivity", connection.lastActivity)
             .put("upSocketId", connection.upSocketId)
-            .put("upSocketDeploymentId", connection.upSocketDeploymentId)
+            .put("upSocketDeploymentId", connection.upSocketInstanceId)
             .put("downSocketId", connection.downSocketId)
-            .put("downSocketDeploymentId", connection.downSocketDeploymentId)
+            .put("downSocketDeploymentId", connection.downSocketInstanceId)
             .put("reconnectable", connection.reconnectable)
 
         try {
@@ -114,9 +114,9 @@ class MongoConnectionStore @Inject constructor(
                 lastUpdated = result.getLong("lastUpdated"),
                 lastActivity = result.getLong("lastActivity", result.getLong("lastUpdated")), // Fallback for compatibility
                 upSocketId = result.getString("upSocketId"),
-                upSocketDeploymentId = result.getString("upSocketDeploymentId"),
+                upSocketInstanceId = result.getString("upSocketDeploymentId"),
                 downSocketId = result.getString("downSocketId"),
-                downSocketDeploymentId = result.getString("downSocketDeploymentId"),
+                downSocketInstanceId = result.getString("downSocketDeploymentId"),
                 reconnectable = result.getBoolean("reconnectable", true) // Default to true for backward compatibility
             )
         } catch (e: Exception) {
@@ -155,9 +155,9 @@ class MongoConnectionStore @Inject constructor(
                     lastUpdated = doc.getLong("lastUpdated"),
                     lastActivity = doc.getLong("lastActivity", doc.getLong("lastUpdated")), // Fallback for compatibility
                     upSocketId = doc.getString("upSocketId"),
-                    upSocketDeploymentId = doc.getString("upSocketDeploymentId"),
+                    upSocketInstanceId = doc.getString("upSocketDeploymentId"),
                     downSocketId = doc.getString("downSocketId"),
-                    downSocketDeploymentId = doc.getString("downSocketDeploymentId"),
+                    downSocketInstanceId = doc.getString("downSocketDeploymentId"),
                     reconnectable = doc.getBoolean("reconnectable", true) // Default to true for backward compatibility
                 )
             }.toSet()
@@ -313,9 +313,9 @@ class MongoConnectionStore @Inject constructor(
                     lastUpdated = doc.getLong("lastUpdated"),
                     lastActivity = doc.getLong("lastActivity", doc.getLong("lastUpdated")),
                     upSocketId = doc.getString("upSocketId"),
-                    upSocketDeploymentId = doc.getString("upSocketDeploymentId"),
+                    upSocketInstanceId = doc.getString("upSocketDeploymentId"),
                     downSocketId = doc.getString("downSocketId"),
-                    downSocketDeploymentId = doc.getString("downSocketDeploymentId"),
+                    downSocketInstanceId = doc.getString("downSocketDeploymentId"),
                     reconnectable = doc.getBoolean("reconnectable", true)
                 )
             }
@@ -342,9 +342,9 @@ class MongoConnectionStore @Inject constructor(
                     lastUpdated = doc.getLong("lastUpdated"),
                     lastActivity = doc.getLong("lastActivity", doc.getLong("lastUpdated")),
                     upSocketId = doc.getString("upSocketId"),
-                    upSocketDeploymentId = doc.getString("upSocketDeploymentId"),
+                    upSocketInstanceId = doc.getString("upSocketDeploymentId"),
                     downSocketId = doc.getString("downSocketId"),
-                    downSocketDeploymentId = doc.getString("downSocketDeploymentId"),
+                    downSocketInstanceId = doc.getString("downSocketDeploymentId"),
                     reconnectable = doc.getBoolean("reconnectable", true)
                 )
             }

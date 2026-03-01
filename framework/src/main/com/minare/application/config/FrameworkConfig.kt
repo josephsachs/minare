@@ -3,6 +3,7 @@ package com.minare.application.config
 import com.minare.core.frames.coordinator.services.SessionService.Companion.AutoSession
 import com.minare.core.frames.services.SnapshotService.Companion.SnapshotStoreOption
 import com.minare.core.storage.interfaces.EntityGraphStoreOption
+import com.minare.core.transport.models.SocketTypeConfigOption
 
 class FrameworkConfig {
     class SocketsSection {
@@ -12,21 +13,25 @@ class FrameworkConfig {
     }
 
     class UpSocketConfig {
+        var type: SocketTypeConfigOption = SocketTypeConfigOption.WEBSOCKET
         var host: String = ""
         var port: Int = 0
         var basePath: String = ""
         var handshakeTimeout: Long = 0L
         var heartbeatInterval: Long = 0L
         var ack: Boolean = true
+        var threads: Int = 0
     }
 
     class DownSocketConfig {
+        var type: SocketTypeConfigOption = SocketTypeConfigOption.WEBSOCKET
         var host: String = ""
         var port: Int = 0
         var basePath: String = ""
         var tickInterval: Long = 0L
         var cacheTtl: Long = 0L
         var heartbeatInterval: Long = 0L
+        var threads: Int = 0
     }
 
     class SocketConnectionConfig {

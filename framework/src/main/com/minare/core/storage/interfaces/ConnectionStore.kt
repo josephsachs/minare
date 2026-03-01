@@ -7,8 +7,8 @@ interface ConnectionStore {
     suspend fun delete(connectionId: String)
     suspend fun find(connectionId: String): Connection
     suspend fun find(connectionId: Set<String>): Set<Connection>
-    suspend fun putDownSocket(connectionId: String, socketId: String?, deploymentId: String?): Connection
-    suspend fun putUpSocket(connectionId: String, socketId: String?, deploymentId: String?): Connection
+    suspend fun putDownSocket(connectionId: String, socketId: String?, instanceId: String?): Connection
+    suspend fun putUpSocket(connectionId: String, socketId: String?, instanceId: String?): Connection
     suspend fun findAllWithDownSocket(): List<Connection>
     suspend fun updateLastActivity(connectionId: String): Connection?
     suspend fun updateReconnectable(connectionId: String, reconnectable: Boolean): Connection?
