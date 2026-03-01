@@ -94,8 +94,9 @@ class FrameworkConfigBuilder {
         )
 
         val entityUpdate = require(entity.getJsonObject("update"), "entity.update section must be specified")
-        val collectChanges = require(entityUpdate.getString("collect_changes"), "entity.update.collect_changes must be specified")
-        config.entity.update.collectChanges = toBoolean(collectChanges)
+        config.entity.update.collectChanges = toBoolean(
+            require(entityUpdate.getString("collect_changes"), "entity.update.collect_changes must be specified")
+        )
         config.entity.update.interval = entityUpdate.getInteger("interval")?.toLong() ?: 0L
 
         val entityGraph = withInfo(entity.getJsonObject("graphing"), "entity.graphing section not specified, defaulting to disabled")

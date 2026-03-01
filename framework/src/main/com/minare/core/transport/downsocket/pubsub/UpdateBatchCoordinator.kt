@@ -13,6 +13,7 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import com.google.inject.Inject
 import com.google.inject.Singleton
+import com.minare.application.config.FrameworkConfig
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import io.vertx.kotlin.coroutines.dispatcher
@@ -20,6 +21,7 @@ import io.vertx.kotlin.coroutines.dispatcher
 @Singleton
 class UpdateBatchCoordinator @Inject constructor(
     private val vertx: Vertx,
+    private val frameworkConfig: FrameworkConfig,
     private val connectionStore: ConnectionStore,
     private val contextStore: ContextStore,
     private val channelStore: ChannelStore,
