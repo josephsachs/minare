@@ -73,7 +73,7 @@ open class CommandMessageHandler @Inject constructor(
     private suspend fun sendToClient(connectionId: String, message: JsonObject) {
         try {
             val connection = connectionStore.find(connectionId)
-            val deploymentId = connection.upSocketDeploymentId ?: return
+            val deploymentId = connection.upSocketInstanceId ?: return
             vertx.eventBus().send(
                 "${UpSocketVerticle.ADDRESS_SEND_TO_CONNECTION}.${deploymentId}",
                 JsonObject()

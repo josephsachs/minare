@@ -79,7 +79,7 @@ class ConnectionTestSuite(private val injector: Injector) : TestSuite {
 
                 val connection = connectionStore.find(connectionId)
                 assertNotNull(connection.upSocketId) { "upSocketId should be set" }
-                assertNotNull(connection.upSocketDeploymentId) { "upSocketDeploymentId should be set" }
+                assertNotNull(connection.upSocketInstanceId) { "upSocketDeploymentId should be set" }
             } finally {
                 up.close()
             }
@@ -117,8 +117,8 @@ class ConnectionTestSuite(private val injector: Injector) : TestSuite {
                     down.waitForType("down_socket_confirm")
 
                     val connection = connectionStore.find(connectionId)
-                    assertNotNull(connection.upSocketDeploymentId) { "upSocketDeploymentId should be set" }
-                    assertNotNull(connection.downSocketDeploymentId) { "downSocketDeploymentId should be set" }
+                    assertNotNull(connection.upSocketInstanceId) { "upSocketDeploymentId should be set" }
+                    assertNotNull(connection.downSocketInstanceId) { "downSocketDeploymentId should be set" }
                     assertNotNull(connection.downSocketId) { "downSocketId should be set" }
                 } finally {
                     down.close()

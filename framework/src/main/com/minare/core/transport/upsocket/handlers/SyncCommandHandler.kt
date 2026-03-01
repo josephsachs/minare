@@ -80,7 +80,7 @@ class SyncCommandHandler @Inject constructor(
     private suspend fun sendToUpSocket(connectionId: String, message: JsonObject) {
         try {
             val connection = connectionStore.find(connectionId)
-            val deploymentId = connection.upSocketDeploymentId
+            val deploymentId = connection.upSocketInstanceId
             if (deploymentId == null) {
                 log.warn("No upSocketDeploymentId for connection {}, cannot send message", connectionId)
                 return

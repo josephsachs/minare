@@ -66,7 +66,7 @@ class EntityUpdateHandler @Inject constructor(
                     if (connection.id in processedConnections) continue
                     processedConnections.add(connection.id)
 
-                    val downInstanceId = connection.downSocketDeploymentId
+                    val downInstanceId = connection.downSocketInstanceId
                     if (downInstanceId == null) {
                         vlog.getEventLogger().trace("UPDATE_SKIPPED_NO_DOWN_INSTANCE", mapOf(
                             "entityId" to entityId,

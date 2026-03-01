@@ -72,7 +72,7 @@ class HazelcastConnectionStore @Inject constructor(
         return updated
     }
 
-    override suspend fun putDownSocket(connectionId: String, socketId: String?, deploymentId: String?): Connection {
+    override suspend fun putDownSocket(connectionId: String, socketId: String?, instanceId: String?): Connection {
         val existing = map[connectionId]
             ?: throw ClientConnectionException("Connection not found: $connectionId")
 
@@ -81,13 +81,13 @@ class HazelcastConnectionStore @Inject constructor(
             lastUpdated = now,
             lastActivity = now,
             downSocketId = socketId,
-            downSocketDeploymentId = deploymentId
+            downSocketInstanceId = instanceId
         )
         map[connectionId] = updated
         return updated
     }
 
-    override suspend fun putUpSocket(connectionId: String, socketId: String?, deploymentId: String?): Connection {
+    override suspend fun putUpSocket(connectionId: String, socketId: String?, instanceId: String?): Connection {
         val existing = map[connectionId]
             ?: throw ClientConnectionException("Connection not found: $connectionId")
 
@@ -96,7 +96,7 @@ class HazelcastConnectionStore @Inject constructor(
             lastUpdated = now,
             lastActivity = now,
             upSocketId = socketId,
-            upSocketDeploymentId = deploymentId
+            upSocketInstanceId = instanceId
         )
         map[connectionId] = updated
         return updated

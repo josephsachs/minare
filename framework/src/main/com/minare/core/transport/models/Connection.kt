@@ -13,8 +13,8 @@ data class Connection(
     val lastUpdated: Long,
     val lastActivity: Long = System.currentTimeMillis(),
     val upSocketId: String? = null,
-    val upSocketDeploymentId: String? = null,
+    val upSocketInstanceId: String? = null,
     val downSocketId: String? = null,
-    val downSocketDeploymentId: String? = null,
+    val downSocketInstanceId: String? = null,
     val reconnectable: Boolean = true
 ): Serializable

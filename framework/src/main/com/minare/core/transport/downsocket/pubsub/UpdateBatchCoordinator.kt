@@ -156,7 +156,7 @@ class UpdateBatchCoordinator @Inject constructor(
                     if (connection.id in processedConnections) continue
                     processedConnections.add(connection.id)
 
-                    val downInstanceId = connection.downSocketDeploymentId ?: continue
+                    val downInstanceId = connection.downSocketInstanceId ?: continue
 
                     vertx.eventBus().send(
                         "${DownSocketVerticle.ADDRESS_SEND_TO_DOWN_CONNECTION}.${downInstanceId}",

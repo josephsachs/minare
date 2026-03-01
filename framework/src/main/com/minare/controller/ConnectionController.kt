@@ -39,18 +39,6 @@ open class ConnectionController @Inject constructor() {
         return true
     }
 
-    suspend fun isConnectionReconnectable(connectionId: String): Boolean {
-        return try {
-            val connection = connectionStore.find(connectionId)
-            val now = System.currentTimeMillis()
-            val reconnectWindow = frameworkConfig.sockets.connection.reconnectTimeout
-            connection.reconnectable && (now - connection.lastActivity < reconnectWindow)
-        } catch (e: Exception) {
-            log.error("Error checking if connection is reconnectable: {}", connectionId, e)
-            false
-        }
-    }
-
     open suspend fun onConnected(connection: Connection) {
         log.info("Client {} is now fully connected", connection.id)
     }
@@ -58,14 +46,14 @@ open class ConnectionController @Inject constructor() {
     suspend fun sendToUpSocket(connectionId: String, message: JsonObject) {
         try {
             val connection = connectionStore.find(connectionId)
-            val deploymentId = connection.upSocketDeploymentId
+            val instanceId = connection.upSocketInstanceId
 
-            if (deploymentId == null) {
+            if (instanceId == null) {
                 log.warn("No upSocketDeploymentId for connection {}, cannot send message", connectionId)
                 return
             }
             vertx.eventBus().send(
-                "${UpSocketVerticle.ADDRESS_SEND_TO_CONNECTION}.${deploymentId}",
+                "${UpSocketVerticle.ADDRESS_SEND_TO_CONNECTION}.${instanceId}",
                 JsonObject()
                     .put("connectionId", connectionId)
                     .put("message", message)
