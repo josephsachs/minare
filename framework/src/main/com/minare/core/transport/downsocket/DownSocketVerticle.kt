@@ -83,7 +83,7 @@ class DownSocketVerticle @Inject constructor(
                 JsonObject()
                     .put("connections", protocol.sockets.count())
                     .put("heartbeats", heartbeatManager.getMetrics())
-                    .put("pendingUpdateQueues", connectionPendingUpdates.size)
+                    .put("updates_queued", connectionPendingUpdates.size)
                     // operations manifested (current frame, average, high)
                     // current frame
                     // last Hazelcast access
@@ -135,7 +135,7 @@ class DownSocketVerticle @Inject constructor(
                         updates[entityId] = update
                     }
                 } else {
-                    // Dispatch immediately — no queuing, no timer
+                    // Dispatch now
                     val updateMessage = JsonObject()
                         .put("type", "update")
                         .put("timestamp", System.currentTimeMillis())
@@ -270,13 +270,13 @@ class DownSocketVerticle @Inject constructor(
     private inner class UpdateTimer : Timer(vertx) {
         override fun tick() {
             try {
-                processAndSendUpdates()
+                processUpdates()
             } catch (e: Exception) {
                 log.error("Error in tick processing", e)
             }
         }
 
-        private fun processAndSendUpdates() {
+        private fun processUpdates() {
             for ((connectionId, updates) in connectionPendingUpdates) {
                 if (updates.isEmpty()) continue
 

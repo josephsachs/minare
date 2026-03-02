@@ -137,8 +137,8 @@ class FrameworkConfigBuilder {
 
         if (!timeline.isEmpty) {
             val detach = require(timeline.getJsonObject("detach"), "frames.timeline.detach section must be specified, since frames.timeline exists")
-            val flushOnDetach = require(detach.getString("flush_on_detach"), "frames.timeline.detach.flush_on_detach must be specified")
-            val bufferWhenDetached = require(detach.getString("buffer_when_detached"), "frames.timeline.detach.buffer_when_detached must be specified")
+            val flushOnDetach = require(detach.getString("flush_on_detach"), "frames.timeline.detach.flush_on_detach must be specified; do buffered frame operations get flushed when head detaches?")
+            val bufferWhenDetached = require(detach.getString("buffer_when_detached"), "frames.timeline.detach.buffer_when_detached must be specified; do incoming operations continue to buffer in detached state?")
             val assignOnResume = withInfo(detach.getString("assign_on_resume"), "frames.timeline.detach.assign_on_resume defaults to false unless specified")
             val replayOnResume = withInfo(detach.getString("replay_on_resume"), "frames.timeline.detach.replay_on_resume defaults to false unless specified")
             config.frames.timeline.detach.flushOnDetach = toBoolean(flushOnDetach)

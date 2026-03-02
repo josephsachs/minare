@@ -21,7 +21,6 @@ import io.vertx.kotlin.coroutines.dispatcher
 @Singleton
 class UpdateBatchCoordinator @Inject constructor(
     private val vertx: Vertx,
-    private val frameworkConfig: FrameworkConfig,
     private val connectionStore: ConnectionStore,
     private val contextStore: ContextStore,
     private val channelStore: ChannelStore,
@@ -34,10 +33,6 @@ class UpdateBatchCoordinator @Inject constructor(
 
     private var batchIntervalMs = 0L
     private var timerId: Long? = null
-
-    companion object {
-        const val ADDRESS_BATCHED_UPDATES = "minare.entity.batched.updates"
-    }
 
     fun start(intervalMs: Long) {
         if (!isRunning.compareAndSet(false, true)) {
