@@ -21,7 +21,6 @@ import io.vertx.kotlin.coroutines.dispatcher
 @Singleton
 class UpdateBatchCoordinator @Inject constructor(
     private val vertx: Vertx,
-    private val frameworkConfig: FrameworkConfig,
     private val connectionStore: ConnectionStore,
     private val contextStore: ContextStore,
     private val channelStore: ChannelStore,
@@ -34,10 +33,6 @@ class UpdateBatchCoordinator @Inject constructor(
 
     private var batchIntervalMs = 0L
     private var timerId: Long? = null
-
-    companion object {
-        const val ADDRESS_BATCHED_UPDATES = "minare.entity.batched.updates"
-    }
 
     fun start(intervalMs: Long) {
         if (!isRunning.compareAndSet(false, true)) {
@@ -143,7 +138,14 @@ class UpdateBatchCoordinator @Inject constructor(
         debug.log(DebugType.DOWNSOCKET_PUBSUB_DISTRIBUTED_BATCH, listOf(updatesBatch.size))
     }
 
-    private suspend fun routeUpdatesToConnections(updatesBatch: Map<String, JsonObject>) {
+    /**
+     * Route entity updates to the DownSocketVerticle instances that own subscribed connections.
+     * Each update is sent as a targeted event bus message to the specific DownSocketVerticle instance.
+     *
+     * Public so that RedisPubSubWorkerVerticle can call this directly for immediate dispatch
+     * when collectChanges is disabled, bypassing the batch queue entirely.
+     */
+    suspend fun routeUpdatesToConnections(updatesBatch: Map<String, JsonObject>) {
         for ((entityId, entityUpdate) in updatesBatch) {
             val channels = contextStore.getChannelsByEntityId(entityId)
             if (channels.isEmpty()) continue

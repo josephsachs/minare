@@ -13,7 +13,7 @@ sockets:
     port: 4226
     cache_ttl: 1000
     heartbeat_interval: 15000
-    threads: 3
+    threads: 5
   connection:
     connection_expiry: 180000
     cleanup_interval: 60000
@@ -27,15 +27,17 @@ entity:
     collect_changes: true
     interval: 50
   graphing:
-    store: mongo
+    store: none
 
 
 frames:
-  frame_duration: 500
-  lookahead: 250
+  frame_duration: 10
+  lookahead: 500
   session:
     auto_session: frames_per_session
-    frames_per_session: 150
+    frames_per_session: 100
+  snapshot:
+    store: mongo
   timeline:
     detach:
       flush_on_detach: true
@@ -44,8 +46,6 @@ frames:
       assign_on_resume: false
     replay:
       buffer_while_replay: true
-  snapshot:
-    store: mongo
 
 
 tasks:

@@ -68,6 +68,10 @@ class UpSocketVerticle @Inject constructor(
 
         protocol.router.addHealthEndpoint(
             "$basePath/health", "UpSocketVerticle", instanceId, deployedAt
+                // operations manifested (current frame, average, high)
+                // current frame
+                // last Hazelcast access
+                // last Redis access
         ) {
             JsonObject()
                 .put("connections", protocol.sockets.count())

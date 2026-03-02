@@ -214,7 +214,7 @@ class RedisPubSubWorkerVerticle @Inject constructor(
     /**
      * Handle incoming Redis pub/sub messages.
      * Routes updates based on configuration:
-     * - If collectChanges is false: publish directly (no batching/deduplication)
+     * - If collectChanges is false: route directly to connections (no batching/deduplication)
      * - If collectChanges is true with interval=0: queue and flush immediately (deduplication only)
      * - If collectChanges is true with interval>0: queue for timed batch distribution
      */
@@ -233,7 +233,7 @@ class RedisPubSubWorkerVerticle @Inject constructor(
                         updateBatchCoordinator.flushBatch()
                     }
                 } else {
-                    publishUpdateDirectly(changeNotification)
+                    dispatchUpdateImmediately(changeNotification)
                 }
 
                 vertx.eventBus().publish(ADDRESS_ENTITY_UPDATED, changeNotification)
@@ -244,19 +244,14 @@ class RedisPubSubWorkerVerticle @Inject constructor(
     }
 
     /**
-     * Publish update directly without batching or deduplication.
-     * Used when collectChanges is disabled.
-     * Wraps entity in updates map to match the standard wire format.
+     * Dispatch update immediately to connections without batching or deduplication.
+     * Used when collectChanges is disabled. Routes directly through the coordinator's
+     * connection routing logic to reach the correct DownSocketVerticle instances.
      */
-    private fun publishUpdateDirectly(changeNotification: JsonObject) {
+    private suspend fun dispatchUpdateImmediately(changeNotification: JsonObject) {
         val entityId = changeNotification.getString("_id") ?: return
 
-        val updateMessage = JsonObject()
-            .put("type", "update")
-            .put("timestamp", System.currentTimeMillis())
-            .put("updates", JsonObject().put(entityId, changeNotification))
-
-        vertx.eventBus().publish(UpdateBatchCoordinator.ADDRESS_BATCHED_UPDATES, updateMessage)
+        updateBatchCoordinator.routeUpdatesToConnections(mapOf(entityId to changeNotification))
     }
 
     /**

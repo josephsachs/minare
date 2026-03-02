@@ -7,6 +7,4 @@ class SocketEventRouter constructor(
     fun getDeploymentId(): String {
         return deploymentId
     }
-
-
 }
