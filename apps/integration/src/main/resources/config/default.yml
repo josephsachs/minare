@@ -24,7 +24,7 @@ sockets:
 entity:
   factory: com.minare.integration.TestEntityFactory
   update:
-    collect_changes: true
+    collect_changes: false
     interval: 150
   graphing:
     store: mongo

@@ -47,6 +47,7 @@ class DownSocketVerticle @Inject constructor(
     /**
      * Per-instance pending updates. Populated via targeted ADDRESS_SEND_TO_DOWN_CONNECTION
      * messages; flushed to clients by UpdateTimer.
+     * Only used when collectChanges is enabled; when disabled, updates are sent immediately.
      */
     private val connectionPendingUpdates = ConcurrentHashMap<String, ConcurrentHashMap<String, JsonObject>>()
 
@@ -58,6 +59,7 @@ class DownSocketVerticle @Inject constructor(
     private val httpHost = frameworkConfig.sockets.down.host
     private val httpPort = frameworkConfig.sockets.down.port
     private val defaultTickInterval = frameworkConfig.entity.update.interval
+    private val collectChanges = frameworkConfig.entity.update.collectChanges
 
     override suspend fun start() {
         try {
@@ -82,6 +84,10 @@ class DownSocketVerticle @Inject constructor(
                     .put("connections", protocol.sockets.count())
                     .put("heartbeats", heartbeatManager.getMetrics())
                     .put("pendingUpdateQueues", connectionPendingUpdates.size)
+                    // operations manifested (current frame, average, high)
+                    // current frame
+                    // last Hazelcast access
+                    // last Redis access
             }
 
             registerEventBusConsumers()
@@ -91,7 +97,9 @@ class DownSocketVerticle @Inject constructor(
             protocol.router.startServer(httpHost, httpPort)
 
             timer = UpdateTimer()
-            timer.start(defaultTickInterval.toInt())
+            if (collectChanges) {
+                timer.start(defaultTickInterval.toInt())
+            }
 
             vlog.logDeployment(instanceId)
             vlog.logStartupStep("STARTED")
@@ -108,7 +116,9 @@ class DownSocketVerticle @Inject constructor(
 
     /**
      * Receives targeted entity update messages for connections owned by this instance.
-     * Queues the update locally; UpdateTimer flushes it to the client.
+     *
+     * When collectChanges is enabled: queues the update locally for the UpdateTimer to flush.
+     * When collectChanges is disabled: sends the update to the WebSocket immediately.
      */
     private fun registerSendToDownConnectionConsumer() {
         vertx.eventBus().consumer<JsonObject>("${ADDRESS_SEND_TO_DOWN_CONNECTION}.${instanceId}") { message ->
@@ -117,13 +127,24 @@ class DownSocketVerticle @Inject constructor(
                 val entityId = message.body().getString("entityId") ?: return@consumer
                 val update = message.body().getJsonObject("update") ?: return@consumer
 
-                val updates = connectionPendingUpdates.computeIfAbsent(connectionId) { ConcurrentHashMap() }
-                val existing = updates[entityId]
-                if (existing == null || update.getLong("version", 0) > existing.getLong("version", 0)) {
-                    updates[entityId] = update
+                if (collectChanges) {
+                    // Queue for batch flush by UpdateTimer
+                    val updates = connectionPendingUpdates.computeIfAbsent(connectionId) { ConcurrentHashMap() }
+                    val existing = updates[entityId]
+                    if (existing == null || update.getLong("version", 0) > existing.getLong("version", 0)) {
+                        updates[entityId] = update
+                    }
+                } else {
+                    // Dispatch immediately — no queuing, no timer
+                    val updateMessage = JsonObject()
+                        .put("type", "update")
+                        .put("timestamp", System.currentTimeMillis())
+                        .put("updates", JsonObject().put(entityId, update))
+
+                    protocol.sockets.send(connectionId, updateMessage.encode())
                 }
             } catch (e: Exception) {
-                log.error("Error queuing update for connection", e)
+                log.error("Error processing update for connection", e)
             }
         }
     }
@@ -243,6 +264,8 @@ class DownSocketVerticle @Inject constructor(
      * UpdateTimer flushes pending updates to clients on a fixed interval.
      * Sends one 'update' message per entity, with the entity nested in an updates map
      * to avoid field collisions (e.g. entity "type" vs message "type").
+     *
+     * Only started when collectChanges is enabled.
      */
     private inner class UpdateTimer : Timer(vertx) {
         override fun tick() {

@@ -7,13 +7,13 @@ sockets:
     handshake_timeout: 3000
     heartbeat_interval: 15000
     ack: true
-    threads: 5
+    threads: 3
   down:
     host: "0.0.0.0"
     port: 4226
     cache_ttl: 1000
     heartbeat_interval: 15000
-    threads: 3
+    threads: 5
   connection:
     connection_expiry: 180000
     cleanup_interval: 60000
@@ -24,7 +24,7 @@ sockets:
 entity:
   factory: com.minare.nodegraph.NodeGraphEntityFactory
   update:
-    collect_changes: true
+    collect_changes: false
     interval: 50
   graphing:
     store: mongo

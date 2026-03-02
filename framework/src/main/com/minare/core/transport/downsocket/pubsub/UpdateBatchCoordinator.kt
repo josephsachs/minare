@@ -143,7 +143,14 @@ class UpdateBatchCoordinator @Inject constructor(
         debug.log(DebugType.DOWNSOCKET_PUBSUB_DISTRIBUTED_BATCH, listOf(updatesBatch.size))
     }
 
-    private suspend fun routeUpdatesToConnections(updatesBatch: Map<String, JsonObject>) {
+    /**
+     * Route entity updates to the DownSocketVerticle instances that own subscribed connections.
+     * Each update is sent as a targeted event bus message to the specific DownSocketVerticle instance.
+     *
+     * Public so that RedisPubSubWorkerVerticle can call this directly for immediate dispatch
+     * when collectChanges is disabled, bypassing the batch queue entirely.
+     */
+    suspend fun routeUpdatesToConnections(updatesBatch: Map<String, JsonObject>) {
         for ((entityId, entityUpdate) in updatesBatch) {
             val channels = contextStore.getChannelsByEntityId(entityId)
             if (channels.isEmpty()) continue
