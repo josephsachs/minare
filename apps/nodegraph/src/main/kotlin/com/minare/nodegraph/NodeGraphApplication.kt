@@ -38,6 +38,7 @@ class NodeGraphApplication : MinareApplication() {
             log.info("Created default channel: $defaultChannelId")
 
             channelController.setDefaultChannel(defaultChannelId)
+            channelController.initializeMetricsChannel()
 
             initializeNodeGraph(defaultChannelId)
 

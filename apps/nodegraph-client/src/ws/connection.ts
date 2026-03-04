@@ -69,20 +69,45 @@ function openUpSocket(): void {
   upSocket = new WebSocket(url);
 
   upSocket.onopen = () => {
-    // Send connect message with meta requesting metrics
     upSocket!.send(JSON.stringify({
       type: 'connect',
       meta: { enable_metrics: 'true' },
     }));
   };
 
-  upSocket.onmessage = (event: MessageEvent) => {
-    try {
-      const msg = JSON.parse(event.data);
-      if (msg.type === 'connection_confirm' && msg.connectionId) {
-        connectionId = msg.connectionId;
-        openDownSocket(msg.connectionId);
-      }
+upSocket.onmessage = (event: MessageEvent) => {
+  try {
+    const msg = JSON.parse(event.data);
+
+    if (msg.type === 'connection_confirm' && msg.connectionId) {
+      connectionId = msg.connectionId;
+      openDownSocket(msg.connectionId);
+      return;
+    }
+
+    if (msg.type === 'sync') {
+      for (const fn of downMessageListeners) fn(msg);
+      return;
+    }
+
+    if (msg.type === 'initial_sync_complete') {
+      status = 'connected';
+      notifyStatus();
+      return;
+    }
+
+    if (msg.type === 'heartbeat') {
+      upSocket!.send(JSON.stringify({
+        type: 'heartbeat_response',
+        timestamp: msg.timestamp,
+        clientTimestamp: Date.now(),
+      }));
+      return;
+    }
+
+    // Forward anything else (ack, mutation responses, etc.) to listeners
+    for (const fn of downMessageListeners) fn(msg);
+
     } catch { /* ignore malformed */ }
   };
 
@@ -107,8 +132,7 @@ function openDownSocket(connId: string): void {
 
   downSocket.onopen = () => {
     downSocket!.send(JSON.stringify({ connectionId: connId }));
-    status = 'connected';
-    notifyStatus();
+    // status stays 'connecting' — wait for initial_sync_complete on up socket
   };
 
   downSocket.onmessage = (event: MessageEvent) => {

@@ -7,7 +7,7 @@ sockets:
     handshake_timeout: 3000
     heartbeat_interval: 15000
     ack: true
-    threads: 5
+    threads: 3
   down:
     host: "0.0.0.0"
     port: 4226
@@ -35,7 +35,7 @@ frames:
   lookahead: 250
   session:
     auto_session: frames_per_session
-    frames_per_session: 150
+    frames_per_session: 500
   timeline:
     detach:
       flush_on_detach: true
