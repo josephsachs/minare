@@ -3,12 +3,20 @@ package com.minare.nodegraph.models
 import com.minare.core.entity.annotations.*
 import com.minare.core.entity.models.Entity
 import org.slf4j.LoggerFactory
+import java.io.Serializable
 
-data class NodeDiag(
+/**
+ * Records the operation that last mutated this entity, captured at packaging time.
+ * Serialized via Jackson as a nested data class within entity state.
+ */
+data class OperationRecord(
+    val id: String,
+    val entityId: String,
+    val action: String,
+    val frame: Long,
     val timestamp: Long,
-    val message: String,
-    val level: String  // e.g., "INFO", "WARN", "ERROR"
-)
+    val delta: Map<String, Any?>? = null
+) : Serializable
 
 @EntityType("Node")
 class Node(): Entity() {
@@ -33,8 +41,8 @@ class Node(): Entity() {
     @Mutable
     var color: String = "#CCCCCC"
 
-    @Property
-    var diagnostics: MutableList<NodeDiag> = mutableListOf()
+    @State
+    var lastOperation: OperationRecord? = null
 
     fun addChild(child: Node) {
         child._id?.let { childId ->

@@ -365,7 +365,7 @@ abstract class MinareApplication : CoroutineVerticle() {
      * ID in internal map. Note that map is concurrent and will not contain IDs for
      * verticles deployed to other nodes.
      */
-    private suspend fun createVerticle(verticleClass: Class<out CoroutineVerticle>, options: DeploymentOptions) {
+    suspend fun createVerticle(verticleClass: Class<out CoroutineVerticle>, options: DeploymentOptions) {
         // @TODO Use merge reconciliation in Hazelcast to amass another map for all.
         // @TODO Use end of coordinator startup after all-ready is established.
         val id = vertx.deployVerticle("guice:" + verticleClass.name, options).await()

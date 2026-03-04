@@ -223,6 +223,14 @@ class FrameCoordinatorState @Inject constructor(
         return operationsByFrame.values.sumOf { it.size }
     }
 
+    fun getBufferedFrameCount(): Int {
+        return operationsByFrame.size
+    }
+
+    fun getHighestBufferedFrame(): Long {
+        return operationsByFrame.keys.maxOrNull() ?: -1L
+    }
+
     /**
      * Get current frame status (for monitoring)
      */

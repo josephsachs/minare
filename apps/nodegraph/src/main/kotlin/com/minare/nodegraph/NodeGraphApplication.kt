@@ -4,8 +4,11 @@ import com.minare.core.MinareApplication
 import com.minare.nodegraph.config.NodeGraphModule
 import com.minare.nodegraph.controller.NodeGraphChannelController
 import com.minare.nodegraph.core.models.NodeGraphBuilder
+import com.minare.nodegraph.verticles.NodeGraphMetricsVerticle
+import io.vertx.core.DeploymentOptions
 import io.vertx.core.buffer.Buffer
 import io.vertx.core.http.HttpHeaders
+import io.vertx.core.json.JsonObject
 import io.vertx.ext.web.Router
 import io.vertx.ext.web.handler.BodyHandler
 import io.vertx.ext.web.handler.StaticHandler
@@ -37,6 +40,14 @@ class NodeGraphApplication : MinareApplication() {
             channelController.setDefaultChannel(defaultChannelId)
 
             initializeNodeGraph(defaultChannelId)
+
+            createVerticle(NodeGraphMetricsVerticle::class.java,
+                DeploymentOptions()
+                    .setInstances(1)
+                    .setConfig(
+                        JsonObject().put("role", "coordinator-admin")
+                    )
+            )
 
             log.info("Example application started with default channel: $defaultChannelId")
         } catch (e: Exception) {

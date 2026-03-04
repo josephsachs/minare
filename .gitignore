@@ -7,4 +7,5 @@ docker/app.jar
 logs/
 target/
 apps/artillery/node_modules
+apps/nodegraph-client/node_modules
 dbExec.sh

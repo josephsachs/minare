@@ -45,7 +45,30 @@ class NodeGraphOperationController @Inject constructor() : OperationController()
                 val operation = Operation()
                     .entity(entityId)
                     .action(OperationType.MUTATE)
-                    .delta(entityObject.getJsonObject("state") ?: JsonObject())
+
+                // Build the delta, enriched with lastOperation record.
+                // The operation ID and timestamp are already determined;
+                // frame number is not yet assigned (happens in the coordinator)
+                // so we omit it — the client can correlate via the metrics channel.
+                val clientDelta = entityObject.getJsonObject("state") ?: JsonObject()
+
+                val lastOperationRecord = JsonObject()
+                    .put("id", operation.getId())
+                    .put("entityId", entityId)
+                    .put("action", OperationType.MUTATE.toString())
+                    .put("frame", -1)  // Not yet assigned; backfilled client-side
+                    .put("timestamp", System.currentTimeMillis())
+
+                // Include the client's original delta fields so the record
+                // captures what was changed
+                if (!clientDelta.isEmpty) {
+                    lastOperationRecord.put("delta", clientDelta.copy())
+                }
+
+                val enrichedDelta = clientDelta.copy()
+                    .put("lastOperation", lastOperationRecord)
+
+                operation.delta(enrichedDelta)
 
                 /**
                  * NodeGraph only deals with Nodes, application must perform dispatch if more
