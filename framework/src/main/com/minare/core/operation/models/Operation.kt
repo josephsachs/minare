@@ -2,23 +2,23 @@ package com.minare.core.operation.models
 
 import com.minare.core.entity.models.Entity
 import io.vertx.core.json.JsonObject
+import java.io.Serializable
 import java.util.UUID
 import kotlin.reflect.KClass
 
 /**
- * Represents a single operation to be processed.
- * Operations are the atomic units of work in the system.
+ * An Operation is a request to the frame coordinator for changes to entity state.
  */
-class Operation {
-    private var id: String = UUID.randomUUID().toString()
-    private var entity: String? = null
-    private var entityType: String? = null
-    private var action: OperationType? = null
-    private var values = JsonObject()
-    private var delta: JsonObject? = null
-    private var version: Long? = null
-    private var timestamp: Long = System.currentTimeMillis()
-    private var meta: String? = null
+class Operation: Serializable {
+    var id: String = UUID.randomUUID().toString()
+    var entity: String? = null
+    var entityType: String? = null
+    var action: OperationType? = null
+    var values = JsonObject()
+    var delta: JsonObject? = null
+    var version: Long? = null
+    var timestamp: Long = System.currentTimeMillis()
+    var meta: String? = null
 
     /**
      * Set the unique identifier for this operation.
@@ -147,11 +147,11 @@ class Operation {
         return operation
     }
 
-    override fun toString(): String {
+    /**override fun toString(): String {
         return "Operation(id=$id, entity=$entity, action=$action)"
-    }
+    }**/
 
-    companion object {
+    /**companion object {
         /**
          * Create an Operation from a JsonObject
          * Used when deserializing from Kafka or other sources
@@ -188,5 +188,5 @@ class Operation {
 
             return op
         }
-    }
+    }**/
 }

@@ -42,6 +42,7 @@ class Node(): Entity() {
     var color: String = "#CCCCCC"
 
     @State
+    @Mutable
     var lastOperation: OperationRecord? = null
 
     fun addChild(child: Node) {
@@ -54,6 +55,5 @@ class Node(): Entity() {
     }
 
     @Task
-    suspend fun tick() {
-    }
+    suspend fun tick() { }
 }

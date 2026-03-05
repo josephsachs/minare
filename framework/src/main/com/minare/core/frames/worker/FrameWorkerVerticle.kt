@@ -1,9 +1,10 @@
 package com.minare.core.frames.worker
 
+import com.fasterxml.jackson.core.JsonParser
+import com.fasterxml.jackson.databind.ObjectMapper
 import com.hazelcast.core.HazelcastInstance
 import com.hazelcast.cp.IAtomicLong
 import com.hazelcast.map.IMap
-import com.minare.core.operation.models.Operation
 import com.minare.core.utils.vertx.VerticleLogger
 import com.minare.core.frames.coordinator.FrameCoordinatorVerticle
 import com.minare.core.frames.events.WorkerStartStateSnapshotEvent
@@ -17,6 +18,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import org.slf4j.LoggerFactory
 import com.google.inject.Inject
+import com.minare.core.operation.models.Operation
 
 /**
  * Worker-side frame processing verticle.
@@ -157,13 +159,14 @@ class FrameWorkerVerticle @Inject constructor(
         logicalFrame: Long
     ): Boolean {
         val operationId = operation.getString("id")
+
         if (operationId == null) {
             log.error("Operation missing ID: {}", operation.encode())
             return false
         }
 
         try {
-            val op = Operation.fromJson(operation)
+            val op: Operation = operation.mapTo(Operation::class.java)
 
             // Send to the appropriate processor based on action type
             val processorAddress = "worker.process.${op.getAction()}"

@@ -1,5 +1,6 @@
 package com.minare.nodegraph.controller
 
+import com.fasterxml.jackson.databind.ObjectMapper
 import com.minare.controller.OperationController
 import com.minare.core.operation.models.Operation
 import com.minare.core.operation.models.OperationType
@@ -24,19 +25,28 @@ class NodeGraphOperationController @Inject constructor() : OperationController()
      * @return Operation, OperationSet, or null to skip processing
      */
     override suspend fun preQueue(message: JsonObject): Any? {
+        log.info("DEBUG_PREQUEUE: Entry with $message")
+
         val command = message.getString("command")
-        val connectionId = message.getString("connectionId")
+
+        log.info("DEBUG_PREQUEUE: command $command")
 
         return when (command) {
             "mutate" -> {
                 // Convert mutate command to Operation
                 val entityObject = message.getJsonObject("entity")
+
+                log.info("DEBUG_PREQUEUE: entityObject $entityObject")
+
                 if (entityObject == null) {
                     log.warn("Invalid mutate command: missing entity object")
                     return null
                 }
 
                 val entityId = entityObject.getString("_id")
+
+                log.info("DEBUG_PREQUEUE: entityObject $entityId")
+
                 if (entityId == null) {
                     log.warn("Invalid mutate command: missing entity ID")
                     return null
@@ -46,50 +56,35 @@ class NodeGraphOperationController @Inject constructor() : OperationController()
                     .entity(entityId)
                     .action(OperationType.MUTATE)
 
+                log.info("DEBUG_PREQUEUE: initialized operation ${operation}")
+
                 // Build the delta, enriched with lastOperation record.
                 // The operation ID and timestamp are already determined;
                 // frame number is not yet assigned (happens in the coordinator)
                 // so we omit it — the client can correlate via the metrics channel.
-                val clientDelta = entityObject.getJsonObject("state") ?: JsonObject()
+                val state = entityObject.getJsonObject("state") ?: JsonObject()
 
-                val lastOperationRecord = JsonObject()
-                    .put("id", operation.getId())
-                    .put("entityId", entityId)
-                    .put("action", OperationType.MUTATE.toString())
-                    .put("frame", -1)  // Not yet assigned; backfilled client-side
-                    .put("timestamp", System.currentTimeMillis())
+                log.info("DEBUG_PREQUEUE: created state ${state}")
 
-                // Include the client's original delta fields so the record
-                // captures what was changed
-                if (!clientDelta.isEmpty) {
-                    lastOperationRecord.put("delta", clientDelta.copy())
-                }
+                state.put("lastOperation", operation)
 
-                val enrichedDelta = clientDelta.copy()
-                    .put("lastOperation", lastOperationRecord)
+                log.info("DEBUG_PREQUEUE: appended to ${state.getString("lastOperation")}")
 
-                operation.delta(enrichedDelta)
+                operation.entityType(Node::class)
+                entityObject.getLong("version")?.let { operation.version(it) }
+                operation.delta(state)
+
+                log.info("DEBUG_PREQUEUE: set Operation.`delta` with $state")
 
                 /**
                  * NodeGraph only deals with Nodes, application must perform dispatch if more
                  * than one type. For more complicated entity schemes decomposition of preQueue
                  * into specific handler services is recommended.
                  */
-                operation.entityType(Node::class)
 
-                // Add version if present
-                entityObject.getLong("version")?.let {
-                    operation.version(it)
-                }
+                log.debug("Created MUTATE operation ${operation.getId()}")
 
-                // Add connection context as metadata
-                operation.meta(
-                    JsonObject()
-                        .put("connectionId", connectionId)
-                        .toString()
-                )
-
-                log.debug("Created MUTATE operation for entity {} from connection {}", entityId, connectionId)
+                log.info("DEBUG_PREQUEUE: created final $operation ******* FINAL")
 
                 operation
             }
@@ -99,8 +94,6 @@ class NodeGraphOperationController @Inject constructor() : OperationController()
             // "delete" -> { ... }
 
             else -> {
-                // Unknown command - log and skip
-                log.warn("Unknown command received: {} from connection: {}", command, connectionId)
                 null
             }
         }

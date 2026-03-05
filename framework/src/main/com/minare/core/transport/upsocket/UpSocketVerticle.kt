@@ -134,14 +134,21 @@ class UpSocketVerticle @Inject constructor(
                     // Application hook
                     if (!connectionController.onConnectionAttempt(message)) return@launch
 
-                    if ((!handshakeCompleted && msg.getString("type") == "connect") ||
-                        (!handshakeCompleted && msg.containsKey("reconnect") && msg.containsKey("connectionId"))) {
+                    if (!handshakeCompleted && msg.containsKey("reconnect") && msg.containsKey("connectionId")) {
                         handshakeCompleted = true
-                        log.info("THIS_HAPPENED: 1")
+                        // Upsocket does not support reconnection; issue new connection
+                        initiateConnection(websocket, traceId)
+                        return@launch
+                    }
+
+                    // ── Meta passthrough ──
+                    // If the client sends { "type": "connect", "meta": { ... } },
+                    // extract meta and initiate the connection immediately rather than
+                    // waiting for the handshake timeout.
+                    if (!handshakeCompleted && msg.getString("type") == "connect") {
+                        handshakeCompleted = true
                         val meta = extractMeta(msg)
-                        log.info("THIS_HAPPENED: 2")
                         initiateConnection(websocket, traceId, meta)
-                        log.info("THIS_HAPPENED: 3")
                         return@launch
                     }
 
@@ -152,7 +159,6 @@ class UpSocketVerticle @Inject constructor(
                         )
                     }
 
-                    log.info("THIS_HAPPENED: 4")
                     messageController.handleUpsocket(protocol.sockets.getConnectionId(websocket), msg)
                 } catch (e: Exception) {
                     protocol.router.sendError(websocket, e, protocol.sockets.getConnectionId(websocket))
