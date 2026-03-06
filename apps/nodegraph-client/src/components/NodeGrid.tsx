@@ -43,9 +43,12 @@ const NodeCell = memo(function NodeCell({ entity, isSelected, onSelect }: NodeCe
 // ── NodeHoverPanel ──
 
 interface LastOperation {
-  action?: string;
-  frame?: number;
   id?: string;
+  entityId?: string;
+  entityType?: string;
+  action?: string;
+  timestamp?: number;
+  version?: number;
 }
 
 function NodeHoverPanel({ entity }: { entity: EntityState }) {
@@ -78,8 +81,20 @@ function NodeHoverPanel({ entity }: { entity: EntityState }) {
             <span className="hover-panel__action">{lastOp.action ?? '—'}</span>
           </div>
           <div className="stat-row">
-            <span className="stat-label">Frame</span>
-            <span className="stat-value">{String(lastOp.frame ?? '—')}</span>
+            <span className="stat-label">ID</span>
+            <span className="stat-value hover-panel__value-truncate">{lastOp.id ?? '—'}</span>
+          </div>
+          <div className="stat-row">
+            <span className="stat-label">Time</span>
+            <span className="stat-value">
+              {lastOp.timestamp
+                ? new Date(lastOp.timestamp).toISOString().slice(11, 23)
+                : '—'}
+            </span>
+          </div>
+          <div className="stat-row">
+            <span className="stat-label">Version</span>
+            <span className="stat-value">{lastOp.version ?? '—'}</span>
           </div>
         </div>
       )}

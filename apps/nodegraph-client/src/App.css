@@ -312,6 +312,7 @@ button.primary:hover:not(:disabled) { background: #244a78; }
   gap: 14px;
   min-height: 170px;
   max-height: 260px;
+  overflow: hidden;
 }
 
 .stats-grid__col { overflow: hidden; }
@@ -319,6 +320,7 @@ button.primary:hover:not(:disabled) { background: #244a78; }
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  min-height: 0;
 }
 
 /* ── OperationList ── */
@@ -328,6 +330,7 @@ button.primary:hover:not(:disabled) { background: #244a78; }
   flex-direction: column;
   height: 100%;
   overflow: hidden;
+  min-height: 0;
 }
 
 .op-list__scroll {
@@ -336,6 +339,9 @@ button.primary:hover:not(:disabled) { background: #244a78; }
   display: flex;
   flex-direction: column;
   gap: 1px;
+  min-height: 0;
+  scrollbar-width: thin;
+  scrollbar-color: var(--bg-4) transparent;
 }
 
 .op-list__empty {
