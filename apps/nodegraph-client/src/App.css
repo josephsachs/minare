@@ -383,6 +383,8 @@ button.primary:hover:not(:disabled) { background: #244a78; }
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  flex: 1;
+  min-width: 0;
 }
 
 /* ── OperationDetail ── */
