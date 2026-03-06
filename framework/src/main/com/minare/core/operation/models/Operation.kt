@@ -1,5 +1,7 @@
 package com.minare.core.operation.models
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties
+import com.fasterxml.jackson.annotation.JsonProperty
 import com.minare.core.entity.models.Entity
 import io.vertx.core.json.JsonObject
 import java.io.Serializable
@@ -9,6 +11,7 @@ import kotlin.reflect.KClass
 /**
  * An Operation is a request to the frame coordinator for changes to entity state.
  */
+@JsonIgnoreProperties(ignoreUnknown = true)
 class Operation: Serializable {
     var id: String = UUID.randomUUID().toString()
     var entity: String? = null
@@ -38,7 +41,11 @@ class Operation: Serializable {
 
     /**
      * Set the entity ID this operation targets
+     *
+     * Must be transformed from entityId used by the fluent API
+     * JsonProperty to assist ObjectMapper.mapTo
      */
+    @JsonProperty("entityId")
     fun entity(entity: String) = apply {
         this.entity = entity
     }
@@ -146,47 +153,4 @@ class Operation: Serializable {
 
         return operation
     }
-
-    /**override fun toString(): String {
-        return "Operation(id=$id, entity=$entity, action=$action)"
-    }**/
-
-    /**companion object {
-        /**
-         * Create an Operation from a JsonObject
-         * Used when deserializing from Kafka or other sources
-         */
-        fun fromJson(json: JsonObject): Operation {
-            val op = Operation()
-
-            // Set ID if present, otherwise keep generated one
-            json.getString("id")?.let { op.id(it) }
-
-            op.entity(json.getString("entityType")
-                ?: throw IllegalArgumentException("Missing entityType"))
-            op.action(
-                OperationType.valueOf(json.getString("action")
-                ?: throw IllegalArgumentException("Missing action")))
-
-            if (op.action == OperationType.MUTATE || op.action == OperationType.DELETE) {
-                op.entity(json.getString("entityId")
-                    ?: throw IllegalArgumentException("Missing entityId"))
-            }
-
-            json.getLong("timestamp")?.let { op.timestamp(it) }
-            json.getLong("version")?.let { op.version(it) }
-            json.getJsonObject("delta")?.let { op.delta(it) }
-            json.getString("meta")?.let { op.meta(it) }
-
-            json.fieldNames()
-                .filter { it !in setOf(
-                    "id", "entityId", "entityType", "action", "timestamp", "version", "delta", "meta"
-                ) }
-                .forEach { key ->
-                    op.value(key, json.getValue(key))
-                }
-
-            return op
-        }
-    }**/
 }
