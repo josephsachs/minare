@@ -41,7 +41,7 @@ class Operation: Serializable {
      * JsonProperty to assist ObjectMapper.mapTo
      */
     @JsonProperty("entityId")
-    fun entity(entity: String) = apply {
+    fun entity(entity: String?) = apply {
         this.entity = entity
     }
 
