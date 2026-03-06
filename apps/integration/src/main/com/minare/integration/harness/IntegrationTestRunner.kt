@@ -7,6 +7,7 @@ class IntegrationTestRunner {
     private val log = LoggerFactory.getLogger(IntegrationTestRunner::class.java)
     private val testLog = LoggerFactory.getLogger("TEST_OUTPUT")
     private val suiteResults = mutableListOf<Pair<String, Boolean>>()
+    private val runners = mutableListOf<TestRunner>()
 
     private fun out(message: String) {
         testLog.info(message)
@@ -22,6 +23,7 @@ class IntegrationTestRunner {
 
         for (suite in suites) {
             val runner = TestRunner(suite.name, testLog)
+            runners += runner
             try {
                 suite.run(runner)
             } catch (e: Throwable) {
@@ -34,6 +36,11 @@ class IntegrationTestRunner {
         }
 
         printSummary()
+
+        if (!allPassed) {
+            printFailureDetails()
+        }
+
         return allPassed
     }
 
@@ -57,6 +64,17 @@ class IntegrationTestRunner {
         } else {
             out("  $passedCount passed, $failedCount failed")
         }
+        out("")
+    }
+
+    private fun printFailureDetails() {
+        val failedRunners = runners.filter { it.hasFailed() }
+        if (failedRunners.none { r -> r.getResults().any { !it.passed && it.stepLog?.hasEntries() == true } }) return
+
+        out("╔════════════════════════════════════════════════════════════╗")
+        out("║                 FAILURE DETAILS                            ║")
+        out("╚════════════════════════════════════════════════════════════╝")
+        failedRunners.forEach { it.reportFailureDetails() }
         out("")
     }
 
