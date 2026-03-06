@@ -2,7 +2,6 @@ package com.minare.core.operation.models
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import com.fasterxml.jackson.annotation.JsonProperty
-import com.minare.core.entity.models.Entity
 import io.vertx.core.json.JsonObject
 import java.io.Serializable
 import java.util.UUID
@@ -14,6 +13,7 @@ import kotlin.reflect.KClass
 @JsonIgnoreProperties(ignoreUnknown = true)
 class Operation: Serializable {
     var id: String = UUID.randomUUID().toString()
+    @JsonProperty("entityId")
     var entity: String? = null
     var entityType: String? = null
     var action: OperationType? = null
