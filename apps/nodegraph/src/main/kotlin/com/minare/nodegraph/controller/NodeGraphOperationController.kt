@@ -25,18 +25,12 @@ class NodeGraphOperationController @Inject constructor() : OperationController()
      * @return Operation, OperationSet, or null to skip processing
      */
     override suspend fun preQueue(message: JsonObject): Any? {
-        log.info("DEBUG_PREQUEUE: Entry with $message")
-
         val command = message.getString("command")
-
-        log.info("DEBUG_PREQUEUE: command $command")
 
         return when (command) {
             "mutate" -> {
                 // Convert mutate command to Operation
                 val entityObject = message.getJsonObject("entity")
-
-                log.info("DEBUG_PREQUEUE: entityObject $entityObject")
 
                 if (entityObject == null) {
                     log.warn("Invalid mutate command: missing entity object")
@@ -44,8 +38,6 @@ class NodeGraphOperationController @Inject constructor() : OperationController()
                 }
 
                 val entityId = entityObject.getString("_id")
-
-                log.info("DEBUG_PREQUEUE: entityObject $entityId")
 
                 if (entityId == null) {
                     log.warn("Invalid mutate command: missing entity ID")
@@ -56,26 +48,18 @@ class NodeGraphOperationController @Inject constructor() : OperationController()
                     .entity(entityId)
                     .action(OperationType.MUTATE)
 
-                log.info("DEBUG_PREQUEUE: initialized operation ${operation}")
-
                 // Build the delta, enriched with lastOperation record.
                 // The operation ID and timestamp are already determined;
                 // frame number is not yet assigned (happens in the coordinator)
                 // so we omit it — the client can correlate via the metrics channel.
                 val state = entityObject.getJsonObject("state") ?: JsonObject()
 
-                log.info("DEBUG_PREQUEUE: created state ${state}")
-
                 operation.entityType(Node::class)
                 entityObject.getLong("version")?.let { operation.version(it) }
 
                 state.put("lastOperation", operation.build())
 
-                log.info("DEBUG_PREQUEUE: appended to ${state.getJsonObject("lastOperation")?.getString("id")}")
-
                 operation.delta(state)
-
-                log.info("DEBUG_PREQUEUE: set Operation.`delta` with $state")
 
                 /**
                  * NodeGraph only deals with Nodes, application must perform dispatch if more
@@ -84,8 +68,6 @@ class NodeGraphOperationController @Inject constructor() : OperationController()
                  */
 
                 log.debug("Created MUTATE operation ${operation.id}")
-
-                log.info("DEBUG_PREQUEUE: created final $operation ******* FINAL")
 
                 operation
             }

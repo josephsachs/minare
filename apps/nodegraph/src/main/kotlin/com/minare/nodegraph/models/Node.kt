@@ -1,5 +1,6 @@
 package com.minare.nodegraph.models
 
+import com.fasterxml.jackson.annotation.JsonProperty
 import com.minare.core.entity.annotations.*
 import com.minare.core.entity.models.Entity
 import org.slf4j.LoggerFactory
@@ -12,6 +13,8 @@ import java.io.Serializable
 data class OperationRecord(
     val id: String,
     val entityId: String,
+    val entityType: String,
+    val version: String,
     val action: String,
     val frame: Long,
     val timestamp: Long,
