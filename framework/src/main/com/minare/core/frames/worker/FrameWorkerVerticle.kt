@@ -213,7 +213,7 @@ class FrameWorkerVerticle @Inject constructor(
             .put("operationCount", operationsProcessed)
             .put("completedAt", System.currentTimeMillis())
 
-        vertx.eventBus().send(ADDRESS_WORKER_FRAME_COMPLETE, completionEvent)
+        vertx.eventBus().publish(ADDRESS_WORKER_FRAME_COMPLETE, completionEvent)
 
         log.debug("Reported logical frame {} completion with {} operations",
             logicalFrame, operationsProcessed)

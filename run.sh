@@ -62,14 +62,19 @@ if $BUILD_ONLY; then
     exit 0
 fi
 
+if $NO_BUILD; then
+    echo "Skipping framework build..."
+else
+    echo "Building Minare framework..."
+    build_framework
+fi
+
 if $START_NODEGRAPH; then
     echo "Building and starting NodeGraph..."
-    if not $NO_BUILD; then build_framework; fi
     build_nodegraph
     start_docker
 elif $START_INTEGRATION; then
     echo "Building and starting Integration Tests..."
-    if not $NO_BUILD; then build_framework; fi
     build_integration
     start_docker
 else
