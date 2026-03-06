@@ -70,7 +70,7 @@ class WorkerFrameCompleteEvent @Inject constructor(
                     throw FrameLoopException("Frame in progress is ahead of last prepared manifest")
                 }
 
-                eventBusUtils.sendWithTracing(
+                eventBusUtils.publishWithTracing(
                     FrameCoordinatorVerticle.ADDRESS_FRAME_ALL_COMPLETE,
                     JsonObject()
                         .put("logicalFrame", logicalFrame)
