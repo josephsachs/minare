@@ -66,12 +66,13 @@ class NodeGraphOperationController @Inject constructor() : OperationController()
 
                 log.info("DEBUG_PREQUEUE: created state ${state}")
 
-                state.put("lastOperation", operation.id)
-
-                log.info("DEBUG_PREQUEUE: appended to ${state.getString("lastOperation")}")
-
                 operation.entityType(Node::class)
                 entityObject.getLong("version")?.let { operation.version(it) }
+
+                state.put("lastOperation", operation.build())
+
+                log.info("DEBUG_PREQUEUE: appended to ${state.getJsonObject("lastOperation")?.getString("id")}")
+
                 operation.delta(state)
 
                 log.info("DEBUG_PREQUEUE: set Operation.`delta` with $state")
