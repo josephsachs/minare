@@ -64,26 +64,19 @@ fi
 
 if $START_NODEGRAPH; then
     echo "Building and starting NodeGraph..."
-    if $NO_BUILD; then
-      echo "Skipping."
-    else
-      build_framework
-      build_nodegraph
-    fi
+    if not $NO_BUILD; then build_framework; fi
+    build_nodegraph
     start_docker
 elif $START_INTEGRATION; then
     echo "Building and starting Integration Tests..."
-    if $NO_BUILD; then
-      echo "Skipping"
-    else
-      build_framework
-      build_nodegraph
-    fi
+    if not $NO_BUILD; then build_framework; fi
+    build_integration
     start_docker
 else
     echo "Usage: ./run.sh [WORKER_COUNT] -n|-i|-b"
     echo "  -n: Build and run NodeGraph application"
     echo "  -i: Build and run Integration test application"
     echo "  -b: Build framework only (no docker)"
+    echo "  -x: Skip building"
     exit 1
 fi

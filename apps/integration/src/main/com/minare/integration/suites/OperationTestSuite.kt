@@ -228,7 +228,7 @@ class OperationTestSuite(private val injector: Injector) : TestSuite {
         } catch (e: TimeoutCancellationException) {
             log.caught("timeout at [$stage]", e)
             observer.diagnose(operationId = null, log = log)
-            throw TimeoutCancellationException("Timed out at stage [$stage] after ${timeoutMs}ms")
+            throw Exception("Timed out at stage [$stage] after ${timeoutMs}ms")
         }
     }
 }

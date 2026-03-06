@@ -140,7 +140,7 @@ class FrameWorkerVerticle @Inject constructor(
     private suspend fun processOperations(operations: List<JsonObject>, logicalFrame: Long): Int {
         var successCount = 0
 
-        // Process operations sequentially, order matters
+        // Preserve order
         for (operation in operations) {
             if (processOperation(operation, logicalFrame)) {
                 successCount++
@@ -169,7 +169,7 @@ class FrameWorkerVerticle @Inject constructor(
             val op: Operation = operation.mapTo(Operation::class.java)
 
             // Send to the appropriate processor based on action type
-            val processorAddress = "worker.process.${op.getAction()}"
+            val processorAddress = "worker.process.${op.action}"
 
             // Produce processing context
             val processingContext = JsonObject()
@@ -188,7 +188,7 @@ class FrameWorkerVerticle @Inject constructor(
                     workerId = workerId
                 )
 
-                if (debugTraceLogs) log.trace("Completed operation {} for entity {}", operationId, op.getEntity())
+                if (debugTraceLogs) log.trace("Completed operation {} for entity {}", operationId, op.entity)
                 return true
             } else {
                 log.error("Failed to process operation {}: {}",

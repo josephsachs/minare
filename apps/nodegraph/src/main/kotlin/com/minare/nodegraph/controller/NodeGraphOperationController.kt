@@ -82,7 +82,7 @@ class NodeGraphOperationController @Inject constructor() : OperationController()
                  * into specific handler services is recommended.
                  */
 
-                log.debug("Created MUTATE operation ${operation.getId()}")
+                log.debug("Created MUTATE operation ${operation.id}")
 
                 log.info("DEBUG_PREQUEUE: created final $operation ******* FINAL")
 
