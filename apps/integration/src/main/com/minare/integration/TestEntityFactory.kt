@@ -2,7 +2,7 @@ package com.minare.integration
 
 import com.google.inject.Inject
 import com.minare.core.entity.factories.EntityFactory
-import com.minare.integration.models.Node
+import com.minare.integration.models.*
 import javax.inject.Singleton
 
 /**
@@ -14,6 +14,10 @@ class TestEntityFactory @Inject constructor() : EntityFactory() {
 
     // Just define the map - framework does the rest!
     override val entityTypes = mapOf(
-        "Node" to Node::class.java
+        "Node" to Node::class.java,
+        "TestEntityCollection" to TestEntityCollection::class.java,
+        "TestEntityItem" to TestEntityItem::class.java,
+        "TestMonolithItem" to TestMonolithItem::class.java,
+        "TestMonolithItemAncestor" to TestMonolithItemAncestor::class.java
     )
 }

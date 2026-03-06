@@ -49,7 +49,7 @@ frames:
 
 
 tasks:
-  tick_interval: 50
+  tick_interval: 30000
 
 
 filesystem:
