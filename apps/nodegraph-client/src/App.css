@@ -126,7 +126,7 @@ body {
 .stat-value-truncate {
   color: var(--text-hi);
   font-weight: 500;
-  max-width: 150px;
+  max-width: 240px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -516,7 +516,7 @@ button.primary:hover:not(:disabled) { background: #244a78; }
 }
 
 .hover-panel__value-truncate {
-  max-width: 140px;
+  max-width: 220px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
