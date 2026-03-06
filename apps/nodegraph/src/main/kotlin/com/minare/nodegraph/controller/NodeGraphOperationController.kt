@@ -66,7 +66,7 @@ class NodeGraphOperationController @Inject constructor() : OperationController()
 
                 log.info("DEBUG_PREQUEUE: created state ${state}")
 
-                state.put("lastOperation", operation)
+                state.put("lastOperation", operation.id)
 
                 log.info("DEBUG_PREQUEUE: appended to ${state.getString("lastOperation")}")
 
