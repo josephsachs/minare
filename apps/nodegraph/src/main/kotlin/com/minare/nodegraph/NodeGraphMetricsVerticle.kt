@@ -106,7 +106,7 @@ class NodeGraphMetricsVerticle @Inject constructor(
         val opsMax = opCounts.maxOrNull() ?: 0
 
         // Buffer stats from coordinator state
-        val bufferCount = coordinatorState.getBufferedOperationCounts()
+        val bufferCount = coordinatorState.getTotalBufferedOperations()
         val framesBuffered = coordinatorState.getBufferedFrameCount()
         val highestFrameBuffered = coordinatorState.getHighestBufferedFrame()
 
