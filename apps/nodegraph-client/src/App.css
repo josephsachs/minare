@@ -308,7 +308,7 @@ button.primary:hover:not(:disabled) { background: #244a78; }
 
 .stats-grid {
   display: grid;
-  grid-template-columns: 172px 1fr 210px;
+  grid-template-columns: 180px 1fr 280px;
   gap: 14px;
   min-height: 170px;
   max-height: 260px;
