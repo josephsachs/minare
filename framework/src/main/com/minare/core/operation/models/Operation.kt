@@ -35,11 +35,6 @@ class Operation: Serializable {
     }
 
     /**
-     * Get the operation ID
-     */
-    fun getId(): String = id
-
-    /**
      * Set the entity ID this operation targets
      */
     fun entity(entity: String) = apply {
@@ -99,16 +94,6 @@ class Operation: Serializable {
     fun meta(meta: String) = apply {
         this.meta = meta
     }
-
-    /***
-     * Get the entity ID
-     */
-    fun getEntity(): String? = entity
-
-    /**
-     * Get the operation type
-     */
-    fun getAction(): OperationType? = action
 
     /**
      * Add a key-value pair to the operation values
