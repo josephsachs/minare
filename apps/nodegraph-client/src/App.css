@@ -337,7 +337,7 @@ button.primary:hover:not(:disabled) { background: #244a78; }
 .progress-bar__fill {
   position: absolute;
   inset: 0;
-  opacity: 0.18;
+  opacity: 0.50;
   transition: width 0.3s ease, background 0.3s;
 }
 
@@ -346,7 +346,7 @@ button.primary:hover:not(:disabled) { background: #244a78; }
   top: 0;
   bottom: 0;
   width: 2px;
-  opacity: 0.6;
+  opacity: 0.8;
   transition: left 0.3s ease;
 }
 
