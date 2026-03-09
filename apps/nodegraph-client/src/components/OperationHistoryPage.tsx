@@ -87,45 +87,11 @@ export function OperationHistoryPage() {
 
   return (
     <div className="panel op-history-page">
-      {/* Page header */}
       <div className="op-history-page__header">
         <span className="mono op-history-page__title">Operation History</span>
       </div>
 
-      {/* 3-column body */}
       <div className="op-history-tab">
-        {/* Column 1: Frame loop operations */}
-        <div className="op-history-col">
-          <div className="section-label">Frame Operations ({opLog.length})</div>
-          <div className="op-history-col__scroll">
-            {opLog.length === 0 ? (
-              <div className="mono op-list__empty">No frame operations yet</div>
-            ) : (
-              opLog.map((op, i) => {
-                const sel = frameSelId === op.id;
-                return (
-                  <div
-                    key={`${op.id}-${i}`}
-                    className={`mono op-item${sel ? ' op-item--selected' : ''}`}
-                    onClick={(e) => {
-                      setFrameSelId(sel ? null : op.id);
-                      if (e.ctrlKey || e.metaKey) {
-                        const match = entityOps.find((o) => o.id === op.id);
-                        if (match?.id) setEntitySelId(match.id);
-                      }
-                    }}
-                  >
-                    <span className="op-item__frame">F{op.frame}</span>
-                    <span className="op-item__action">{op.action}</span>
-                    <span className="op-item__entity">{op.entityId}</span>
-                  </div>
-                );
-              })
-            )}
-          </div>
-        </div>
-
-        {/* Column 2: Entity update operations */}
         <div className="op-history-col">
           <div className="section-label">Update Operations ({entityOps.length})</div>
           <div className="op-history-col__scroll">
@@ -158,18 +124,47 @@ export function OperationHistoryPage() {
           </div>
         </div>
 
-        {/* Column 3: Detail panel */}
+        <div className="op-history-col">
+          <div className="section-label">Frame Operations ({opLog.length})</div>
+          <div className="op-history-col__scroll">
+            {opLog.length === 0 ? (
+              <div className="mono op-list__empty">No frame operations yet</div>
+            ) : (
+              opLog.map((op, i) => {
+                const sel = frameSelId === op.id;
+                return (
+                  <div
+                    key={`${op.id}-${i}`}
+                    className={`mono op-item${sel ? ' op-item--selected' : ''}`}
+                    onClick={(e) => {
+                      setFrameSelId(sel ? null : op.id);
+                      if (e.ctrlKey || e.metaKey) {
+                        const match = entityOps.find((o) => o.id === op.id);
+                        if (match?.id) setEntitySelId(match.id);
+                      }
+                    }}
+                  >
+                    <span className="op-item__frame">F{op.frame}</span>
+                    <span className="op-item__action">{op.action}</span>
+                    <span className="op-item__entity">{op.entityId}</span>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+
         <div className="op-history-detail">
           <div className="section-label">Detail</div>
           {!hasDetail ? (
             <div className="mono op-detail__empty">Select an operation</div>
           ) : (
             <>
-              <FrameOpDetail op={selectedFrameOp} />
-              {selectedFrameOp && selectedEntityOp && (
+              <EntityOpDetail op={selectedEntityOp} />
+              {selectedEntityOp && selectedFrameOp && (
                 <div className="op-history-detail__divider" />
               )}
-              <EntityOpDetail op={selectedEntityOp} />
+              <FrameOpDetail op={selectedFrameOp} />
             </>
           )}
         </div>
