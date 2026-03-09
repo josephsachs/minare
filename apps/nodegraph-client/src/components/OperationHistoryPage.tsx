@@ -89,9 +89,6 @@ export function OperationHistoryPage() {
     <div className="panel op-history-page">
       {/* Page header */}
       <div className="op-history-page__header">
-        <button className="op-history-page__back" onClick={() => setActivePage('nodegraph')}>
-          ← NodeGraph v2
-        </button>
         <span className="mono op-history-page__title">Operation History</span>
       </div>
 

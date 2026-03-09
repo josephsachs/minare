@@ -5,8 +5,8 @@ import { NavigationContext } from '../App';
 import type { PageId } from '../App';
 
 const PAGE_LABELS: Record<PageId, string> = {
-  'nodegraph': 'Dashboard',
-  'operation-history': 'Operation History',
+  'nodegraph': 'Frameloop',
+  'operation-history': 'Operations',
 };
 
 const PAGES: PageId[] = ['nodegraph', 'operation-history'];

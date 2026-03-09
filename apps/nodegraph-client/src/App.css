@@ -682,7 +682,7 @@ button.primary:hover:not(:disabled) { background: #244a78; }
   grid-template-columns: 1fr 1fr 360px;
   gap: 12px;
   padding: 10px 14px 12px;
-  height: 420px;
+  height: 720px;
 }
 
 .op-history-col {
