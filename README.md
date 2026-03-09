@@ -1,5 +1,5 @@
 # Minare Framework
-Current version: 0.7.0
+Current version: 0.7.2
 
 ## Concept
 Multiplayer games and collaborative simulations need consistency, determinism, and the ability to recover quickly
@@ -85,7 +85,9 @@ between my goals and the developer's experience. I chose
 
 0.6.0 - Config builder, modular infra, schema validation, integration test application
 
-**0.7.0** - Transport layer rewrite
+0.7.0 - Transport layer rewrite
+
+**0.7.2** - NodeGraph v2
 
 0.8.0 - Affinity scope 
 
@@ -93,7 +95,7 @@ between my goals and the developer's experience. I chose
 
 1.0.0 - Quick start
 
-1.1.0 - Replay, improved session snapshot behavior, NodeGraph v2
+1.1.0 - Replay, improved session snapshot behavior
 
 1.2.0 - Operation recovery, monitoring tools
 
@@ -108,9 +110,9 @@ The framework repository contains several testing and debugging utilities. To us
 ensure you have installed the prerequisites:
    1. A Docker version that includes `docker compose`
    2. Java 24.0.1
-   2. Maven 3.9.10
-   3. Node.js 24.3.0
-   4. artillery 2.0.21
+   3. Maven 3.9.10
+   4. Node.js 24.3.0
+   5. artillery 2.0.21
 
 ## Integration Tests
 The framework integration test suite creates a simulated docker environment against which to run assertion-based test cases. 
@@ -124,12 +126,16 @@ To test it,
 The framework includes an example application demonstrating a simple graph of nodes which initialize at start-up. 
 Clients can then submit operations which change the colors of nodes. Several smoke tests exist which demonstrate
 this. 
+
 1. Run `bash run.sh 2 -n`. (You can replace `2` with the number of workers you want to spin up.)
-2. In a browser, navigate to `http://localhost:8080/index.html` and click the `Connect` button at the top of the screen. 
-3. After a connection is established, on the upper-right, click `Show Grid View`. 
-4. In your terminal, find the `/minare-example/artillery` path and run `artillery run color-wave-test.yml`. 
-5. Watch the nodes change color in waves. After the final wave, each node should be colored black and have its version incremented to 40.
-6. Run `bash stop.sh`
+2. Detach from process: ctrl+C,ctrl+C 
+3. Change directory `cd apps/nodegraph-client/`
+4. Run `npm install`
+5. Run `npm run dev`
+6. Access `http://localhost:3000` and click the `Connect` button at the top of the screen. 
+7. In your terminal, find the `/minare-example/artillery` path and run `artillery run color-wave-test.yml`. 
+8. Watch the nodes change color in waves. After the final wave, each node should be colored black and have its version incremented to 40. 
+9. Run `bash stop.sh`
 
 ## License
 © 2025 Joseph Sachs. All rights reserved. License TBD.

@@ -3,7 +3,6 @@ package com.minare.core.frames.worker
 import com.hazelcast.core.HazelcastInstance
 import com.hazelcast.cp.IAtomicLong
 import com.hazelcast.map.IMap
-import com.minare.core.operation.models.Operation
 import com.minare.core.utils.vertx.VerticleLogger
 import com.minare.core.frames.coordinator.FrameCoordinatorVerticle
 import com.minare.core.frames.events.WorkerStartStateSnapshotEvent
@@ -138,7 +137,7 @@ class FrameWorkerVerticle @Inject constructor(
     private suspend fun processOperations(operations: List<JsonObject>, logicalFrame: Long): Int {
         var successCount = 0
 
-        // Process operations sequentially, order matters
+        // Preserve order
         for (operation in operations) {
             if (processOperation(operation, logicalFrame)) {
                 successCount++
@@ -157,16 +156,15 @@ class FrameWorkerVerticle @Inject constructor(
         logicalFrame: Long
     ): Boolean {
         val operationId = operation.getString("id")
+
         if (operationId == null) {
             log.error("Operation missing ID: {}", operation.encode())
             return false
         }
 
         try {
-            val op = Operation.fromJson(operation)
-
             // Send to the appropriate processor based on action type
-            val processorAddress = "worker.process.${op.getAction()}"
+            val processorAddress = "worker.process.${operation.getString("action")}"
 
             // Produce processing context
             val processingContext = JsonObject()
@@ -185,7 +183,7 @@ class FrameWorkerVerticle @Inject constructor(
                     workerId = workerId
                 )
 
-                if (debugTraceLogs) log.trace("Completed operation {} for entity {}", operationId, op.getEntity())
+                if (debugTraceLogs) log.trace("Completed operation {} for entity {}", operationId, operation.getString("entityId"))
                 return true
             } else {
                 log.error("Failed to process operation {}: {}",
@@ -210,7 +208,7 @@ class FrameWorkerVerticle @Inject constructor(
             .put("operationCount", operationsProcessed)
             .put("completedAt", System.currentTimeMillis())
 
-        vertx.eventBus().send(ADDRESS_WORKER_FRAME_COMPLETE, completionEvent)
+        vertx.eventBus().publish(ADDRESS_WORKER_FRAME_COMPLETE, completionEvent)
 
         log.debug("Reported logical frame {} completion with {} operations",
             logicalFrame, operationsProcessed)

@@ -1,5 +1,6 @@
 .DS_Store
 .idea/
+.claude/
 *.iml
 docker/config/mongodb.key
 docker/data
@@ -7,4 +8,6 @@ docker/app.jar
 logs/
 target/
 apps/artillery/node_modules
+apps/nodegraph-client/node_modules
+apps/nodegraph-client/dist
 dbExec.sh

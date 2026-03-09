@@ -4,6 +4,7 @@ import com.minare.core.transport.models.Connection
 
 interface ConnectionStore {
     suspend fun create(): Connection
+    suspend fun create(meta: Map<String, String>?): Connection
     suspend fun delete(connectionId: String)
     suspend fun find(connectionId: String): Connection
     suspend fun find(connectionId: Set<String>): Set<Connection>

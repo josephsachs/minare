@@ -17,6 +17,7 @@ import org.slf4j.LoggerFactory
 import com.google.inject.Inject
 import com.minare.controller.OperationController
 import com.minare.core.entity.graph.EntityGraphReferenceService
+import com.minare.core.entity.services.EntityFieldDeserializer
 import kotlin.system.measureTimeMillis
 
 /**
@@ -133,6 +134,8 @@ class WorkerOperationHandlerVerticle @Inject constructor(
             val afterEntity = stateStore.findOneJson(entityId)
                 ?: throw IllegalStateException("Entity $entityId not found after mutation")
 
+            operationController.afterMutateOperation(operationJson, beforeEntity, afterEntity)
+
             deltaStorageService.captureAndStoreDelta(
                 frameNumber = frameNumber,
                 entityId = entityId,
@@ -187,9 +190,6 @@ class WorkerOperationHandlerVerticle @Inject constructor(
                 afterEntity = afterEntity
             )
 
-            // Application hook
-            operationController.afterCreateOperation(operationJson, entity)
-
             val afterState = afterEntity.getJsonObject("state") ?: JsonObject()
             val entityUpdate = JsonObject()
                 .put("type", entityType)
@@ -203,6 +203,9 @@ class WorkerOperationHandlerVerticle @Inject constructor(
                 .put("type", "update")
                 .put("timestamp", System.currentTimeMillis())
                 .put("updates", JsonObject().put(savedEntity._id, entityUpdate))
+
+            // Application hook
+            operationController.afterCreateOperation(operationJson, entity)
 
             val channels = contextStore.getChannelsByEntityId(savedEntity._id)
             for (channelId in channels) {
@@ -275,16 +278,16 @@ class WorkerOperationHandlerVerticle @Inject constructor(
                 .put("timestamp", System.currentTimeMillis())
                 .put("updates", JsonObject().put(entityId, entityUpdate))
 
-            for (channelId in channels) {
-                channelController.broadcast(channelId, updateMessage)
-            }
-
             // Application hook
             val entity = entityFactory.getNew(entityType).apply {
                 _id = entityId
                 type = entityType
             }
             operationController.afterDeleteOperation(operationJson, entity)
+
+            for (channelId in channels) {
+                channelController.broadcast(channelId, updateMessage)
+            }
 
             log.debug("Deleted entity {} of type {}", entityId, entityType)
         }

@@ -32,7 +32,7 @@ entity:
 
 frames:
   frame_duration: 500
-  lookahead: 250
+  lookahead: 25
   session:
     auto_session: frames_per_session
     frames_per_session: 150
@@ -49,7 +49,7 @@ frames:
 
 
 tasks:
-  tick_interval: 50
+  tick_interval: 30000
 
 
 filesystem:
