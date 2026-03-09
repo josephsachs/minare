@@ -595,14 +595,50 @@ button.primary:hover:not(:disabled) { background: #244a78; }
 .state-tab__label { color: var(--text-mid); }
 .state-tab__value { color: var(--text-hi); }
 
-/* ── OperationHistoryTab ── */
+/* ── OperationHistoryPage ── */
+
+.op-history-page { padding: 0; overflow: hidden; }
+
+.op-history-page__header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.op-history-page__back {
+  background: none;
+  border: none;
+  color: var(--text-mid);
+  font-family: var(--mono);
+  font-size: 11px;
+  cursor: pointer;
+  padding: 0;
+  letter-spacing: 0;
+}
+.op-history-page__back:hover:not(:disabled) {
+  background: none;
+  color: var(--blue);
+  border-color: transparent;
+}
+
+.op-history-page__title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-hi);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+/* ── OperationHistoryTab (shared by page body) ── */
 
 .op-history-tab {
   display: grid;
   grid-template-columns: 1fr 1fr 360px;
   gap: 12px;
-  padding: 8px 0 4px;
-  height: 340px;
+  padding: 10px 14px 12px;
+  height: 420px;
 }
 
 .op-history-col {

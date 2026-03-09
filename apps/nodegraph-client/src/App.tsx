@@ -5,6 +5,7 @@ import { SessionPanel } from './components/SessionPanel';
 import { PlayControls } from './components/PlayControls';
 import { NodeGrid } from './components/NodeGrid';
 import { TabBar } from './components/TabBar';
+import { OperationHistoryPage } from './components/OperationHistoryPage';
 import './App.css';
 
 // ── Selection reducer ──
@@ -43,17 +44,17 @@ export const SelectionContext = createContext<{
   dispatch: () => {},
 });
 
-export type TabId = 'state' | 'operation-history';
+export type PageId = 'nodegraph' | 'operation-history';
 
 export const NavigationContext = createContext<{
-  activeTab: TabId;
+  activePage: PageId;
   historyFocusId: string | null;
-  setActiveTab: (tab: TabId) => void;
+  setActivePage: (page: PageId) => void;
   goToOperationHistory: (operationId: string | null) => void;
 }>({
-  activeTab: 'state',
+  activePage: 'nodegraph',
   historyFocusId: null,
-  setActiveTab: () => {},
+  setActivePage: () => {},
   goToOperationHistory: () => {},
 });
 
@@ -61,23 +62,30 @@ export const NavigationContext = createContext<{
 
 export default function App() {
   const [selectionState, dispatch] = useReducer(selectionReducer, initialSelection);
-  const [activeTab, setActiveTab] = useState<TabId>('state');
+  const [activePage, setActivePage] = useState<PageId>('nodegraph');
   const [historyFocusId, setHistoryFocusId] = useState<string | null>(null);
 
   function goToOperationHistory(operationId: string | null) {
     setHistoryFocusId(operationId);
-    setActiveTab('operation-history');
+    setActivePage('operation-history');
   }
 
   return (
     <SelectionContext.Provider value={{ state: selectionState, dispatch }}>
-      <NavigationContext.Provider value={{ activeTab, historyFocusId, setActiveTab, goToOperationHistory }}>
+      <NavigationContext.Provider value={{ activePage, historyFocusId, setActivePage, goToOperationHistory }}>
         <div className="app-layout">
           <ConnectionBar />
-          <SessionPanel />
-          <PlayControls />
-          <NodeGrid />
-          <TabBar />
+          {activePage === 'nodegraph' && (
+            <>
+              <SessionPanel />
+              <PlayControls />
+              <NodeGrid />
+              <TabBar />
+            </>
+          )}
+          {activePage === 'operation-history' && (
+            <OperationHistoryPage />
+          )}
         </div>
       </NavigationContext.Provider>
     </SelectionContext.Provider>
