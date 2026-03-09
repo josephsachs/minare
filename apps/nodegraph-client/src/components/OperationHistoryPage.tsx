@@ -1,4 +1,4 @@
-import { useSyncExternalStore, useContext, useState, useEffect } from 'react';
+import { useSyncExternalStore, useContext, useState, useEffect, useRef } from 'react';
 import { NavigationContext } from '../App';
 import * as entityStore from '../stores/entity-store';
 import * as opLogStore from '../stores/operation-log';
@@ -75,10 +75,28 @@ export function OperationHistoryPage() {
   const [frameSelId, setFrameSelId] = useState<string | null>(null);
   const [entitySelId, setEntitySelId] = useState<string | null>(null);
 
+  const frameScrollRef = useRef<HTMLDivElement>(null);
+  const entityScrollRef = useRef<HTMLDivElement>(null);
+
+  const scrollToCenter = (containerRef: React.RefObject<HTMLDivElement | null>, id: string) => {
+    requestAnimationFrame(() => {
+      const container = containerRef.current;
+      const el = container?.querySelector<HTMLElement>(`[data-op-id="${id}"]`);
+      if (!container || !el) return;
+      container.scrollTop = el.offsetTop - container.clientHeight / 2 + el.offsetHeight / 2;
+    });
+  };
+
   useEffect(() => {
     if (!historyFocusId) return;
-    if (opLog.find((o) => o.id === historyFocusId)) setFrameSelId(historyFocusId);
-    if (entityOps.find((o) => o.id === historyFocusId)) setEntitySelId(historyFocusId);
+    if (opLog.find((o) => o.id === historyFocusId)) {
+      setFrameSelId(historyFocusId);
+      scrollToCenter(frameScrollRef, historyFocusId);
+    }
+    if (entityOps.find((o) => o.id === historyFocusId)) {
+      setEntitySelId(historyFocusId);
+      scrollToCenter(entityScrollRef, historyFocusId);
+    }
   }, [historyFocusId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const selectedFrameOp = frameSelId ? opLog.find((o) => o.id === frameSelId) ?? null : null;
@@ -100,7 +118,7 @@ export function OperationHistoryPage() {
         {/* Column 1: Frame loop operations */}
         <div className="op-history-col">
           <div className="section-label">Frame Operations ({opLog.length})</div>
-          <div className="op-history-col__scroll">
+          <div ref={frameScrollRef} className="op-history-col__scroll">
             {opLog.length === 0 ? (
               <div className="mono op-list__empty">No frame operations yet</div>
             ) : (
@@ -109,6 +127,7 @@ export function OperationHistoryPage() {
                 return (
                   <div
                     key={`${op.id}-${i}`}
+                    data-op-id={op.id}
                     className={`mono op-item${sel ? ' op-item--selected' : ''}`}
                     onClick={(e) => {
                       setFrameSelId(sel ? null : op.id);
@@ -131,7 +150,7 @@ export function OperationHistoryPage() {
         {/* Column 2: Entity update operations */}
         <div className="op-history-col">
           <div className="section-label">Update Operations ({entityOps.length})</div>
-          <div className="op-history-col__scroll">
+          <div ref={entityScrollRef} className="op-history-col__scroll">
             {entityOps.length === 0 ? (
               <div className="mono op-list__empty">No entity updates yet</div>
             ) : (
@@ -140,6 +159,7 @@ export function OperationHistoryPage() {
                 return (
                   <div
                     key={`${op.id ?? 'noid'}-${i}`}
+                    data-op-id={op.id}
                     className={`mono op-item${sel ? ' op-item--selected' : ''}`}
                     onClick={(e) => {
                       setEntitySelId(sel ? null : (op.id ?? null));
