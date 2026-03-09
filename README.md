@@ -126,6 +126,7 @@ To test it,
 The framework includes an example application demonstrating a simple graph of nodes which initialize at start-up. 
 Clients can then submit operations which change the colors of nodes. Several smoke tests exist which demonstrate
 this. 
+
 1. Run `bash run.sh 2 -n`. (You can replace `2` with the number of workers you want to spin up.)
 2. Detach from process: ctrl+C,ctrl+C 
 3. Change directory `cd apps/nodegraph-client/`
