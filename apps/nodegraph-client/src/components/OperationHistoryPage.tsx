@@ -107,7 +107,13 @@ export function OperationHistoryPage() {
                   <div
                     key={`${op.id}-${i}`}
                     className={`mono op-item${sel ? ' op-item--selected' : ''}`}
-                    onClick={() => setFrameSelId(sel ? null : op.id)}
+                    onClick={(e) => {
+                      setFrameSelId(sel ? null : op.id);
+                      if (e.ctrlKey || e.metaKey) {
+                        const match = entityOps.find((o) => o.id === op.id);
+                        if (match?.id) setEntitySelId(match.id);
+                      }
+                    }}
                   >
                     <span className="op-item__frame">F{op.frame}</span>
                     <span className="op-item__action">{op.action}</span>
@@ -132,7 +138,13 @@ export function OperationHistoryPage() {
                   <div
                     key={`${op.id ?? 'noid'}-${i}`}
                     className={`mono op-item${sel ? ' op-item--selected' : ''}`}
-                    onClick={() => setEntitySelId(sel ? null : (op.id ?? null))}
+                    onClick={(e) => {
+                      setEntitySelId(sel ? null : (op.id ?? null));
+                      if (e.ctrlKey || e.metaKey) {
+                        const match = opLog.find((o) => o.id === op.id);
+                        if (match) setFrameSelId(match.id);
+                      }
+                    }}
                   >
                     <span className="op-item__frame op-item__frame--ts">
                       {op.timestamp ? new Date(op.timestamp).toISOString().slice(11, 19) : '—'}
