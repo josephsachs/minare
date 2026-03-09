@@ -27,7 +27,8 @@ export function ConnectionBar() {
           onClick={() => setActivePage('nodegraph')}
           style={{ cursor: activePage !== 'nodegraph' ? 'pointer' : 'default' }}
         >
-          <span className="mono conn-bar__title">NODEGRAPH</span>
+          <span className="conn-bar__logo-container"><img className="mono conn-bar__logo" src="src/logo.svg" /></span>
+          <span className="mono conn-bar__title-1">MINARE</span> <span className="mono conn-bar__title-2">NodeGraph</span>
           <span className="mono conn-bar__version">v2</span>
         </div>
         <div className="conn-bar__sep" />
