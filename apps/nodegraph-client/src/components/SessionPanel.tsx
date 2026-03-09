@@ -105,7 +105,7 @@ function OperationList() {
               >
                 <span className="op-item__frame">F{op.frame}</span>
                 <span className="op-item__action">{op.action}</span>
-                <span className="op-item__entity">{op.entityId.substring(0, 20)}</span>
+                <span className="op-item__entity">{op.entityId}</span>
               </div>
             );
           })

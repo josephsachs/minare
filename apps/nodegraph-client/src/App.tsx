@@ -1,4 +1,4 @@
-import { useReducer, createContext } from 'react';
+import { useReducer, createContext, useState } from 'react';
 import type { SelectionState, SelectionAction } from './types';
 import { ConnectionBar } from './components/ConnectionBar';
 import { SessionPanel } from './components/SessionPanel';
@@ -43,20 +43,43 @@ export const SelectionContext = createContext<{
   dispatch: () => {},
 });
 
+export type TabId = 'state' | 'operation-history';
+
+export const NavigationContext = createContext<{
+  activeTab: TabId;
+  historyFocusId: string | null;
+  setActiveTab: (tab: TabId) => void;
+  goToOperationHistory: (operationId: string | null) => void;
+}>({
+  activeTab: 'state',
+  historyFocusId: null,
+  setActiveTab: () => {},
+  goToOperationHistory: () => {},
+});
+
 // ── App ──
 
 export default function App() {
   const [selectionState, dispatch] = useReducer(selectionReducer, initialSelection);
+  const [activeTab, setActiveTab] = useState<TabId>('state');
+  const [historyFocusId, setHistoryFocusId] = useState<string | null>(null);
+
+  function goToOperationHistory(operationId: string | null) {
+    setHistoryFocusId(operationId);
+    setActiveTab('operation-history');
+  }
 
   return (
     <SelectionContext.Provider value={{ state: selectionState, dispatch }}>
-      <div className="app-layout">
-        <ConnectionBar />
-        <SessionPanel />
-        <PlayControls />
-        <NodeGrid />
-        <TabBar />
-      </div>
+      <NavigationContext.Provider value={{ activeTab, historyFocusId, setActiveTab, goToOperationHistory }}>
+        <div className="app-layout">
+          <ConnectionBar />
+          <SessionPanel />
+          <PlayControls />
+          <NodeGrid />
+          <TabBar />
+        </div>
+      </NavigationContext.Provider>
     </SelectionContext.Provider>
   );
 }

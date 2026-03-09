@@ -1,5 +1,5 @@
 import { useSyncExternalStore, useContext, useState, memo } from 'react';
-import { SelectionContext } from '../App';
+import { SelectionContext, NavigationContext } from '../App';
 import * as entityStore from '../stores/entity-store';
 import type { EntityState } from '../types';
 
@@ -42,17 +42,9 @@ const NodeCell = memo(function NodeCell({ entity, isSelected, onSelect }: NodeCe
 
 // ── NodeHoverPanel ──
 
-interface LastOperation {
-  id?: string;
-  entityId?: string;
-  entityType?: string;
-  action?: string;
-  timestamp?: number;
-  version?: number;
-}
-
 function NodeHoverPanel({ entity }: { entity: EntityState }) {
-  const lastOp = entity.state?.lastOperation as LastOperation | undefined;
+  const { goToOperationHistory } = useContext(NavigationContext);
+  const lastOp = entity.state?.lastOperation as Record<string, unknown> | undefined;
 
   const fields: [string, string | number][] = [
     ['ID', entity.id],
@@ -78,26 +70,34 @@ function NodeHoverPanel({ entity }: { entity: EntityState }) {
           <div className="section-label hover-panel__op-label">Last Operation</div>
           <div className="stat-row">
             <span className="stat-label">Action</span>
-            <span className="hover-panel__action">{lastOp.action ?? '—'}</span>
+            <span className="hover-panel__action">{String(lastOp.action ?? '—')}</span>
           </div>
           <div className="stat-row">
             <span className="stat-label">ID</span>
-            <span className="stat-value hover-panel__value-truncate">{lastOp.id ?? '—'}</span>
+            <span className="stat-value hover-panel__value-truncate">{String(lastOp.id ?? '—')}</span>
           </div>
           <div className="stat-row">
             <span className="stat-label">Time</span>
             <span className="stat-value">
               {lastOp.timestamp
-                ? new Date(lastOp.timestamp).toISOString().slice(11, 23)
+                ? new Date(lastOp.timestamp as number).toISOString().slice(11, 23)
                 : '—'}
             </span>
           </div>
           <div className="stat-row">
             <span className="stat-label">Version</span>
-            <span className="stat-value">{lastOp.version ?? '—'}</span>
+            <span className="stat-value">{String(lastOp.version ?? '—')}</span>
           </div>
         </div>
       )}
+      <div className="hover-panel__history-link">
+        <button
+          className="hover-panel__history-btn"
+          onClick={() => goToOperationHistory((lastOp?.id as string) ?? null)}
+        >
+          · See Operation History
+        </button>
+      </div>
     </div>
   );
 }

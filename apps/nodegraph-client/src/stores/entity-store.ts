@@ -1,5 +1,5 @@
 import { onDownMessage } from '../ws/connection';
-import type { EntityMap, EntityUpdateMessage, SyncMessage } from '../types';
+import type { EntityMap, EntityUpdateMessage, OperationRecord, SyncMessage } from '../types';
 
 let entities: EntityMap = {};
 let snapshot: EntityMap = entities;
@@ -22,22 +22,37 @@ onDownMessage((msg) => {
       const newVersion = update.version ?? 0;
 
       if (!existing || newVersion > existing.version) {
+        let updated;
         if (update.delta && existing) {
           // Delta merge
-          entities[entityId] = {
+          updated = {
             ...existing,
             version: newVersion,
             state: { ...existing.state, ...update.delta },
           };
         } else {
           // Full update
-          entities[entityId] = {
+          updated = {
             id: update._id ?? entityId,
             type: update.type ?? existing?.type ?? 'Unknown',
             version: newVersion,
             state: update.state ?? existing?.state ?? {},
+            operationHistory: existing?.operationHistory ?? [],
           };
         }
+
+        // Append lastOperation from state/delta to operationHistory
+        const mergedState = updated.state as Record<string, unknown>;
+        const lastOp = mergedState?.lastOperation as OperationRecord | undefined;
+        if (lastOp?.id) {
+          const history = updated.operationHistory ?? [];
+          // Only append if not already recorded (dedup by id)
+          if (!history.some((r) => r.id === lastOp.id)) {
+            updated = { ...updated, operationHistory: [...history, lastOp] };
+          }
+        }
+
+        entities[entityId] = updated;
         changed = true;
       }
     }
@@ -59,6 +74,7 @@ onDownMessage((msg) => {
         type: entity.type ?? 'Unknown',
         version: entity.version ?? 1,
         state: entity.state ?? {},
+        operationHistory: entities[id]?.operationHistory ?? [],
       };
       changed = true;
     }

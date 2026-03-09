@@ -17,11 +17,21 @@ export type PauseState = 'UNPAUSED' | 'REST' | 'SOFT' | 'HARD';
 
 // ── Entities (from down socket updates) ──
 
+export interface OperationRecord {
+  id?: string;
+  entityId?: string;
+  entityType?: string;
+  action?: string;
+  timestamp?: number;
+  version?: number;
+}
+
 export interface EntityState {
   id: string;
   type: string;
   version: number;
   state: Record<string, unknown>;
+  operationHistory: OperationRecord[];
 }
 
 export interface EntityMap {
