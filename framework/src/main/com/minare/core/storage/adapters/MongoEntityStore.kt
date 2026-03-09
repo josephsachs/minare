@@ -256,10 +256,8 @@ class MongoEntityStore @Inject constructor(
         val document = JsonObject()
             .put("type", entity.type)
 
-        // Extract only relationship fields
         val relationshipFields = entityInspector.getFieldsOfType(entity, listOf(Child::class, Parent::class))
 
-        // Build state object with field names and values
         val relationshipState = JsonObject()
         relationshipFields.forEach { field ->
             field.isAccessible = true
@@ -269,7 +267,6 @@ class MongoEntityStore @Inject constructor(
             }
         }
 
-        // Always include state field, even if empty
         document.put("state", relationshipState)
 
         return document

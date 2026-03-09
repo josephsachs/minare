@@ -29,7 +29,6 @@ class NodeGraphOperationController @Inject constructor() : OperationController()
 
         return when (command) {
             "mutate" -> {
-                // Convert mutate command to Operation
                 val entityObject = message.getJsonObject("entity")
 
                 if (entityObject == null) {
@@ -48,16 +47,12 @@ class NodeGraphOperationController @Inject constructor() : OperationController()
                     .entity(entityId)
                     .action(OperationType.MUTATE)
 
-                // Build the delta, enriched with lastOperation record.
-                // The operation ID and timestamp are already determined;
-                // frame number is not yet assigned (happens in the coordinator)
-                // so we omit it — the client can correlate via the metrics channel.
                 val state = entityObject.getJsonObject("state") ?: JsonObject()
-
                 operation.entityType(Node::class)
                 entityObject.getLong("version")?.let { operation.version(it) }
 
-                state.put("lastOperation", operation.build())
+                state.put("lastOperation", operation.build()) // A record of what we just did
+                                                              // that will be included in the update
 
                 operation.delta(state)
 

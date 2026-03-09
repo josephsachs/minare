@@ -91,6 +91,12 @@ abstract class OperationController @Inject constructor() {
     }
 
     /**
+     * Application developer override hook
+     */
+    open suspend fun afterMutateOperation(operation: JsonObject, before: JsonObject, after: JsonObject) {
+    }
+
+    /**
      * Send an operation set to the message broker
      *
      * @param message JsonArray of operations
