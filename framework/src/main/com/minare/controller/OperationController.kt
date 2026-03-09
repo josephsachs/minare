@@ -35,16 +35,7 @@ abstract class OperationController @Inject constructor() {
      */
     suspend fun process(message: JsonObject) {
         debug.log(DebugType.OPERATION_CONTROLLER_PROCESS_MESSAGE, listOf(message))
-
-        // Pass message to application layer for packaging into Operations
-        val operations = preQueue(message)
-
-        // If application returns nothing, proceed
-        if (operations == null) {
-            log.warn("Application preQueue returned null, skipping message")
-            return
-        }
-
+        val operations = preQueue(message) ?: return
         queue(operations)
     }
 
@@ -54,7 +45,7 @@ abstract class OperationController @Inject constructor() {
      *
      * @param operations Either an Operation or OperationSet
      */
-    suspend fun queue(operations: Any) {
+    private suspend fun queue(operations: Any) {
         val message = when (operations) {
             is OperationSet -> operations.toJsonArray()
             is Operation -> JsonArray().add(operations.build())
@@ -94,9 +85,15 @@ abstract class OperationController @Inject constructor() {
 
     /**
      * Application developer override hook
-     * Called by the oepration worker after a delete command si processed
+     * Called by the operation worker after a delete command is processed
      */
     open suspend fun afterDeleteOperation(operation: JsonObject, entity: Entity) {
+    }
+
+    /**
+     * Application developer override hook
+     */
+    open suspend fun afterMutateOperation(operation: JsonObject, before: JsonObject, after: JsonObject) {
     }
 
     /**
@@ -113,6 +110,7 @@ abstract class OperationController @Inject constructor() {
         debug.log(DebugType.OPERATION_CONTROLLER_SEND_MESSAGE, listOf(message.size(), message.toString()))
 
         log.debug("Sending {} operations to Kafka topic {}", message.size(), OPERATIONS_TOPIC)
+
         messageQueue.send(OPERATIONS_TOPIC, message)
     }
 

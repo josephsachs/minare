@@ -57,6 +57,46 @@ class MongoConnectionStore @Inject constructor(
         }
     }
 
+    override suspend fun create(meta: Map<String, String>?): Connection {
+        val connectionId = UUID.randomUUID().toString()
+        val now = System.currentTimeMillis()
+
+        val connection = Connection(
+            id = connectionId,
+            createdAt = now,
+            lastUpdated = now,
+            lastActivity = now,
+            upSocketId = null,
+            upSocketInstanceId = null,
+            downSocketId = null,
+            downSocketInstanceId = null,
+            reconnectable = true,
+            meta = meta
+        )
+
+        val document = JsonObject()
+            .put("_id", connection.id)
+            .put("createdAt", connection.createdAt)
+            .put("lastUpdated", connection.lastUpdated)
+            .put("lastActivity", connection.lastActivity)
+            .put("upSocketId", connection.upSocketId)
+            .put("upSocketDeploymentId", connection.upSocketInstanceId)
+            .put("downSocketId", connection.downSocketId)
+            .put("downSocketDeploymentId", connection.downSocketInstanceId)
+            .put("reconnectable", connection.reconnectable)
+            .put("meta", meta)
+
+        try {
+            mongoClient.save(collection, document).await()
+            log.info("Connection created: {}", connectionId)
+            return connection
+        } catch (e: Exception) {
+            log.error("Failed to create connection", e)
+            throw e
+        }
+    }
+
+
     /**
      * Delete a connection
      * This method is more resilient to race conditions.

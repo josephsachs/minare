@@ -22,9 +22,11 @@ class NodeGraphConnectionController @Inject constructor(
     /**
      * Called when a client becomes fully connected.
      * Subscribes the client to the default channel and initiates sync.
+     * If the connection carries `enable_metrics` in its meta, also subscribes
+     * to the metrics broadcast channel.
      */
     override suspend fun onConnected(connection: Connection) {
-        log.info("Test client {} is now fully connected", connection.id)
+        log.info("Client {} is now fully connected", connection.id)
 
         val defaultChannelId = channelController.getDefaultChannel()
 
@@ -39,6 +41,18 @@ class NodeGraphConnectionController @Inject constructor(
                 .put("type", "initial_sync_complete")
                 .put("timestamp", System.currentTimeMillis())
             )
+        }
+
+        // ── Metrics channel subscription ──
+        if (connection.meta?.get("enable_metrics") == "true") {
+            val metricsChannelId = channelController.getMetricsChannel()
+            if (metricsChannelId != null) {
+                if (channelController.addClient(connection.id, metricsChannelId)) {
+                    log.info("Client {} subscribed to metrics channel {}", connection.id, metricsChannelId)
+                }
+            } else {
+                log.warn("Metrics channel not initialized; client {} requested metrics but cannot subscribe", connection.id)
+            }
         }
     }
 }

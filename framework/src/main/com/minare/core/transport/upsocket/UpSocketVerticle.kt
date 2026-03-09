@@ -141,6 +141,17 @@ class UpSocketVerticle @Inject constructor(
                         return@launch
                     }
 
+                    // ── Meta passthrough ──
+                    // If the client sends { "type": "connect", "meta": { ... } },
+                    // extract meta and initiate the connection immediately rather than
+                    // waiting for the handshake timeout.
+                    if (!handshakeCompleted && msg.getString("type") == "connect") {
+                        handshakeCompleted = true
+                        val meta = extractMeta(msg)
+                        initiateConnection(websocket, traceId, meta)
+                        return@launch
+                    }
+
                     if (frameworkConfig.sockets.up.ack) {
                         protocol.router.sendMessage(websocket, JsonObject()
                             .put("type", "ack")
@@ -173,9 +184,25 @@ class UpSocketVerticle @Inject constructor(
         }
     }
 
-    private suspend fun initiateConnection(websocket: ServerWebSocket, traceId: String) {
+    /**
+     * Extract and flatten the optional `meta` object from the client's
+     * first message into a simple String→String map.
+     * Unknown keys are preserved; values are coerced to strings.
+     */
+    private fun extractMeta(msg: JsonObject): Map<String, String>? {
+        val metaObj = msg.getJsonObject("meta") ?: return null
+        if (metaObj.isEmpty) return null
+
+        return metaObj.map.entries.associate { (k, v) -> k to v.toString() }
+    }
+
+    private suspend fun initiateConnection(
+        websocket: ServerWebSocket,
+        traceId: String,
+        meta: Map<String, String>? = null
+    ) {
         try {
-            val connection = connectionStore.create()
+            val connection = connectionStore.create(meta)
             val socketId = "up-${UUID.randomUUID()}"
 
             val updatedConnection = connectionStore.putUpSocket(connection.id, socketId, instanceId)

@@ -18,6 +18,10 @@ class HazelcastConnectionStore @Inject constructor(
     private val map: IMap<String, Connection> by lazy { hazelcast.getMap("connections") }
 
     override suspend fun create(): Connection {
+        return create(null)
+    }
+
+    override suspend fun create(meta: Map<String, String>?): Connection {
         val connectionId = UUID.randomUUID().toString()
         val now = System.currentTimeMillis()
 
@@ -25,7 +29,8 @@ class HazelcastConnectionStore @Inject constructor(
             id = connectionId,
             createdAt = now,
             lastUpdated = now,
-            lastActivity = now
+            lastActivity = now,
+            meta = meta
         )
 
         map[connectionId] = connection

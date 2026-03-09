@@ -10,18 +10,19 @@ class TestRunner(private val suiteName: String, private val testLog: Logger) {
         testLog.info(message)
     }
 
-    suspend fun test(name: String, block: suspend () -> Unit) {
+    suspend fun test(name: String, block: suspend (TestStepLog) -> Unit) {
+        val stepLog = TestStepLog()
         val startTime = System.currentTimeMillis()
         try {
-            block()
+            block(stepLog)
             val duration = System.currentTimeMillis() - startTime
             results.add(TestResult(name, passed = true, durationMs = duration))
         } catch (e: AssertionError) {
             val duration = System.currentTimeMillis() - startTime
-            results.add(TestResult(name, passed = false, durationMs = duration, error = e))
+            results.add(TestResult(name, passed = false, durationMs = duration, error = e, stepLog = stepLog))
         } catch (e: Throwable) {
             val duration = System.currentTimeMillis() - startTime
-            results.add(TestResult(name, passed = false, durationMs = duration, error = e))
+            results.add(TestResult(name, passed = false, durationMs = duration, error = e, stepLog = stepLog))
         }
     }
 
@@ -56,5 +57,22 @@ class TestRunner(private val suiteName: String, private val testLog: Logger) {
         return failed == 0
     }
 
+    /**
+     * Emit step logs for all failed tests.
+     * Called by IntegrationTestRunner after all suites complete.
+     * No output if there are no failures with recorded steps.
+     */
+    fun reportFailureDetails() {
+        val failures = results.filter { !it.passed && it.stepLog?.hasEntries() == true }
+        if (failures.isEmpty()) return
+
+        out("  Failure details — $suiteName:")
+        failures.forEach { result ->
+            out("  ┄ ${result.name}")
+            result.stepLog?.format()?.forEach { line -> out(line) }
+        }
+    }
+
     fun getResults(): List<TestResult> = results.toList()
+    fun hasFailed(): Boolean = results.any { !it.passed }
 }

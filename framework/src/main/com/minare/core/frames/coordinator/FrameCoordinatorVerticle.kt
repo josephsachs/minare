@@ -145,7 +145,12 @@ class FrameCoordinatorVerticle @Inject constructor(
                 }
 
                 val currentFrame = frameCalculator.getCurrentLogicalFrame(coordinatorState.sessionStartNanos)
-                val targetFrame = currentFrame + frameworkConfig.frames.lookahead
+                // Cap lookahead relative to frameInProgress so manifests don't
+                // run unboundedly ahead when the frame loop is stalled.
+                val targetFrame = minOf(
+                    currentFrame + frameworkConfig.frames.lookahead,
+                    coordinatorState.frameInProgress + frameworkConfig.frames.lookahead
+                )
 
                 for (frame in (coordinatorState.lastPreparedManifest + 1)..targetFrame) {
                     prepareManifestForFrame(frame)
