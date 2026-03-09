@@ -17,9 +17,10 @@ const NodeCell = memo(function NodeCell({ entity, isSelected, onSelect }: NodeCe
   const version = entity.version ?? 0;
 
   // Compute text color from background luminance
-  const r = parseInt(color.slice(1, 3), 16) || 200;
-  const g = parseInt(color.slice(3, 5), 16) || 200;
-  const b = parseInt(color.slice(5, 7), 16) || 200;
+  const parseHex = (s: string) => { const v = parseInt(s, 16); return Number.isNaN(v) ? 128 : v; };
+  const r = parseHex(color.slice(1, 3));
+  const g = parseHex(color.slice(3, 5));
+  const b = parseHex(color.slice(5, 7));
   const brightness = (r * 299 + g * 587 + b * 114) / 1000;
   const textColor = brightness > 128 ? '#1a1a1e' : '#e8e8ec';
 
