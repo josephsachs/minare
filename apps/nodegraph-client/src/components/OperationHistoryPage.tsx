@@ -83,7 +83,9 @@ export function OperationHistoryPage() {
       const container = containerRef.current;
       const el = container?.querySelector<HTMLElement>(`[data-op-id="${id}"]`);
       if (!container || !el) return;
-      container.scrollTop = el.offsetTop - container.clientHeight / 2 + el.offsetHeight / 2;
+      const elRect = el.getBoundingClientRect();
+      const containerRect = container.getBoundingClientRect();
+      container.scrollTop += elRect.top - containerRect.top - container.clientHeight / 2 + elRect.height / 2;
     });
   };
 
