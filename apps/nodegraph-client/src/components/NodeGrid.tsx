@@ -1,4 +1,4 @@
-import { useSyncExternalStore, useContext, useState, memo } from 'react';
+import { useSyncExternalStore, useContext, memo } from 'react';
 import { SelectionContext, NavigationContext } from '../App';
 import * as entityStore from '../stores/entity-store';
 import type { EntityState } from '../types';
@@ -107,7 +107,6 @@ function NodeHoverPanel({ entity }: { entity: EntityState }) {
 export function NodeGrid() {
   const entities = useSyncExternalStore(entityStore.subscribe, entityStore.getSnapshot);
   const { state, dispatch } = useContext(SelectionContext);
-  const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
 
   const nodes = Object.values(entities)
     .filter(e => e.type === 'Node')
@@ -115,7 +114,15 @@ export function NodeGrid() {
       ((a.state?.label as string) ?? '').localeCompare((b.state?.label as string) ?? '')
     );
 
-  const hoveredEntity = hoveredNodeId ? entities[hoveredNodeId] : null;
+  const selectedEntity = state.selectedNodeId ? entities[state.selectedNodeId] : null;
+
+  function handleSelect(id: string) {
+    if (state.selectedNodeId === id) {
+      dispatch({ type: 'CLEAR_SELECTION' });
+    } else {
+      dispatch({ type: 'SELECT_NODE', nodeId: id });
+    }
+  }
 
   return (
     <div className="panel node-grid">
@@ -125,21 +132,16 @@ export function NodeGrid() {
       ) : (
         <div className="node-grid__wrap">
           {nodes.map(entity => (
-            <div
+            <NodeCell
               key={entity.id}
-              onMouseEnter={() => setHoveredNodeId(entity.id)}
-              onMouseLeave={() => setHoveredNodeId(null)}
-            >
-              <NodeCell
-                entity={entity}
-                isSelected={state.selectedNodeId === entity.id}
-                onSelect={(id) => dispatch({ type: 'SELECT_NODE', nodeId: id })}
-              />
-            </div>
+              entity={entity}
+              isSelected={state.selectedNodeId === entity.id}
+              onSelect={handleSelect}
+            />
           ))}
         </div>
       )}
-      {hoveredEntity && <NodeHoverPanel entity={hoveredEntity} />}
+      {selectedEntity && <NodeHoverPanel entity={selectedEntity} />}
     </div>
   );
 }

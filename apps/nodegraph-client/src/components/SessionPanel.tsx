@@ -1,5 +1,5 @@
 import { useSyncExternalStore, useContext, useRef, useEffect } from 'react';
-import { SelectionContext } from '../App';
+import { SelectionContext, NavigationContext } from '../App';
 import * as metricsStore from '../stores/metrics-store';
 import * as opLogStore from '../stores/operation-log';
 import type { PauseState } from '../types';
@@ -120,6 +120,7 @@ function OperationList() {
 function OperationDetail() {
   const opLog = useSyncExternalStore(opLogStore.subscribe, opLogStore.getSnapshot);
   const { state } = useContext(SelectionContext);
+  const { goToOperationHistory } = useContext(NavigationContext);
 
   const op = state.selectedOperationId
     ? opLog.find((o) => o.id === state.selectedOperationId)
@@ -152,6 +153,14 @@ function OperationDetail() {
           <span className="stat-value-truncate">{value}</span>
         </div>
       ))}
+      <div className="hover-panel__history-link">
+        <button
+          className="hover-panel__history-btn"
+          onClick={() => goToOperationHistory(op.id)}
+        >
+          · See Operation History
+        </button>
+      </div>
     </div>
   );
 }

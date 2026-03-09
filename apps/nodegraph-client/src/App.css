@@ -196,10 +196,54 @@ button.primary:hover:not(:disabled) { background: #244a78; }
   padding: 8px 14px;
 }
 
+.conn-bar__left {
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
+
 .conn-bar__brand {
   display: flex;
   align-items: baseline;
   gap: 8px;
+}
+
+.conn-bar__sep {
+  width: 1px;
+  height: 16px;
+  background: var(--border);
+  margin: 0 16px;
+  flex-shrink: 0;
+}
+
+.conn-bar__nav {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.conn-bar__nav-tab {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--text-lo);
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 4px 10px;
+  cursor: pointer;
+  letter-spacing: 0.04em;
+  border-radius: 0;
+  transition: color 0.12s, border-color 0.12s;
+}
+.conn-bar__nav-tab:hover:not(:disabled) {
+  background: none;
+  color: var(--text-mid);
+  border-color: transparent;
+}
+.conn-bar__nav-tab--active {
+  color: var(--text-hi);
+  border-bottom-color: var(--blue);
 }
 
 .conn-bar__title {
