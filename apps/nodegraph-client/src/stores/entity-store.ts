@@ -69,12 +69,22 @@ onDownMessage((msg) => {
     for (const entity of m.data.entities) {
       const id = entity._id ?? entity.id;
       if (!id) continue;
+
+      const state = entity.state ?? {};
+      let history: OperationRecord[] = entities[id]?.operationHistory ?? [];
+
+      // Seed operationHistory from lastOperation present in sync state
+      const lastOp = (state as Record<string, unknown>).lastOperation as OperationRecord | undefined;
+      if (lastOp?.id && !history.some((r) => r.id === lastOp.id)) {
+        history = [...history, lastOp];
+      }
+
       entities[id] = {
         id,
         type: entity.type ?? 'Unknown',
         version: entity.version ?? 1,
-        state: entity.state ?? {},
-        operationHistory: entities[id]?.operationHistory ?? [],
+        state,
+        operationHistory: history,
       };
       changed = true;
     }
