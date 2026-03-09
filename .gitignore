@@ -11,4 +11,5 @@ target/
 apps/artillery/node_modules
 apps/nodegraph-client/node_modules
 apps/nodegraph-client/dist
+apps/nodegraph-client/.vite
 dbExec.sh
