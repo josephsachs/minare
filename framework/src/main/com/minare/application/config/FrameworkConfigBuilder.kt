@@ -135,7 +135,7 @@ class FrameworkConfigBuilder {
         config.frames.groupOperationsBy = parseAffinityScopes(frames)
 
         if (config.frames.groupOperationsBy.isEmpty()) {
-            infos.add("frames.group_operations_by not specified, defaults to NONE (Options: [\"NONE\"], \"SUBJECT\", \"OPERATION_SET\", \"FIELD_PARENT\", \"FIELD_PEER\" \"FIELD_CHILD\",]")
+            infos.add("frames.group_operations_by not specified, defaults to NONE (Options: \"ENTITY\", \"TARGETS\", \"OPERATION_SET\", \"FIELD\")")
         }
 
         val session = require(frames.getJsonObject("session"), "frames.session section must be specified")

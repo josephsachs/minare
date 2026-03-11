@@ -57,8 +57,6 @@ class FrameCoordinatorVerticle @Inject constructor(
 
     private val log = LoggerFactory.getLogger(FrameCoordinatorVerticle::class.java)
 
-    var manifestTimerId: Long? = null
-
     companion object {
         const val ADDRESS_SESSION_START = "minare.coordinator.session.start"
         const val ADDRESS_FRAME_ALL_COMPLETE = "minare.coordinator.internal.frame-all-complete"
@@ -132,31 +130,15 @@ class FrameCoordinatorVerticle @Inject constructor(
     }
 
     /**
-     * Extract and assign buffered operations at the rhythm of the frame loop
+     * No-op. Manifest writing is deferred to frame-advance time (onFrameComplete →
+     * preparePendingManifests). While we're ahead of the frame loop, op-to-frame
+     * timing is the only thing that matters — operations are already buffered by
+     * OperationHandler.handle() with correct frame assignment. Worker assignment
+     * happens as late as possible for the freshest entity state.
      */
     private suspend fun startManifestTimer() {
-        manifestTimerId = vertx.setPeriodic(frameworkConfig.frames.frameDuration) {
-            launch {
-                val pauseState = coordinatorState.pauseState
-
-                if (pauseState in setOf(PauseState.REST, PauseState.SOFT)) {
-                    debug.log(DebugType.COORDINATOR_MANIFEST_TIMER_BLOCKED_TICK, listOf(pauseState))
-                    return@launch
-                }
-
-                val currentFrame = frameCalculator.getCurrentLogicalFrame(coordinatorState.sessionStartNanos)
-                // Cap lookahead relative to frameInProgress so manifests don't
-                // run unboundedly ahead when the frame loop is stalled.
-                val targetFrame = minOf(
-                    currentFrame + frameworkConfig.frames.lookahead,
-                    coordinatorState.frameInProgress + frameworkConfig.frames.lookahead
-                )
-
-                for (frame in (coordinatorState.lastPreparedManifest + 1)..targetFrame) {
-                    prepareManifestForFrame(frame)
-                }
-            }
-        }
+        // Intentionally empty. Manifests are prepared in onFrameComplete() and
+        // during session initialization (ADDRESS_PREPARE_SESSION_MANIFESTS).
     }
 
     /**
