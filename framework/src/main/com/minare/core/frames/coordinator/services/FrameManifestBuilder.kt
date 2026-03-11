@@ -2,6 +2,7 @@ package com.minare.core.frames.coordinator.services
 
 import com.hazelcast.core.HazelcastInstance
 import com.hazelcast.map.IMap
+import com.minare.application.config.FrameworkConfig
 import com.minare.core.frames.services.WorkerRegistry
 import com.minare.core.utils.debug.DebugLogger
 import com.minare.exceptions.FrameLoopException
@@ -22,6 +23,8 @@ import kotlin.math.abs
 class FrameManifestBuilder @Inject constructor(
     private val hazelcastInstance: HazelcastInstance,
     private val workerRegistry: WorkerRegistry,
+    private val frameworkConfig: FrameworkConfig,
+    private val affinityResolver: AffinityResolver,
     private val debug: DebugLogger
 ) {
     private val manifestMap: IMap<String, JsonObject> by lazy {
@@ -29,23 +32,31 @@ class FrameManifestBuilder @Inject constructor(
     }
 
     /**
-     * Distribute operations among workers using consistent hashing.
+     * Distribute operations among workers.
      *
-     * Routing key: operationSetId for set members, operationId for solo operations.
-     * All members of an OperationSet hash to the same worker as a unit.
-     * Solo operations distribute by their own ID as before.
+     * When affinity scopes are configured, delegates to AffinityResolver for
+     * relationship-aware routing (single Redis batch read per frame).
+     *
+     * When no scopes are configured, falls back to consistent hashing by routing key
+     * (operationSetId for set members, operationId for solo operations). Zero-cost path:
+     * no Redis calls, no reflection.
      *
      * @param operations The operations to distribute
      * @param workers The available workers
      * @return Map of worker ID to assigned operations
      */
-    fun distributeOperations(
+    suspend fun distributeOperations(
         operations: List<JsonObject>,
         workers: Set<String>
     ): Map<String, List<JsonObject>> {
         if (workers.isEmpty()) return emptyMap()
 
-        // Sort workers for consistent hashing
+        // Delegate to AffinityResolver when scopes are configured
+        if (frameworkConfig.frames.groupOperationsBy.isNotEmpty()) {
+            return affinityResolver.resolve(operations, workers)
+        }
+
+        // Zero-cost fallback: consistent hashing by routing key
         val workerList = workers.toList().sorted()
 
         return operations.groupBy { op ->
