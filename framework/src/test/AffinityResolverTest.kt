@@ -50,7 +50,7 @@ class AffinityResolverTest {
                 cohort.addAll(extractTargetIds(workUnitOps, entityCache))
             }
 
-            if (AffinityScopeType.FIELD in scopes) {
+            if (scopes.any { it in setOf(AffinityScopeType.FIELD_PARENT, AffinityScopeType.FIELD_PEER, AffinityScopeType.FIELD_CHILD) }) {
                 cohort.addAll(resolveFieldRelated(cohort, entityCache, relationshipFields))
             }
 
@@ -315,7 +315,7 @@ class AffinityResolverTest {
     }
 
     @Nested
-    @DisplayName("FIELD scope")
+    @DisplayName("FIELD_PARENT scope")
     inner class FieldScope {
 
         @Test
@@ -333,7 +333,7 @@ class AffinityResolverTest {
             )
             val result = resolve(
                 ops, workers,
-                setOf(AffinityScopeType.ENTITY, AffinityScopeType.FIELD),
+                setOf(AffinityScopeType.ENTITY, AffinityScopeType.FIELD_PARENT),
                 entityCache, relationshipFields
             )
 
@@ -358,7 +358,7 @@ class AffinityResolverTest {
             )
             val result = resolve(
                 ops, workers,
-                setOf(AffinityScopeType.ENTITY, AffinityScopeType.FIELD),
+                setOf(AffinityScopeType.ENTITY, AffinityScopeType.FIELD_PARENT),
                 entityCache, relationshipFields
             )
 
@@ -382,7 +382,7 @@ class AffinityResolverTest {
             )
             val result = resolve(
                 ops, workers,
-                setOf(AffinityScopeType.ENTITY, AffinityScopeType.FIELD),
+                setOf(AffinityScopeType.ENTITY, AffinityScopeType.FIELD_PARENT),
                 entityCache, relationshipFields
             )
 
@@ -403,7 +403,7 @@ class AffinityResolverTest {
             // No relationship fields defined for either entity
             val result = resolve(
                 ops, workers,
-                setOf(AffinityScopeType.ENTITY, AffinityScopeType.FIELD),
+                setOf(AffinityScopeType.ENTITY, AffinityScopeType.FIELD_PARENT),
                 entityCache
             )
 
@@ -472,7 +472,7 @@ class AffinityResolverTest {
             )
             val result = resolve(
                 ops, workers,
-                setOf(AffinityScopeType.ENTITY, AffinityScopeType.FIELD),
+                setOf(AffinityScopeType.ENTITY, AffinityScopeType.FIELD_PARENT),
                 entityCache, relationshipFields
             )
 
@@ -495,7 +495,7 @@ class AffinityResolverTest {
             )
             val result = resolve(
                 ops, workers,
-                setOf(AffinityScopeType.ENTITY, AffinityScopeType.TARGETS, AffinityScopeType.FIELD),
+                setOf(AffinityScopeType.ENTITY, AffinityScopeType.TARGETS, AffinityScopeType.FIELD_PARENT),
                 entityCache, relationshipFields
             )
 
@@ -549,7 +549,7 @@ class AffinityResolverTest {
             )
             val result = resolve(
                 ops, workers,
-                setOf(AffinityScopeType.ENTITY, AffinityScopeType.TARGETS, AffinityScopeType.FIELD),
+                setOf(AffinityScopeType.ENTITY, AffinityScopeType.TARGETS, AffinityScopeType.FIELD_PARENT),
                 entityCache, relationshipFields
             )
 
@@ -576,7 +576,7 @@ class AffinityResolverTest {
             )
             val result = resolve(
                 ops, workers,
-                setOf(AffinityScopeType.ENTITY, AffinityScopeType.FIELD),
+                setOf(AffinityScopeType.ENTITY, AffinityScopeType.FIELD_PARENT),
                 entityCache, relationshipFields
             )
 
@@ -668,7 +668,7 @@ class AffinityResolverTest {
 
             val result = resolve(
                 ops, workers,
-                setOf(AffinityScopeType.FIELD),
+                setOf(AffinityScopeType.FIELD_PARENT),
                 entityCache, relationshipFields
             )
 
@@ -687,7 +687,7 @@ class AffinityResolverTest {
 
             val result = resolve(
                 ops, workers,
-                setOf(AffinityScopeType.FIELD),
+                setOf(AffinityScopeType.FIELD_PARENT),
                 entityCache, relationshipFields
             )
 
@@ -705,7 +705,7 @@ class AffinityResolverTest {
 
             val result = resolve(
                 ops, workers,
-                setOf(AffinityScopeType.FIELD),
+                setOf(AffinityScopeType.FIELD_PARENT),
                 entityCache, relationshipFields
             )
 
@@ -763,7 +763,7 @@ class AffinityResolverTest {
 
             val result = resolve(
                 ops, workers,
-                setOf(AffinityScopeType.FIELD),
+                setOf(AffinityScopeType.FIELD_PARENT),
                 entityCache, relationshipFields
             )
 
