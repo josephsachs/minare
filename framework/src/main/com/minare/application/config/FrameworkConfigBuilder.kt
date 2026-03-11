@@ -130,7 +130,7 @@ class FrameworkConfigBuilder {
                         .getOrElse { throw IllegalArgumentException("Invalid AffinityScopeType: $value") }
                 }
                 ?.toSet()
-                ?: setOf(AffinityScopeType.NONE)
+                ?: setOf()
 
         config.frames.groupOperationsBy = parseAffinityScopes(frames)
 

@@ -23,10 +23,11 @@ package com.minare.core.frames.coordinator.models
  * configuration is ultimately a blunt instrument. However, once this is tested we will explore overriding affinity
  * settings when composing OperationSets or via Entity annotations, which will allow more granular composition
  * of concerns. (This is why we are using a Set right now, even though it might not seem necessary.)
+ *
+ *
  */
 
 enum class AffinityScopeType {
-    NONE,
     SUBJECT,        // Top-level subjects, self-grouped
     OPERATION_SET,  // Subjects of operation sets all route with the first
     FIELD_PARENT,   // Entities are lumped in by parent field relationships
