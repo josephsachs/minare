@@ -38,6 +38,9 @@ class NodeGraphMetricsVerticle @Inject constructor(
     /** frame number → operation count for current session. Reset on session start. */
     private val accumulator = ConcurrentHashMap<Long, Int>()
 
+    /** Largest affinity group (distinct entity IDs on one worker) seen this session. */
+    @Volatile private var sessionMaxAffinityGroup = 0
+
     override suspend fun start() {
         log.info("Starting NodeGraphMetricsVerticle")
 
@@ -69,6 +72,7 @@ class NodeGraphMetricsVerticle @Inject constructor(
 
     private suspend fun handleSessionStart(announcement: JsonObject) {
         accumulator.clear()
+        sessionMaxAffinityGroup = 0
 
         val metricsChannelId = channelController.getMetricsChannel() ?: return
 
@@ -105,6 +109,16 @@ class NodeGraphMetricsVerticle @Inject constructor(
         val opsAverage = if (opCounts.isNotEmpty()) opCounts.average() else 0.0
         val opsMax = opCounts.maxOrNull() ?: 0
 
+        // Largest affinity group this frame: max distinct entity IDs on a single worker
+        val frameMaxGroup = frameManifests.values.maxOfOrNull { manifest ->
+            manifest.getJsonArray("operations", JsonArray())
+                .filterIsInstance<JsonObject>()
+                .mapNotNull { it.getString("entityId") }
+                .distinct()
+                .size
+        } ?: 0
+        if (frameMaxGroup > sessionMaxAffinityGroup) sessionMaxAffinityGroup = frameMaxGroup
+
         // Buffer stats from coordinator state
         val bufferCount = coordinatorState.getTotalBufferedOperations()
         val framesBuffered = coordinatorState.getBufferedFrameCount()
@@ -122,6 +136,7 @@ class NodeGraphMetricsVerticle @Inject constructor(
             .put("bufferCount", bufferCount)
             .put("framesBuffered", framesBuffered)
             .put("highestFrameBuffered", highestFrameBuffered)
+            .put("maxAffinityGroup", sessionMaxAffinityGroup)
             .put("operations", JsonArray(allOperations))
 
         channelController.broadcast(metricsChannelId, message)

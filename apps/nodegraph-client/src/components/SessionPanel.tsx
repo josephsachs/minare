@@ -57,6 +57,7 @@ function FrameStats() {
     ['Buffer ops', m.buffer.count],
     ['Frames buffered', m.buffer.framesBuffered],
     ['Highest buffered', m.buffer.highestFrame],
+    ['Affinity group (max)', m.maxAffinityGroup],
   ];
 
   return (

@@ -8,6 +8,7 @@ let snapshot: MetricsSnapshot = {
   pauseState: 'SOFT',
   ops: { current: 0, average: 0, max: 0 },
   buffer: { count: 0, framesBuffered: 0, highestFrame: -1 },
+  maxAffinityGroup: 0,
 };
 
 const listeners = new Set<() => void>();
@@ -35,6 +36,7 @@ onDownMessage((msg) => {
         framesBuffered: m.framesBuffered ?? 0,
         highestFrame: m.highestFrameBuffered ?? -1,
       },
+      maxAffinityGroup: m.maxAffinityGroup ?? 0,
     };
     emit();
   }
