@@ -30,7 +30,10 @@ class FrameManifestBuilder @Inject constructor(
 
     /**
      * Distribute operations among workers using consistent hashing.
-     * Operations are distributed by operation ID to ensure domain agnosticism.
+     *
+     * Routing key: operationSetId for set members, operationId for solo operations.
+     * All members of an OperationSet hash to the same worker as a unit.
+     * Solo operations distribute by their own ID as before.
      *
      * @param operations The operations to distribute
      * @param workers The available workers
@@ -46,11 +49,8 @@ class FrameManifestBuilder @Inject constructor(
         val workerList = workers.toList().sorted()
 
         return operations.groupBy { op ->
-            // Use operation ID for consistent hashing
-            // This keeps the operation pipeline entity-agnostic
-            val operationId = op.getString("id")
-
-            val hash = abs(operationId.hashCode())
+            val routingKey = op.getString("operationSetId") ?: op.getString("id")
+            val hash = abs(routingKey.hashCode())
             workerList[hash % workerList.size]
         }
     }
@@ -59,24 +59,28 @@ class FrameManifestBuilder @Inject constructor(
      * Write manifests to Hazelcast distributed map.
      * Each worker gets a manifest even if it has no operations assigned.
      *
-     * UPDATED: Operations are now sorted by operation ID hash for deterministic
-     * ordering that doesn't favor any particular producer.
+     * Ordering rule:
+     * - Primary key: operationSetId (for set members) or operationId (for solo ops).
+     *   UUID-based keys give fair random interleaving; shared operationSetId
+     *   groups set members contiguously.
+     * - Secondary key: setIndex preserves declaration order within a set.
      *
      * @param logicalFrame The logical frame number (not wall clock!)
      * @param assignments Map of worker ID to assigned operations
      * @param activeWorkers Set of all active workers
      */
     fun writeManifestsToMap(
-        logicalFrame: Long,  // Now this is logical frame number
+        logicalFrame: Long,
         assignments: Map<String, List<JsonObject>>,
         activeWorkers: Set<String>
     ) {
         activeWorkers.forEach { workerId ->
             val operations = assignments[workerId] ?: emptyList()
 
-            val sortedOperations = operations.sortedBy { op ->
-                op.getString("id")
-            }
+            val sortedOperations = operations.sortedWith(
+                compareBy<JsonObject> { it.getString("operationSetId") ?: it.getString("id") }
+                    .thenBy { it.getInteger("setIndex") ?: 0 }
+            )
 
             val manifest = JsonObject()
                 .put("workerId", workerId)
@@ -105,17 +109,20 @@ class FrameManifestBuilder @Inject constructor(
 
     /**
      * Handle assignment of operations to prior manifests, ex. if they belong in a logical frame
-     * we have already prepared but not begun processing
+     * we have already prepared but not begun processing.
+     *
+     * Uses operationSetId as routing key for set members so late-arriving
+     * set operations land on the same worker as their siblings.
      */
     fun assignToExistingManifest(operation: JsonObject, frame: Long) {
         try {
             val manifestMap = hazelcastInstance.getMap<String, JsonObject>("frame-manifests")
             val activeWorkers = workerRegistry.getActiveWorkers()
 
-            val operationId = operation.getString("id")
-            val workerIndex = Math.abs(operationId.hashCode()) % activeWorkers.size
+            val routingKey = operation.getString("operationSetId") ?: operation.getString("id")
+            val workerIndex = abs(routingKey.hashCode()) % activeWorkers.size
             val workerId = activeWorkers.toList()[workerIndex]
-            val manifestKey = FrameManifest.makeKey(frame, workerId) // Note: targetFrame!
+            val manifestKey = FrameManifest.makeKey(frame, workerId)
 
             val manifestJson = manifestMap[manifestKey]
 
@@ -123,7 +130,10 @@ class FrameManifestBuilder @Inject constructor(
                 val manifest = FrameManifest.fromJson(manifestJson)
                 val operations = manifest.operations.toMutableList()
                 operations.add(operation)
-                operations.sortBy { it.getString("id") }
+                operations.sortWith(
+                    compareBy<JsonObject> { it.getString("operationSetId") ?: it.getString("id") }
+                        .thenBy { it.getInteger("setIndex") ?: 0 }
+                )
 
                 val updatedManifest = FrameManifest(
                     workerId = manifest.workerId,
@@ -134,7 +144,7 @@ class FrameManifestBuilder @Inject constructor(
 
                 manifestMap[manifestKey] = updatedManifest.toJson()
 
-                debug.log(DebugType.COORDINATOR_MANIFEST_BUILDER_ASSIGNED_OPERATIONS, listOf(operationId, frame))
+                debug.log(DebugType.COORDINATOR_MANIFEST_BUILDER_ASSIGNED_OPERATIONS, listOf(routingKey, frame))
             }
         } catch (e: Exception) {
             throw FrameLoopException("Buffered operation assignment: Error updating manifest ${e}")
