@@ -122,7 +122,7 @@ class AffinityResolver @Inject constructor(
         val targets = mutableSetOf<String>()
 
         for (op in operations) {
-            val delta = op.getJsonObject("delta") ?: continue
+            val delta = (op.getValue("delta") as? JsonObject) ?: continue
             for (key in delta.fieldNames()) {
                 val value = delta.getValue(key)
                 if (value is String && value.isNotBlank() && entityCache.containsKey(value)) {
