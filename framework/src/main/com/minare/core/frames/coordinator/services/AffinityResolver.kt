@@ -34,8 +34,6 @@ class AffinityResolver @Inject constructor(
 ) {
     private val log = LoggerFactory.getLogger(AffinityResolver::class.java)
 
-    private val relationshipAnnotations = listOf(Parent::class, Child::class, Peer::class)
-
     /**
      * Resolve operation-to-worker assignments using affinity scopes.
      *
@@ -84,9 +82,15 @@ class AffinityResolver @Inject constructor(
                 cohort.addAll(targetIds)
             }
 
-            // FIELD: discover relationship fields, extract referenced entity IDs
-            if (AffinityScopeType.FIELD in scopes) {
-                val fieldRelatedIds = resolveFieldRelated(cohort, entityCache)
+            // FIELD_PARENT / FIELD_PEER / FIELD_CHILD: discover relationship fields,
+            // extract referenced entity IDs for each configured annotation type.
+            val fieldAnnotations = buildList {
+                if (AffinityScopeType.FIELD_PARENT in scopes) add(Parent::class)
+                if (AffinityScopeType.FIELD_PEER in scopes) add(Peer::class)
+                if (AffinityScopeType.FIELD_CHILD in scopes) add(Child::class)
+            }
+            if (fieldAnnotations.isNotEmpty()) {
+                val fieldRelatedIds = resolveFieldRelated(cohort, entityCache, fieldAnnotations)
                 cohort.addAll(fieldRelatedIds)
             }
 
@@ -135,13 +139,14 @@ class AffinityResolver @Inject constructor(
     }
 
     /**
-     * Resolve entity IDs referenced by relationship fields (@Parent, @Child, @Peer).
-     * Uses EntityInspector for field discovery and extracts IDs from the entity's
-     * state in the batch cache.
+     * Resolve entity IDs referenced by relationship fields.
+     * Uses EntityInspector for field discovery with the given annotation types,
+     * and extracts IDs from the entity's state in the batch cache.
      */
     private suspend fun resolveFieldRelated(
         cohort: Set<String>,
-        entityCache: Map<String, JsonObject>
+        entityCache: Map<String, JsonObject>,
+        annotationTypes: List<kotlin.reflect.KClass<out Annotation>>
     ): Set<String> {
         val related = mutableSetOf<String>()
 
@@ -151,7 +156,7 @@ class AffinityResolver @Inject constructor(
 
             val relationshipFields = entityInspector.getFieldsOfType(
                 entityId,
-                relationshipAnnotations
+                annotationTypes
             )
 
             for (field in relationshipFields) {
