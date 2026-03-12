@@ -7,13 +7,16 @@ import java.io.Serializable
 import java.util.UUID
 
 /**
- * A request to invoke a named function on an entity within a frame.
- * The target is resolved and called via reflection; see how the @Task system does it.
+ * A blocking step in an OperationSet that invokes a named function via reflection
+ * on a hydrated entity context — see how the @Task system does it.
  *
- * pipe carries inter-step data when sequenced in an OperationSet — design TBD.
+ * The pipeline waits for the call to return before advancing to the next step.
+ * The result feeds into pipe for consumption by downstream steps.
+ *
+ * No stipulations on what you do inside. You can hurt yourself.
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
-class Invocation : OperationSetMember, Serializable {
+class FunctionCall : OperationSetMember, Serializable {
     var id: String = UUID.randomUUID().toString()
 
     @JsonProperty("entityId")
@@ -35,6 +38,6 @@ class Invocation : OperationSetMember, Serializable {
     }
 
     override fun build(): JsonObject {
-        throw UnsupportedOperationException("Invocation.build() not yet implemented")
+        throw UnsupportedOperationException("FunctionCall.build() not yet implemented")
     }
 }

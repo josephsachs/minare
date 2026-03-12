@@ -7,7 +7,9 @@ import java.io.Serializable
 import java.util.UUID
 
 /**
- * A side-effect request within an OperationSet — fires a named event or signal.
+ * A parallel, fire-and-forget step in an OperationSet. Invokes a named function via
+ * reflection on a hydrated entity context — same mechanism as FunctionCall, but the
+ * pipeline does not wait for it to return. Result does not feed into pipe.
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 class Trigger : OperationSetMember, Serializable {
