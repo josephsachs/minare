@@ -27,7 +27,7 @@ class OperationSet {
         operations.add(built)
     }
 
-    internal fun toJsonArray(): JsonArray = operations
+    fun toJsonArray(): JsonArray = operations
 
     fun isEmpty(): Boolean = operations.isEmpty
 
