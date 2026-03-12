@@ -60,6 +60,7 @@ class DebugLogger {
         DebugType.COORDINATOR_OPERATION_HANDLER_EXTRACTED_OPS to false,
         DebugType.COORDINATOR_OPERATION_HANDLER_ASSIGN_OPERATION to false,
         DebugType.COORDINATOR_OPERATION_HANDLER_ASSIGN_LATE_OPERATION to false,
+        DebugType.COORDINATOR_AFFINITY_RESOLVED to false,
         DebugType.COORDINATOR_WORK_DISPATCH_DISTRIBUTE_NO_ITEMS to false,
         DebugType.COORDINATOR_WORK_DISPATCH_DISTRIBUTE_NO_WORKERS to false,
 
@@ -245,6 +246,7 @@ class DebugLogger {
                 DebugType.COORDINATOR_OPERATION_HANDLER_ASSIGN_LATE_OPERATION -> {
                     "OperationHandler.assignBuffered() bufferOperation ${args[0]} - calculatedFrame = ${args[1]} - timestamp = ${args[2]}"
                 }
+                DebugType.COORDINATOR_AFFINITY_RESOLVED -> { "AffinityResolver: ${args[0]} operations, ${args[1]} affinity entries, ${args[2]} work units" }
                 DebugType.COORDINATOR_WORK_DISPATCH_DISTRIBUTE_NO_ITEMS -> { "WorkDispatcher with strategy RANGE received no items, returning empty map" }
                 DebugType.COORDINATOR_WORK_DISPATCH_DISTRIBUTE_NO_WORKERS -> { "WorkUnit did not distribute because no workers were available, returning empty map" }
                 DebugType.COORDINATOR_STARTUP_WAITING_FOR_INFRA_POST -> { "Waiting for infrastructure stack to post" }
@@ -341,6 +343,7 @@ class DebugLogger {
             COORDINATOR_OPERATION_HANDLER_EXTRACTED_OPS,
             COORDINATOR_OPERATION_HANDLER_ASSIGN_OPERATION,
             COORDINATOR_OPERATION_HANDLER_ASSIGN_LATE_OPERATION,
+            COORDINATOR_AFFINITY_RESOLVED,
             COORDINATOR_WORK_DISPATCH_DISTRIBUTE_NO_ITEMS,
             COORDINATOR_WORK_DISPATCH_DISTRIBUTE_NO_WORKERS,
             COORDINATOR_STARTUP_WAITING_FOR_INFRA_POST,

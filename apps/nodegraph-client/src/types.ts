@@ -11,6 +11,7 @@ export interface MetricsSnapshot {
   pauseState: PauseState;
   ops: { current: number; average: number; max: number };
   buffer: { count: number; framesBuffered: number; highestFrame: number };
+  maxAffinityGroup: number;
 }
 
 export type PauseState = 'UNPAUSED' | 'REST' | 'SOFT' | 'HARD';
@@ -75,6 +76,7 @@ export interface MetricsFrameMessage {
   bufferCount: number;
   framesBuffered: number;
   highestFrameBuffered: number;
+  maxAffinityGroup: number;
   operations: Array<Record<string, unknown>>;
 }
 

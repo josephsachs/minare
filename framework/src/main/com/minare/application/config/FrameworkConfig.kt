@@ -1,5 +1,6 @@
 package com.minare.application.config
 
+import com.minare.core.frames.coordinator.models.AffinityScopeType
 import com.minare.core.frames.coordinator.services.SessionService.Companion.AutoSession
 import com.minare.core.frames.services.SnapshotService.Companion.SnapshotStoreOption
 import com.minare.core.storage.interfaces.EntityGraphStoreOption
@@ -59,6 +60,7 @@ class FrameworkConfig {
     class FramesConfig {
         var frameDuration: Long = 0L
         var lookahead: Int = 0
+        var groupOperationsBy: Set<AffinityScopeType> = mutableSetOf()
         var session: FrameSessionConfig = FrameSessionConfig()
         var timeline: FrameTimelineConfig = FrameTimelineConfig()
         var snapshot: FrameSnapshotConfig = FrameSnapshotConfig()

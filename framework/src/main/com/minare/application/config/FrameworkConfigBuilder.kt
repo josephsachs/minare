@@ -1,5 +1,6 @@
 package com.minare.application.config
 
+import com.minare.core.frames.coordinator.models.AffinityScopeType
 import com.minare.exceptions.ConfigurationException
 import io.vertx.core.json.JsonObject
 import com.minare.core.frames.coordinator.services.SessionService.Companion.AutoSession
@@ -119,6 +120,22 @@ class FrameworkConfigBuilder {
         val frames = require(file.getJsonObject("frames"), "frames section must be specified")
         config.frames.frameDuration = require(frames.getInteger("frame_duration"), "frames.frame_duration must be specified").toLong()
         config.frames.lookahead = require(frames.getInteger("lookahead"), "frames.lookahead must be specified")
+
+        fun parseAffinityScopes(frames: JsonObject): Set<AffinityScopeType> =
+            frames.getJsonArray("group_operations_by")
+                ?.filterIsInstance<String>()
+                ?.map { value ->
+                    runCatching { enumValueOf<AffinityScopeType>(value) }
+                        .getOrElse { throw IllegalArgumentException("Invalid AffinityScopeType: '$value'") }
+                }
+                ?.toSet()
+                ?: emptySet()
+
+        config.frames.groupOperationsBy = parseAffinityScopes(frames)
+
+        if (config.frames.groupOperationsBy.isEmpty()) {
+            infos.add("frames.group_operations_by not specified, defaults to NONE (Options: \"ENTITY\", \"TARGETS\", \"OPERATION_SET\", \"FIELD_PARENT\", \"FIELD_PEER\", \"FIELD_CHILD\")")
+        }
 
         val session = require(frames.getJsonObject("session"), "frames.session section must be specified")
         val autoSession = require(session.getString("auto_session"), "frames.session.auto_session must be specified")
