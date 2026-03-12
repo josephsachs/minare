@@ -11,7 +11,7 @@ import kotlin.reflect.KClass
  * An Operation is a request to the frame coordinator for changes to entity state.
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
-class Operation: Serializable {
+class Operation: OperationSetStrategy, Serializable {
     var id: String = UUID.randomUUID().toString()
     @JsonProperty("entityId")
     var entity: String? = null
@@ -116,7 +116,7 @@ class Operation: Serializable {
     /**
      * Build the operation into a JsonObject
      */
-    fun build(): JsonObject {
+    override fun build(): JsonObject {
         requireNotNull(entityType) { "Entity type is required" }
         requireNotNull(action) { "Action is required" }
 

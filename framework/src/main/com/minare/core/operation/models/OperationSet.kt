@@ -1,7 +1,8 @@
 package com.minare.core.operation.models
 
 import io.vertx.core.json.JsonArray
-import java.util.UUID
+import io.vertx.core.json.JsonObject
+import java.util.*
 
 /**
  * An OperationSet groups related operations that should be routed, ordered,
@@ -18,7 +19,7 @@ class OperationSet {
     private var nextIndex = 0
     private val timestamp: Long = System.currentTimeMillis()
 
-    fun add(operation: Operation) = apply {
+    fun add(operation: OperationSetStrategy) = apply {
         val built = operation.build()
         built.put("operationSetId", id)
         built.put("setIndex", nextIndex++)
@@ -31,4 +32,29 @@ class OperationSet {
     fun isEmpty(): Boolean = operations.isEmpty
 
     fun size(): Int = operations.size()
+
+    private data class OperationSetContext (
+        val id: String,
+        val context: Any? = null
+    )
+
+    /**
+     * The worker rolls back if an Assert fails or a Function throws
+     */
+    private var atomic: Boolean = false
+
+    /**
+     * Operations changes store deltas.
+     */
+    private var deltas: MutableList<JsonObject> = mutableListOf()
+
+    /**
+     *
+     */
+    private var context: OperationSetContext = OperationSetContext(id)
+
+    /**
+     * If we fail, the worker rolls back the deltas before yielding.
+     */
+    private var rollback: Boolean = false
 }
