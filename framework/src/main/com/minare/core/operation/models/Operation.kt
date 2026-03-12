@@ -11,7 +11,7 @@ import kotlin.reflect.KClass
  * An Operation is a request to the frame coordinator for changes to entity state.
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
-class Operation: OperationSetStrategy, Serializable {
+class Operation: OperationSetMember, Serializable {
     var id: String = UUID.randomUUID().toString()
     @JsonProperty("entityId")
     var entity: String? = null

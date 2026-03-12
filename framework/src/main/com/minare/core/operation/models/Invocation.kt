@@ -7,28 +7,23 @@ import java.io.Serializable
 import java.util.UUID
 
 /**
- * A condition check within an OperationSet.
- * The worker evaluates the assertion; on failure it applies the set's FailurePolicy.
+ * A request to invoke a named function on an entity within a frame.
+ * The target is resolved and called via reflection; see how the @Task system does it.
+ *
+ * pipe carries inter-step data when sequenced in an OperationSet — design TBD.
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
-class Assert : OperationSetMember, Serializable {
+class Invocation : OperationSetMember, Serializable {
     var id: String = UUID.randomUUID().toString()
 
     @JsonProperty("entityId")
     var entity: String? = null
     var entityType: String? = null
+    var target: String? = null
     var pipe: JsonObject? = null
-    var values = JsonObject()
-    var type: AssertType? = null
-    var context: Any? = null
     var timestamp: Long = System.currentTimeMillis()
     var meta: String? = null
-
-    enum class AssertType {
-        TRUE,
-        EQUIVALENT,
-        EXISTS
-    }
+    var values = JsonObject()
 
     fun values(values: Map<String, Any?>) = apply {
         values.forEach { (k, v) -> this.values.put(k, v) }
@@ -39,11 +34,7 @@ class Assert : OperationSetMember, Serializable {
         this.entity = entity
     }
 
-    fun type(type: AssertType) = apply {
-        this.type = type
-    }
-
     override fun build(): JsonObject {
-        throw UnsupportedOperationException("Assert.build() not yet implemented")
+        throw UnsupportedOperationException("Invocation.build() not yet implemented")
     }
 }

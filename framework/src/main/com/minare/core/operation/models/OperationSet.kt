@@ -19,7 +19,7 @@ class OperationSet {
     private var nextIndex = 0
     private val timestamp: Long = System.currentTimeMillis()
 
-    fun add(operation: OperationSetStrategy) = apply {
+    fun add(operation: OperationSetMember) = apply {
         val built = operation.build()
         built.put("operationSetId", id)
         built.put("setIndex", nextIndex++)
@@ -33,28 +33,21 @@ class OperationSet {
 
     fun size(): Int = operations.size()
 
-    private data class OperationSetContext (
-        val id: String,
-        val context: Any? = null
-    )
+    /**
+     * Controls worker behavior when a step in the set fails:
+     * - CONTINUE: proceed regardless (default)
+     * - ABORT: halt remaining steps, applied deltas stand
+     * - ROLLBACK: halt remaining steps, undo applied deltas before yielding
+     */
+    enum class FailurePolicy { CONTINUE, ABORT, ROLLBACK }
+
+    private var failurePolicy: FailurePolicy = FailurePolicy.CONTINUE
+
+    fun onFailure(policy: FailurePolicy) = apply { this.failurePolicy = policy }
 
     /**
-     * The worker rolls back if an Assert fails or a Function throws
+     * Declared deltas from member mutations, collected at build time.
+     * Used as the rollback buffer if failurePolicy is ROLLBACK.
      */
-    private var atomic: Boolean = false
-
-    /**
-     * Operations changes store deltas.
-     */
-    private var deltas: MutableList<JsonObject> = mutableListOf()
-
-    /**
-     *
-     */
-    private var context: OperationSetContext = OperationSetContext(id)
-
-    /**
-     * If we fail, the worker rolls back the deltas before yielding.
-     */
-    private var rollback: Boolean = false
+    private var deltas: Array<JsonObject> = arrayOf()
 }
