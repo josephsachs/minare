@@ -123,14 +123,13 @@ class FrameworkConfigBuilder {
 
         fun parseAffinityScopes(frames: JsonObject): Set<AffinityScopeType> =
             frames.getJsonArray("group_operations_by")
-                ?.map { it as String }
-                ?.asSequence()
+                ?.filterIsInstance<String>()
                 ?.map { value ->
                     runCatching { enumValueOf<AffinityScopeType>(value) }
-                        .getOrElse { throw IllegalArgumentException("Invalid AffinityScopeType: $value") }
+                        .getOrElse { throw IllegalArgumentException("Invalid AffinityScopeType: '$value'") }
                 }
                 ?.toSet()
-                ?: setOf()
+                ?: emptySet()
 
         config.frames.groupOperationsBy = parseAffinityScopes(frames)
 

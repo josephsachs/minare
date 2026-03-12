@@ -8,13 +8,13 @@ import org.junit.jupiter.api.Test
 import kotlin.math.abs
 
 /**
- * Tests for the distributeOperations algorithm.
+ * Tests for the distribute algorithm.
  *
  * This tests the PURE FUNCTION logic extracted from FrameManifestBuilder.
  * The actual FrameManifestBuilder class has Hazelcast dependencies,
- * but distributeOperations() is a pure function we can test directly.
+ * but distribute() is a pure function we can test directly.
  */
-@DisplayName("FrameManifestBuilder.distributeOperations")
+@DisplayName("FrameManifestBuilder.distribute")
 class DistributeOperationsTest {
 
     private fun distributeOperations(

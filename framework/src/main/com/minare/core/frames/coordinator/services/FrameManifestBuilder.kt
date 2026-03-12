@@ -31,6 +31,10 @@ class FrameManifestBuilder @Inject constructor(
         hazelcastInstance.getMap("frame-manifests")
     }
 
+    private val operationOrder: Comparator<JsonObject> =
+        compareBy<JsonObject> { it.getString("operationSetId") ?: it.getString("id") }
+            .thenBy { it.getInteger("setIndex") ?: 0 }
+
     /**
      * Distribute operations among workers.
      *
@@ -45,7 +49,7 @@ class FrameManifestBuilder @Inject constructor(
      * @param workers The available workers
      * @return Map of worker ID to assigned operations
      */
-    suspend fun distributeOperations(
+    suspend fun distribute(
         operations: List<JsonObject>,
         workers: Set<String>
     ): Map<String, List<JsonObject>> {
@@ -80,7 +84,7 @@ class FrameManifestBuilder @Inject constructor(
      * @param assignments Map of worker ID to assigned operations
      * @param activeWorkers Set of all active workers
      */
-    fun writeManifestsToMap(
+    fun writeManifests(
         logicalFrame: Long,
         assignments: Map<String, List<JsonObject>>,
         activeWorkers: Set<String>
@@ -88,14 +92,11 @@ class FrameManifestBuilder @Inject constructor(
         activeWorkers.forEach { workerId ->
             val operations = assignments[workerId] ?: emptyList()
 
-            val sortedOperations = operations.sortedWith(
-                compareBy<JsonObject> { it.getString("operationSetId") ?: it.getString("id") }
-                    .thenBy { it.getInteger("setIndex") ?: 0 }
-            )
+            val sortedOperations = operations.sortedWith(operationOrder)
 
             val manifest = JsonObject()
                 .put("workerId", workerId)
-                .put("logicalFrame", logicalFrame)  // Use logical frame
+                .put("logicalFrame", logicalFrame)
                 .put("operations", JsonArray(sortedOperations))
                 .put("createdAt", System.currentTimeMillis())
 
@@ -127,7 +128,6 @@ class FrameManifestBuilder @Inject constructor(
      */
     fun assignToExistingManifest(operation: JsonObject, frame: Long) {
         try {
-            val manifestMap = hazelcastInstance.getMap<String, JsonObject>("frame-manifests")
             val activeWorkers = workerRegistry.getActiveWorkers()
 
             val routingKey = operation.getString("operationSetId") ?: operation.getString("id")
@@ -141,10 +141,7 @@ class FrameManifestBuilder @Inject constructor(
                 val manifest = FrameManifest.fromJson(manifestJson)
                 val operations = manifest.operations.toMutableList()
                 operations.add(operation)
-                operations.sortWith(
-                    compareBy<JsonObject> { it.getString("operationSetId") ?: it.getString("id") }
-                        .thenBy { it.getInteger("setIndex") ?: 0 }
-                )
+                operations.sortWith(operationOrder)
 
                 val updatedManifest = FrameManifest(
                     workerId = manifest.workerId,

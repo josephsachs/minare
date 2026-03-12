@@ -74,7 +74,7 @@ class AffinityResolver @Inject constructor(
             val cohort = mutableSetOf<String>()
 
             // Always include the operation's own entityId(s)
-            workUnitOps.mapNotNull { it.getString("entityId") }.forEach { cohort.add(it) }
+            workUnitOps.mapNotNullTo(cohort) { it.getString("entityId") }
 
             // TARGETS: scan delta values for entity IDs present in the store
             if (AffinityScopeType.TARGETS in scopes) {
@@ -84,14 +84,13 @@ class AffinityResolver @Inject constructor(
 
             // FIELD_PARENT / FIELD_PEER / FIELD_CHILD: discover relationship fields,
             // extract referenced entity IDs for each configured annotation type.
-            val fieldAnnotations = buildList {
-                if (AffinityScopeType.FIELD_PARENT in scopes) add(Parent::class)
-                if (AffinityScopeType.FIELD_PEER in scopes) add(Peer::class)
-                if (AffinityScopeType.FIELD_CHILD in scopes) add(Child::class)
-            }
+            val fieldAnnotations = listOfNotNull(
+                Parent::class.takeIf { AffinityScopeType.FIELD_PARENT in scopes },
+                Peer::class.takeIf { AffinityScopeType.FIELD_PEER in scopes },
+                Child::class.takeIf { AffinityScopeType.FIELD_CHILD in scopes }
+            )
             if (fieldAnnotations.isNotEmpty()) {
-                val fieldRelatedIds = resolveFieldRelated(cohort, entityCache, fieldAnnotations)
-                cohort.addAll(fieldRelatedIds)
+                cohort.addAll(relatedFieldIds(cohort, entityCache, fieldAnnotations))
             }
 
             // First mapped entity in cohort wins — follow that worker
@@ -139,11 +138,11 @@ class AffinityResolver @Inject constructor(
     }
 
     /**
-     * Resolve entity IDs referenced by relationship fields.
-     * Uses EntityInspector for field discovery with the given annotation types,
-     * and extracts IDs from the entity's state in the batch cache.
+     * Returns entity IDs referenced by relationship fields of the given annotation types.
+     * Uses EntityInspector for field discovery and extracts IDs from the entity's state
+     * in the batch cache.
      */
-    private suspend fun resolveFieldRelated(
+    private suspend fun relatedFieldIds(
         cohort: Set<String>,
         entityCache: Map<String, JsonObject>,
         annotationTypes: List<kotlin.reflect.KClass<out Annotation>>

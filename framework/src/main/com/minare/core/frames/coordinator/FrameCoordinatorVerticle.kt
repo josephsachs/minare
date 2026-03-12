@@ -212,9 +212,9 @@ class FrameCoordinatorVerticle @Inject constructor(
         val operations = coordinatorState.extractFrameOperations(logicalFrame)
         val activeWorkers = workerRegistry.getActiveWorkers().toSet()
 
-        val assignments = frameManifestBuilder.distributeOperations(operations, activeWorkers)
+        val assignments = frameManifestBuilder.distribute(operations, activeWorkers)
 
-        frameManifestBuilder.writeManifestsToMap(
+        frameManifestBuilder.writeManifests(
             logicalFrame,
             assignments,
             activeWorkers
