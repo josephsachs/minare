@@ -105,6 +105,45 @@ class TestOperationController @Inject constructor(
                 operation
             }
 
+            "operation" -> {
+                // Passthrough for pre-built operations (e.g. from OperationSet tests).
+                // Reconstructs an Operation, preserving set metadata (operationSetId,
+                // setIndex, failurePolicy) via the values merge path in Operation.build().
+                val opJson = message.getJsonObject("operation")
+                if (opJson == null) {
+                    log.warn("Invalid operation command: missing operation payload")
+                    return null
+                }
+                val actionStr = opJson.getString("action")
+                val actionType = try { OperationType.valueOf(actionStr) } catch (_: Exception) { null }
+                if (actionType == null) {
+                    log.warn("Unsupported action type in operation passthrough: {}", actionStr)
+                    return null
+                }
+
+                val operation = Operation()
+                operation.id = opJson.getString("id") ?: UUID.randomUUID().toString()
+                operation.entity(opJson.getString("entityId"))
+                operation.entityType(actionStr.let { opJson.getString("entityType") ?: "Node" })
+                operation.action(actionType)
+                operation.delta(opJson.getJsonObject("delta") ?: JsonObject())
+                operation.timestamp(opJson.getLong("timestamp", System.currentTimeMillis()))
+                opJson.getLong("version")?.let { operation.version(it) }
+                opJson.getString("meta")?.let { operation.meta(it) }
+
+                // Carry through non-standard fields so operationSetId, setIndex,
+                // failurePolicy survive Operation.build() → mergeIn(values)
+                val standardFields = setOf("id", "entityId", "entityType", "action",
+                    "delta", "version", "timestamp", "meta")
+                opJson.fieldNames().filter { it !in standardFields }.forEach { field ->
+                    operation.value(field, opJson.getValue(field))
+                }
+
+                log.debug("Passthrough operation {} action={} setId={}",
+                    operation.id, actionStr, opJson.getString("operationSetId"))
+                operation
+            }
+
             else -> {
                 log.warn("Unknown command received: {} from connection: {}", command, connectionId)
                 null

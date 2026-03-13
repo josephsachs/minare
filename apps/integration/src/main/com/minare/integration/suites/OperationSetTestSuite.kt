@@ -64,8 +64,9 @@ class OperationSetTestSuite(private val injector: Injector) : TestSuite {
                 log.step("submitting set", "setId" to set.id, "size" to set.size())
                 submitSet(client, connectionId, set)
 
-                awaitEntityUpdate(client, observer, log, "first mutation") { id, _ -> id == entityId }
-                awaitEntityUpdate(client, observer, log, "second mutation") { id, _ -> id == entityId }
+                // Both mutations land in the same frame and are delivered as
+                // a single combined update on the tick — one broadcast, not two.
+                awaitEntityUpdate(client, observer, log, "set mutations") { id, _ -> id == entityId }
 
                 val stored = stateStore.findOneJson(entityId)
                 assertNotNull(stored) { "Entity should exist in StateStore" }

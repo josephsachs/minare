@@ -19,7 +19,7 @@ class Operation: OperationSetMember, Serializable {
     var action: OperationType? = null
     var values = JsonObject()
     var delta: JsonObject? = null
-    var version: Long? = null
+    var version: Long = 0L
     var timestamp: Long = System.currentTimeMillis()
     var meta: String? = null
 
@@ -131,7 +131,7 @@ class Operation: OperationSetMember, Serializable {
             .put("action", action.toString())
             .put("timestamp", timestamp)
 
-        version?.let { operation.put("version", it) }
+        operation.put("version", version)
         delta?.let { operation.put("delta", it) }
         meta?.let { operation.put("meta", it ) }
         operation.mergeIn(values)
