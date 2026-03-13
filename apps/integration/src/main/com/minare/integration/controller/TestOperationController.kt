@@ -3,8 +3,8 @@ package com.minare.integration.controller
 import com.google.inject.Inject
 import com.minare.controller.OperationController
 import com.minare.core.entity.models.Entity
-import com.minare.core.operation.models.Operation
-import com.minare.core.operation.models.OperationType
+import com.minare.core.operation.models.*
+import com.minare.core.operation.models.OperationSet.FailurePolicy
 import com.minare.integration.models.Node
 import io.vertx.core.json.JsonObject
 import org.slf4j.LoggerFactory
@@ -103,6 +103,70 @@ class TestOperationController @Inject constructor(
 
                 log.debug("Created DELETE operation for entity {} from connection {}", entityId, connectionId)
                 operation
+            }
+
+            "set" -> {
+                val members = message.getJsonArray("members")
+                if (members == null || members.isEmpty) {
+                    log.warn("Invalid set command: missing or empty members")
+                    return null
+                }
+
+                val policy = try {
+                    FailurePolicy.valueOf(message.getString("failurePolicy", "CONTINUE"))
+                } catch (_: Exception) { FailurePolicy.CONTINUE }
+
+                val set = OperationSet().policy(policy)
+
+                for (i in 0 until members.size()) {
+                    val m = members.getJsonObject(i)
+                    val action = m.getString("action") ?: continue
+
+                    when (action) {
+                        "MUTATE", "CREATE", "DELETE" -> {
+                            val op = Operation()
+                            m.getString("entityId")?.let { op.entity(it) }
+                            op.entityType(m.getString("entityType") ?: "Node")
+                            op.action(OperationType.valueOf(action))
+                            op.delta(m.getJsonObject("delta") ?: JsonObject())
+                            m.getLong("version")?.let { op.version(it) }
+                            set.add(op)
+                        }
+
+                        "FUNCTION_CALL" -> {
+                            val fc = FunctionCall()
+                            fc.entity(m.getString("entityId"))
+                            fc.entityType = m.getString("entityType")
+                            fc.target = m.getString("target")
+                            fc.values = m.getJsonObject("values") ?: JsonObject()
+                            set.add(fc)
+                        }
+
+                        "ASSERT" -> {
+                            val a = Assert()
+                            a.entity(m.getString("entityId"))
+                            a.entityType = m.getString("entityType")
+                            a.target = m.getString("target")
+                            a.values = m.getJsonObject("values") ?: JsonObject()
+                            set.add(a)
+                        }
+
+                        "TRIGGER" -> {
+                            val t = Trigger()
+                            t.entity(m.getString("entityId"))
+                            t.entityType = m.getString("entityType")
+                            t.target = m.getString("target")
+                            t.values = m.getJsonObject("values") ?: JsonObject()
+                            set.add(t)
+                        }
+
+                        else -> log.warn("Unknown action in set member: {}", action)
+                    }
+                }
+
+                log.debug("Built OperationSet {} with {} members, policy={}",
+                    set.id, set.size(), policy)
+                set
             }
 
             "operation" -> {
