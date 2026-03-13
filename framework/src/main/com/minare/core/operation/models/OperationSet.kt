@@ -2,6 +2,7 @@ package com.minare.core.operation.models
 
 import io.vertx.core.json.JsonArray
 import io.vertx.core.json.JsonObject
+import lombok.Setter
 import java.util.*
 
 /**
@@ -33,17 +34,11 @@ class OperationSet {
 
     fun size(): Int = operations.size()
 
-    /**
-     * Controls worker behavior when a step in the set fails:
-     * - CONTINUE: proceed regardless (default)
-     * - ABORT: halt remaining steps, applied deltas stand
-     * - ROLLBACK: halt remaining steps, undo applied deltas before yielding
-     */
     enum class FailurePolicy { CONTINUE, ABORT, ROLLBACK }
 
-    private var failurePolicy: FailurePolicy = FailurePolicy.CONTINUE
+    var failurePolicy: FailurePolicy = FailurePolicy.CONTINUE
 
-    fun onFailure(policy: FailurePolicy) = apply { this.failurePolicy = policy }
+
 
     /**
      * Declared deltas from member mutations, collected at build time.
