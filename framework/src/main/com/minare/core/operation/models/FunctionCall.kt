@@ -37,6 +37,17 @@ class FunctionCall : OperationSetMember, Serializable {
     }
 
     override fun build(): JsonObject {
-        throw UnsupportedOperationException("FunctionCall.build() not yet implemented")
+        requireNotNull(entityType) { "Entity type is required" }
+        requireNotNull(target) { "Target function name is required" }
+
+        return JsonObject()
+            .put("id", id)
+            .put("entityId", entity)
+            .put("entityType", entityType)
+            .put("action", "FUNCTION_CALL")
+            .put("target", target)
+            .put("values", values)
+            .put("timestamp", timestamp)
+            .also { json -> meta?.let { json.put("meta", it) } }
     }
 }

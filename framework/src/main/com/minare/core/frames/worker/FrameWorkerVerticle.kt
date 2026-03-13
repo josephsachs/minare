@@ -27,7 +27,8 @@ import com.google.inject.Inject
 class FrameWorkerVerticle @Inject constructor(
     private val vlog: VerticleLogger,
     private val hazelcastInstance: HazelcastInstance,
-    private val workerStartStateSnapshotEvent: WorkerStartStateSnapshotEvent
+    private val workerStartStateSnapshotEvent: WorkerStartStateSnapshotEvent,
+    private val operationSetExecutor: OperationSetExecutor
 ) : CoroutineVerticle() {
 
     private val log = LoggerFactory.getLogger(FrameWorkerVerticle::class.java)
@@ -131,20 +132,52 @@ class FrameWorkerVerticle @Inject constructor(
     }
 
     /**
-     * Process the list of operations, passing each one to processOperation
-     * for individual processing.
+     * Process the list of operations. Contiguous operations sharing an
+     * operationSetId are collected and handed to the OperationSetExecutor
+     * for sequential execution. Solo operations go through processOperation.
      */
     private suspend fun processOperations(operations: List<JsonObject>, logicalFrame: Long): Int {
         var successCount = 0
+        val chunks = chunkBySet(operations)
 
-        // Preserve order
-        for (operation in operations) {
-            if (processOperation(operation, logicalFrame)) {
-                successCount++
+        for (chunk in chunks) {
+            if (chunk.size == 1 && chunk.first().getString("operationSetId") == null) {
+                // Solo operation — existing path
+                if (processOperation(chunk.first(), logicalFrame)) {
+                    successCount++
+                }
+            } else {
+                // OperationSet — executor handles sequential execution,
+                // completion recording, and failure policy
+                successCount += operationSetExecutor.execute(chunk, logicalFrame, workerId)
             }
         }
 
         return successCount
+    }
+
+    /**
+     * Group contiguous operations by operationSetId. Solo operations (no setId)
+     * each become their own single-element chunk.
+     */
+    private fun chunkBySet(operations: List<JsonObject>): List<List<JsonObject>> {
+        val chunks = mutableListOf<List<JsonObject>>()
+        var currentSetId: String? = null
+        var currentGroup = mutableListOf<JsonObject>()
+
+        for (op in operations) {
+            val setId = op.getString("operationSetId")
+            if (setId != null && setId == currentSetId) {
+                currentGroup.add(op)
+            } else {
+                if (currentGroup.isNotEmpty()) chunks.add(currentGroup)
+                currentGroup = mutableListOf(op)
+                currentSetId = setId
+            }
+        }
+        if (currentGroup.isNotEmpty()) chunks.add(currentGroup)
+
+        return chunks
     }
 
     /**

@@ -32,6 +32,16 @@ class Trigger : OperationSetMember, Serializable {
     }
 
     override fun build(): JsonObject {
-        throw UnsupportedOperationException("Trigger.build() not yet implemented")
+        requireNotNull(entityType) { "Entity type is required" }
+        require(target.isNotBlank()) { "Target function name is required" }
+
+        return JsonObject()
+            .put("id", id)
+            .put("entityId", entity)
+            .put("entityType", entityType)
+            .put("action", "TRIGGER")
+            .put("target", target)
+            .put("values", values)
+            .put("timestamp", timestamp)
     }
 }

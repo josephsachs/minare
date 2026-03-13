@@ -28,7 +28,19 @@ class OperationSet {
         operations.add(built)
     }
 
-    fun toJsonArray(): JsonArray = operations
+    fun policy(policy: FailurePolicy) = apply { failurePolicy = policy }
+
+    /**
+     * Serialize to JsonArray, stamping the current failurePolicy onto each member.
+     * Call after all members have been added and policy has been set.
+     */
+    fun toJsonArray(): JsonArray {
+        val out = JsonArray()
+        for (i in 0 until operations.size()) {
+            out.add(operations.getJsonObject(i).copy().put("failurePolicy", failurePolicy.name))
+        }
+        return out
+    }
 
     fun isEmpty(): Boolean = operations.isEmpty
 

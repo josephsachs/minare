@@ -32,6 +32,17 @@ class Assert : OperationSetMember, Serializable {
     }
 
     override fun build(): JsonObject {
-        throw UnsupportedOperationException("Assert.build() not yet implemented")
+        requireNotNull(entityType) { "Entity type is required" }
+        require(target.isNotBlank()) { "Target condition name is required" }
+
+        return JsonObject()
+            .put("id", id)
+            .put("entityId", entity)
+            .put("entityType", entityType)
+            .put("action", "ASSERT")
+            .put("target", target)
+            .put("values", values)
+            .put("timestamp", timestamp)
+            .also { json -> meta?.let { json.put("meta", it) } }
     }
 }
