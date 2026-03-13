@@ -47,7 +47,7 @@ abstract class OperationController @Inject constructor() {
      */
     private suspend fun queue(operations: Any) {
         val message = when (operations) {
-            is OperationSet -> operations.toJsonArray()
+            is OperationSet -> operations.build()
             is Operation -> JsonArray().add(operations.build())
             else -> throw IllegalArgumentException("Expected Operation or OperationSet, got ${operations::class.simpleName}")
         }

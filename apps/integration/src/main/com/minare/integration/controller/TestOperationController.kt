@@ -3,12 +3,17 @@ package com.minare.integration.controller
 import com.google.inject.Inject
 import com.minare.controller.OperationController
 import com.minare.core.entity.models.Entity
+import com.minare.core.operation.models.Assert
+import com.minare.core.operation.models.FailurePolicy
+import com.minare.core.operation.models.FunctionCall
 import com.minare.core.operation.models.Operation
+import com.minare.core.operation.models.OperationSet
 import com.minare.core.operation.models.OperationType
+import com.minare.core.operation.models.Trigger
 import com.minare.integration.models.Node
+import com.minare.integration.models.SetTestEntity
 import io.vertx.core.json.JsonObject
 import org.slf4j.LoggerFactory
-import java.util.UUID
 import javax.inject.Singleton
 
 /**
@@ -103,6 +108,84 @@ class TestOperationController @Inject constructor(
 
                 log.debug("Created DELETE operation for entity {} from connection {}", entityId, connectionId)
                 operation
+            }
+
+            // ── OperationSet ──────────────────────────────────────────────────────
+            // Expects: { command: "operationSet", failurePolicy: "ABORT"|"ROLLBACK"|"CONTINUE",
+            //            steps: [ { action: "MUTATE"|"FUNCTION_CALL"|"ASSERT"|"TRIGGER",
+            //                        entityId: "...", delta: {...}, function: "..." }, ... ] }
+            "operationSet" -> {
+                val failurePolicyStr = message.getString("failurePolicy", "ABORT")
+                val steps = message.getJsonArray("steps")
+
+                if (steps == null || steps.isEmpty) {
+                    log.warn("Invalid operationSet command: missing or empty steps")
+                    return null
+                }
+
+                val failurePolicy = runCatching { FailurePolicy.valueOf(failurePolicyStr) }
+                    .getOrElse {
+                        log.warn("Unknown failurePolicy '{}', defaulting to ABORT", failurePolicyStr)
+                        FailurePolicy.ABORT
+                    }
+
+                val set = OperationSet().failurePolicy(failurePolicy)
+
+                for (i in 0 until steps.size()) {
+                    val step = steps.getJsonObject(i)
+                    val entityId = step.getString("entityId")
+
+                    when (step.getString("action")) {
+                        "MUTATE" -> set.add(
+                            Operation()
+                                .entity(entityId ?: continue)
+                                .entityType(SetTestEntity::class)
+                                .action(OperationType.MUTATE)
+                                .delta(step.getJsonObject("delta") ?: JsonObject())
+                        )
+                        "CREATE" -> set.add(
+                            Operation()
+                                .entityType(SetTestEntity::class)
+                                .action(OperationType.CREATE)
+                                .delta(step.getJsonObject("delta") ?: JsonObject())
+                        )
+                        "DELETE" -> set.add(
+                            Operation()
+                                .entity(entityId ?: continue)
+                                .entityType(SetTestEntity::class)
+                                .action(OperationType.DELETE)
+                                .delta(JsonObject())
+                        )
+                        "FUNCTION_CALL" -> set.add(
+                            FunctionCall()
+                                .entity(entityId ?: continue)
+                                .entityType(SetTestEntity::class)
+                                .function(step.getString("function") ?: "")
+                                .also { fc -> step.getJsonObject("args")?.let { fc.args(it) } }
+                        )
+                        "ASSERT" -> set.add(
+                            Assert()
+                                .entity(entityId ?: continue)
+                                .entityType(SetTestEntity::class)
+                                .function(step.getString("function") ?: "")
+                                .also { a -> step.getJsonObject("args")?.let { a.args(it) } }
+                        )
+                        "TRIGGER" -> set.add(
+                            Trigger()
+                                .entity(entityId ?: continue)
+                                .entityType(SetTestEntity::class)
+                                .function(step.getString("function") ?: "")
+                        )
+                        else -> log.warn("Unknown step action in operationSet command: {}", step.getString("action"))
+                    }
+                }
+
+                if (set.isEmpty()) {
+                    log.warn("operationSet command produced an empty set — skipping")
+                    return null
+                }
+
+                set
             }
 
             else -> {

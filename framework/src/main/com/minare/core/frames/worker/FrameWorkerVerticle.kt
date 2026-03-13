@@ -3,9 +3,12 @@ package com.minare.core.frames.worker
 import com.hazelcast.core.HazelcastInstance
 import com.hazelcast.cp.IAtomicLong
 import com.hazelcast.map.IMap
-import com.minare.core.utils.vertx.VerticleLogger
+import com.minare.core.entity.ReflectionCache
+import com.minare.core.entity.factories.EntityFactory
 import com.minare.core.frames.coordinator.FrameCoordinatorVerticle
 import com.minare.core.frames.events.WorkerStartStateSnapshotEvent
+import com.minare.core.storage.interfaces.StateStore
+import com.minare.core.utils.vertx.VerticleLogger
 import com.minare.exceptions.FrameLoopException
 import com.minare.worker.coordinator.models.FrameManifest
 import com.minare.worker.coordinator.models.OperationCompletion
@@ -27,7 +30,10 @@ import com.google.inject.Inject
 class FrameWorkerVerticle @Inject constructor(
     private val vlog: VerticleLogger,
     private val hazelcastInstance: HazelcastInstance,
-    private val workerStartStateSnapshotEvent: WorkerStartStateSnapshotEvent
+    private val workerStartStateSnapshotEvent: WorkerStartStateSnapshotEvent,
+    private val stateStore: StateStore,
+    private val entityFactory: EntityFactory,
+    private val reflectionCache: ReflectionCache
 ) : CoroutineVerticle() {
 
     private val log = LoggerFactory.getLogger(FrameWorkerVerticle::class.java)
@@ -131,16 +137,43 @@ class FrameWorkerVerticle @Inject constructor(
     }
 
     /**
-     * Process the list of operations, passing each one to processOperation
-     * for individual processing.
+     * Process the list of operations.
+     *
+     * Contiguous members sharing an operationSetId are collected and handed to
+     * OperationSetExecutor for sequential execution. Solo operations are processed
+     * individually as before.
+     *
+     * The manifest builder guarantees set members are sorted contiguously by
+     * operationSetId then setIndex, so a linear scan suffices.
      */
     private suspend fun processOperations(operations: List<JsonObject>, logicalFrame: Long): Int {
         var successCount = 0
+        var i = 0
 
-        // Preserve order
-        for (operation in operations) {
-            if (processOperation(operation, logicalFrame)) {
-                successCount++
+        while (i < operations.size) {
+            val operation = operations[i]
+            val setId = operation.getString("operationSetId")
+
+            if (setId != null) {
+                val setMembers = operations.drop(i).takeWhile {
+                    it.getString("operationSetId") == setId
+                }
+
+                val executor = OperationSetExecutor(
+                    vertx           = vertx,
+                    stateStore      = stateStore,
+                    entityFactory   = entityFactory,
+                    reflectionCache = reflectionCache,
+                    workerId        = workerId,
+                    completionMap   = completionMap,
+                    workerScope     = this
+                )
+
+                successCount += executor.execute(setMembers, logicalFrame)
+                i += setMembers.size
+            } else {
+                if (processOperation(operation, logicalFrame)) successCount++
+                i++
             }
         }
 

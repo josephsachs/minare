@@ -18,6 +18,7 @@ class TestEntityFactory @Inject constructor() : EntityFactory() {
         "TestEntityCollection" to TestEntityCollection::class.java,
         "TestEntityItem" to TestEntityItem::class.java,
         "TestMonolithItem" to TestMonolithItem::class.java,
-        "TestMonolithItemAncestor" to TestMonolithItemAncestor::class.java
+        "TestMonolithItemAncestor" to TestMonolithItemAncestor::class.java,
+        "SetTestEntity" to SetTestEntity::class.java
     )
 }
