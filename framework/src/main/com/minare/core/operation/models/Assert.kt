@@ -17,7 +17,6 @@ class Assert : OperationSetMember, Serializable {
     @JsonProperty("entityId")
     var entity: String? = null
     var entityType: String? = null
-    var pipe: JsonObject? = null
     var values = JsonObject()
     var type: AssertType? = null
     var context: Any? = null

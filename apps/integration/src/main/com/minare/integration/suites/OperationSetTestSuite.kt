@@ -225,7 +225,7 @@ class OperationSetTestSuite(private val injector: Injector) : TestSuite {
      * Requires a server-side handler for command: "operation" that submits the payload
      * directly to the coordinator, preserving operationSetId and setIndex.
      */
-    private fun submitSet(client: TestClient, connectionId: String, set: OperationSet) {
+    private suspend fun submitSet(client: TestClient, connectionId: String, set: OperationSet) {
         val ops: JsonArray = set.toJsonArray()
         for (i in 0 until ops.size()) {
             client.send(JsonObject()

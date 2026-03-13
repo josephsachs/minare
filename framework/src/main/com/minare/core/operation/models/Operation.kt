@@ -63,7 +63,7 @@ class Operation: OperationSetMember, Serializable {
     /**
      * Deserialize entity type
      */
-    private fun entityType(type: String) = apply {
+    fun entityType(type: String) = apply {
         this.entityType = type
     }
 

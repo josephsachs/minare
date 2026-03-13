@@ -23,7 +23,6 @@ class FunctionCall : OperationSetMember, Serializable {
     var entity: String? = null
     var entityType: String? = null
     var target: String? = null
-    var pipe: JsonObject? = null
     var timestamp: Long = System.currentTimeMillis()
     var meta: String? = null
     var values = JsonObject()
