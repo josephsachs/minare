@@ -22,7 +22,7 @@ class FunctionCall : OperationSetMember, Serializable {
     @JsonProperty("entityId")
     var entity: String? = null
     var entityType: String? = null
-    var target: String? = null
+    var target: String? = String()
     var timestamp: Long = System.currentTimeMillis()
     var meta: String? = null
     var values = JsonObject()

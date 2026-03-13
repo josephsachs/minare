@@ -18,16 +18,9 @@ class Assert : OperationSetMember, Serializable {
     var entity: String? = null
     var entityType: String? = null
     var values = JsonObject()
-    var type: AssertType? = null
-    var context: Any? = null
+    var target: String = String()
     var timestamp: Long = System.currentTimeMillis()
     var meta: String? = null
-
-    enum class AssertType {
-        TRUE,
-        EQUIVALENT,
-        EXISTS
-    }
 
     fun values(values: Map<String, Any?>) = apply {
         values.forEach { (k, v) -> this.values.put(k, v) }
@@ -36,10 +29,6 @@ class Assert : OperationSetMember, Serializable {
     @JsonProperty("entityId")
     fun entity(entity: String?) = apply {
         this.entity = entity
-    }
-
-    fun type(type: AssertType) = apply {
-        this.type = type
     }
 
     override fun build(): JsonObject {

@@ -19,8 +19,8 @@ class Trigger : OperationSetMember, Serializable {
     var entity: String? = null
     var entityType: String? = null
     var timestamp: Long = System.currentTimeMillis()
-    var meta: String? = null
     var values = JsonObject()
+    var target: String = String()
 
     fun values(values: Map<String, Any?>) = apply {
         values.forEach { (k, v) -> this.values.put(k, v) }
