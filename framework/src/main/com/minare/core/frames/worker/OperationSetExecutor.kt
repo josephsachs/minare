@@ -128,6 +128,13 @@ class OperationSetExecutor(
                 .body()
 
             if (result.getBoolean("success", false)) {
+                // For CREATE operations, the handler assigns the entityId.
+                // Patch it into the member so rollback can reverse it.
+                val assignedEntityId = result.getString("entityId")
+                if (assignedEntityId != null && member.getString("entityId") == null) {
+                    member.put("entityId", assignedEntityId)
+                }
+
                 completedMutations.add(member)
                 completionMap["frame-$logicalFrame:op-$operationId"] = OperationCompletion(
                     operationId = operationId,
