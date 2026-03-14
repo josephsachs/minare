@@ -350,13 +350,13 @@ class OperationSetTestSuite(private val injector: Injector) : TestSuite {
 
                 log.step("entity B created", "entityB" to entityB)
 
-                // Wait for rollback DELETE to complete.
+                // Wait for rollback DELETE broadcast — delta contains _deleted: true.
                 awaitEntityUpdate(
                     client, observer, log,
                     stage     = "DELETE broadcast from rollback of CREATE",
                     timeoutMs = 10000,
                     predicate = { id, upd ->
-                        id == entityB && (upd.getLong("version") ?: 0) >= 2
+                        id == entityB && upd.getJsonObject("delta")?.getBoolean("_deleted") == true
                     }
                 )
 
