@@ -15,11 +15,9 @@ import io.vertx.core.Vertx
 import io.vertx.core.json.JsonArray
 import io.vertx.core.json.JsonObject
 import kotlinx.coroutines.TimeoutCancellationException
-import org.slf4j.LoggerFactory
 
 class OperationSetTestSuite(private val injector: Injector) : TestSuite {
     override val name = "OperationSet Tests"
-    private val log = LoggerFactory.getLogger(OperationSetTestSuite::class.java)
 
     override suspend fun run(runner: TestRunner) {
         val vertx          = injector.getInstance(Vertx::class.java)

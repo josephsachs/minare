@@ -12,6 +12,7 @@ import io.vertx.kotlin.coroutines.await
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import org.slf4j.LoggerFactory
+import kotlin.reflect.full.callSuspend
 import kotlin.reflect.jvm.kotlinFunction
 
 /**
@@ -58,6 +59,10 @@ class OperationSetExecutor(
     // Return value of the most recently completed FunctionCall or Assert.
     private var stepContext: Any? = null
 
+    companion object {
+        const val ADDRESS_TRIGGER = "minare.operation.set.executor.trigger"
+    }
+
     /**
      * Execute all members in setIndex order.
      * @return count of successfully processed members (mutations + predicate calls)
@@ -83,7 +88,7 @@ class OperationSetExecutor(
 
             if (succeeded) {
                 successCount++
-            } else if (failurePolicy != FailurePolicy.CONTINUE) {
+            } else {
                 when (failurePolicy) {
                     FailurePolicy.ABORT    -> return successCount
                     FailurePolicy.ROLLBACK -> { rollback(logicalFrame); return successCount }

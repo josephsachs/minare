@@ -24,7 +24,7 @@ class SetTestEntity : Entity() {
     var label: String = ""
 
     /** Returns the current counter value — useful as step context for a following Assert. */
-    fun getCounter(): Int = counter
+    // fun getCounter(): Int = counter declaration clash
 
     /** True when counter is strictly positive. */
     fun isPositive(): Boolean = counter > 0
