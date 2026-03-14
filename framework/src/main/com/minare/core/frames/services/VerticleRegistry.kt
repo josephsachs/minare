@@ -61,17 +61,20 @@ class VerticleRegistry @Inject constructor(
     }
 
     /**
-     * Register a new verticle instance. Called by FrameWorkerVerticle at start().
-     * Starts in PENDING state — activation happens when the coordinator accepts it.
+     * Register and activate a new verticle instance. Called by FrameWorkerVerticle at start().
+     * Unlike WorkerRegistry (which has an infra pre-registration gate), verticle instances
+     * are deployed by the application itself — deployment IS the readiness signal.
      */
     fun addInstance(instanceId: String, nodeId: String) {
         log.info("Adding instance {} (node: {}) to verticle registry", instanceId, nodeId)
         val state = InstanceState(
             instanceId = instanceId,
             nodeId = nodeId,
-            status = InstanceStatus.PENDING
+            status = InstanceStatus.ACTIVE,
+            lastHeartbeat = System.currentTimeMillis()
         )
         verticleRegistryMap.put(instanceId, state.toJson())
+        activeVerticleSet.put(instanceId)
     }
 
     /**
