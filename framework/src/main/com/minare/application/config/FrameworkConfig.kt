@@ -65,7 +65,6 @@ class FrameworkConfig {
         var session: FrameSessionConfig = FrameSessionConfig()
         var timeline: FrameTimelineConfig = FrameTimelineConfig()
         var snapshot: FrameSnapshotConfig = FrameSnapshotConfig()
-        var threads: Int = 0
     }
 
     class FrameSessionConfig {
