@@ -3,14 +3,17 @@ package com.minare.integration.models
 import com.minare.core.entity.annotations.EntityType
 import com.minare.core.entity.annotations.Mutable
 import com.minare.core.entity.annotations.State
+import com.minare.core.entity.annotations.FunctionCall
+import com.minare.core.entity.annotations.Assert
+import com.minare.core.entity.annotations.Trigger
 import com.minare.core.entity.models.Entity
 
 /**
  * Entity used by OperationSetTestSuite.
  *
  * counter and label are mutable state targeted by MUTATE steps.
- * The methods below are invoked directly by FunctionCall and Assert members,
- * allowing tests to observe in-process results without involving the framework layer.
+ * Annotated methods are invoked by the OperationSetExecutor via reflection,
+ * gated by the corresponding annotation (@FunctionCall, @Assert, @Trigger).
  */
 @EntityType("SetTestEntity")
 class SetTestEntity : Entity() {
@@ -23,15 +26,42 @@ class SetTestEntity : Entity() {
     @State @Mutable
     var label: String = ""
 
-    /** Returns the current counter value — useful as step context for a following Assert. */
-    // fun getCounter(): Int = counter declaration clash
+    // ── @FunctionCall methods ─────────────────────────────────────────────
+
+    /** Returns the current counter value as step context for a following step. */
+    @FunctionCall
+    fun getCounter(): Int = counter
+
+    /** Doubles the counter in-place and returns the new value. */
+    @FunctionCall
+    fun doubleCounter(): Int {
+        counter *= 2
+        return counter
+    }
+
+    // ── @Assert methods ───────────────────────────────────────────────────
 
     /** True when counter is strictly positive. */
+    @Assert
     fun isPositive(): Boolean = counter > 0
 
     /** True when counter is strictly negative. */
+    @Assert
     fun isNegative(): Boolean = counter < 0
 
     /** True when label has been set to a non-blank string. */
+    @Assert
     fun hasLabel(): Boolean = label.isNotBlank()
+
+    /** Always fails — used to test failure policies. */
+    @Assert
+    fun alwaysFail(): Boolean = false
+
+    // ── @Trigger methods ──────────────────────────────────────────────────
+
+    /** Fire-and-forget side-effect: sets label to a marker value. */
+    @Trigger
+    fun markTriggered() {
+        label = "triggered"
+    }
 }
