@@ -5,7 +5,7 @@ import com.google.inject.Singleton
 import com.hazelcast.core.HazelcastInstance
 import com.hazelcast.map.IMap
 import com.minare.core.config.InternalInjectorHolder
-import com.minare.core.frames.services.WorkerRegistry
+import com.minare.core.frames.services.VerticleRegistry
 import com.minare.core.utils.debug.DebugLogger
 import com.minare.core.utils.vertx.EventBusUtils
 import com.minare.core.utils.vertx.EventWaiter
@@ -20,7 +20,7 @@ import java.util.concurrent.ConcurrentHashMap
 @Singleton
 class WorkDispatchService @Inject constructor(
     private val hazelcastInstance: HazelcastInstance,
-    private val workerRegistry: WorkerRegistry,
+    private val verticleRegistry: VerticleRegistry,
     private val eventBusUtils: EventBusUtils,
     private val eventWaiter: EventWaiter,
     private val debug: DebugLogger
@@ -75,7 +75,7 @@ class WorkDispatchService @Inject constructor(
      * Execute the distribution function
      */
     private suspend fun distribute(items: Collection<*>, strategy: WorkDispatchStrategy): Map<String, Collection<Any?>> {
-        val workers = workerRegistry.getActiveWorkers()
+        val workers = verticleRegistry.getActiveInstances()
 
         if (workers.isEmpty()) {
             debug.log(DebugLogger.Companion.DebugType.COORDINATOR_WORK_DISPATCH_DISTRIBUTE_NO_WORKERS)

@@ -137,6 +137,8 @@ class FrameworkConfigBuilder {
             infos.add("frames.group_operations_by not specified, defaults to NONE (Options: \"ENTITY\", \"TARGETS\", \"OPERATION_SET\", \"FIELD_PARENT\", \"FIELD_PEER\", \"FIELD_CHILD\")")
         }
 
+        config.frames.threads = max(withInfo(frames.getInteger("threads"), "frames.threads not specified, defaults to 1"), 1)
+
         val session = require(frames.getJsonObject("session"), "frames.session section must be specified")
         val autoSession = require(session.getString("auto_session"), "frames.session.auto_session must be specified")
 

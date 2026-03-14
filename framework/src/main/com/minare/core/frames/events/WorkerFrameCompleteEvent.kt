@@ -6,7 +6,7 @@ import com.minare.core.frames.coordinator.FrameCoordinatorVerticle
 import com.minare.core.utils.vertx.EventBusUtils
 import com.minare.core.utils.vertx.VerticleLogger
 import com.minare.core.frames.coordinator.services.FrameCompletionTracker
-import com.minare.core.frames.services.WorkerRegistry
+import com.minare.core.frames.services.VerticleRegistry
 import com.minare.core.utils.debug.DebugLogger
 import com.minare.exceptions.FrameLoopException
 import io.vertx.core.json.JsonObject
@@ -19,7 +19,7 @@ class WorkerFrameCompleteEvent @Inject constructor(
     private val vlog: VerticleLogger,
     private val debug: DebugLogger,
     private val coordinatorState: FrameCoordinatorState,
-    private val workerRegistry: WorkerRegistry,
+    private val verticleRegistry: VerticleRegistry,
     private val frameCompletionTracker: FrameCompletionTracker
 ) {
     suspend fun register(debugTraceLogs: Boolean = false) {
@@ -40,7 +40,7 @@ class WorkerFrameCompleteEvent @Inject constructor(
                 )
             }
 
-            if (!workerRegistry.isWorkerHealthy(workerId)) {
+            if (!verticleRegistry.isInstanceHealthy(workerId)) {
                 // TODO: Probable recovery trigger
                 return@registerTracedConsumer
             }
@@ -50,7 +50,7 @@ class WorkerFrameCompleteEvent @Inject constructor(
 
             if (coordinatorState.isFrameComplete(logicalFrame)) {
                 val completedWorkers = coordinatorState.getCompletedWorkers(logicalFrame)
-                val activeWorkers = workerRegistry.getActiveWorkers()
+                val activeWorkers = verticleRegistry.getActiveInstances()
                 val lastPreparedManifest = coordinatorState.lastPreparedManifest
                 val frameInProgress = coordinatorState.frameInProgress
                 val completed = completedWorkers.size

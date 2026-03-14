@@ -49,18 +49,24 @@ class WorkerOperationHandlerVerticle @Inject constructor(
     private val log = LoggerFactory.getLogger(WorkerOperationHandlerVerticle::class.java)
     private val debugTraceLogs: Boolean = false
 
+    private lateinit var instanceId: String
+
     override suspend fun start() {
-        log.info("Starting WorkerOperationHandlerVerticle")
+        instanceId = config.getString("instanceId")
+            ?: throw IllegalStateException("WorkerOperationHandlerVerticle requires instanceId in config")
+
+        log.info("Starting WorkerOperationHandlerVerticle (instance: {})", instanceId)
         setupOperationHandlers()
-        log.info("WorkerOperationHandlerVerticle started - operation handlers registered")
+        log.info("WorkerOperationHandlerVerticle started - operation handlers registered for instance {}", instanceId)
     }
 
     /**
      * Set up event bus handlers for each operation type.
-     * Each operation type has its own handler with specific requirements.
+     * Each handler is scoped to this instance's unique ID to prevent
+     * Vert.x round-robin from breaking affinity guarantees.
      */
     private fun setupOperationHandlers() {
-        vertx.eventBus().consumer<JsonObject>("worker.process.MUTATE") { message ->
+        vertx.eventBus().consumer<JsonObject>("worker.process.MUTATE.$instanceId") { message ->
             launch {
                 try {
                     processMutateOperation(message.body())
@@ -72,7 +78,7 @@ class WorkerOperationHandlerVerticle @Inject constructor(
             }
         }
 
-        vertx.eventBus().consumer<JsonObject>("worker.process.CREATE") { message ->
+        vertx.eventBus().consumer<JsonObject>("worker.process.CREATE.$instanceId") { message ->
             launch {
                 try {
                     val entityId = processCreateOperation(message.body())
@@ -84,7 +90,7 @@ class WorkerOperationHandlerVerticle @Inject constructor(
             }
         }
 
-        vertx.eventBus().consumer<JsonObject>("worker.process.DELETE") { message ->
+        vertx.eventBus().consumer<JsonObject>("worker.process.DELETE.$instanceId") { message ->
             launch {
                 try {
                     processDeleteOperation(message.body())
@@ -98,7 +104,7 @@ class WorkerOperationHandlerVerticle @Inject constructor(
 
         // Fire-and-forget handler for OperationSet Trigger steps.
         // Hydrates the target entity and invokes the @Trigger method asynchronously.
-        vertx.eventBus().consumer<JsonObject>(OperationSetExecutor.ADDRESS_TRIGGER) { message ->
+        vertx.eventBus().consumer<JsonObject>("${OperationSetExecutor.ADDRESS_TRIGGER}.$instanceId") { message ->
             launch {
                 try {
                     processTrigger(message.body())
@@ -108,7 +114,7 @@ class WorkerOperationHandlerVerticle @Inject constructor(
             }
         }
 
-        log.info("Registered operation handlers for MUTATE, CREATE, DELETE, TRIGGER")
+        log.info("Registered operation handlers for MUTATE, CREATE, DELETE, TRIGGER on instance {}", instanceId)
     }
 
     // ===== MUTATE =====

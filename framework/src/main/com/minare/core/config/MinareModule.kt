@@ -203,6 +203,28 @@ class MinareModule(
     }
 
     /**
+     * Provides the distributed verticle registry map
+     */
+    @Provides
+    @Singleton
+    fun provideVerticleRegistryMap(hazelcastInstance: HazelcastInstance): VerticleRegistryMap {
+        val map = hazelcastInstance.getMap<String, JsonObject>("verticle-registry")
+        log.info("Initialized distributed verticle registry map")
+        return HazelcastVerticleRegistryMap(map)
+    }
+
+    /**
+     * Provides the distributed active verticle set
+     */
+    @Provides
+    @Singleton
+    fun provideActiveVerticleSet(hazelcastInstance: HazelcastInstance): ActiveVerticleSet {
+        val set = hazelcastInstance.getSet<String>("active-verticles")
+        log.info("Initialized distributed active verticle set")
+        return HazelcastActiveVerticleSet(set)
+    }
+
+    /**
      * Provides EventBusUtils for FrameCoordinatorVerticle
      */
     @Provides

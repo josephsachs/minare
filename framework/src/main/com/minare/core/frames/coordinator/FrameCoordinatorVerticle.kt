@@ -7,7 +7,7 @@ import com.minare.core.frames.coordinator.services.SessionService.Companion.ADDR
 import com.minare.core.frames.events.WorkerStateSnapshotCompleteEvent
 import com.minare.core.frames.services.SnapshotService
 import com.minare.core.frames.services.SnapshotService.Companion.ADDRESS_SNAPSHOT_COMPLETE
-import com.minare.core.frames.services.WorkerRegistry
+import com.minare.core.frames.services.VerticleRegistry
 import com.minare.core.utils.debug.DebugLogger
 import com.minare.core.utils.debug.DebugLogger.Companion.DebugType
 import com.minare.core.utils.vertx.EventBusUtils
@@ -39,7 +39,7 @@ class FrameCoordinatorVerticle @Inject constructor(
     private val debug: DebugLogger,
     private val eventBusUtils: EventBusUtils,
     private val eventWaiter: EventWaiter,
-    private val workerRegistry: WorkerRegistry,
+    private val verticleRegistry: VerticleRegistry,
     private val coordinatorState: FrameCoordinatorState,
     private val messageQueueOperationConsumer: MessageQueueOperationConsumer,
     private val frameManifestBuilder: FrameManifestBuilder,
@@ -210,7 +210,7 @@ class FrameCoordinatorVerticle @Inject constructor(
      */
     private suspend fun prepareManifestForFrame(logicalFrame: Long) {
         val operations = coordinatorState.extractFrameOperations(logicalFrame)
-        val activeWorkers = workerRegistry.getActiveWorkers().toSet()
+        val activeWorkers = verticleRegistry.getActiveInstances().toSet()
 
         val assignments = frameManifestBuilder.distribute(operations, activeWorkers)
 

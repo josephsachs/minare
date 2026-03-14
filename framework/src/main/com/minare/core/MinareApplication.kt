@@ -484,21 +484,29 @@ abstract class MinareApplication : CoroutineVerticle() {
                 .setInstances(1)
         )
 
-        createVerticle(
-            WorkerOperationHandlerVerticle::class.java,
-            DeploymentOptions()
-                .setWorker(true)
-                .setWorkerPoolName("worker-operation-handler-pool")
-                .setWorkerPoolSize(1)
-                .setInstances(1)
-        )
+        // Deploy N frame worker instance pairs based on frames.threads config.
+        // Each pair shares an instanceId for scoped event bus addressing.
+        val frameThreads = maxOf(1, frameworkConfig.frames.threads)
+        for (i in 0 until frameThreads) {
+            val instanceId = "$deploymentID-${java.util.UUID.randomUUID()}"
 
-        createVerticle(
-            FrameWorkerVerticle::class.java,
-            DeploymentOptions()
-                .setInstances(1)
-                .setConfig(JsonObject().put("workerId", workerId))
-        )
+            createVerticle(
+                WorkerOperationHandlerVerticle::class.java,
+                DeploymentOptions()
+                    .setWorker(true)
+                    .setWorkerPoolName("worker-operation-handler-pool-$i")
+                    .setWorkerPoolSize(1)
+                    .setInstances(1)
+                    .setConfig(JsonObject().put("instanceId", instanceId))
+            )
+
+            createVerticle(
+                FrameWorkerVerticle::class.java,
+                DeploymentOptions()
+                    .setInstances(1)
+                    .setConfig(JsonObject().put("nodeId", workerId).put("instanceId", instanceId))
+            )
+        }
 
         createVerticle(
             WorkerTaskVerticle::class.java,
