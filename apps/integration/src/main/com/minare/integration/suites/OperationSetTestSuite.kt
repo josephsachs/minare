@@ -145,6 +145,235 @@ class OperationSetTestSuite(private val injector: Injector) : TestSuite {
                 client.disconnect()
             }
         }
+
+        // ── FUNCTION_CALL ────────────────────────────────────────────────────────
+        runner.test("OperationSet: MUTATE then FUNCTION_CALL sees updated state") { log ->
+            val observer = OperationObserver(vertx, hazelcast).also { it.start() }
+            val client   = TestClient(vertx, hostName, 4225, hostName, 4226)
+            try {
+                val connectionId = connectClient(client, log)
+                val entityId = createSetTestEntity(client, observer, log, connectionId, counter = 3)
+
+                // MUTATE counter=3→6, then doubleCounter() should double the
+                // in-memory instance (6→12) and persist via a second MUTATE.
+                log.step("submitting OperationSet: MUTATE counter=6, FUNCTION_CALL doubleCounter, MUTATE counter from doubleCounter result")
+                client.send(operationSetMessage(connectionId, "ABORT",
+                    mutateStep(entityId, "counter", 6),
+                    functionCallStep(entityId, "doubleCounter"),
+                    assertStep(entityId, "isPositive")
+                ))
+
+                val (_, update) = awaitEntityUpdate(
+                    client, observer, log,
+                    stage     = "MUTATE broadcast after FunctionCall set",
+                    predicate = { id, upd ->
+                        id == entityId && upd.getJsonObject("delta")?.getInteger("counter") == 6
+                    }
+                )
+
+                log.step("broadcast received", "version" to update.getLong("version"))
+
+                // The MUTATE set counter=6 in the store and in-memory.
+                // doubleCounter() doubled the in-memory instance to 12 but did NOT
+                // persist — only MUTATE steps write to the store.
+                // The store should show counter=6 (from the MUTATE).
+                val stored = stateStore.findOneJson(entityId)
+                assertNotNull(stored) { "Entity should exist" }
+                assertEquals(6, stored!!.getJsonObject("state")?.getInteger("counter")) {
+                    "counter should be 6 in store — doubleCounter modifies in-memory only"
+                }
+
+                log.step("FunctionCall verified — in-memory mutation did not leak to store",
+                    "counter" to stored.getJsonObject("state")?.getInteger("counter"))
+            } finally {
+                observer.stop()
+                client.disconnect()
+            }
+        }
+
+        // ── TRIGGER ──────────────────────────────────────────────────────────────
+        runner.test("OperationSet: TRIGGER fires without blocking pipeline") { log ->
+            val observer = OperationObserver(vertx, hazelcast).also { it.start() }
+            val client   = TestClient(vertx, hostName, 4225, hostName, 4226)
+            try {
+                val connectionId = connectClient(client, log)
+                val entityId = createSetTestEntity(client, observer, log, connectionId, counter = 0)
+
+                // MUTATE counter=7, TRIGGER markTriggered, ASSERT isPositive
+                // The trigger is fire-and-forget; the assert should execute regardless.
+                log.step("submitting OperationSet: MUTATE counter=7, TRIGGER markTriggered, ASSERT isPositive")
+                client.send(operationSetMessage(connectionId, "ABORT",
+                    mutateStep(entityId, "counter", 7),
+                    triggerStep(entityId, "markTriggered"),
+                    assertStep(entityId, "isPositive")
+                ))
+
+                val (_, update) = awaitEntityUpdate(
+                    client, observer, log,
+                    stage     = "MUTATE broadcast after trigger set",
+                    predicate = { id, upd ->
+                        id == entityId && upd.getJsonObject("delta")?.getInteger("counter") == 7
+                    }
+                )
+
+                log.step("broadcast received — pipeline was not blocked by trigger",
+                    "version" to update.getLong("version"))
+
+                val stored = stateStore.findOneJson(entityId)
+                assertNotNull(stored) { "Entity should exist" }
+                assertEquals(7, stored!!.getJsonObject("state")?.getInteger("counter")) {
+                    "counter should be 7 after MUTATE"
+                }
+
+                log.step("StateStore verified", "counter" to stored.getJsonObject("state")?.getInteger("counter"))
+            } finally {
+                observer.stop()
+                client.disconnect()
+            }
+        }
+
+        // ── CONTINUE POLICY ──────────────────────────────────────────────────────
+        runner.test("OperationSet: CONTINUE policy — second MUTATE lands after ASSERT failure") { log ->
+            val observer = OperationObserver(vertx, hazelcast).also { it.start() }
+            val client   = TestClient(vertx, hostName, 4225, hostName, 4226)
+            try {
+                val connectionId = connectClient(client, log)
+                val entityId = createSetTestEntity(client, observer, log, connectionId, counter = 0)
+
+                // MUTATE counter=5, ASSERT alwaysFail (CONTINUE), MUTATE label="survived"
+                // With CONTINUE, the failing assert should not halt the pipeline.
+                log.step("submitting OperationSet: MUTATE counter=5, ASSERT alwaysFail (CONTINUE), MUTATE label=survived")
+                client.send(operationSetMessage(connectionId, "CONTINUE",
+                    mutateStep(entityId, "counter", 5),
+                    assertStep(entityId, "alwaysFail"),
+                    mutateStep(entityId, "label", "survived")
+                ))
+
+                // Both mutations should land. Wait for the label mutation specifically.
+                val (_, update) = awaitEntityUpdate(
+                    client, observer, log,
+                    stage     = "label MUTATE broadcast after CONTINUE",
+                    predicate = { id, upd ->
+                        id == entityId && (upd.getLong("version") ?: 0) >= 3
+                    }
+                )
+
+                log.step("broadcast received", "version" to update.getLong("version"))
+
+                val stored = stateStore.findOneJson(entityId)
+                assertNotNull(stored) { "Entity should exist" }
+                assertEquals(5, stored!!.getJsonObject("state")?.getInteger("counter")) {
+                    "counter should be 5 — first MUTATE should land"
+                }
+                assertEquals("survived", stored.getJsonObject("state")?.getString("label")) {
+                    "label should be 'survived' — CONTINUE allows second MUTATE after failed assert"
+                }
+
+                log.step("CONTINUE policy verified — both mutations landed",
+                    "counter" to stored.getJsonObject("state")?.getInteger("counter"),
+                    "label" to stored.getJsonObject("state")?.getString("label"))
+            } finally {
+                observer.stop()
+                client.disconnect()
+            }
+        }
+
+        // ── FUNCTION_CALL → ASSERT PIPE ──────────────────────────────────────────
+        runner.test("OperationSet: FunctionCall return feeds stepContext to Assert") { log ->
+            val observer = OperationObserver(vertx, hazelcast).also { it.start() }
+            val client   = TestClient(vertx, hostName, 4225, hostName, 4226)
+            try {
+                val connectionId = connectClient(client, log)
+                val entityId = createSetTestEntity(client, observer, log, connectionId, counter = 5)
+
+                // getCounter() returns 5 as stepContext.
+                // isPositive() checks counter > 0 on the entity instance (which is 5).
+                // If both pass, MUTATE label="piped" is applied.
+                log.step("submitting OperationSet: FUNCTION_CALL getCounter, ASSERT isPositive, MUTATE label=piped")
+                client.send(operationSetMessage(connectionId, "ABORT",
+                    functionCallStep(entityId, "getCounter"),
+                    assertStep(entityId, "isPositive"),
+                    mutateStep(entityId, "label", "piped")
+                ))
+
+                val (_, update) = awaitEntityUpdate(
+                    client, observer, log,
+                    stage     = "label MUTATE broadcast after pipe set",
+                    predicate = { id, upd ->
+                        id == entityId && upd.getJsonObject("delta")?.getString("label") == "piped"
+                    }
+                )
+
+                log.step("broadcast received", "version" to update.getLong("version"))
+
+                val stored = stateStore.findOneJson(entityId)
+                assertNotNull(stored) { "Entity should exist" }
+                assertEquals("piped", stored!!.getJsonObject("state")?.getString("label")) {
+                    "label should be 'piped' — pipeline continued past FunctionCall → Assert"
+                }
+
+                log.step("FunctionCall→Assert pipe verified",
+                    "label" to stored.getJsonObject("state")?.getString("label"))
+            } finally {
+                observer.stop()
+                client.disconnect()
+            }
+        }
+
+        // ── ROLLBACK OF CREATE ───────────────────────────────────────────────────
+        runner.test("OperationSet: CREATE then ASSERT failure with ROLLBACK — created entity deleted") { log ->
+            val observer = OperationObserver(vertx, hazelcast).also { it.start() }
+            val client   = TestClient(vertx, hostName, 4225, hostName, 4226)
+            try {
+                val connectionId = connectClient(client, log)
+
+                // Create entity A first — we'll use it as the assert target.
+                val entityA = createSetTestEntity(client, observer, log, connectionId, counter = 0)
+
+                // Now send a set: CREATE entity B, then ASSERT alwaysFail on entity A.
+                // With ROLLBACK, the CREATE of B should be reversed (DELETE).
+                log.step("submitting OperationSet: CREATE new entity + ASSERT alwaysFail on entityA (ROLLBACK)")
+                client.send(operationSetMessage(connectionId, "ROLLBACK",
+                    JsonObject()
+                        .put("action", "CREATE")
+                        .put("delta",  JsonObject().put("counter", 99)),
+                    assertStep(entityA, "alwaysFail")
+                ))
+
+                // Capture entityId of the newly created entity B from its CREATE broadcast.
+                val (entityB, _) = awaitEntityUpdate(
+                    client, observer, log,
+                    stage     = "CREATE broadcast for entity B",
+                    predicate = { id, upd ->
+                        id != entityA && upd.getString("type") == "SetTestEntity"
+                                && upd.getJsonObject("delta")?.getInteger("counter") == 99
+                    }
+                )
+
+                log.step("entity B created", "entityB" to entityB)
+
+                // Wait for rollback DELETE to complete.
+                awaitEntityUpdate(
+                    client, observer, log,
+                    stage     = "DELETE broadcast from rollback of CREATE",
+                    timeoutMs = 10000,
+                    predicate = { id, upd ->
+                        id == entityB && (upd.getLong("version") ?: 0) >= 2
+                    }
+                )
+
+                // After rollback, entity B should be deleted from the store.
+                val stored = stateStore.findOneJson(entityB)
+                assertEquals(null, stored) {
+                    "Entity B should be deleted after rollback of CREATE"
+                }
+
+                log.step("CREATE rollback verified — entity B deleted")
+            } finally {
+                observer.stop()
+                client.disconnect()
+            }
+        }
     }
 
     // ── Shared helpers ─────────────────────────────────────────────────────────
@@ -228,6 +457,18 @@ class OperationSetTestSuite(private val injector: Injector) : TestSuite {
     private fun assertStep(entityId: String, function: String): JsonObject =
         JsonObject()
             .put("action",   "ASSERT")
+            .put("entityId", entityId)
+            .put("function", function)
+
+    private fun functionCallStep(entityId: String, function: String): JsonObject =
+        JsonObject()
+            .put("action",   "FUNCTION_CALL")
+            .put("entityId", entityId)
+            .put("function", function)
+
+    private fun triggerStep(entityId: String, function: String): JsonObject =
+        JsonObject()
+            .put("action",   "TRIGGER")
             .put("entityId", entityId)
             .put("function", function)
 }

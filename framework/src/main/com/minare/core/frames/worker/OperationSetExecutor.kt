@@ -2,7 +2,11 @@ package com.minare.core.frames.worker
 
 import com.hazelcast.map.IMap
 import com.minare.core.entity.ReflectionCache
+import com.minare.core.entity.annotations.Assert as AssertAnnotation
+import com.minare.core.entity.annotations.FunctionCall as FunctionCallAnnotation
+import com.minare.core.entity.annotations.Trigger as TriggerAnnotation
 import com.minare.core.entity.factories.EntityFactory
+import com.minare.core.entity.models.Entity
 import com.minare.core.operation.models.FailurePolicy
 import com.minare.core.storage.interfaces.StateStore
 import com.minare.worker.coordinator.models.OperationCompletion
@@ -12,6 +16,7 @@ import io.vertx.kotlin.coroutines.await
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import org.slf4j.LoggerFactory
+import kotlin.reflect.full.callSuspend
 import kotlin.reflect.jvm.kotlinFunction
 
 /**
@@ -24,12 +29,19 @@ import kotlin.reflect.jvm.kotlinFunction
  *   MUTATE / CREATE / DELETE — dispatched to the worker's standard handlers via
  *   the local event bus, preserving hook and delta-storage behaviour.
  *
- *   FUNCTION_CALL — hydrates the target entity and invokes the named method,
- *   returning its result as the step context for subsequent members.
+ *   FUNCTION_CALL — hydrates the target entity and invokes a method annotated
+ *   with @FunctionCall. The return value becomes the step context for subsequent members.
  *
- *   ASSERT — like FUNCTION_CALL but expects Boolean. Failure applies FailurePolicy.
+ *   ASSERT — invokes a method annotated with @Assert. Expects Boolean return.
+ *   Failure applies the set's FailurePolicy.
  *
- *   TRIGGER — fire-and-forget function call; does not suspend or update context.
+ *   TRIGGER — fire-and-forget invocation of a method annotated with @Trigger.
+ *   Does not suspend or update step context.
+ *
+ * Entity instances are hydrated once per entityId and reused across all steps
+ * targeting that entity, providing a stateful illusion for the duration of the set.
+ * After a successful MUTATE, the delta is applied to the in-memory instance so
+ * that subsequent predicate steps see the updated state.
  *
  * FailurePolicy:
  *   CONTINUE — proceed regardless of Assert failure.
@@ -54,6 +66,10 @@ class OperationSetExecutor(
     // Entity state captured before any step runs, keyed by entityId.
     // Used to construct rollback operations.
     private val beforeStates = mutableMapOf<String, JsonObject>()
+
+    // Hydrated entity instances, keyed by entityId. Reused across steps so that
+    // predicate methods see a consistent, evolving view of entity state.
+    private val hydratedEntities = mutableMapOf<String, Entity>()
 
     // Return value of the most recently completed FunctionCall or Assert.
     private var stepContext: Any? = null
@@ -117,6 +133,18 @@ class OperationSetExecutor(
                     operationId = operationId,
                     workerId = workerId
                 )
+
+                // Sync the delta into the cached entity instance so subsequent
+                // predicate steps see updated state without a store re-read.
+                val entityId = member.getString("entityId")
+                val entityType = member.getString("entityType")
+                val delta = member.getJsonObject("delta")
+                if (entityId != null && entityType != null && delta != null) {
+                    val entity = hydratedEntities[entityId]
+                        ?: hydrateEntity(entityId, entityType).also { hydratedEntities[entityId] = it }
+                    applyDeltaToInstance(entity, delta)
+                }
+
                 true
             } else {
                 log.error("Mutation failed in OperationSet member {}: {}", operationId, result.getString("error"))
@@ -136,8 +164,8 @@ class OperationSetExecutor(
         val function   = member.getString("function")   ?: return logMissingField(member, "function")
 
         return try {
-            val entity = hydrateForCall(entityId, entityType)
-            val result = invokeMethod(entity, function, stepContext)
+            val entity = resolveEntity(entityId, entityType)
+            val result = invokeAnnotatedMethod(entity, function, FunctionCallAnnotation::class.java, stepContext)
             stepContext = result
             true
         } catch (e: Exception) {
@@ -154,8 +182,8 @@ class OperationSetExecutor(
         val function   = member.getString("function")   ?: return logMissingField(member, "function")
 
         return try {
-            val entity = hydrateForCall(entityId, entityType)
-            val result = invokeMethod(entity, function, stepContext)
+            val entity = resolveEntity(entityId, entityType)
+            val result = invokeAnnotatedMethod(entity, function, AssertAnnotation::class.java, stepContext)
             stepContext = result
 
             val passed = result as? Boolean
@@ -188,10 +216,14 @@ class OperationSetExecutor(
         val entityType = member.getString("entityType") ?: return
         val function   = member.getString("function")   ?: return
 
+        // Capture current stepContext — trigger is fire-and-forget, should not
+        // race on the mutable field after we advance.
+        val capturedContext = stepContext
+
         workerScope.launch {
             try {
-                val entity = hydrateForCall(entityId, entityType)
-                invokeMethod(entity, function, stepContext)
+                val entity = resolveEntity(entityId, entityType)
+                invokeAnnotatedMethod(entity, function, TriggerAnnotation::class.java, capturedContext)
             } catch (e: Exception) {
                 log.error("Trigger {}.{}() threw: {}", entityType, function, e.message, e)
             }
@@ -277,11 +309,22 @@ class OperationSetExecutor(
             .put("timestamp",  System.currentTimeMillis())
     }
 
-    // ── Entity hydration ──────────────────────────────────────────────────────
+    // ── Entity resolution ────────────────────────────────────────────────────
 
-    private suspend fun hydrateForCall(entityId: String, entityType: String): com.minare.core.entity.models.Entity {
+    /**
+     * Return the cached entity instance for [entityId], hydrating on first access.
+     * All predicate steps targeting the same entity share a single instance,
+     * giving a stateful illusion for the duration of the set.
+     */
+    private suspend fun resolveEntity(entityId: String, entityType: String): Entity {
+        return hydratedEntities.getOrPut(entityId) {
+            hydrateEntity(entityId, entityType)
+        }
+    }
+
+    private suspend fun hydrateEntity(entityId: String, entityType: String): Entity {
         val entityJson = stateStore.findOneJson(entityId)
-            ?: throw IllegalStateException("Entity $entityId not found for function invocation")
+            ?: throw IllegalStateException("Entity $entityId not found for hydration")
 
         val entity = entityFactory.getNew(entityType).apply {
             _id     = entityId
@@ -295,27 +338,66 @@ class OperationSetExecutor(
         return entity
     }
 
+    /**
+     * Apply a mutation delta to the in-memory entity instance via reflection.
+     * Keeps the cached instance in sync with the store after a successful MUTATE.
+     */
+    private fun applyDeltaToInstance(entity: Entity, delta: JsonObject) {
+        val fields = reflectionCache.getFields(entity.javaClass)
+        for (fieldName in delta.fieldNames()) {
+            val field = fields.firstOrNull { it.name == fieldName } ?: continue
+            field.isAccessible = true
+            val value = delta.getValue(fieldName)
+            try {
+                when (field.type) {
+                    Int::class.java, java.lang.Integer::class.java ->
+                        field.setInt(entity, (value as? Number)?.toInt() ?: continue)
+                    Long::class.java, java.lang.Long::class.java ->
+                        field.setLong(entity, (value as? Number)?.toLong() ?: continue)
+                    Double::class.java, java.lang.Double::class.java ->
+                        field.setDouble(entity, (value as? Number)?.toDouble() ?: continue)
+                    Float::class.java, java.lang.Float::class.java ->
+                        field.setFloat(entity, (value as? Number)?.toFloat() ?: continue)
+                    Boolean::class.java, java.lang.Boolean::class.java ->
+                        field.setBoolean(entity, value as? Boolean ?: continue)
+                    String::class.java ->
+                        field.set(entity, value as? String)
+                    else ->
+                        field.set(entity, value)
+                }
+            } catch (e: Exception) {
+                log.warn("Failed to apply delta field '{}' to {}: {}", fieldName, entity.javaClass.simpleName, e.message)
+            }
+        }
+    }
+
     // ── Reflection invocation ─────────────────────────────────────────────────
 
     /**
-     * Invoke [functionName] on [entity], optionally passing [context] if the
-     * method signature accepts a second parameter.
+     * Invoke [functionName] on [entity], gated by [requiredAnnotation].
+     * Only methods carrying the specified annotation are eligible.
      *
      * Both suspend and non-suspend methods are supported. If the method cannot be
-     * located a loud log is emitted and null is returned rather than throwing.
+     * located or lacks the annotation, a loud log is emitted and an exception is thrown.
      */
-    private suspend fun invokeMethod(entity: Any, functionName: String, context: Any?): Any? {
-        val jMethod = reflectionCache.getFunctions(entity.javaClass)
-            .firstOrNull { it.name == functionName }
+    private suspend fun invokeAnnotatedMethod(
+        entity: Any,
+        functionName: String,
+        requiredAnnotation: Class<out Annotation>,
+        context: Any?
+    ): Any? {
+        val annotatedMethods = reflectionCache.getFunctions(entity.javaClass)
+            .filter { it.isAnnotationPresent(requiredAnnotation) }
+
+        val jMethod = annotatedMethods.firstOrNull { it.name == functionName }
 
         if (jMethod == null) {
-            log.warn(
-                "Method '{}' not found on {}. Available: [{}]",
-                functionName,
-                entity.javaClass.simpleName,
-                reflectionCache.getFunctions(entity.javaClass).joinToString { it.name }
+            val available = annotatedMethods.joinToString { it.name }
+            val annotationName = requiredAnnotation.simpleName
+            throw IllegalStateException(
+                "Method '$functionName' not found on ${entity.javaClass.simpleName} " +
+                "with @$annotationName. Available @$annotationName methods: [$available]"
             )
-            return null
         }
 
         jMethod.isAccessible = true
