@@ -54,7 +54,7 @@ class OperationSetExecutor(
     private val stateStore: StateStore,
     private val entityFactory: EntityFactory,
     private val reflectionCache: ReflectionCache,
-    private val workerId: String,
+    private val instanceId: String,
     private val completionMap: IMap<String, OperationCompletion>,
     private val workerScope: CoroutineScope
 ) {
@@ -119,7 +119,7 @@ class OperationSetExecutor(
 
     private suspend fun executeMutation(member: JsonObject, logicalFrame: Long): Boolean {
         val operationId = member.getString("id") ?: return logUnknownId(member)
-        val address = "worker.process.${member.getString("action")}"
+        val address = "worker.process.${member.getString("action")}.$instanceId"
 
         val context = JsonObject()
             .put("operation", member)
@@ -142,7 +142,7 @@ class OperationSetExecutor(
                 completedMutations.add(member)
                 completionMap["frame-$logicalFrame:op-$operationId"] = OperationCompletion(
                     operationId = operationId,
-                    workerId = workerId
+                    workerId = instanceId
                 )
 
                 // Sync the delta into the cached entity instance so subsequent
@@ -273,7 +273,7 @@ class OperationSetExecutor(
                 .put("operation", reverseOp)
                 .put("frameNumber", logicalFrame)
 
-            val address = "worker.process.${reverseOp.getString("action")}"
+            val address = "worker.process.${reverseOp.getString("action")}.$instanceId"
 
             try {
                 vertx.eventBus().request<JsonObject>(address, context).await()

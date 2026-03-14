@@ -1,6 +1,6 @@
 package com.minare.core.frames.coordinator.events
 
-import com.minare.core.frames.services.WorkerRegistry
+import com.minare.core.frames.services.VerticleRegistry
 import com.minare.core.utils.vertx.EventBusUtils
 import com.minare.core.utils.vertx.VerticleLogger
 import io.vertx.core.json.JsonObject
@@ -9,7 +9,7 @@ import com.google.inject.Inject
 class SnapshotCompletionEvent @Inject constructor(
     private val eventBusUtils: EventBusUtils,
     private val vlog: VerticleLogger,
-    private val workerRegistry: WorkerRegistry
+    private val verticleRegistry: VerticleRegistry
 ) {
     private val completedWorkers = mutableSetOf<String>()
 
@@ -20,9 +20,9 @@ class SnapshotCompletionEvent @Inject constructor(
 
             completedWorkers.add(workerId)
 
-            vlog.logInfo("Snapshot completed by worker $workerId: ${completedWorkers.size}/${workerRegistry.getActiveWorkers().size}")
+            vlog.logInfo("Snapshot completed by worker $workerId: ${completedWorkers.size}/${verticleRegistry.getActiveInstances().size}")
 
-            if (completedWorkers.size == workerRegistry.getActiveWorkers().size) {
+            if (completedWorkers.size == verticleRegistry.getActiveInstances().size) {
                 vlog.logInfo("All workers completed snapshot")
 
                 // Notify coordinator that snapshot is complete

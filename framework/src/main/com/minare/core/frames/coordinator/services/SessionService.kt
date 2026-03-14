@@ -10,7 +10,7 @@ import com.minare.core.frames.coordinator.FrameCoordinatorVerticle.Companion.ADD
 import com.minare.core.frames.coordinator.FrameCoordinatorVerticle.Companion.ADDRESS_PREPARE_SESSION_MANIFESTS
 import com.minare.core.frames.coordinator.FrameCoordinatorVerticle.Companion.ADDRESS_SESSION_MANIFESTS_PREPARED
 import com.minare.core.frames.coordinator.FrameCoordinatorVerticle.Companion.ADDRESS_SESSION_START
-import com.minare.core.frames.services.WorkerRegistry
+import com.minare.core.frames.services.VerticleRegistry
 import com.minare.core.operation.interfaces.MessageQueue
 import com.minare.core.storage.interfaces.SnapshotStore
 import com.minare.core.utils.debug.DebugLogger
@@ -26,7 +26,7 @@ class SessionService @Inject constructor(
     private val frameworkConfig: FrameworkConfig,
     private val coordinatorState: FrameCoordinatorState,
     private val snapshotStore: SnapshotStore,
-    private val workerRegistry: WorkerRegistry,
+    private val verticleRegistry: VerticleRegistry,
     private val frameManifestBuilder: FrameManifestBuilder,
     private val frameCompletionTracker: FrameCompletionTracker,
     private val messageQueue: MessageQueue,
@@ -141,7 +141,7 @@ class SessionService @Inject constructor(
     }
 
     private fun createMetadata(sessionId: String, sessionStartTime: Long, announcementTime: Long): JsonObject {
-        val activeWorkers = workerRegistry.getActiveWorkers()
+        val activeWorkers = verticleRegistry.getActiveInstances()
 
         return JsonObject()
             .put("eventType", "SESSION_START")
@@ -184,7 +184,7 @@ class SessionService @Inject constructor(
 
         if (debugTraceLogs) log.info(
             "Announced new session $sessionId with {} workers",
-            workerRegistry.getActiveWorkers().size
+            verticleRegistry.getActiveInstances().size
         )
     }
 }

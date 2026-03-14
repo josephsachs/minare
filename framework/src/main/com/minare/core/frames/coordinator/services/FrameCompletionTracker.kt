@@ -2,7 +2,7 @@ package com.minare.core.frames.coordinator.services
 
 import com.hazelcast.core.HazelcastInstance
 import com.hazelcast.map.IMap
-import com.minare.core.frames.services.WorkerRegistry
+import com.minare.core.frames.services.VerticleRegistry
 import io.vertx.core.json.JsonObject
 import org.slf4j.LoggerFactory
 import com.google.inject.Inject
@@ -15,7 +15,7 @@ import com.google.inject.Singleton
 @Singleton
 class FrameCompletionTracker @Inject constructor(
     private val hazelcastInstance: HazelcastInstance,
-    private val workerRegistry: WorkerRegistry
+    private val verticleRegistry: VerticleRegistry
 ) {
     private val log = LoggerFactory.getLogger(FrameCompletionTracker::class.java)
 
@@ -70,7 +70,7 @@ class FrameCompletionTracker @Inject constructor(
      */
     fun getMissingWorkers(logicalFrame: Long): Set<String> {
         val completed = getCompletedWorkers(logicalFrame)
-        val expected = workerRegistry.getActiveWorkers()
+        val expected = verticleRegistry.getActiveInstances()
         return expected - completed
     }
 
@@ -100,7 +100,7 @@ class FrameCompletionTracker @Inject constructor(
      */
     fun isFrameComplete(logicalFrame: Long): Boolean {
         val completed = getCompletedWorkers(logicalFrame)
-        val expected = workerRegistry.getActiveWorkers()
+        val expected = verticleRegistry.getActiveInstances()
 
         return expected.isNotEmpty() && completed.containsAll(expected)
     }
@@ -113,7 +113,7 @@ class FrameCompletionTracker @Inject constructor(
      */
     fun getFrameCompletionStats(logicalFrame: Long): JsonObject {
         val completed = getCompletedWorkers(logicalFrame)
-        val expected = workerRegistry.getActiveWorkers()
+        val expected = verticleRegistry.getActiveInstances()
         val missing = expected - completed
 
         return JsonObject()

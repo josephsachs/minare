@@ -33,6 +33,7 @@ entity:
 frames:
   frame_duration: 500
   lookahead: 25
+  threads: 10
   group_operations_by: ["ENTITY", "FIELD_PARENT", "FIELD_CHILD"]
   session:
     auto_session: frames_per_session

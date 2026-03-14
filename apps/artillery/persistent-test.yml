@@ -1,0 +1,48 @@
+config:
+  target: "http://localhost:8080"
+  processor: "./persistent-processor.js"
+  phases:
+    - duration: 8
+      arrivalCount: 8
+      name: "Connect all clients"
+
+  environments:
+    load:
+      phases:
+        - duration: 15
+          arrivalCount: 27
+          name: "Connect all clients (load)"
+
+scenarios:
+  # 5 user clients (weight 5/8)
+  - name: "User Client"
+    weight: 5
+    flow:
+      - function: "setupClient"
+      - think: 3
+      - loop:
+          - function: "userAction"
+          - think: 5
+        count: 100
+
+  # 2 microservice clients (weight 2/8)
+  - name: "Microservice Client"
+    weight: 2
+    flow:
+      - function: "setupClient"
+      - think: 3
+      - loop:
+          - function: "microserviceAction"
+          - think: 3
+        count: 80
+
+  # 1 big-tick client (weight 1/8)
+  - name: "Big Tick Client"
+    weight: 1
+    flow:
+      - function: "setupClient"
+      - think: 5
+      - loop:
+          - function: "bigTickAction"
+          - think: 15
+        count: 15

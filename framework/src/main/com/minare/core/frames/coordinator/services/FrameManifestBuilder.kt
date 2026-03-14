@@ -3,7 +3,7 @@ package com.minare.core.frames.coordinator.services
 import com.hazelcast.core.HazelcastInstance
 import com.hazelcast.map.IMap
 import com.minare.application.config.FrameworkConfig
-import com.minare.core.frames.services.WorkerRegistry
+import com.minare.core.frames.services.VerticleRegistry
 import com.minare.core.utils.debug.DebugLogger
 import com.minare.exceptions.FrameLoopException
 import com.minare.core.utils.debug.DebugLogger.Companion.DebugType
@@ -22,7 +22,7 @@ import kotlin.math.abs
 @Singleton
 class FrameManifestBuilder @Inject constructor(
     private val hazelcastInstance: HazelcastInstance,
-    private val workerRegistry: WorkerRegistry,
+    private val verticleRegistry: VerticleRegistry,
     private val frameworkConfig: FrameworkConfig,
     private val affinityResolver: AffinityResolver,
     private val debug: DebugLogger
@@ -128,7 +128,7 @@ class FrameManifestBuilder @Inject constructor(
      */
     fun assignToExistingManifest(operation: JsonObject, frame: Long) {
         try {
-            val activeWorkers = workerRegistry.getActiveWorkers()
+            val activeWorkers = verticleRegistry.getActiveInstances()
 
             val routingKey = operation.getString("operationSetId") ?: operation.getString("id")
             val workerIndex = abs(routingKey.hashCode()) % activeWorkers.size
