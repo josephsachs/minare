@@ -1,5 +1,5 @@
 # Minare Framework
-Current version: 0.7.2
+Current version: 0.8.0
 
 ## Concept
 Multiplayer games and collaborative simulations need consistency, determinism, and the ability to recover quickly
@@ -87,21 +87,19 @@ between my goals and the developer's experience. I chose
 
 0.7.0 - Transport layer rewrite
 
-**0.7.2** - NodeGraph v2
+0.7.2 - NodeGraph v2
 
-0.8.0 - Affinity scope 
+**0.8.0** - Affinity scope, OperationSet 
 
 0.9.0 - UpdateController, views
 
 1.0.0 - Quick start
 
-1.1.0 - Replay, improved session snapshot behavior
+1.1.0 - Replay, improved snapshot
 
-1.2.0 - Operation recovery, monitoring tools
+1.2.0 - Recovery, monitoring tools
 
-1.3.0 - Worker health monitoring
-
-1.4.0 - OperationSet behavior
+1.3.0 - Thread/node health monitoring, observability, update infrastructure template
 
 1.5.0 - Session branching, graph visitor builder
 

@@ -7,6 +7,7 @@ import com.minare.integration.harness.IntegrationTestRunner
 import com.minare.integration.suites.ConnectionTestSuite
 import com.minare.integration.suites.SmokeTestSuite
 import com.minare.integration.suites.EntityControllerTestSuite
+import com.minare.integration.suites.OperationSetTestSuite
 import com.minare.integration.suites.OperationTestSuite
 import org.slf4j.LoggerFactory
 import javax.inject.Inject
@@ -44,7 +45,8 @@ class TestApplication : MinareApplication() {
             SmokeTestSuite(injector),
             EntityControllerTestSuite(injector),
             ConnectionTestSuite(injector),
-            OperationTestSuite(injector)
+            OperationTestSuite(injector),
+            OperationSetTestSuite(injector)
         )
     }
 

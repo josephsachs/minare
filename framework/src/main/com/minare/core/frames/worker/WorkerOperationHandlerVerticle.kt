@@ -17,7 +17,11 @@ import org.slf4j.LoggerFactory
 import com.google.inject.Inject
 import com.minare.controller.OperationController
 import com.minare.core.entity.graph.EntityGraphReferenceService
+import com.minare.core.entity.ReflectionCache
+import com.minare.core.entity.annotations.Trigger
 import com.minare.core.entity.services.EntityFieldDeserializer
+import kotlin.reflect.full.callSuspend
+import kotlin.reflect.jvm.kotlinFunction
 import kotlin.system.measureTimeMillis
 
 /**
@@ -38,7 +42,8 @@ class WorkerOperationHandlerVerticle @Inject constructor(
     private val operationController: OperationController,
     private val entityGraphReferenceService: EntityGraphReferenceService,
     private val contextStore: ContextStore,
-    private val channelController: ChannelController
+    private val channelController: ChannelController,
+    private val reflectionCache: ReflectionCache
 ) : CoroutineVerticle() {
 
     private val log = LoggerFactory.getLogger(WorkerOperationHandlerVerticle::class.java)
@@ -70,8 +75,8 @@ class WorkerOperationHandlerVerticle @Inject constructor(
         vertx.eventBus().consumer<JsonObject>("worker.process.CREATE") { message ->
             launch {
                 try {
-                    processCreateOperation(message.body())
-                    message.reply(JsonObject().put("success", true))
+                    val entityId = processCreateOperation(message.body())
+                    message.reply(JsonObject().put("success", true).put("entityId", entityId))
                 } catch (e: Exception) {
                     log.error("Failed to process CREATE operation", e)
                     message.fail(500, e.message)
@@ -91,7 +96,19 @@ class WorkerOperationHandlerVerticle @Inject constructor(
             }
         }
 
-        log.info("Registered operation handlers for MUTATE, CREATE, DELETE")
+        // Fire-and-forget handler for OperationSet Trigger steps.
+        // Hydrates the target entity and invokes the @Trigger method asynchronously.
+        vertx.eventBus().consumer<JsonObject>(OperationSetExecutor.ADDRESS_TRIGGER) { message ->
+            launch {
+                try {
+                    processTrigger(message.body())
+                } catch (e: Exception) {
+                    log.error("Trigger execution failed", e)
+                }
+            }
+        }
+
+        log.info("Registered operation handlers for MUTATE, CREATE, DELETE, TRIGGER")
     }
 
     // ===== MUTATE =====
@@ -157,7 +174,7 @@ class WorkerOperationHandlerVerticle @Inject constructor(
      * Creates a new entity, no before state exists.
      * Broadcasts the update directly to channels — no pub/sub, no tick delay.
      */
-    private suspend fun processCreateOperation(context: JsonObject) {
+    private suspend fun processCreateOperation(context: JsonObject): String {
         val frameNumber = context.getLong("frameNumber")
             ?: throw IllegalArgumentException("Frame number required")
         val operationJson = context.getJsonObject("operation")
@@ -168,6 +185,7 @@ class WorkerOperationHandlerVerticle @Inject constructor(
 
         log.debug("Processing CREATE operation {} for type {}", operationId, entityType)
 
+        var createdEntityId = ""
         val processingTime = measureTimeMillis {
             val entity = entityFactory.getNew(entityType)
             entity.type = entityType
@@ -176,6 +194,7 @@ class WorkerOperationHandlerVerticle @Inject constructor(
             stateStore.setEntityProperties(entity, entityType, delta)
 
             val savedEntity = entityController.create(entity)
+            createdEntityId = savedEntity._id
 
             val afterEntity = stateStore.findOneJson(savedEntity._id)
                 ?: throw IllegalStateException("Entity ${savedEntity._id} not found after creation")
@@ -216,6 +235,7 @@ class WorkerOperationHandlerVerticle @Inject constructor(
         }
 
         log.debug("Processed CREATE operation {} in {}ms", operationId, processingTime)
+        return createdEntityId
     }
 
     // ===== DELETE =====
@@ -346,6 +366,64 @@ class WorkerOperationHandlerVerticle @Inject constructor(
             )
             .await()
             .body()
+    }
+
+    // ===== TRIGGER =====
+
+    /**
+     * Process a fire-and-forget Trigger from an OperationSet.
+     * Hydrates the target entity, finds the @Trigger method by name, and invokes it.
+     * Runs asynchronously — the OperationSet executor does not wait for this.
+     */
+    private suspend fun processTrigger(payload: JsonObject) {
+        val entityId = payload.getString("entityId")
+            ?: throw IllegalArgumentException("entityId required for TRIGGER")
+        val entityType = payload.getString("entityType")
+            ?: throw IllegalArgumentException("entityType required for TRIGGER")
+        val target = payload.getString("target")
+            ?: throw IllegalArgumentException("target required for TRIGGER")
+
+        val entityJson = stateStore.findOneJson(entityId)
+            ?: throw IllegalStateException("Entity $entityId not found for TRIGGER")
+
+        val entity = entityFactory.getNew(entityType).apply {
+            _id = entityId
+            version = entityJson.getLong("version")
+            type = entityType
+        }
+
+        stateStore.setEntityState(entity, entityType, entityJson.getJsonObject("state", JsonObject()))
+        stateStore.setEntityProperties(entity, entityType, entityJson.getJsonObject("properties", JsonObject()))
+
+        val methods = reflectionCache.getFunctions(entity.javaClass)
+        val method = methods.firstOrNull { it.name == target && it.isAnnotationPresent(Trigger::class.java) }
+            ?: throw IllegalStateException("No @Trigger method '$target' on $entityType")
+
+        method.isAccessible = true
+        val kFunc = method.kotlinFunction
+
+        if (kFunc != null) {
+            // Pass pipe args if available
+            val pipeJson = payload.getJsonObject("_pipe")
+            val params = kFunc.parameters.drop(1)
+
+            when {
+                params.isEmpty() -> {
+                    if (kFunc.isSuspend) kFunc.callSuspend(entity) else kFunc.call(entity)
+                }
+                params.size == 1 && pipeJson != null -> {
+                    val arg = params[0].name?.let { pipeJson.getValue(it) } ?: pipeJson
+                    if (kFunc.isSuspend) kFunc.callSuspend(entity, arg) else kFunc.call(entity, arg)
+                }
+                pipeJson is JsonObject -> {
+                    val args = params.map { p -> p.name?.let { pipeJson.getValue(it) } }.toTypedArray()
+                    if (kFunc.isSuspend) kFunc.callSuspend(entity, *args) else kFunc.call(entity, *args)
+                }
+                else -> {
+                    if (kFunc.isSuspend) kFunc.callSuspend(entity) else kFunc.call(entity)
+                }
+            }
+        }
     }
 
     override suspend fun stop() {

@@ -20,6 +20,7 @@ class Node(): Entity() {
     }
 
     @State
+    @Mutable
     var label: String = ""
 
     @State

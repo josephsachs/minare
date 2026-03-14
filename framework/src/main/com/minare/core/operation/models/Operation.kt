@@ -11,7 +11,7 @@ import kotlin.reflect.KClass
  * An Operation is a request to the frame coordinator for changes to entity state.
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
-class Operation: Serializable {
+class Operation: OperationSetMember, Serializable {
     var id: String = UUID.randomUUID().toString()
     @JsonProperty("entityId")
     var entity: String? = null
@@ -19,7 +19,7 @@ class Operation: Serializable {
     var action: OperationType? = null
     var values = JsonObject()
     var delta: JsonObject? = null
-    var version: Long? = null
+    var version: Long = 0L
     var timestamp: Long = System.currentTimeMillis()
     var meta: String? = null
 
@@ -63,7 +63,7 @@ class Operation: Serializable {
     /**
      * Deserialize entity type
      */
-    private fun entityType(type: String) = apply {
+    fun entityType(type: String) = apply {
         this.entityType = type
     }
 
@@ -116,7 +116,7 @@ class Operation: Serializable {
     /**
      * Build the operation into a JsonObject
      */
-    fun build(): JsonObject {
+    override fun build(): JsonObject {
         requireNotNull(entityType) { "Entity type is required" }
         requireNotNull(action) { "Action is required" }
 
@@ -131,7 +131,7 @@ class Operation: Serializable {
             .put("action", action.toString())
             .put("timestamp", timestamp)
 
-        version?.let { operation.put("version", it) }
+        operation.put("version", version)
         delta?.let { operation.put("delta", it) }
         meta?.let { operation.put("meta", it ) }
         operation.mergeIn(values)
