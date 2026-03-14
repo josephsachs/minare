@@ -34,6 +34,14 @@ function setupClient(context, events, done) {
     userSessions.set(userId, { commandSocket: ws, entities: [] });
   });
 
+  let setupDone = false;
+  function finishSetup(err) {
+    if (setupDone) return;
+    setupDone = true;
+    clearTimeout(connectionTimeout);
+    done(err);
+  }
+
   ws.on('message', (data) => {
     try {
       const message = JSON.parse(data.toString());
@@ -49,7 +57,7 @@ function setupClient(context, events, done) {
         events.emit('counter', 'setup.command.connected', 1);
 
         // Now connect down socket
-        connectDownSocket(userId, connectionId, context, events, done);
+        connectDownSocket(userId, connectionId, context, events, finishSetup);
       } else if (message.type === 'sync' && message.data && message.data.entities) {
         const session = userSessions.get(userId);
         if (session) {
@@ -62,9 +70,8 @@ function setupClient(context, events, done) {
   });
 
   ws.on('error', (error) => {
-    clearTimeout(connectionTimeout);
     events.emit('counter', 'setup.command.error', 1);
-    done(error);
+    finishSetup(error);
   });
 
   ws.on('close', () => {
@@ -285,9 +292,9 @@ function getSession(context, events, done) {
   const userId = context.vars.userId;
   const session = userSessions.get(userId);
 
-  if (!session || !session.commandSocket) {
+  if (!session || !session.commandSocket || session.commandSocket.readyState !== WebSocket.OPEN) {
     events.emit('counter', 'action.no_session', 1);
-    done(new Error('No session available'));
+    done(new Error('No session available or socket closed'));
     return null;
   }
 

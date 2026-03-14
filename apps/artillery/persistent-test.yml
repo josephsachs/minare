@@ -22,9 +22,7 @@ scenarios:
       - think: 3
       - loop:
           - function: "userAction"
-          - think:
-              min: 3
-              max: 10
+          - think: 5
         count: 100
 
   # 2 microservice clients (weight 2/8)
@@ -35,9 +33,7 @@ scenarios:
       - think: 3
       - loop:
           - function: "microserviceAction"
-          - think:
-              min: 2
-              max: 5
+          - think: 3
         count: 80
 
   # 1 big-tick client (weight 1/8)
@@ -48,7 +44,5 @@ scenarios:
       - think: 5
       - loop:
           - function: "bigTickAction"
-          - think:
-              min: 10
-              max: 30
+          - think: 15
         count: 15
