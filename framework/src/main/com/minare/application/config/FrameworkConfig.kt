@@ -61,6 +61,7 @@ class FrameworkConfig {
         var frameDuration: Long = 0L
         var lookahead: Int = 0
         var groupOperationsBy: Set<AffinityScopeType> = mutableSetOf()
+        var threads: Int = 0
         var session: FrameSessionConfig = FrameSessionConfig()
         var timeline: FrameTimelineConfig = FrameTimelineConfig()
         var snapshot: FrameSnapshotConfig = FrameSnapshotConfig()

@@ -2,7 +2,7 @@ package com.minare.core.utils.vertx
 
 import com.google.inject.Inject
 import com.google.inject.Singleton
-import com.minare.core.frames.services.WorkerRegistry
+import com.minare.core.frames.services.VerticleRegistry
 import io.vertx.core.Promise
 import io.vertx.core.Vertx
 import io.vertx.core.json.JsonObject
@@ -14,7 +14,7 @@ import org.slf4j.LoggerFactory
  */
 @Singleton
 class EventWaiter @Inject constructor(
-    private val workerRegistry: WorkerRegistry,
+    private val verticleRegistry: VerticleRegistry,
     private val vertx: Vertx
 ) {
     private val log = LoggerFactory.getLogger(EventWaiter::class.java)
@@ -51,7 +51,7 @@ class EventWaiter @Inject constructor(
 
                 responses[workerId] = msg.body()
 
-                if (responses.keys == workerRegistry.getActiveWorkers()) {
+                if (responses.keys == verticleRegistry.getActiveInstances()) {
                     promise.complete(responses.toMap())
                 }
             }

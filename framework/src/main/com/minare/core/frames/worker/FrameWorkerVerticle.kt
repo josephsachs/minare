@@ -7,6 +7,7 @@ import com.minare.core.entity.ReflectionCache
 import com.minare.core.entity.factories.EntityFactory
 import com.minare.core.frames.coordinator.FrameCoordinatorVerticle
 import com.minare.core.frames.events.WorkerStartStateSnapshotEvent
+import com.minare.core.frames.services.VerticleRegistry
 import com.minare.core.storage.interfaces.StateStore
 import com.minare.core.utils.vertx.VerticleLogger
 import com.minare.exceptions.FrameLoopException
@@ -26,11 +27,16 @@ import com.google.inject.Inject
  * - Processes frames based on logical numbering
  * - Uses System.nanoTime() for drift-free frame pacing
  * - Immune to wall clock adjustments
+ *
+ * Each instance generates a unique instanceId ("$deploymentID-$UUID") at startup,
+ * matching the pattern used by socket verticles. The instanceId is used for
+ * manifest keying, operation dispatch, and frame completion reporting.
  */
 class FrameWorkerVerticle @Inject constructor(
     private val vlog: VerticleLogger,
     private val hazelcastInstance: HazelcastInstance,
     private val workerStartStateSnapshotEvent: WorkerStartStateSnapshotEvent,
+    private val verticleRegistry: VerticleRegistry,
     private val stateStore: StateStore,
     private val entityFactory: EntityFactory,
     private val reflectionCache: ReflectionCache
@@ -39,7 +45,8 @@ class FrameWorkerVerticle @Inject constructor(
     private val log = LoggerFactory.getLogger(FrameWorkerVerticle::class.java)
     private val debugTraceLogs: Boolean = false
 
-    private lateinit var workerId: String
+    private lateinit var instanceId: String
+    private lateinit var nodeId: String
     private lateinit var manifestMap: IMap<String, JsonObject>
     private lateinit var completionMap: IMap<String, OperationCompletion>
 
@@ -63,11 +70,18 @@ class FrameWorkerVerticle @Inject constructor(
         log.info("Starting FrameWorkerVerticle")
         vlog.setVerticle(this)
 
-        workerId = config.getString("workerId")
+        nodeId = config.getString("nodeId")
+            ?: throw IllegalStateException("FrameWorkerVerticle requires nodeId in config")
+        instanceId = config.getString("instanceId")
+            ?: throw IllegalStateException("FrameWorkerVerticle requires instanceId in config")
+
         manifestMap = hazelcastInstance.getMap("frame-manifests")
         completionMap = hazelcastInstance.getMap("operation-completions")
 
-        workerStartStateSnapshotEvent.register(workerId)
+        // Register this instance in the verticle registry
+        verticleRegistry.addInstance(instanceId, nodeId)
+
+        workerStartStateSnapshotEvent.register(instanceId)
 
         vertx.eventBus().consumer<JsonObject>(FrameCoordinatorVerticle.ADDRESS_SESSION_START) { msg ->
             launch {
@@ -88,7 +102,7 @@ class FrameWorkerVerticle @Inject constructor(
             }
         }
 
-        log.info("FrameWorkerVerticle started for worker {}", workerId)
+        log.info("FrameWorkerVerticle started (instance: {}, node: {})", instanceId, nodeId)
     }
 
     /**
@@ -103,7 +117,7 @@ class FrameWorkerVerticle @Inject constructor(
 
         processingActive = true
 
-        log.info("Worker {} ready for frame advancement events", workerId)
+        log.info("Instance {} ready for frame advancement events", instanceId)
     }
 
     /**
@@ -111,7 +125,7 @@ class FrameWorkerVerticle @Inject constructor(
      * Fetches manifest from Hazelcast and processes all assigned operations.
      */
     private suspend fun processLogicalFrame(logicalFrame: Long) {
-        val manifestKey = FrameManifest.makeKey(logicalFrame, workerId)
+        val manifestKey = FrameManifest.makeKey(logicalFrame, instanceId)
         val manifestJson = getManifest(manifestKey, logicalFrame)
         val manifest = FrameManifest.fromJson(manifestJson)
         val operations = manifest.operations
@@ -164,7 +178,7 @@ class FrameWorkerVerticle @Inject constructor(
                     stateStore      = stateStore,
                     entityFactory   = entityFactory,
                     reflectionCache = reflectionCache,
-                    workerId        = workerId,
+                    instanceId      = instanceId,
                     completionMap   = completionMap,
                     workerScope     = this
                 )
@@ -196,8 +210,8 @@ class FrameWorkerVerticle @Inject constructor(
         }
 
         try {
-            // Send to the appropriate processor based on action type
-            val processorAddress = "worker.process.${operation.getString("action")}"
+            // Send to this instance's scoped handler
+            val processorAddress = "worker.process.${operation.getString("action")}.$instanceId"
 
             // Produce processing context
             val processingContext = JsonObject()
@@ -213,7 +227,7 @@ class FrameWorkerVerticle @Inject constructor(
 
                 completionMap[completionKey] = OperationCompletion(
                     operationId = operationId,
-                    workerId = workerId
+                    workerId = instanceId
                 )
 
                 if (debugTraceLogs) log.trace("Completed operation {} for entity {}", operationId, operation.getString("entityId"))
@@ -236,7 +250,7 @@ class FrameWorkerVerticle @Inject constructor(
      */
     private fun reportFrameCompletion(logicalFrame: Long, operationsProcessed: Int) {
         val completionEvent = JsonObject()
-            .put("workerId", workerId)
+            .put("workerId", instanceId)
             .put("logicalFrame", logicalFrame)
             .put("operationCount", operationsProcessed)
             .put("completedAt", System.currentTimeMillis())

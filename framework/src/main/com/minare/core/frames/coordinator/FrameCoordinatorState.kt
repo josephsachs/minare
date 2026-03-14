@@ -4,7 +4,7 @@ import com.minare.core.utils.types.DistributedEnum
 import com.hazelcast.core.HazelcastInstance
 import com.hazelcast.cp.IAtomicLong
 import com.minare.core.frames.coordinator.services.FrameCalculatorService
-import com.minare.core.frames.services.WorkerRegistry
+import com.minare.core.frames.services.VerticleRegistry
 import com.minare.core.utils.debug.DebugLogger
 import com.minare.core.utils.debug.DebugLogger.Companion.DebugType
 import io.vertx.core.json.JsonObject
@@ -21,7 +21,7 @@ import com.google.inject.Singleton
  */
 @Singleton
 class FrameCoordinatorState @Inject constructor(
-    private val workerRegistry: WorkerRegistry,
+    private val verticleRegistry: VerticleRegistry,
     private val frameCalculator: FrameCalculatorService,
     private val enumFactory: DistributedEnum.Factory,
     private val hazelcastInstance: HazelcastInstance,
@@ -116,7 +116,7 @@ class FrameCoordinatorState @Inject constructor(
         }
 
         val completed = currentFrameCompletions.keys
-        val expected = workerRegistry.getActiveWorkers()
+        val expected = verticleRegistry.getActiveInstances()
 
         return expected.isNotEmpty() && completed.containsAll(expected)  // Added empty check
     }
@@ -243,7 +243,7 @@ class FrameCoordinatorState @Inject constructor(
             .put("currentWallClockFrame", currentFrame)
             .put("sessionStartTimestamp", sessionStartTimestamp)
             .put("completedWorkers", currentFrameCompletions.size)
-            .put("totalWorkers", workerRegistry.getActiveWorkers().size)
+            .put("totalWorkers", verticleRegistry.getActiveInstances().size)
             .put("totalBufferedOperations", getTotalBufferedOperations())
     }
 
