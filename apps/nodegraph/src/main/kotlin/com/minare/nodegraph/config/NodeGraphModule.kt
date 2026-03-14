@@ -23,8 +23,7 @@ class NodeGraphModule : PrivateModule() {
 
     override fun configure() {
         bind(EntityController::class.java).to(NodeGraphEntityController::class.java).`in`(Singleton::class.java)
-        bind(NodeGraphChannelController::class.java).`in`(Singleton::class.java)
-        bind(ChannelController::class.java).to(NodeGraphChannelController::class.java)
+        bind(ChannelController::class.java).to(NodeGraphChannelController::class.java).`in`(Singleton::class.java)
         bind(ConnectionController::class.java).to(NodeGraphConnectionController::class.java).`in`(Singleton::class.java)
         bind(OperationController::class.java).to(NodeGraphOperationController::class.java).`in`(Singleton::class.java)
         bind(MessageController::class.java).to(NodeGraphMessageController::class.java).`in`(Singleton::class.java)

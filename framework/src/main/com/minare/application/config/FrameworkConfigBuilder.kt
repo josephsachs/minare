@@ -9,6 +9,7 @@ import com.minare.core.storage.interfaces.EntityGraphStoreOption
 import com.minare.core.transport.models.SocketTypeConfigOption
 import io.vertx.core.impl.logging.LoggerFactory
 import kotlin.math.max
+import kotlin.math.min
 
 class FrameworkConfigBuilder {
     private val log = LoggerFactory.getLogger(FrameworkConfigBuilder::class.java)
@@ -136,6 +137,8 @@ class FrameworkConfigBuilder {
         if (config.frames.groupOperationsBy.isEmpty()) {
             infos.add("frames.group_operations_by not specified, defaults to NONE (Options: \"ENTITY\", \"TARGETS\", \"OPERATION_SET\", \"FIELD_PARENT\", \"FIELD_PEER\", \"FIELD_CHILD\")")
         }
+
+        config.frames.threads = max(withInfo(frames.getInteger("threads"), "frames.threads not specified, defaults to 1"), 1)
 
         val session = require(frames.getJsonObject("session"), "frames.session section must be specified")
         val autoSession = require(session.getString("auto_session"), "frames.session.auto_session must be specified")
