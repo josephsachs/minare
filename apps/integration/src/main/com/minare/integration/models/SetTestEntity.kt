@@ -30,7 +30,7 @@ class SetTestEntity : Entity() {
 
     /** Returns the current counter value as step context for a following step. */
     @FunctionCall
-    fun getCounter(): Int = counter
+    fun readCounter(): Int = counter
 
     /** Doubles the counter in-place and returns the new value. */
     @FunctionCall

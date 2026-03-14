@@ -286,12 +286,12 @@ class OperationSetTestSuite(private val injector: Injector) : TestSuite {
                 val connectionId = connectClient(client, log)
                 val entityId = createSetTestEntity(client, observer, log, connectionId, counter = 5)
 
-                // getCounter() returns 5 as stepContext.
+                // readCounter() returns 5 as stepContext.
                 // isPositive() checks counter > 0 on the entity instance (which is 5).
                 // If both pass, MUTATE label="piped" is applied.
-                log.step("submitting OperationSet: FUNCTION_CALL getCounter, ASSERT isPositive, MUTATE label=piped")
+                log.step("submitting OperationSet: FUNCTION_CALL readCounter, ASSERT isPositive, MUTATE label=piped")
                 client.send(operationSetMessage(connectionId, "ABORT",
-                    functionCallStep(entityId, "getCounter"),
+                    functionCallStep(entityId, "readCounter"),
                     assertStep(entityId, "isPositive"),
                     mutateStep(entityId, "label", "piped")
                 ))
