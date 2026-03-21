@@ -39,10 +39,8 @@ class EntityObjectHydrator @Inject constructor(
             val stateJson = entityJson.getJsonObject("state", JsonObject())
             val propertiesJson = entityJson.getJsonObject("properties", JsonObject())
 
-            coroutineScope.launch() {
-                stateStore.setEntityState(entity, entityType, stateJson)
-                stateStore.setEntityProperties(entity, entityType, propertiesJson)
-            }
+            stateStore.setEntityState(entity, entityType, stateJson)
+            stateStore.setEntityProperties(entity, entityType, propertiesJson)
         } catch (e: Exception) {
             debug.log(DebugType.ENTITY_HYDRATOR_WRITE_FAILED, listOf(e))
         }

@@ -202,7 +202,7 @@ class UpSocketVerticle @Inject constructor(
         meta: Map<String, String>? = null
     ) {
         try {
-            val connection = connectionStore.create(meta)
+            val connection = connectionController.createConnection(meta)
             val socketId = "up-${UUID.randomUUID()}"
 
             val updatedConnection = connectionStore.putUpSocket(connection.id, socketId, instanceId)

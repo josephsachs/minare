@@ -45,7 +45,7 @@ abstract class OperationController @Inject constructor() {
      *
      * @param operations Either an Operation or OperationSet
      */
-    private suspend fun queue(operations: Any) {
+    suspend fun queue(operations: Any) {
         val message = when (operations) {
             is OperationSet -> operations.build()
             is Operation -> JsonArray().add(operations.build())
