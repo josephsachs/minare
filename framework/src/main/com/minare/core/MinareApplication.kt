@@ -506,14 +506,14 @@ abstract class MinareApplication : CoroutineVerticle() {
                     .setInstances(1)
                     .setConfig(JsonObject().put("nodeId", workerId).put("instanceId", instanceId))
             )
-        }
 
-        createVerticle(
-            WorkerTaskVerticle::class.java,
-            DeploymentOptions()
-                .setInstances(1)
-                .setConfig(JsonObject().put("workerId", workerId))
-        )
+            createVerticle(
+                WorkerTaskVerticle::class.java,
+                DeploymentOptions()
+                    .setInstances(1)
+                    .setConfig(JsonObject().put("workerId", instanceId))
+            )
+        }
 
         val sharedMap = vertx.sharedData()
             .getClusterWideMap<String, String>("app-state").await()
