@@ -56,6 +56,12 @@ class MutationService @Inject constructor(
         val prunedDelta = getMutateDelta(delta, entityClass)
 
         if (prunedDelta.isEmpty) {
+            // TEMPORARY DEBUG
+            log.info("* * * * * * * * * * * * * * * * * * * * * * * *")
+            log.info("DEBUG_MUTATION: Entity class: ${entityClass}")
+            log.info("DEBUG_MUTATION: Pruned delta: ${prunedDelta}")
+            log.info("* * * * * * * * * * * * * * * * * * * * * * * *")
+
             return JsonObject()
                 .put("success", false)
                 .put("message", "Entity $entityId valid mutable fields found")
