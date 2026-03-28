@@ -6,7 +6,7 @@ import com.minare.core.frames.coordinator.services.*
 import com.minare.core.frames.coordinator.services.SessionService.Companion.ADDRESS_SESSION_INITIALIZED
 import com.minare.core.frames.events.WorkerStateSnapshotCompleteEvent
 import com.minare.core.frames.services.SnapshotService
-import com.minare.core.frames.services.SnapshotService.Companion.ADDRESS_SNAPSHOT_COMPLETE
+
 import com.minare.core.frames.services.VerticleRegistry
 import com.minare.core.utils.debug.DebugLogger
 import com.minare.core.utils.debug.DebugLogger.Companion.DebugType
@@ -150,7 +150,7 @@ class FrameCoordinatorVerticle @Inject constructor(
     private suspend fun startupSession() {
         coordinatorState.pauseState = PauseState.SOFT
 
-        sessionService.initializeSession()
+        sessionService.initializeSession(this)
 
         val eventMessage = eventWaiter.waitFor(ADDRESS_SESSION_INITIALIZED)
 
@@ -275,10 +275,9 @@ class FrameCoordinatorVerticle @Inject constructor(
 
         val oldSessionId = coordinatorState.sessionId
 
-        snapshotService.doSnapshot(oldSessionId)
-        eventWaiter.waitFor(ADDRESS_SNAPSHOT_COMPLETE)
+        snapshotService.doSnapshot(oldSessionId, this)
 
-        sessionService.initializeSession()
+        sessionService.initializeSession(this)
 
         val eventMessage = eventWaiter.waitFor(ADDRESS_SESSION_INITIALIZED)
 

@@ -7,6 +7,9 @@ import com.minare.core.storage.interfaces.StateStore
 import com.minare.core.utils.vertx.EventBusUtils
 import io.vertx.core.json.JsonArray
 import io.vertx.core.json.JsonObject
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
+import org.slf4j.LoggerFactory
 
 class SnapshotService @Inject constructor(
     private val snapshotStore: SnapshotStore,
@@ -14,19 +17,24 @@ class SnapshotService @Inject constructor(
     private val deltaStore: DeltaStore,
     private val eventBusUtils: EventBusUtils
 ) {
-    suspend fun doSnapshot(sessionId: String) {
+    private val log = LoggerFactory.getLogger(SnapshotService::class.java)
+
+    suspend fun doSnapshot(sessionId: String, scope: CoroutineScope) {
+        // Capture current state from Redis before the new session can mutate it
         val deltas = deltaStore.getAll()
-
-        snapshotStore.storeDeltas(sessionId, deltas)
-        deltaStore.clearDeltas()
-
         val entities = stateStore.getAllEntityKeys()
         val entitiesMap = stateStore.findJsonByIds(entities)
+        deltaStore.clearDeltas()
 
-        snapshotStore.storeState(
-            sessionId,
-            JsonArray(entitiesMap.values.toList())
-            )
+        // Fire-and-forget: persist to Mongo in background
+        scope.launch {
+            try {
+                snapshotStore.storeDeltas(sessionId, deltas)
+                snapshotStore.storeState(sessionId, JsonArray(entitiesMap.values.toList()))
+            } catch (e: Exception) {
+                log.error("Background snapshot persistence failed for session: $sessionId", e)
+            }
+        }
 
         eventBusUtils.publishWithTracing(
               ADDRESS_SNAPSHOT_COMPLETE,
