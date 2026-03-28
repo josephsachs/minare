@@ -239,6 +239,8 @@ class FrameworkConfigBuilder {
         val redis = require(file.getJsonObject("redis"), "redis section must be specified")
         config.redis.host = require(redis.getString("host"), "redis.host must be specified")
         config.redis.port = require(redis.getInteger("port"), "redis.port must be specified")
+        config.redis.pool = withInfo(redis.getInteger("pool"), "redis.pool not specified, defaults to 6")
+        config.redis.maxWaiting = withInfo(redis.getInteger("max_waiting"), "redis.max_waiting not specified, defaults to 24")
         return config
     }
 

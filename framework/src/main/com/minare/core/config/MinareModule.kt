@@ -36,6 +36,7 @@ import com.minare.core.frames.services.*
 import com.minare.core.storage.services.DatabaseInitializer
 import com.minare.core.utils.vertx.EventBusUtils
 import com.minare.exceptions.EntityFactoryException
+import io.vertx.redis.client.PoolOptions
 import kotlinx.coroutines.CoroutineScope
 import kotlin.coroutines.CoroutineContext
 
@@ -166,8 +167,8 @@ class MinareModule(
     @Singleton
     fun provideRedisAPI(vertx: Vertx): RedisAPI {
         val redisOptions = RedisOptions()
-            .setMaxPoolSize(30)
-            .setMaxWaitingHandlers(500)
+            .setMaxPoolSize(8)
+            .setMaxPoolWaiting(500)
             .setConnectionString(
                 "redis://${frameworkConfig.redis.host}:${frameworkConfig.redis.port}"
             )

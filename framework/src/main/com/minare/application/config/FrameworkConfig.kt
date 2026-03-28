@@ -112,6 +112,8 @@ class FrameworkConfig {
     class RedisConfig {
         var host: String = ""
         var port: Int = 0
+        var pool = 1
+        var maxWaiting = 26
     }
 
     class KafkaConfig {
