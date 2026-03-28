@@ -167,8 +167,8 @@ class MinareModule(
     @Singleton
     fun provideRedisAPI(vertx: Vertx): RedisAPI {
         val redisOptions = RedisOptions()
-            .setMaxPoolSize(8)
-            .setMaxPoolWaiting(500)
+            .setMaxPoolSize(frameworkConfig.redis.pool)
+            .setMaxPoolWaiting(frameworkConfig.redis.maxWaiting)
             .setConnectionString(
                 "redis://${frameworkConfig.redis.host}:${frameworkConfig.redis.port}"
             )
