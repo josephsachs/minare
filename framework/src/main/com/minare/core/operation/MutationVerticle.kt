@@ -7,7 +7,6 @@ import io.vertx.kotlin.coroutines.dispatcher
 import kotlinx.coroutines.launch
 import org.slf4j.LoggerFactory
 import com.google.inject.Inject
-import com.minare.core.storage.interfaces.StateStore
 
 /**
  * Dedicated verticle for processing mutation commands.
@@ -16,7 +15,6 @@ import com.minare.core.storage.interfaces.StateStore
  * Updated to work directly with JsonObjects instead of Entity objects.
  */
 class MutationVerticle @Inject constructor(
-    private val stateStore: StateStore,
     private val mutationService: MutationService
 ) : CoroutineVerticle() {
 
@@ -46,27 +44,10 @@ class MutationVerticle @Inject constructor(
                     }
 
                     try {
-                        val entityJson = stateStore.findOneJson(entityId)
-
-                        if (entityJson == null) {
-                            message.fail(404, "Entity not found: $entityId")
-                            return@launch
-                        }
-
                         val result = mutationService.mutate(entityId, entityType, entityObject)
 
                         if (result.getBoolean("success", false)) {
-                            val updatedEntityJson = stateStore.findOneJson(entityId)
-
-                            val response = JsonObject()
-                                .put("success", true)
-                                .put("entity", JsonObject()
-                                    .put("_id", entityId)
-                                    .put("version", updatedEntityJson?.getLong("version"))
-                                    .put("type", updatedEntityJson?.getString("type"))
-                                )
-
-                            message.reply(response)
+                            message.reply(result)
                         } else {
                             message.fail(400, result.getString("message", "Unknown error"))
                         }

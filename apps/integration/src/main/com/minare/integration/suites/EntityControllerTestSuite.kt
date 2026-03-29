@@ -1,5 +1,6 @@
 package com.minare.integration.suites
 
+import com.fasterxml.jackson.databind.json.JsonMapper
 import com.google.inject.Injector
 import com.minare.controller.EntityController
 import com.minare.core.storage.interfaces.StateStore
@@ -11,9 +12,11 @@ import com.minare.integration.harness.TestRunner
 import com.minare.integration.harness.TestSuite
 import com.minare.integration.models.Node
 import io.vertx.core.json.JsonObject
+import org.slf4j.LoggerFactory
 
 class EntityControllerTestSuite(private val injector: Injector) : TestSuite {
     override val name = "EntityController Tests"
+    private val log = LoggerFactory.getLogger(EntityControllerTestSuite::class.java)
 
     override suspend fun run(runner: TestRunner) {
         val entityController = injector.getInstance(EntityController::class.java)
@@ -86,13 +89,15 @@ class EntityControllerTestSuite(private val injector: Injector) : TestSuite {
 
             val delta = JsonObject().put("color", "#FFFFFF")
 
-            val updated = entityController.saveState(created._id, delta)
-
-            assertNotNull(updated) { "Updated entity should not be null" }
-            assertEquals(2L, updated!!.version) { "Version should increment to 2" }
+            entityController.saveState(created._id, delta)
 
             val json = stateStore.findOneJson(created._id)
             val state = json!!.getJsonObject("state")
+
+            log.info("UPDATED: ${state}")
+
+            assertNotNull(state) { "JSON should have state object" }
+            assertEquals(2L, json.getLong("version")) { "Version should increment to 2" }
             assertEquals("#FFFFFF", state.getString("color")) { "Color should be updated" }
         }
     }

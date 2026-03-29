@@ -13,7 +13,6 @@ import com.minare.core.operation.interfaces.MessageQueue
 import com.minare.core.transport.downsocket.pubsub.PubSubChannelStrategy
 import com.minare.core.transport.downsocket.pubsub.PerChannelPubSubStrategy
 import com.minare.core.transport.CleanupVerticle
-import com.minare.core.operation.MutationVerticle
 import com.minare.core.factories.MinareVerticleFactory
 import com.minare.core.frames.coordinator.handlers.DelayLateOperation
 import com.minare.core.transport.downsocket.RedisPubSubWorkerVerticle
@@ -96,7 +95,6 @@ class MinareModule(
 
         // Workers
         bind(RedisPubSubWorkerVerticle::class.java)
-        bind(MutationVerticle::class.java)
         bind(CleanupVerticle::class.java)
     }
 

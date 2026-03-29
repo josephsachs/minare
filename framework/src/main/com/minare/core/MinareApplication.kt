@@ -40,7 +40,6 @@ import com.minare.core.frames.worker.FrameWorkerHealthMonitorVerticle
 import com.minare.core.frames.worker.FrameWorkerVerticle
 import com.minare.core.frames.worker.WorkerOperationHandlerVerticle
 import com.minare.core.frames.worker.WorkerTaskVerticle
-import com.minare.core.operation.MutationVerticle
 import com.minare.core.transport.downsocket.RedisPubSubWorkerVerticle
 import com.minare.core.storage.services.StateInitializer
 import com.minare.core.transport.CleanupVerticle
@@ -464,15 +463,6 @@ abstract class MinareApplication : CoroutineVerticle() {
                 .setWorkerPoolSize(2)
                 .setInstances(2)
                 .setMaxWorkerExecuteTime(Long.MAX_VALUE)
-        )
-
-        createVerticle(
-            MutationVerticle::class.java,
-            DeploymentOptions()
-                .setWorker(true)
-                .setWorkerPoolName("mutation-pool")
-                .setWorkerPoolSize(2)
-                .setInstances(1)
         )
 
         createVerticle(

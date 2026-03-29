@@ -4,14 +4,14 @@ import com.minare.controller.ChannelController
 import com.minare.controller.EntityController
 import com.minare.core.entity.factories.EntityFactory
 import com.minare.core.frames.services.DeltaStorageService
+import com.minare.core.operation.models.OperationResult
+import com.minare.core.operation.models.OperationResult.Companion.ADDRESS_OPERATION_RESULT
 import com.minare.core.operation.models.OperationType
 import com.minare.core.storage.interfaces.ContextStore
 import com.minare.core.storage.interfaces.StateStore
-import com.minare.core.utils.vertx.VerticleLogger
 import io.vertx.core.Vertx
 import io.vertx.core.json.JsonObject
 import io.vertx.kotlin.coroutines.CoroutineVerticle
-import io.vertx.kotlin.coroutines.await
 import kotlinx.coroutines.launch
 import org.slf4j.LoggerFactory
 import com.google.inject.Inject
@@ -19,10 +19,10 @@ import com.minare.controller.OperationController
 import com.minare.core.entity.graph.EntityGraphReferenceService
 import com.minare.core.entity.ReflectionCache
 import com.minare.core.entity.annotations.Trigger
-import com.minare.core.entity.services.EntityFieldDeserializer
+import com.minare.core.entity.services.MutationService
 import kotlin.reflect.full.callSuspend
 import kotlin.reflect.jvm.kotlinFunction
-import kotlin.system.measureTimeMillis
+import java.util.concurrent.TimeUnit
 
 /**
  * Handles operation processing for frame workers.
@@ -34,7 +34,6 @@ import kotlin.system.measureTimeMillis
  */
 class WorkerOperationHandlerVerticle @Inject constructor(
     private val vertx: Vertx,
-    private val verticleLogger: VerticleLogger,
     private val deltaStorageService: DeltaStorageService,
     private val stateStore: StateStore,
     private val entityFactory: EntityFactory,
@@ -43,11 +42,11 @@ class WorkerOperationHandlerVerticle @Inject constructor(
     private val entityGraphReferenceService: EntityGraphReferenceService,
     private val contextStore: ContextStore,
     private val channelController: ChannelController,
-    private val reflectionCache: ReflectionCache
+    private val reflectionCache: ReflectionCache,
+    private val mutationService: MutationService
 ) : CoroutineVerticle() {
 
     private val log = LoggerFactory.getLogger(WorkerOperationHandlerVerticle::class.java)
-    private val debugTraceLogs: Boolean = false
 
     private lateinit var instanceId: String
 
@@ -68,37 +67,22 @@ class WorkerOperationHandlerVerticle @Inject constructor(
     private fun setupOperationHandlers() {
         vertx.eventBus().consumer<JsonObject>("worker.process.MUTATE.$instanceId") { message ->
             launch {
-                try {
-                    processMutateOperation(message.body())
-                    message.reply(JsonObject().put("success", true))
-                } catch (e: Exception) {
-                    log.error("Failed to process MUTATE operation", e)
-                    message.fail(500, e.message)
-                }
+                val result = processMutateOperation(message.body())
+                handleResult(result, message)
             }
         }
 
         vertx.eventBus().consumer<JsonObject>("worker.process.CREATE.$instanceId") { message ->
             launch {
-                try {
-                    val entityId = processCreateOperation(message.body())
-                    message.reply(JsonObject().put("success", true).put("entityId", entityId))
-                } catch (e: Exception) {
-                    log.error("Failed to process CREATE operation", e)
-                    message.fail(500, e.message)
-                }
+                val result = processCreateOperation(message.body())
+                handleResult(result, message)
             }
         }
 
         vertx.eventBus().consumer<JsonObject>("worker.process.DELETE.$instanceId") { message ->
             launch {
-                try {
-                    processDeleteOperation(message.body())
-                    message.reply(JsonObject().put("success", true))
-                } catch (e: Exception) {
-                    log.error("Failed to process DELETE operation", e)
-                    message.fail(500, e.message)
-                }
+                val result = processDeleteOperation(message.body())
+                handleResult(result, message)
             }
         }
 
@@ -119,43 +103,39 @@ class WorkerOperationHandlerVerticle @Inject constructor(
 
     // ===== MUTATE =====
 
-    /**
-     * Process a MUTATE operation.
-     * Requires an existing entity, captures before/after states for delta storage.
-     * Mutations go through the pub/sub path and are delivered on the tick.
-     */
-    private suspend fun processMutateOperation(context: JsonObject) {
-        val frameNumber = context.getLong("frameNumber")
-            ?: throw IllegalArgumentException("Frame number required")
+    private suspend fun processMutateOperation(context: JsonObject): OperationResult {
+        val start = System.nanoTime()
         val operationJson = context.getJsonObject("operation")
-        val entityId = extractEntityId(operationJson)
-            ?: throw IllegalArgumentException("Entity ID required for MUTATE operation")
-        val entityType = extractEntityType(operationJson)
-            ?: throw IllegalArgumentException("Entity type required for MUTATE operation")
-        val operationId = extractOperationId(operationJson)
+        val frameNumber = context.getLong("frameNumber")
+        val entityId = operationJson?.getString("entityId")
+        val entityType = operationJson?.getString("entityType")
+        val operationId = operationJson?.getString("id")
 
-        if (debugTraceLogs) {
-            log.info("Processing MUTATE operation {} for entity {}", operationId, entityId)
-        }
+        try {
+            val op = OperationType.MUTATE
+            if (frameNumber == null) return rejected(start, op, entityId, operationId, null, "Frame number required")
+            if (entityId == null) return rejected(start, op, null, operationId, frameNumber, "Entity ID required for MUTATE")
+            if (entityType == null) return rejected(start, op, entityId, operationId, frameNumber, "Entity type required for MUTATE")
+            if (operationId == null) return rejected(start, op, entityId, null, frameNumber, "Operation ID required")
 
-        // Capture BEFORE state
-        val beforeEntity = stateStore.findOneJson(entityId)
-            ?: throw IllegalStateException("Entity $entityId not found before mutation")
+            val beforeEntity = stateStore.findOneJson(entityId)
+                ?: return rejected(start, op, entityId, operationId, frameNumber, "Entity $entityId not found before mutation")
 
-        val mutationCommand = buildMutationCommand(operationJson, entityId, entityType)
+            val mutationRequest = JsonObject()
+                .put("_id", entityId)
+                .put("type", entityType)
+                .put("version", operationJson.getLong("version"))
+                .put("state", operationJson.getJsonObject("delta") ?: JsonObject())
 
-        if (debugTraceLogs) verticleLogger.logInfo("Processing mutate command for entity $entityId")
-
-        val processingTime = measureTimeMillis {
-            val result = executeMutation(mutationCommand)
+            val result = mutationService.mutate(entityId, entityType, mutationRequest)
 
             if (!result.getBoolean("success", false)) {
-                throw Exception(result.getString("error", "Mutation failed"))
+                return rejected(start, op, entityId, operationId, frameNumber, result.getString("message", "Mutation rejected"))
             }
 
-            // Capture the AFTER state
             val afterEntity = stateStore.findOneJson(entityId)
-                ?: throw IllegalStateException("Entity $entityId not found after mutation")
+                ?: return failed(start, op, entityId, operationId, frameNumber,
+                    IllegalStateException("Entity $entityId not found after mutation"))
 
             operationController.afterMutateOperation(operationJson, beforeEntity, afterEntity)
 
@@ -168,31 +148,30 @@ class WorkerOperationHandlerVerticle @Inject constructor(
                 beforeEntity = beforeEntity,
                 afterEntity = afterEntity
             )
-        }
 
-        if (debugTraceLogs) log.info("Processed MUTATE operation {} for entity {} in {}ms", operationId, entityId, processingTime)
+            return OperationResult.Success(entityId, op, operationId, frameNumber, elapsed(start))
+        } catch (e: Exception) {
+            return failed(start, OperationType.MUTATE, entityId, operationId, frameNumber, e)
+        }
     }
 
     // ===== CREATE =====
 
-    /**
-     * Process a CREATE operation.
-     * Creates a new entity, no before state exists.
-     * Broadcasts the update directly to channels — no pub/sub, no tick delay.
-     */
-    private suspend fun processCreateOperation(context: JsonObject): String {
-        val frameNumber = context.getLong("frameNumber")
-            ?: throw IllegalArgumentException("Frame number required")
+    private suspend fun processCreateOperation(context: JsonObject): OperationResult {
+        val start = System.nanoTime()
         val operationJson = context.getJsonObject("operation")
-        val entityType = extractEntityType(operationJson)
-            ?: throw IllegalArgumentException("Entity type required for CREATE operation")
-        val operationId = extractOperationId(operationJson)
-        val delta = operationJson.getJsonObject("delta") ?: JsonObject()
+        val frameNumber = context.getLong("frameNumber")
+        val entityType = operationJson?.getString("entityType")
+        val operationId = operationJson?.getString("id")
 
-        log.debug("Processing CREATE operation {} for type {}", operationId, entityType)
+        try {
+            val op = OperationType.CREATE
+            if (frameNumber == null) return rejected(start, op, null, operationId, null, "Frame number required")
+            if (entityType == null) return rejected(start, op, null, operationId, frameNumber, "Entity type required for CREATE")
+            if (operationId == null) return rejected(start, op, null, null, frameNumber, "Operation ID required")
 
-        var createdEntityId = ""
-        val processingTime = measureTimeMillis {
+            val delta = operationJson.getJsonObject("delta") ?: JsonObject()
+
             val entity = entityFactory.getNew(entityType)
             entity.type = entityType
 
@@ -200,14 +179,15 @@ class WorkerOperationHandlerVerticle @Inject constructor(
             stateStore.setEntityProperties(entity, entityType, delta)
 
             val savedEntity = entityController.create(entity)
-            createdEntityId = savedEntity._id
+            val entityId = savedEntity._id
 
-            val afterEntity = stateStore.findOneJson(savedEntity._id)
-                ?: throw IllegalStateException("Entity ${savedEntity._id} not found after creation")
+            val afterEntity = stateStore.findOneJson(entityId)
+                ?: return failed(start, op, entityId, operationId, frameNumber,
+                    IllegalStateException("Entity $entityId not found after creation"))
 
             deltaStorageService.captureAndStoreDelta(
                 frameNumber = frameNumber,
-                entityId = savedEntity._id,
+                entityId = entityId,
                 operationType = OperationType.CREATE,
                 operationId = operationId,
                 operationJson = operationJson,
@@ -218,7 +198,7 @@ class WorkerOperationHandlerVerticle @Inject constructor(
             val afterState = afterEntity.getJsonObject("state") ?: JsonObject()
             val entityUpdate = JsonObject()
                 .put("type", entityType)
-                .put("_id", savedEntity._id)
+                .put("_id", entityId)
                 .put("version", savedEntity.version)
                 .put("operation", "update")
                 .put("changedAt", System.currentTimeMillis())
@@ -227,53 +207,46 @@ class WorkerOperationHandlerVerticle @Inject constructor(
             val updateMessage = JsonObject()
                 .put("type", "update")
                 .put("timestamp", System.currentTimeMillis())
-                .put("updates", JsonObject().put(savedEntity._id, entityUpdate))
+                .put("updates", JsonObject().put(entityId, entityUpdate))
 
-            // Application hook
             operationController.afterCreateOperation(operationJson, entity)
 
-            val channels = contextStore.getChannelsByEntityId(savedEntity._id)
+            val channels = contextStore.getChannelsByEntityId(entityId)
             for (channelId in channels) {
                 channelController.broadcast(channelId, updateMessage)
             }
 
-            log.debug("Created entity {} of type {} with version {}", savedEntity._id, entityType, savedEntity.version)
+            return OperationResult.Success(entityId, op, operationId, frameNumber, elapsed(start))
+        } catch (e: Exception) {
+            return failed(start, OperationType.CREATE, null, operationId, frameNumber, e)
         }
-
-        log.debug("Processed CREATE operation {} in {}ms", operationId, processingTime)
-        return createdEntityId
     }
 
     // ===== DELETE =====
 
-    /**
-     * Process a DELETE operation.
-     * Removes an existing entity, captures final state before deletion.
-     * Broadcasts the delete notification directly to channels before cleanup —
-     * no pub/sub, no race condition with channel removal.
-     */
-    private suspend fun processDeleteOperation(context: JsonObject) {
-        val frameNumber = context.getLong("frameNumber")
-            ?: throw IllegalArgumentException("Frame number required")
+    private suspend fun processDeleteOperation(context: JsonObject): OperationResult {
+        val start = System.nanoTime()
         val operationJson = context.getJsonObject("operation")
-        val entityId = extractEntityId(operationJson)
-            ?: throw IllegalArgumentException("Entity ID required for DELETE operation")
-        val entityType = extractEntityType(operationJson)
-            ?: throw IllegalArgumentException("Entity type required for DELETE operation")
-        val operationId = extractOperationId(operationJson)
+        val frameNumber = context.getLong("frameNumber")
+        val entityId = operationJson?.getString("entityId")
+        val entityType = operationJson?.getString("entityType")
+        val operationId = operationJson?.getString("id")
 
-        log.debug("Processing DELETE operation {} for entity {}", operationId, entityId)
+        try {
+            val op = OperationType.DELETE
+            if (frameNumber == null) return rejected(start, op, entityId, operationId, null, "Frame number required")
+            if (entityId == null) return rejected(start, op, null, operationId, frameNumber, "Entity ID required for DELETE")
+            if (entityType == null) return rejected(start, op, entityId, operationId, frameNumber, "Entity type required for DELETE")
+            if (operationId == null) return rejected(start, op, entityId, null, frameNumber, "Operation ID required")
 
-        val processingTime = measureTimeMillis {
             val beforeEntity = stateStore.findOneJson(entityId)
-                ?: throw IllegalStateException("Entity $entityId not found for deletion")
+                ?: return rejected(start, op, entityId, operationId, frameNumber, "Entity $entityId not found for deletion")
 
             val beforeVersion = beforeEntity.getLong("version") ?: 0L
 
             // Capture channels before any cleanup
             val channels = contextStore.getChannelsByEntityId(entityId)
 
-            // Clean up channel membership, graph references, and delete entity
             channels.forEach { channelId ->
                 contextStore.remove(entityId, channelId)
             }
@@ -304,7 +277,6 @@ class WorkerOperationHandlerVerticle @Inject constructor(
                 .put("timestamp", System.currentTimeMillis())
                 .put("updates", JsonObject().put(entityId, entityUpdate))
 
-            // Application hook
             val entity = entityFactory.getNew(entityType).apply {
                 _id = entityId
                 type = entityType
@@ -315,64 +287,42 @@ class WorkerOperationHandlerVerticle @Inject constructor(
                 channelController.broadcast(channelId, updateMessage)
             }
 
-            log.debug("Deleted entity {} of type {}", entityId, entityType)
+            return OperationResult.Success(entityId, op, operationId, frameNumber, elapsed(start))
+        } catch (e: Exception) {
+            return failed(start, OperationType.DELETE, entityId, operationId, frameNumber, e)
         }
-
-        log.debug("Processed DELETE operation {} in {}ms", operationId, processingTime)
     }
 
-    /**
-     * Extract operation ID.
-     * Required for tracking and delta storage.
-     */
-    private fun extractOperationId(operationJson: JsonObject): String =
-        operationJson.getString("id")
-            ?: throw IllegalArgumentException("Operation ID required")
 
-    /**
-     * Extract entity ID from operation.
-     * Returns null if not present (valid for some CREATE operations).
-     */
-    private fun extractEntityId(operationJson: JsonObject): String? =
-        operationJson.getString("entityId")
+    // ===== Result handling =====
 
-    /**
-     * Extract entity type from operation.
-     * Returns null if not present.
-     */
-    private fun extractEntityType(operationJson: JsonObject): String? =
-        operationJson.getString("entityType")
+    private fun handleResult(result: OperationResult, message: io.vertx.core.eventbus.Message<JsonObject>) {
+        val resultJson = result.toJson()
+        vertx.eventBus().publish(ADDRESS_OPERATION_RESULT, resultJson)
 
-
-    /**
-     * Build the mutation command structure expected by MutationVerticle.
-     */
-    private fun buildMutationCommand(
-        operationJson: JsonObject,
-        entityId: String,
-        entityType: String
-    ): JsonObject {
-        return JsonObject()
-            .put("command", "mutate")
-            .put("entity", JsonObject()
-                .put("_id", entityId)
-                .put("type", entityType)
-                .put("version", operationJson.getLong("version"))
-                .put("state", operationJson.getJsonObject("delta") ?: JsonObject())
-            )
+        when (result) {
+            is OperationResult.Success -> {
+                message.reply(resultJson)
+            }
+            is OperationResult.Rejected -> {
+                log.warn(OperationResult.formatFailure(result))
+                message.fail(400, result.reason)
+            }
+            is OperationResult.Failed -> {
+                log.error(OperationResult.formatFailure(result))
+                message.fail(500, result.cause.message)
+            }
+        }
     }
 
-    /**
-     * Execute mutation via event bus to MutationVerticle.
-     */
-    private suspend fun executeMutation(mutationCommand: JsonObject): JsonObject {
-        return vertx.eventBus()
-            .request<JsonObject>("minare.mutation.process",
-                JsonObject().put("entity", mutationCommand.getJsonObject("entity"))
-            )
-            .await()
-            .body()
-    }
+    private fun elapsed(startNanos: Long): Long =
+        TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startNanos)
+
+    private fun rejected(startNanos: Long, type: OperationType, entityId: String?, operationId: String?, frameNumber: Long?, reason: String) =
+        OperationResult.Rejected(entityId, type, operationId, frameNumber, elapsed(startNanos), reason)
+
+    private fun failed(startNanos: Long, type: OperationType, entityId: String?, operationId: String?, frameNumber: Long?, cause: Exception) =
+        OperationResult.Failed(entityId, type, operationId, frameNumber, elapsed(startNanos), cause)
 
     // ===== TRIGGER =====
 
