@@ -2,6 +2,7 @@ package com.minare.core.transport.downsocket
 
 import com.google.inject.Inject
 import com.minare.application.config.FrameworkConfig
+import com.minare.controller.UpdateController
 import com.minare.core.Timer
 import com.minare.core.storage.interfaces.ChannelStore
 import com.minare.core.storage.interfaces.ConnectionStore
@@ -28,6 +29,7 @@ class DownSocketVerticle @Inject constructor(
     private val frameworkConfig: FrameworkConfig,
     private val connectionStore: ConnectionStore,
     private val channelStore: ChannelStore,
+    private val updateController: UpdateController,
     private val updateConnectionClosedEvent: UpdateConnectionClosedEvent,
     private val updateConnectionEstablishedEvent: UpdateConnectionEstablishedEvent
 ) : CoroutineVerticle() {
@@ -262,10 +264,7 @@ class DownSocketVerticle @Inject constructor(
                 if (batch.isEmpty()) continue
 
                 for ((entityId, update) in batch) {
-                    val updateMessage = JsonObject()
-                        .put("type", "update")
-                        .put("timestamp", System.currentTimeMillis())
-                        .put("updates", JsonObject().put(entityId, update))
+                    val updateMessage = updateController.getUpdateMessage(entityId, update)
 
                     protocol.sockets.send(connectionId, updateMessage.encode())
                 }

@@ -16,6 +16,7 @@ import kotlinx.coroutines.launch
 import org.slf4j.LoggerFactory
 import com.google.inject.Inject
 import com.minare.controller.OperationController
+import com.minare.controller.UpdateController
 import com.minare.core.entity.graph.EntityGraphReferenceService
 import com.minare.core.entity.ReflectionCache
 import com.minare.core.entity.annotations.Trigger
@@ -38,6 +39,7 @@ class WorkerOperationHandlerVerticle @Inject constructor(
     private val stateStore: StateStore,
     private val entityFactory: EntityFactory,
     private val entityController: EntityController,
+    private val updateController: UpdateController,
     private val operationController: OperationController,
     private val entityGraphReferenceService: EntityGraphReferenceService,
     private val contextStore: ContextStore,
@@ -204,11 +206,7 @@ class WorkerOperationHandlerVerticle @Inject constructor(
                 .put("changedAt", System.currentTimeMillis())
                 .put("delta", afterState)
 
-            val updateMessage = JsonObject()
-                .put("type", "update")
-                .put("timestamp", System.currentTimeMillis())
-                .put("updates", JsonObject().put(entityId, entityUpdate))
-
+            val updateMessage = updateController.getUpdateMessage(entityId, entityUpdate)
             operationController.afterCreateOperation(operationJson, entity)
 
             val channels = contextStore.getChannelsByEntityId(entityId)
@@ -272,10 +270,7 @@ class WorkerOperationHandlerVerticle @Inject constructor(
                 .put("changedAt", System.currentTimeMillis())
                 .put("delta", JsonObject().put("_deleted", true))
 
-            val updateMessage = JsonObject()
-                .put("type", "update")
-                .put("timestamp", System.currentTimeMillis())
-                .put("updates", JsonObject().put(entityId, entityUpdate))
+            val updateMessage = updateController.getUpdateMessage(entityId, entityUpdate)
 
             val entity = entityFactory.getNew(entityType).apply {
                 _id = entityId
@@ -292,7 +287,6 @@ class WorkerOperationHandlerVerticle @Inject constructor(
             return failed(start, OperationType.DELETE, entityId, operationId, frameNumber, e)
         }
     }
-
 
     // ===== Result handling =====
 

@@ -47,7 +47,7 @@ open class UpdateController @Inject constructor() {
      * TODO: Have redis publisher and all others use the
      * TODO: application hook for update messages
      */
-    open suspend fun getUpdateMessage(entityId: String, entityJson: JsonObject): JsonObject {
+    open fun getUpdateMessage(entityId: String, entityJson: JsonObject): JsonObject {
         return JsonObject()
             .put("type", "update")
             .put("timestamp", System.currentTimeMillis())

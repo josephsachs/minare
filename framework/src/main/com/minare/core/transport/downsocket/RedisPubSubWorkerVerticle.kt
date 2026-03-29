@@ -20,6 +20,7 @@ import io.vertx.redis.client.Command
 import kotlinx.coroutines.*
 import org.slf4j.LoggerFactory
 import com.google.inject.Inject
+import com.minare.controller.UpdateController
 
 /**
  * Worker verticle that subscribes to Redis pub/sub channels for entity change notifications.
@@ -30,6 +31,7 @@ import com.google.inject.Inject
 class RedisPubSubWorkerVerticle @Inject constructor(
     private val frameworkConfig: FrameworkConfig,
     private val pubSubChannelStrategy: PubSubChannelStrategy,
+    private val updateController: UpdateController,
     private val vlog: VerticleLogger,
     private val updateBatchCoordinator: UpdateBatchCoordinator,
     private val debug: DebugLogger
@@ -248,15 +250,13 @@ class RedisPubSubWorkerVerticle @Inject constructor(
      * Used when collectChanges is disabled.
      * Wraps entity in updates map to match the standard wire format.
      */
-    private fun publishUpdateDirectly(changeNotification: JsonObject) {
+    private suspend fun publishUpdateDirectly(changeNotification: JsonObject) {
         val entityId = changeNotification.getString("_id") ?: return
 
-        val updateMessage = JsonObject()
-            .put("type", "update")
-            .put("timestamp", System.currentTimeMillis())
-            .put("updates", JsonObject().put(entityId, changeNotification))
-
-        vertx.eventBus().publish(UpdateBatchCoordinator.ADDRESS_BATCHED_UPDATES, updateMessage)
+        vertx.eventBus().publish(
+            UpdateBatchCoordinator.ADDRESS_BATCHED_UPDATES,
+            updateController.getUpdateMessage(entityId, changeNotification)
+        )
     }
 
     /**
