@@ -12,7 +12,7 @@ import com.google.inject.Inject
  * Dedicated verticle for processing mutation commands.
  * This isolates mutation processing from the connection handling.
  *
- * Updated to work directly with JsonObjects instead of Entity objects.
+ * @deprecated
  */
 class MutationVerticle @Inject constructor(
     private val mutationService: MutationService
