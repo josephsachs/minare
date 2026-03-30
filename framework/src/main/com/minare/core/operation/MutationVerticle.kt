@@ -1,6 +1,7 @@
 package com.minare.core.operation
 
 import com.minare.core.entity.services.MutationService
+import com.minare.core.storage.interfaces.StateStore
 import io.vertx.core.json.JsonObject
 import io.vertx.kotlin.coroutines.CoroutineVerticle
 import io.vertx.kotlin.coroutines.dispatcher
@@ -15,7 +16,8 @@ import com.google.inject.Inject
  * @deprecated
  */
 class MutationVerticle @Inject constructor(
-    private val mutationService: MutationService
+    private val mutationService: MutationService,
+    private val stateStore: StateStore
 ) : CoroutineVerticle() {
 
     private val log = LoggerFactory.getLogger(MutationVerticle::class.java)
@@ -44,12 +46,21 @@ class MutationVerticle @Inject constructor(
                     }
 
                     try {
-                        val result = mutationService.mutate(entityId, entityType, entityObject)
+                        val beforeEntity = stateStore.findOneJson(entityId)
+                        if (beforeEntity == null) {
+                            message.fail(404, "Entity not found: $entityId")
+                            return@launch
+                        }
 
-                        if (result.getBoolean("success", false)) {
-                            message.reply(result)
+                        val result = mutationService.mutate(entityId, entityType, beforeEntity, entityObject)
+
+                        if (result is MutationService.MutateResult) {
+                            message.reply(JsonObject()
+                                .put("success", true)
+                                .put("message", "Entity $entityId mutation successful"))
                         } else {
-                            message.fail(400, result.getString("message", "Unknown error"))
+                            val rejection = result as JsonObject
+                            message.fail(400, rejection.getString("message", "Unknown error"))
                         }
                     } catch (e: Exception) {
                         log.error("Error during mutation processing for entity $entityId", e)

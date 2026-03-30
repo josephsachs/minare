@@ -8,6 +8,7 @@ import com.minare.core.entity.annotations.Mutable
 import com.minare.core.entity.annotations.State
 import com.minare.core.entity.annotations.VersionPolicy
 import com.minare.core.entity.annotations.VersionPolicy.Companion.VersionPolicyType
+import com.minare.core.storage.interfaces.MutationResult
 import com.minare.core.storage.interfaces.StateStore
 import io.vertx.core.json.JsonObject
 import org.slf4j.LoggerFactory
@@ -28,25 +29,33 @@ class MutationService @Inject constructor(
     private val log = LoggerFactory.getLogger(MutationService::class.java)
 
     /**
-     * Process a mutation request for an entity
+     * Result of a successful mutation, carrying the atomic before/after snapshots.
+     */
+    data class MutateResult(
+        val before: JsonObject,
+        val after: JsonObject,
+        val version: Long
+    )
+
+    /**
+     * Process a mutation request for an entity.
+     *
+     * Accepts the caller's already-fetched entity snapshot to avoid a redundant read.
+     * On success, performs an atomic merge+version-bump+snapshot via a single Lua EVAL
+     * and returns both the before and after states.
      *
      * @param entityId The ID of the entity to mutate
      * @param entityType The type of the entity
-     * @param requestObject The mutation request object containing state changes
-     * @return Result object indicating success or failure with message
+     * @param beforeEntity The entity document already read by the caller
+     * @param requestObject The mutation request containing state changes and version
+     * @return MutateResult on success, or a JsonObject with success=false on rejection
      */
-    suspend fun mutate(entityId: String, entityType: String, requestObject: JsonObject): JsonObject {
+    suspend fun mutate(entityId: String, entityType: String, beforeEntity: JsonObject, requestObject: JsonObject): Any {
         log.debug("Processing mutation for entity $entityId of type $entityType")
 
         val delta = requestObject.getJsonObject("state") ?: JsonObject()
         val deltaEntityVersion = requestObject.getLong("version", 0L)
-
-        val currentJson = stateStore.findOneJson(entityId)
-            ?: return JsonObject()
-                .put("success", false)
-                .put("message", "Entity not found: $entityId")
-
-        val storedEntityVersion = currentJson.getLong("version", 1L)
+        val storedEntityVersion = beforeEntity.getLong("version", 1L)
 
         val entityClass = entityFactory.useClass(entityType)
             ?: return JsonObject()
@@ -56,15 +65,9 @@ class MutationService @Inject constructor(
         val prunedDelta = getMutateDelta(delta, entityClass)
 
         if (prunedDelta.isEmpty) {
-            // TEMPORARY DEBUG
-            log.info("* * * * * * * * * * * * * * * * * * * * * * * *")
-            log.info("DEBUG_MUTATION: Entity class: ${entityClass}")
-            log.info("DEBUG_MUTATION: Pruned delta: ${prunedDelta}")
-            log.info("* * * * * * * * * * * * * * * * * * * * * * * *")
-
             return JsonObject()
                 .put("success", false)
-                .put("message", "Entity $entityId valid mutable fields found")
+                .put("message", "Entity $entityId no valid mutable fields found")
         }
 
         val allowedChanges = validateDelta(
@@ -82,11 +85,16 @@ class MutationService @Inject constructor(
         }
 
         try {
-            stateStore.saveState(entityId, allowedChanges)
+            val mutationResult = stateStore.mutateAndReturn(entityId, allowedChanges)
+                ?: return JsonObject()
+                    .put("success", false)
+                    .put("message", "Entity $entityId not found during atomic mutation")
 
-            return JsonObject()
-                .put("success", true)
-                .put("message", "Entity $entityId mutation successful")
+            return MutateResult(
+                before = mutationResult.before,
+                after = mutationResult.after,
+                version = mutationResult.version
+            )
         } catch (e: Exception) {
             log.error("Failed to mutate entity state: $entityId", e)
             return JsonObject()

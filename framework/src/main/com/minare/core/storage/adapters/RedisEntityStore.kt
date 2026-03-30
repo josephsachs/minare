@@ -14,6 +14,7 @@ import io.vertx.kotlin.coroutines.await
 import io.vertx.redis.client.RedisAPI
 import org.slf4j.LoggerFactory
 import com.google.inject.Inject
+import com.minare.core.storage.interfaces.MutationResult
 import com.minare.core.storage.interfaces.StateStore
 import com.minare.exceptions.EntityStorageException
 import io.vertx.core.json.JsonArray
@@ -513,10 +514,74 @@ class RedisEntityStore @Inject constructor(
     }
 
     /**
+     * Atomically snapshots before-state, merges delta, bumps version,
+     * and snapshots after-state in a single Redis roundtrip.
+     *
+     * Returns null if the entity key does not exist.
+     */
+    override suspend fun mutateAndReturn(entityId: String, delta: JsonObject): MutationResult? {
+        val serializedDelta = serializeDelta(delta)
+
+        val response = redisAPI.send(
+            Command.create("EVAL"),
+            mutateAndReturnScript(),
+            "1",
+            entityId,
+            serializedDelta.encode()
+        ).await()
+
+        // Script returns nil when key doesn't exist
+        if (response == null) return null
+
+        // Response is a 3-element array: [beforeJson, afterJson, version]
+        val before = response.get(0).toString()
+        val after = response.get(1).toString()
+        val version = response.get(2).toLong()
+
+        // JSON.GET with $ path returns a JSON array wrapper — unwrap it
+        val beforeDoc = JsonArray(before).getJsonObject(0)
+        val afterDoc = JsonArray(after).getJsonObject(0)
+
+        return MutationResult(
+            before = beforeDoc,
+            after = afterDoc,
+            version = version
+        )
+    }
+
+    /**
      *
      *  Lua
      *
      */
+
+    /**
+     * Atomic mutate-and-return: snapshots before, merges delta into state,
+     * increments version, snapshots after. All within a single EVAL.
+     *
+     * KEYS[1] = entityId
+     * ARGV[1] = serialized delta JSON (pre-validated @Mutable fields)
+     *
+     * Returns: { beforeJson, afterJson, newVersion } or nil if key missing
+     */
+    private fun mutateAndReturnScript(): String {
+        return """
+            local exists = redis.call('EXISTS', KEYS[1])
+            if exists == 0 then
+                return nil
+            end
+
+            local before = redis.call('JSON.GET', KEYS[1], '${'$'}')
+
+            redis.call('JSON.MERGE', KEYS[1], '${'$'}.state', ARGV[1])
+            redis.call('JSON.NUMINCRBY', KEYS[1], '${'$'}.version', 1)
+
+            local after = redis.call('JSON.GET', KEYS[1], '${'$'}')
+            local version = redis.call('JSON.GET', KEYS[1], 'version')
+
+            return { before, after, tonumber(version) }
+        """
+    }
 
     /**
      * Atomic version increment

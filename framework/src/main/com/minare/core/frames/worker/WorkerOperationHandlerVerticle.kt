@@ -20,6 +20,7 @@ import com.minare.controller.UpdateController
 import com.minare.core.entity.graph.EntityGraphReferenceService
 import com.minare.core.entity.ReflectionCache
 import com.minare.core.entity.annotations.Trigger
+import com.minare.core.entity.services.EntityPublishService
 import com.minare.core.entity.services.MutationService
 import kotlin.reflect.full.callSuspend
 import kotlin.reflect.jvm.kotlinFunction
@@ -45,7 +46,8 @@ class WorkerOperationHandlerVerticle @Inject constructor(
     private val contextStore: ContextStore,
     private val channelController: ChannelController,
     private val reflectionCache: ReflectionCache,
-    private val mutationService: MutationService
+    private val mutationService: MutationService,
+    private val publishService: EntityPublishService
 ) : CoroutineVerticle() {
 
     private val log = LoggerFactory.getLogger(WorkerOperationHandlerVerticle::class.java)
@@ -120,6 +122,7 @@ class WorkerOperationHandlerVerticle @Inject constructor(
             if (entityType == null) return rejected(start, op, entityId, operationId, frameNumber, "Entity type required for MUTATE")
             if (operationId == null) return rejected(start, op, entityId, null, frameNumber, "Operation ID required")
 
+            // Single read: fetch before-state for validation
             val beforeEntity = stateStore.findOneJson(entityId)
                 ?: return rejected(start, op, entityId, operationId, frameNumber, "Entity $entityId not found before mutation")
 
@@ -129,17 +132,21 @@ class WorkerOperationHandlerVerticle @Inject constructor(
                 .put("version", operationJson.getLong("version"))
                 .put("state", operationJson.getJsonObject("delta") ?: JsonObject())
 
-            val result = mutationService.mutate(entityId, entityType, mutationRequest)
+            // Validates in Kotlin, then atomic merge+snapshot via single Lua EVAL
+            val result = mutationService.mutate(entityId, entityType, beforeEntity, mutationRequest)
 
-            if (!result.getBoolean("success", false)) {
-                return rejected(start, op, entityId, operationId, frameNumber, result.getString("message", "Mutation rejected"))
+            if (result is JsonObject) {
+                return rejected(start, op, entityId, operationId, frameNumber,
+                    result.getString("message", "Mutation rejected"))
             }
 
-            val afterEntity = stateStore.findOneJson(entityId)
-                ?: return failed(start, op, entityId, operationId, frameNumber,
-                    IllegalStateException("Entity $entityId not found after mutation"))
+            val mutateResult = result as MutationService.MutateResult
 
-            operationController.afterMutateOperation(operationJson, beforeEntity, afterEntity)
+            // Publish state change (needs ContextStore, so stays in Kotlin)
+            val delta = operationJson.getJsonObject("delta") ?: JsonObject()
+            publishService.publishStateChange(entityId, entityType, mutateResult.version, delta)
+
+            operationController.afterMutateOperation(operationJson, mutateResult.before, mutateResult.after)
 
             deltaStorageService.captureAndStoreDelta(
                 frameNumber = frameNumber,
@@ -147,8 +154,8 @@ class WorkerOperationHandlerVerticle @Inject constructor(
                 operationType = OperationType.MUTATE,
                 operationId = operationId,
                 operationJson = operationJson,
-                beforeEntity = beforeEntity,
-                afterEntity = afterEntity
+                beforeEntity = mutateResult.before,
+                afterEntity = mutateResult.after
             )
 
             return OperationResult.Success(entityId, op, operationId, frameNumber, elapsed(start))

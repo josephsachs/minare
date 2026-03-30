@@ -54,23 +54,31 @@ open class CommandMessageHandler @Inject constructor(
         }
 
         try {
-            val result = mutationService.mutate(entityId, entityType, entityObject)
+            val beforeEntity = stateStore.findOneJson(entityId)
+            if (beforeEntity == null) {
+                sendToClient(connectionId, JsonObject()
+                    .put("type", "mutation_error")
+                    .put("error", "Entity not found: $entityId")
+                )
+                return
+            }
 
-            if (result.getBoolean("success", false)) {
-                val updatedEntity = stateStore.findOneJson(entityId)
+            val result = mutationService.mutate(entityId, entityType, beforeEntity, entityObject)
 
+            if (result is MutationService.MutateResult) {
                 sendToClient(connectionId, JsonObject()
                     .put("type", "mutation_success")
                     .put("entity", JsonObject()
                         .put("_id", entityId)
-                        .put("version", updatedEntity?.getLong("version"))
-                        .put("type", updatedEntity?.getString("type"))
+                        .put("version", result.version)
+                        .put("type", entityType)
                     )
                 )
             } else {
+                val rejection = result as JsonObject
                 sendToClient(connectionId, JsonObject()
                     .put("type", "mutation_error")
-                    .put("error", result.getString("message", "Mutation failed"))
+                    .put("error", rejection.getString("message", "Mutation failed"))
                 )
             }
         } catch (e: Exception) {

@@ -25,7 +25,7 @@ entity:
   factory: com.minare.nodegraph.NodeGraphEntityFactory
   update:
     collect_changes: true
-    interval: 25
+    interval: 1
   graphing:
     store: mongo
 
@@ -37,7 +37,7 @@ frames:
   group_operations_by: ["ENTITY", "FIELD_PARENT", "FIELD_CHILD"]
   session:
     auto_session: frames_per_session
-    frames_per_session: 3600
+    frames_per_session: 600
   timeline:
     detach:
       flush_on_detach: true
