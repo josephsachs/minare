@@ -4,11 +4,17 @@ import io.vertx.core.json.JsonObject
 
 /**
  * Result of an atomic mutate-and-return operation.
- * Contains before/after entity snapshots and the new version,
- * all captured within a single Redis Lua evaluation.
+ * Returned by StateStore.mutateAndReturn() to distinguish between
+ * a successful mutation, a version policy rejection, and a missing entity (null).
  */
-data class MutationResult(
-    val before: JsonObject,
-    val after: JsonObject,
-    val version: Long
-)
+sealed interface MutationResult {
+    data class Success(
+        val before: JsonObject,
+        val after: JsonObject,
+        val version: Long
+    ) : MutationResult
+
+    data class VersionRejected(
+        val currentVersion: Long
+    ) : MutationResult
+}

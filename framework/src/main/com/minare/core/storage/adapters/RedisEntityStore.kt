@@ -514,12 +514,17 @@ class RedisEntityStore @Inject constructor(
     }
 
     /**
-     * Atomically snapshots before-state, merges delta, bumps version,
-     * and snapshots after-state in a single Redis roundtrip.
+     * Atomically validates version, merges delta, bumps version,
+     * and snapshots before/after state in a single Redis roundtrip.
      *
      * Returns null if the entity key does not exist.
      */
-    override suspend fun mutateAndReturn(entityId: String, delta: JsonObject): MutationResult? {
+    override suspend fun mutateAndReturn(
+        entityId: String,
+        delta: JsonObject,
+        versionPolicy: String?,
+        incomingVersion: Long?
+    ): MutationResult? {
         val serializedDelta = serializeDelta(delta)
 
         val response = redisAPI.send(
@@ -527,22 +532,32 @@ class RedisEntityStore @Inject constructor(
             mutateAndReturnScript(),
             "1",
             entityId,
-            serializedDelta.encode()
+            serializedDelta.encode(),
+            versionPolicy ?: "NONE",
+            (incomingVersion ?: 0).toString()
         ).await()
 
         // Script returns nil when key doesn't exist
         if (response == null) return null
 
-        // Response is a 3-element array: [beforeJson, afterJson, version]
-        val before = response.get(0).toString()
-        val after = response.get(1).toString()
-        val version = response.get(2).toLong()
+        // Response[0] is the status: 0 = version rejected, 1 = success
+        val status = response.get(0).toLong()
+
+        if (status == 0L) {
+            val currentVersion = response.get(1).toLong()
+            return MutationResult.VersionRejected(currentVersion)
+        }
+
+        // Success: [1, beforeJson, afterJson, version]
+        val before = response.get(1).toString()
+        val after = response.get(2).toString()
+        val version = response.get(3).toLong()
 
         // JSON.GET with $ path returns a JSON array wrapper — unwrap it
         val beforeDoc = JsonArray(before).getJsonObject(0)
         val afterDoc = JsonArray(after).getJsonObject(0)
 
-        return MutationResult(
+        return MutationResult.Success(
             before = beforeDoc,
             after = afterDoc,
             version = version
@@ -556,13 +571,17 @@ class RedisEntityStore @Inject constructor(
      */
 
     /**
-     * Atomic mutate-and-return: snapshots before, merges delta into state,
-     * increments version, snapshots after. All within a single EVAL.
+     * Atomic validate-mutate-and-return: checks version policy, snapshots before,
+     * merges delta into state, increments version, snapshots after. Single EVAL.
      *
      * KEYS[1] = entityId
      * ARGV[1] = serialized delta JSON (pre-validated @Mutable fields)
+     * ARGV[2] = version policy: "MUST_MATCH", "ONLY_NEXT", "ALLOW_NEWER", or "NONE"
+     * ARGV[3] = incoming version (string, converted to number)
      *
-     * Returns: { beforeJson, afterJson, newVersion } or nil if key missing
+     * Returns: nil if key missing
+     *          { 0, currentVersion } if version rejected
+     *          { 1, beforeJson, afterJson, newVersion } on success
      */
     private fun mutateAndReturnScript(): String {
         return """
@@ -573,13 +592,27 @@ class RedisEntityStore @Inject constructor(
 
             local before = redis.call('JSON.GET', KEYS[1], '${'$'}')
 
+            local policy = ARGV[2]
+            if policy ~= 'NONE' then
+                local currentVersion = tonumber(redis.call('JSON.GET', KEYS[1], 'version'))
+                local incomingVersion = tonumber(ARGV[3])
+
+                if policy == 'MUST_MATCH' and incomingVersion ~= currentVersion then
+                    return { 0, currentVersion }
+                elseif policy == 'ONLY_NEXT' and incomingVersion ~= currentVersion + 1 then
+                    return { 0, currentVersion }
+                elseif policy == 'ALLOW_NEWER' and incomingVersion <= currentVersion then
+                    return { 0, currentVersion }
+                end
+            end
+
             redis.call('JSON.MERGE', KEYS[1], '${'$'}.state', ARGV[1])
             redis.call('JSON.NUMINCRBY', KEYS[1], '${'$'}.version', 1)
 
             local after = redis.call('JSON.GET', KEYS[1], '${'$'}')
             local version = redis.call('JSON.GET', KEYS[1], 'version')
 
-            return { before, after, tonumber(version) }
+            return { 1, before, after, tonumber(version) }
         """
     }
 

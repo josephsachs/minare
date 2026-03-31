@@ -4,7 +4,6 @@ import com.google.inject.Inject
 import com.google.inject.Singleton
 import com.minare.core.entity.services.MutationService
 import com.minare.core.storage.interfaces.ConnectionStore
-import com.minare.core.storage.interfaces.StateStore
 import com.minare.core.transport.upsocket.UpSocketVerticle
 import io.vertx.core.Vertx
 import io.vertx.core.json.JsonObject
@@ -14,8 +13,7 @@ import org.slf4j.LoggerFactory
 open class CommandMessageHandler @Inject constructor(
     private val vertx: Vertx,
     private val connectionStore: ConnectionStore,
-    private val mutationService: MutationService,
-    private val stateStore: StateStore
+    private val mutationService: MutationService
 ) {
     private val log = LoggerFactory.getLogger(CommandMessageHandler::class.java)
 
@@ -54,16 +52,7 @@ open class CommandMessageHandler @Inject constructor(
         }
 
         try {
-            val beforeEntity = stateStore.findOneJson(entityId)
-            if (beforeEntity == null) {
-                sendToClient(connectionId, JsonObject()
-                    .put("type", "mutation_error")
-                    .put("error", "Entity not found: $entityId")
-                )
-                return
-            }
-
-            val result = mutationService.mutate(entityId, entityType, beforeEntity, entityObject)
+            val result = mutationService.mutate(entityId, entityType, entityObject)
 
             if (result is MutationService.MutateResult) {
                 sendToClient(connectionId, JsonObject()

@@ -1,7 +1,6 @@
 package com.minare.core.operation
 
 import com.minare.core.entity.services.MutationService
-import com.minare.core.storage.interfaces.StateStore
 import io.vertx.core.json.JsonObject
 import io.vertx.kotlin.coroutines.CoroutineVerticle
 import io.vertx.kotlin.coroutines.dispatcher
@@ -16,8 +15,7 @@ import com.google.inject.Inject
  * @deprecated
  */
 class MutationVerticle @Inject constructor(
-    private val mutationService: MutationService,
-    private val stateStore: StateStore
+    private val mutationService: MutationService
 ) : CoroutineVerticle() {
 
     private val log = LoggerFactory.getLogger(MutationVerticle::class.java)
@@ -46,13 +44,7 @@ class MutationVerticle @Inject constructor(
                     }
 
                     try {
-                        val beforeEntity = stateStore.findOneJson(entityId)
-                        if (beforeEntity == null) {
-                            message.fail(404, "Entity not found: $entityId")
-                            return@launch
-                        }
-
-                        val result = mutationService.mutate(entityId, entityType, beforeEntity, entityObject)
+                        val result = mutationService.mutate(entityId, entityType, entityObject)
 
                         if (result is MutationService.MutateResult) {
                             message.reply(JsonObject()

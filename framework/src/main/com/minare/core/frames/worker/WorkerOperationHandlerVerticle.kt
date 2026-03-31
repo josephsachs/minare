@@ -122,18 +122,14 @@ class WorkerOperationHandlerVerticle @Inject constructor(
             if (entityType == null) return rejected(start, op, entityId, operationId, frameNumber, "Entity type required for MUTATE")
             if (operationId == null) return rejected(start, op, entityId, null, frameNumber, "Operation ID required")
 
-            // Single read: fetch before-state for validation
-            val beforeEntity = stateStore.findOneJson(entityId)
-                ?: return rejected(start, op, entityId, operationId, frameNumber, "Entity $entityId not found before mutation")
-
             val mutationRequest = JsonObject()
                 .put("_id", entityId)
                 .put("type", entityType)
                 .put("version", operationJson.getLong("version"))
                 .put("state", operationJson.getJsonObject("delta") ?: JsonObject())
 
-            // Validates in Kotlin, then atomic merge+snapshot via single Lua EVAL
-            val result = mutationService.mutate(entityId, entityType, beforeEntity, mutationRequest)
+            // Version check + merge + snapshot in a single Lua EVAL — no separate read
+            val result = mutationService.mutate(entityId, entityType, mutationRequest)
 
             if (result is JsonObject) {
                 return rejected(start, op, entityId, operationId, frameNumber,

@@ -33,7 +33,7 @@ entity:
 frames:
   frame_duration: 125
   lookahead: 40
-  threads: 6
+  threads: 10
   group_operations_by: ["ENTITY", "FIELD_PARENT", "FIELD_CHILD"]
   session:
     auto_session: frames_per_session
@@ -67,7 +67,7 @@ mongo:
 redis:
   host: redis
   port: 6379
-  pool: 3
+  pool: 5
   max_waiting: 500
 
 
