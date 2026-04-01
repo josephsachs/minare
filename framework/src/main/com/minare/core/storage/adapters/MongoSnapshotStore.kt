@@ -52,9 +52,6 @@ class MongoSnapshotStore @Inject constructor(
                 .put("coordinatorInstance", metadata.getString("coordinatorInstance"))
                 .mergeIn(metadata)
 
-            mongoClient.save(collection, metadataDoc).await()
-
-            // Initialize documents
             val deltasDoc = JsonObject()
                 .put("_id", DELTAS_DOC_ID)
                 .put("deltas", JsonArray())
@@ -63,6 +60,7 @@ class MongoSnapshotStore @Inject constructor(
                 .put("_id", STATE_DOC_ID)
                 .put("state", JsonArray())
 
+            mongoClient.save(collection, metadataDoc).await()
             mongoClient.save(collection, deltasDoc).await()
             mongoClient.save(collection, stateDoc).await()
 

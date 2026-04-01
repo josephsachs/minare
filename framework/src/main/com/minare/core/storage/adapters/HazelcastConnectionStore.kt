@@ -8,7 +8,6 @@ import com.minare.core.storage.interfaces.ConnectionStore
 import com.minare.core.transport.models.Connection
 import com.minare.exceptions.ClientConnectionException
 import org.slf4j.LoggerFactory
-import java.util.UUID
 
 @Singleton
 class HazelcastConnectionStore @Inject constructor(
@@ -21,19 +20,18 @@ class HazelcastConnectionStore @Inject constructor(
         return create(null)
     }
 
-    override suspend fun create(meta: Map<String, String>?): Connection {
-        val connectionId = UUID.randomUUID().toString()
+    override suspend fun create(meta: Map<String, String>?, id: String): Connection {
         val now = System.currentTimeMillis()
 
         val connection = Connection(
-            id = connectionId,
+            id = id,
             createdAt = now,
             lastUpdated = now,
             lastActivity = now,
             meta = meta
         )
 
-        map[connectionId] = connection
+        map[id] = connection
         return connection
     }
 

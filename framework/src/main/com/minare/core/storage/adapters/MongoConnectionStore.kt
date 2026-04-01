@@ -21,48 +21,14 @@ class MongoConnectionStore @Inject constructor(
      * Create a new connection in the database
      */
     override suspend fun create(): Connection {
-        val connectionId = UUID.randomUUID().toString()
-        val now = System.currentTimeMillis()
-
-        val connection = Connection(
-            id = connectionId,
-            createdAt = now,
-            lastUpdated = now,
-            lastActivity = now,
-            upSocketId = null,
-            upSocketInstanceId = null,
-            downSocketId = null,
-            downSocketInstanceId = null,
-            reconnectable = true
-        )
-
-        val document = JsonObject()
-            .put("_id", connection.id)
-            .put("createdAt", connection.createdAt)
-            .put("lastUpdated", connection.lastUpdated)
-            .put("lastActivity", connection.lastActivity)
-            .put("upSocketId", connection.upSocketId)
-            .put("upSocketDeploymentId", connection.upSocketInstanceId)
-            .put("downSocketId", connection.downSocketId)
-            .put("downSocketDeploymentId", connection.downSocketInstanceId)
-            .put("reconnectable", connection.reconnectable)
-
-        try {
-            mongoClient.save(collection, document).await()
-            log.info("Connection created: {}", connectionId)
-            return connection
-        } catch (e: Exception) {
-            log.error("Failed to create connection", e)
-            throw e
-        }
+        return create(null)
     }
 
-    override suspend fun create(meta: Map<String, String>?): Connection {
-        val connectionId = UUID.randomUUID().toString()
+    override suspend fun create(meta: Map<String, String>?, id: String): Connection {
         val now = System.currentTimeMillis()
 
         val connection = Connection(
-            id = connectionId,
+            id = id,
             createdAt = now,
             lastUpdated = now,
             lastActivity = now,
@@ -88,7 +54,7 @@ class MongoConnectionStore @Inject constructor(
 
         try {
             mongoClient.save(collection, document).await()
-            log.info("Connection created: {}", connectionId)
+            log.info("Connection created: {}", id)
             return connection
         } catch (e: Exception) {
             log.error("Failed to create connection", e)

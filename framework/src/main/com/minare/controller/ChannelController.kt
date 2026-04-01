@@ -33,7 +33,7 @@ open class ChannelController @Inject constructor() {
      * @return True if successfully added, false otherwise
      */
     open suspend fun addEntity(entity: Entity, channelId: String): Boolean {
-        return entity._id?.let { entityId ->
+        return entity._id.let { entityId ->
             try {
                 val contextId = contextStore.create(entityId, channelId)
                 debug.log(DebugType.CHANNEL_CONTROLLER_ADD_ENTITY_CHANNEL, listOf(entity._id, channelId, contextId))
@@ -53,7 +53,7 @@ open class ChannelController @Inject constructor() {
      * @return True if successfully removed, false otherwise
      */
     open suspend fun removeEntity(entity: Entity, channelId: String): Boolean {
-        return entity._id?.let { entityId ->
+        return entity._id.let { entityId ->
             contextStore.remove(entityId, channelId)
         } ?: false
     }

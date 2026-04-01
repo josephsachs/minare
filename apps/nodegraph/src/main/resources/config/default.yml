@@ -25,19 +25,19 @@ entity:
   factory: com.minare.nodegraph.NodeGraphEntityFactory
   update:
     collect_changes: true
-    interval: 25
+    interval: 1
   graphing:
     store: mongo
 
 
 frames:
-  frame_duration: 500
-  lookahead: 25
+  frame_duration: 125
+  lookahead: 40
   threads: 10
   group_operations_by: ["ENTITY", "FIELD_PARENT", "FIELD_CHILD"]
   session:
     auto_session: frames_per_session
-    frames_per_session: 500
+    frames_per_session: 600
   timeline:
     detach:
       flush_on_detach: true
@@ -67,6 +67,8 @@ mongo:
 redis:
   host: redis
   port: 6379
+  pool: 5
+  max_waiting: 500
 
 
 kafka:

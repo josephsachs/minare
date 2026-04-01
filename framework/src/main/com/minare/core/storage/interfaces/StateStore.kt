@@ -26,6 +26,23 @@ interface StateStore {
     suspend fun saveState(entityId: String, delta: JsonObject, incrementVersion: Boolean = true): JsonObject
 
     /**
+     * Atomically validates version, merges a delta into entity state, increments version,
+     * and returns both the before and after snapshots in a single Redis roundtrip.
+     *
+     * @param entityId The ID of the entity to mutate
+     * @param delta The pre-validated delta to merge into state
+     * @param versionPolicy Version policy name ("MUST_MATCH", "ONLY_NEXT", "ALLOW_NEWER") or null to skip
+     * @param incomingVersion The version from the mutation request, used for policy check
+     * @return MutationResult.Success, MutationResult.VersionRejected, or null if entity not found
+     */
+    suspend fun mutateAndReturn(
+        entityId: String,
+        delta: JsonObject,
+        versionPolicy: String? = null,
+        incomingVersion: Long? = null
+    ): MutationResult?
+
+    /**
      * Batch updates state for multiple entities, incrementing versions
      * @param updates Map of entityId to delta JsonObject
      */

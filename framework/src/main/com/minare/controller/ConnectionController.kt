@@ -20,8 +20,13 @@ open class ConnectionController @Inject constructor() {
 
     private val log = LoggerFactory.getLogger(ConnectionController::class.java)
 
+    @Deprecated("Use createConnection(meta) instead")
     suspend fun createConnection(): Connection {
-        return connectionStore.create()
+        return connectionStore.create(null)
+    }
+
+    open suspend fun createConnection(meta: Map<String, String>? = null): Connection {
+        return connectionStore.create(meta)
     }
 
     suspend fun getConnection(connectionId: String): Connection {

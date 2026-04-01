@@ -13,7 +13,6 @@ import com.minare.core.operation.interfaces.MessageQueue
 import com.minare.core.transport.downsocket.pubsub.PubSubChannelStrategy
 import com.minare.core.transport.downsocket.pubsub.PerChannelPubSubStrategy
 import com.minare.core.transport.CleanupVerticle
-import com.minare.core.operation.MutationVerticle
 import com.minare.core.factories.MinareVerticleFactory
 import com.minare.core.frames.coordinator.handlers.DelayLateOperation
 import com.minare.core.transport.downsocket.RedisPubSubWorkerVerticle
@@ -36,6 +35,7 @@ import com.minare.core.frames.services.*
 import com.minare.core.storage.services.DatabaseInitializer
 import com.minare.core.utils.vertx.EventBusUtils
 import com.minare.exceptions.EntityFactoryException
+import io.vertx.redis.client.PoolOptions
 import kotlinx.coroutines.CoroutineScope
 import kotlin.coroutines.CoroutineContext
 
@@ -95,7 +95,6 @@ class MinareModule(
 
         // Workers
         bind(RedisPubSubWorkerVerticle::class.java)
-        bind(MutationVerticle::class.java)
         bind(CleanupVerticle::class.java)
     }
 
@@ -166,6 +165,8 @@ class MinareModule(
     @Singleton
     fun provideRedisAPI(vertx: Vertx): RedisAPI {
         val redisOptions = RedisOptions()
+            .setMaxPoolSize(frameworkConfig.redis.pool)
+            .setMaxPoolWaiting(frameworkConfig.redis.maxWaiting)
             .setConnectionString(
                 "redis://${frameworkConfig.redis.host}:${frameworkConfig.redis.port}"
             )

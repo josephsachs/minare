@@ -18,6 +18,8 @@ import com.minare.core.utils.vertx.EventBusUtils
 import com.minare.core.utils.vertx.EventWaiter
 import io.vertx.core.json.JsonArray
 import io.vertx.core.json.JsonObject
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
 import org.slf4j.LoggerFactory
 import java.util.*
 
@@ -55,7 +57,7 @@ class SessionService @Inject constructor(
                 return false
             }
             AutoSession.FRAMES_PER_SESSION -> {
-                if (coordinatorState.frameInProgress == frameworkConfig.frames.frameDuration) return true
+                if (coordinatorState.frameInProgress == frameworkConfig.frames.session.framesPerSession.toLong()) return true
             }
         }
 
@@ -86,7 +88,7 @@ class SessionService @Inject constructor(
     /**
      * Begins a new session
      */
-    suspend fun initializeSession() {
+    suspend fun initializeSession(scope: CoroutineScope) {
         val sessionId = UUID.randomUUID().toString()
         log.info("Initializing new session with ID $sessionId")
 
@@ -109,8 +111,12 @@ class SessionService @Inject constructor(
         val metadata = createMetadata(sessionId, sessionStartTime, announcementTime)
 
         publishSessionMessage(sessionId, metadata)
-        createSessionCollection(sessionId, metadata)
         announceSessionToWorkers(sessionId, metadata)
+
+        // Fire-and-forget: Mongo snapshot collection setup doesn't block session start
+        scope.launch {
+            createSessionCollection(sessionId, metadata)
+        }
 
         eventBusUtils.publishWithTracing(
             ADDRESS_SESSION_INITIALIZED,

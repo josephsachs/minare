@@ -2,19 +2,18 @@ package com.minare.worker.upsocket
 
 import com.google.inject.Inject
 import com.google.inject.Singleton
-import com.minare.core.operation.MutationVerticle
+import com.minare.core.entity.services.MutationService
 import com.minare.core.storage.interfaces.ConnectionStore
 import com.minare.core.transport.upsocket.UpSocketVerticle
 import io.vertx.core.Vertx
-import io.vertx.core.eventbus.ReplyException
 import io.vertx.core.json.JsonObject
-import io.vertx.kotlin.coroutines.await
 import org.slf4j.LoggerFactory
 
 @Singleton
 open class CommandMessageHandler @Inject constructor(
     private val vertx: Vertx,
-    private val connectionStore: ConnectionStore
+    private val connectionStore: ConnectionStore,
+    private val mutationService: MutationService
 ) {
     private val log = LoggerFactory.getLogger(CommandMessageHandler::class.java)
 
@@ -34,6 +33,7 @@ open class CommandMessageHandler @Inject constructor(
     protected open suspend fun handleMutate(connectionId: String, message: JsonObject) {
         val entityObject = message.getJsonObject("entity")
         val entityId = entityObject?.getString("_id")
+        val entityType = entityObject?.getString("type")
 
         if (entityId == null) {
             sendToClient(connectionId, JsonObject()
@@ -43,24 +43,33 @@ open class CommandMessageHandler @Inject constructor(
             return
         }
 
-        try {
-            val response = vertx.eventBus().request<JsonObject>(
-                MutationVerticle.ADDRESS_MUTATION,
-                JsonObject()
-                    .put("connectionId", connectionId)
-                    .put("entity", entityObject)
-            ).await().body()
-
-            sendToClient(connectionId, JsonObject()
-                .put("type", "mutation_success")
-                .put("entity", response.getJsonObject("entity"))
-            )
-        } catch (e: ReplyException) {
-            log.error("Mutation failed: {}", e.message)
+        if (entityType == null) {
             sendToClient(connectionId, JsonObject()
                 .put("type", "mutation_error")
-                .put("error", e.message ?: "Mutation failed")
+                .put("error", "Missing entity type")
             )
+            return
+        }
+
+        try {
+            val result = mutationService.mutate(entityId, entityType, entityObject)
+
+            if (result is MutationService.MutateResult) {
+                sendToClient(connectionId, JsonObject()
+                    .put("type", "mutation_success")
+                    .put("entity", JsonObject()
+                        .put("_id", entityId)
+                        .put("version", result.version)
+                        .put("type", entityType)
+                    )
+                )
+            } else {
+                val rejection = result as JsonObject
+                sendToClient(connectionId, JsonObject()
+                    .put("type", "mutation_error")
+                    .put("error", rejection.getString("message", "Mutation failed"))
+                )
+            }
         } catch (e: Exception) {
             log.error("Error processing mutation command", e)
             sendToClient(connectionId, JsonObject()

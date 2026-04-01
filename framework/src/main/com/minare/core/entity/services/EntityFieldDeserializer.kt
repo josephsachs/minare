@@ -27,6 +27,10 @@ class EntityFieldDeserializer {
 
     private fun deserializeCollection(jsonArray: JsonArray, field: Field): Any {
         val fieldType = field.type
+
+        // Identity case: field is JsonArray, return as-is (mirrors JsonObject handling in deserializeObject)
+        if (fieldType == JsonArray::class.java) return jsonArray
+
         val elementType = getElementType(field)
         val elements = jsonArray.map { deserializeElement(it, elementType) }
 

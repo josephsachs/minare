@@ -40,7 +40,6 @@ import com.minare.core.frames.worker.FrameWorkerHealthMonitorVerticle
 import com.minare.core.frames.worker.FrameWorkerVerticle
 import com.minare.core.frames.worker.WorkerOperationHandlerVerticle
 import com.minare.core.frames.worker.WorkerTaskVerticle
-import com.minare.core.operation.MutationVerticle
 import com.minare.core.transport.downsocket.RedisPubSubWorkerVerticle
 import com.minare.core.storage.services.StateInitializer
 import com.minare.core.transport.CleanupVerticle
@@ -467,15 +466,6 @@ abstract class MinareApplication : CoroutineVerticle() {
         )
 
         createVerticle(
-            MutationVerticle::class.java,
-            DeploymentOptions()
-                .setWorker(true)
-                .setWorkerPoolName("mutation-pool")
-                .setWorkerPoolSize(2)
-                .setInstances(1)
-        )
-
-        createVerticle(
             CleanupVerticle::class.java,
             DeploymentOptions()
                 .setWorker(true)
@@ -506,14 +496,14 @@ abstract class MinareApplication : CoroutineVerticle() {
                     .setInstances(1)
                     .setConfig(JsonObject().put("nodeId", workerId).put("instanceId", instanceId))
             )
-        }
 
-        createVerticle(
-            WorkerTaskVerticle::class.java,
-            DeploymentOptions()
-                .setInstances(1)
-                .setConfig(JsonObject().put("workerId", workerId))
-        )
+            createVerticle(
+                WorkerTaskVerticle::class.java,
+                DeploymentOptions()
+                    .setInstances(1)
+                    .setConfig(JsonObject().put("workerId", instanceId))
+            )
+        }
 
         val sharedMap = vertx.sharedData()
             .getClusterWideMap<String, String>("app-state").await()

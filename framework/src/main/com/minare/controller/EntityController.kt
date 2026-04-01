@@ -7,6 +7,8 @@ import com.minare.core.storage.interfaces.EntityGraphStore
 import com.minare.core.storage.interfaces.StateStore
 import com.minare.core.utils.debug.DebugLogger
 import io.vertx.core.json.JsonObject
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
 import org.slf4j.LoggerFactory
 import com.google.inject.Inject
 import com.google.inject.Singleton
@@ -27,6 +29,7 @@ open class EntityController @Inject constructor() {
     @Inject private lateinit var stateStore: StateStore
     @Inject private lateinit var entityGraphStore: EntityGraphStore
     @Inject private lateinit var objectHydrator: EntityObjectHydrator
+    @Inject private lateinit var coroutineScope: CoroutineScope
     @Inject private lateinit var debug: DebugLogger
 
     private val log = LoggerFactory.getLogger(EntityController::class.java)
@@ -53,7 +56,13 @@ open class EntityController @Inject constructor() {
             val newEntity = stateStore.save(entity)
 
             if (frameworkConfig.entity.graph.store in listOf(EntityGraphStoreOption.MONGO)) {
-                entityGraphStore.save(entity, create)
+                coroutineScope.launch {
+                    try {
+                        entityGraphStore.save(entity, create)
+                    } catch (e: Exception) {
+                        log.error("Background graph store save failed for entity: ${entity._id}", e)
+                    }
+                }
             }
 
             return newEntity
@@ -70,16 +79,20 @@ open class EntityController @Inject constructor() {
      * @param entity The entity to save (must already have an ID)
      * @return The saved entity with any updates
      */
-    open suspend fun saveState(entityId: String, deltas: JsonObject, incrementVersion: Boolean = true): Entity? {
+    open suspend fun saveState(entityId: String, deltas: JsonObject, incrementVersion: Boolean = true) {
         debug.log(DebugLogger.Companion.DebugType.ENTITY_CONTROLLER_SAVE_ENTITY, listOf(entityId))
 
         stateStore.saveState(entityId, deltas, incrementVersion)
 
         if (frameworkConfig.entity.graph.store in listOf(EntityGraphStoreOption.MONGO)) {
-            entityGraphStore.updateRelationships(entityId, deltas)
+            coroutineScope.launch {
+                try {
+                    entityGraphStore.updateRelationships(entityId, deltas)
+                } catch (e: Exception) {
+                    log.error("Background graph store relationship update failed for entity: $entityId", e)
+                }
+            }
         }
-
-        return stateStore.findOne(entityId)
     }
 
     /**
@@ -89,10 +102,8 @@ open class EntityController @Inject constructor() {
      * @param entity The entity to save (must already have an ID)
      * @return The saved entity with any updates
      */
-    open suspend fun saveProperties(entityId: String, deltas: JsonObject): Entity? {
+    open suspend fun saveProperties(entityId: String, deltas: JsonObject) {
         stateStore.saveProperties(entityId, deltas)
-
-        return stateStore.findOne(entityId)
     }
 
     /**
@@ -107,7 +118,13 @@ open class EntityController @Inject constructor() {
         val deleted = stateStore.delete(entityId)
 
         if (frameworkConfig.entity.graph.store in listOf(EntityGraphStoreOption.MONGO)) {
-            entityGraphStore.delete(entityId)
+            coroutineScope.launch {
+                try {
+                    entityGraphStore.delete(entityId)
+                } catch (e: Exception) {
+                    log.error("Background graph store delete failed for entity: $entityId", e)
+                }
+            }
         }
 
         if (deleted) {

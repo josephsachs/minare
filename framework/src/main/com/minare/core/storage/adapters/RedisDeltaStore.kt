@@ -23,20 +23,37 @@ class RedisDeltaStore @Inject constructor(
 
     override suspend fun appendDelta(frameNumber: Long, delta: FrameDelta) {
         val key = "frame:${frameNumber}:deltas"
+        val deltaJson = delta.toJson().encode()
 
-        val existing = redisAPI.jsonGet(listOf(key, "$")).await()
-        val deltasArray = if (existing != null && existing.toString() != "null") {
-            JsonArray(existing.toString().removePrefix("[").removeSuffix("]"))
-        } else {
-            JsonArray()
-        }
-
-        deltasArray.add(delta.toJson())
-
-        redisAPI.jsonSet(listOf(key, "$", deltasArray.encode())).await()
+        redisAPI.send(
+            Command.create("EVAL"),
+            appendDeltaScript(),
+            "1",
+            key,
+            deltaJson
+        ).await()
 
         log.trace("Appended delta for entity {} to frame {}",
             delta.entityId, frameNumber)
+    }
+
+    /**
+     * Atomic append: uses JSON.ARRAPPEND if the key exists, otherwise
+     * creates a new JSON array with JSON.SET. Single roundtrip.
+     *
+     * KEYS[1] = "frame:<N>:deltas"
+     * ARGV[1] = delta JSON object to append
+     */
+    private fun appendDeltaScript(): String {
+        return """
+            local exists = redis.call('EXISTS', KEYS[1])
+            if exists == 1 then
+                redis.call('JSON.ARRAPPEND', KEYS[1], '$', ARGV[1])
+            else
+                redis.call('JSON.SET', KEYS[1], '$', '[' .. ARGV[1] .. ']')
+            end
+            return 1
+        """
     }
 
     /**

@@ -33,7 +33,7 @@ entity:
 frames:
   frame_duration: 500
   lookahead: 25
-  threads: 10
+  threads: 6
   session:
     auto_session: frames_per_session
     frames_per_session: 150
@@ -66,6 +66,8 @@ mongo:
 redis:
   host: redis
   port: 6379
+  pool: 6
+  max_waiting: 500
 
 
 kafka:
