@@ -308,7 +308,7 @@ class MongoEntityStore @Inject constructor(
         }
     }
 
-    suspend fun fetchDocumentsByIds(entityIds: List<String>): List<JsonObject> {
+    override suspend fun fetchDocumentsByIds(entityIds: List<String>): List<JsonObject> {
         val query = JsonObject().put(
             "\$or",
             JsonArray(entityIds.map { JsonObject().put("_id", it) })
@@ -317,7 +317,7 @@ class MongoEntityStore @Inject constructor(
         return mongoClient.find(collection, query).await()
     }
 
-    suspend fun executeAggregation(pipeline: JsonArray): JsonArray {
+    override suspend fun executeAggregation(pipeline: JsonArray): JsonArray {
         val results = JsonArray()
         val promise = io.vertx.core.Promise.promise<JsonArray>()
 

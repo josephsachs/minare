@@ -2,12 +2,16 @@ package com.minare.core.entity.graph
 
 import com.google.inject.Inject
 import com.google.inject.Singleton
+import com.minare.application.config.FrameworkConfig
 import com.minare.core.entity.annotations.Child
 import com.minare.core.entity.annotations.Parent
 import com.minare.core.entity.annotations.Peer
 import com.minare.core.entity.factories.EntityFactory
 import com.minare.core.entity.services.EntityInspector
 import com.minare.core.storage.adapters.MongoEntityStore
+import com.minare.core.storage.interfaces.EntityGraphStore
+import com.minare.core.storage.interfaces.EntityGraphStoreOption
+import com.minare.exceptions.ConfigurationException
 import io.vertx.core.json.JsonArray
 import io.vertx.core.json.JsonObject
 import org.jgrapht.Graph
@@ -28,9 +32,10 @@ import kotlin.reflect.KClass
  */
 @Singleton
 class EntityGraphVisitorBuilder @Inject constructor(
-    private val mongoEntityStore: MongoEntityStore,
+    private val entityGraphStore: EntityGraphStore,
     private val entityInspector: EntityInspector,
-    private val entityFactory: EntityFactory
+    private val entityFactory: EntityFactory,
+    private val frameworkConfig: FrameworkConfig
 ) {
     private val log = LoggerFactory.getLogger(EntityGraphVisitorBuilder::class.java)
 
@@ -62,9 +67,13 @@ class EntityGraphVisitorBuilder @Inject constructor(
         maxDepth: Int = DEFAULT_MAX_DEPTH,
         predicate: (JsonObject) -> Boolean = { true }
     ): Graph<JsonObject, DefaultEdge> {
+        if (frameworkConfig.entity.graph.store == EntityGraphStoreOption.NONE) {
+            throw ConfigurationException("EntityGraphVisitorBuilder: No graph store configured")
+        }
+
         require(relationshipTypes.isNotEmpty()) { "At least one relationship type is required" }
 
-        val rootDoc = mongoEntityStore.fetchDocumentsByIds(listOf(entityId)).firstOrNull()
+        val rootDoc = entityGraphStore.fetchDocumentsByIds(listOf(entityId)).firstOrNull()
         if (rootDoc == null) {
             log.warn("Entity {} not found in graph store", entityId)
             return DefaultDirectedGraph(DefaultEdge::class.java)
@@ -142,7 +151,7 @@ class EntityGraphVisitorBuilder @Inject constructor(
                 ))
             }
 
-            val results = mongoEntityStore.executeAggregation(pipeline)
+            val results = entityGraphStore.executeAggregation(pipeline)
 
             for (i in 0 until results.size()) {
                 val result = results.getJsonObject(i)

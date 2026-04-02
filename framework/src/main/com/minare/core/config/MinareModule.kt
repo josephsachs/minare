@@ -84,7 +84,6 @@ class MinareModule(
 
         // Minare services
         bind(TimeService::class.java).to(DockerTimeService::class.java).`in`(Singleton::class.java)
-        //bind(ConnectionCache::class.java).to(InMemoryConnectionCache::class.java).`in`(Singleton::class.java)
 
         // Strategies
         bind(PubSubChannelStrategy::class.java).to(PerChannelPubSubStrategy::class.java).`in`(Singleton::class.java)

@@ -1,6 +1,7 @@
 package com.minare.core.storage.interfaces
 
 import com.minare.core.entity.models.Entity
+import io.vertx.core.json.JsonArray
 import io.vertx.core.json.JsonObject
 import org.jgrapht.Graph
 import org.jgrapht.graph.DefaultEdge
@@ -48,4 +49,14 @@ interface EntityGraphStore {
      * @return true if entity was deleted, false if not found
      */
     suspend fun delete(entityId: String): Boolean
+
+    /**
+     *
+     */
+    suspend fun fetchDocumentsByIds(entityIds: List<String>): List<JsonObject>
+
+    /**
+     *
+     */
+    suspend fun executeAggregation(pipeline: JsonArray): JsonArray
 }
