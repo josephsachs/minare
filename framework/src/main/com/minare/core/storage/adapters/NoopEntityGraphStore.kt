@@ -3,6 +3,7 @@ package com.minare.core.storage.adapters
 import com.google.inject.Singleton
 import com.minare.core.entity.models.Entity
 import com.minare.core.storage.interfaces.EntityGraphStore
+import io.vertx.core.json.JsonArray
 import io.vertx.core.json.JsonObject
 
 /**
@@ -34,5 +35,13 @@ class NoopEntityGraphStore : EntityGraphStore {
 
     override suspend fun delete(entityId: String): Boolean {
         return true
+    }
+
+    override suspend fun fetchDocumentsByIds(entityIds: List<String>): List<JsonObject> {
+        return emptyList()
+    }
+
+    override suspend fun executeAggregation(pipeline: JsonArray): JsonArray {
+        return JsonArray()
     }
 }

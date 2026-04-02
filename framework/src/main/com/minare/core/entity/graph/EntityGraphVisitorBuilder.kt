@@ -8,7 +8,6 @@ import com.minare.core.entity.annotations.Parent
 import com.minare.core.entity.annotations.Peer
 import com.minare.core.entity.factories.EntityFactory
 import com.minare.core.entity.services.EntityInspector
-import com.minare.core.storage.adapters.MongoEntityStore
 import com.minare.core.storage.interfaces.EntityGraphStore
 import com.minare.core.storage.interfaces.EntityGraphStoreOption
 import com.minare.exceptions.ConfigurationException
@@ -155,8 +154,6 @@ class EntityGraphVisitorBuilder @Inject constructor(
 
             for (i in 0 until results.size()) {
                 val result = results.getJsonObject(i)
-
-                // Include the root document
                 val rootFields = result.copy().apply { remove("visited") }
                 val rootId = rootFields.getString("_id")
                 if (rootId != null) {
