@@ -53,10 +53,11 @@ class EntityGraphReferenceService @Inject constructor(
     /**
      * Collect all entity IDs referenced by this entity's relationship fields
      */
-    private suspend fun collectReferencedEntityIds(entityId: String, entityJson: JsonObject): List<String> {
+    private fun collectReferencedEntityIds(entityId: String, entityJson: JsonObject): List<String> {
+        val entityType = entityJson.getString("type") ?: return emptyList()
         val state = entityJson.getJsonObject("state") ?: return emptyList()
         val relationshipFields = entityInspector.getFieldsOfType(
-            entityId,
+            entityType,
             listOf(Parent::class, Child::class)
         )
 
@@ -68,7 +69,7 @@ class EntityGraphReferenceService @Inject constructor(
     /**
      * Build deltas for all entities that reference entityIdToRemove
      */
-    private suspend fun buildRemovalDeltas(
+    private fun buildRemovalDeltas(
         entities: Map<String, JsonObject>,
         entityIdToRemove: String
     ): Map<String, JsonObject> {
@@ -87,14 +88,15 @@ class EntityGraphReferenceService @Inject constructor(
     /**
      * Build a delta that removes entityIdToRemove from a single entity's relationship fields
      */
-    private suspend fun buildRemovalDelta(
+    private fun buildRemovalDelta(
         targetEntityId: String,
         targetJson: JsonObject,
         entityIdToRemove: String
     ): JsonObject? {
+        val entityType = targetJson.getString("type") ?: return null
         val state = targetJson.getJsonObject("state") ?: return null
         val relationshipFields = entityInspector.getFieldsOfType(
-            targetEntityId,
+            entityType,
             listOf(Parent::class, Child::class)
         )
 

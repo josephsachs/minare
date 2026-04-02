@@ -93,8 +93,13 @@ class MongoEntityStore @Inject constructor(
             return JsonObject()
         }
 
+        val entityType = findEntityType(entityId) ?: run {
+            log.debug("No entity type found for entity: $entityId")
+            return JsonObject()
+        }
+
         val fieldNames = entityInspector
-            .getFieldsOfType(entityId, listOf(Parent::class, Child::class))
+            .getFieldsOfType(entityType, listOf(Parent::class, Child::class))
             .map { it.name }.toSet()
 
         val filteredDelta = delta.fieldNames()
@@ -143,9 +148,13 @@ class MongoEntityStore @Inject constructor(
     override suspend fun bulkUpdateRelationships(updates: Map<String, JsonObject>) {
         if (updates.isEmpty()) return
 
+        val entityTypes = findEntityTypes(updates.keys.toList())
+
         val operations = updates.mapNotNull { (entityId, delta) ->
+            val entityType = entityTypes[entityId] ?: return@mapNotNull null
+
             val fieldNames = entityInspector
-                .getFieldsOfType(entityId, listOf(Parent::class, Child::class))
+                .getFieldsOfType(entityType, listOf(Parent::class, Child::class))
                 .map { it.name }.toSet()
 
             val filteredDelta = delta.fieldNames()
@@ -270,6 +279,24 @@ class MongoEntityStore @Inject constructor(
         document.put("state", relationshipState)
 
         return document
+    }
+
+    private suspend fun findEntityType(entityId: String): String? {
+        val query = JsonObject().put("_id", entityId)
+        val fields = JsonObject().put("type", 1)
+        val doc = mongoClient.findOne(collection, query, fields).await()
+        return doc?.getString("type")
+    }
+
+    private suspend fun findEntityTypes(entityIds: List<String>): Map<String, String> {
+        if (entityIds.isEmpty()) return emptyMap()
+        val query = JsonObject().put("_id", JsonObject().put("\$in", JsonArray(entityIds)))
+        val fields = JsonObject().put("type", 1)
+        val docs = mongoClient.findWithOptions(
+            collection, query,
+            io.vertx.ext.mongo.FindOptions().setFields(fields)
+        ).await()
+        return docs.associate { it.getString("_id") to it.getString("type") }
     }
 
     fun createMinimalEntity(document: JsonObject): Entity {

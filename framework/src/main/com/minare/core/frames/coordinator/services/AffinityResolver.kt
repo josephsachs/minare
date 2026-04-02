@@ -142,7 +142,7 @@ class AffinityResolver @Inject constructor(
      * Uses EntityInspector for field discovery and extracts IDs from the entity's state
      * in the batch cache.
      */
-    private suspend fun relatedFieldIds(
+    private fun relatedFieldIds(
         cohort: Set<String>,
         entityCache: Map<String, JsonObject>,
         annotationTypes: List<kotlin.reflect.KClass<out Annotation>>
@@ -151,10 +151,11 @@ class AffinityResolver @Inject constructor(
 
         for (entityId in cohort) {
             val entityJson = entityCache[entityId] ?: continue
+            val entityType = entityJson.getString("type") ?: continue
             val state = entityJson.getJsonObject("state") ?: continue
 
             val relationshipFields = entityInspector.getFieldsOfType(
-                entityId,
+                entityType,
                 annotationTypes
             )
 
