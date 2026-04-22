@@ -51,13 +51,9 @@ Runs the application JAR with `INSTANCE_ROLE=WORKER`. Scalable — Docker Compos
 
 ### `infra`
 
-A lightweight Alpine container that bridges Docker's view of the cluster into the coordinator's view. After the coordinator is healthy, it:
+A lightweight Alpine container that acts as the bridge between external cloud orchestration and the coordinator's worker registry. Its job is to translate whatever the cloud config system knows about the worker fleet into coordinator API calls — registering workers as they come up and deregistering them as they go down. The coordinator waits for all registered workers to signal readiness before starting the frame loop.
 
-1. Discovers worker containers by name (`${WORKER_PREFIX}_${index}`)
-2. Calls the coordinator's admin endpoint to register each worker
-3. Stays alive to act as a monitoring sidecar
-
-The coordinator waits for all registered workers to signal readiness before starting the frame loop. The `infra` container is what triggers that startup sequence.
+The specific entrypoint (`infra-entrypoint-dynamic.sh`, mounted from `./scripts/infra/`) is deployment-provided and not part of the repository. `docker/scripts/infra-entrypoint.sh` is a development reference implementation that does static worker discovery by name. The infra container's configuration — coordinator host, worker prefix, expected count, retry parameters — is driven by environment variables in the compose file.
 
 ### `mongodb`
 
@@ -183,15 +179,9 @@ A collection of grep patterns for tracing operation flow through coordinator and
 
 The Dockerfile installs `chrony` and `libcap`. Both coordinator and worker containers have `cap_add: SYS_TIME` and `NTP_URL=ntp.local` set. `start.sh` contains a complete NTP sync implementation — all commented out. This predates the logical frame approach, which eliminates the need for clock synchronisation. The `cap_add`, `NTP_URL`, `chrony`, and `libcap` can all be removed.
 
-### `infra` container is broken in two ways
+### `infra` Kafka topic creation in the reference implementation cannot work
 
-**Wrong mount path.** The compose file mounts `./scripts/infra:/scripts:ro` but no `infra/` subdirectory exists — the scripts are at `./scripts/`. The container will start with an empty `/scripts` and immediately fail when it tries to execute `infra-entrypoint-dynamic.sh`.
-
-**Wrong script name.** The entrypoint references `infra-entrypoint-dynamic.sh` but the file in the repo is `infra-entrypoint.sh`.
-
-### `infra` Kafka topic creation cannot work
-
-`infra-entrypoint.sh` attempts `docker exec kafka kafka-topics ...` from inside the container. Without the Docker socket mounted, `docker` is not available inside the container. The `minare.operations` topic is currently created by the Kafka broker's auto-create behaviour, not by this script.
+The development reference script (`infra-entrypoint.sh`) attempts `docker exec kafka kafka-topics ...` from inside the container. Without the Docker socket mounted, `docker` is not available there. The `minare.operations` topic is currently created by Kafka's auto-create behaviour. A deployment-specific entrypoint should use the Kafka broker's network address directly rather than `docker exec`.
 
 ### `init-replica.sh` and `init-replica.js` are superseded
 
